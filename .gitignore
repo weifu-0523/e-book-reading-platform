@@ -1,0 +1,60 @@
+# === Flutter / Dart ===
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+**/generated_plugin_registrant.dart
+
+# === IDE ===
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === 项目特定：电子书文件不入库（版权 + 二进制） ===
+*.epub
+*.pdf
+*.mobi
+*.azw
+*.azw3
+*.txt
+!docs/**/*.txt
+!README.md
+
+# === 项目特定：用户数据 / 本地配置 / 测试书 ===
+library/
+covers/
+cache/
+*.db
+*.db-journal
+*.log
+secrets.env
+.env
+api_keys.json
+
+# === 构建产物 ===
+*.exe
+*.apk
+*.aab
+*.msix
+*.app
+dist/
+release/
+
+# === 临时文件 ===
+*.tmp
+*.bak
+*.swp
+*~
