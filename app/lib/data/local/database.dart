@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
 import 'connections/database_connection.dart';
+import 'daos/book_notes_dao.dart';
 import 'daos/books_dao.dart';
 import 'tables/annotations.dart';
 import 'tables/book_notes.dart';
@@ -23,7 +24,7 @@ part 'database.g.dart';
     BookTypographyOverrides,
     Settings,
   ],
-  daos: [BooksDao],
+  daos: [BooksDao, BookNotesDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(createDatabaseConnection());

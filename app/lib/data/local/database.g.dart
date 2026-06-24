@@ -2394,6 +2394,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $BookTypographyOverridesTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final BooksDao booksDao = BooksDao(this as AppDatabase);
+  late final BookNotesDao bookNotesDao = BookNotesDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
