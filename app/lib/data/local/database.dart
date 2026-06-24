@@ -2,14 +2,30 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
 import 'connections/database_connection.dart';
+import 'tables/annotations.dart';
+import 'tables/book_notes.dart';
+import 'tables/book_typography_overrides.dart';
+import 'tables/books.dart';
+import 'tables/reading_progress.dart';
+import 'tables/settings.dart';
+import 'tables/typography_profiles.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [])
+@DriftDatabase(
+  tables: [
+    Books,
+    BookNotes,
+    Annotations,
+    ReadingProgressTable,
+    TypographyProfiles,
+    BookTypographyOverrides,
+    Settings,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(createDatabaseConnection());
 
-  /// 测试用：内存数据库。
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
