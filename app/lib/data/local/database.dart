@@ -6,6 +6,7 @@ import 'daos/annotations_dao.dart';
 import 'daos/book_notes_dao.dart';
 import 'daos/books_dao.dart';
 import 'daos/reading_progress_dao.dart';
+import 'daos/typography_dao.dart';
 import 'tables/annotations.dart';
 import 'tables/book_notes.dart';
 import 'tables/book_typography_overrides.dart';
@@ -26,7 +27,7 @@ part 'database.g.dart';
     BookTypographyOverrides,
     Settings,
   ],
-  daos: [BooksDao, BookNotesDao, AnnotationsDao, ReadingProgressDao],
+  daos: [BooksDao, BookNotesDao, AnnotationsDao, ReadingProgressDao, TypographyDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(createDatabaseConnection());
