@@ -1,0 +1,102 @@
+import 'package:meta/meta.dart';
+
+/// 阅读位置的统一抽象。
+///
+/// EPUB 使用 CFI（Canonical Fragment Identifier）；
+/// PDF 使用页码 + 视口偏移。
+@immutable
+sealed class Locator {
+  const Locator();
+
+  Map<String, dynamic> toJson();
+
+  factory Locator.fromJson(Map<String, dynamic> json) {
+    final type = json['type'] as String?;
+    switch (type) {
+      case 'epubCfi':
+        return EpubCfiLocator(
+          cfi: json['cfi'] as String,
+          chapterIndex: json['chapterIndex'] as int,
+          chapterTitle: json['chapterTitle'] as String?,
+        );
+      case 'pdfPage':
+        return PdfPageLocator(
+          page: json['page'] as int,
+          offsetX: (json['offsetX'] as num).toDouble(),
+          offsetY: (json['offsetY'] as num).toDouble(),
+        );
+      default:
+        throw ArgumentError.value(type, 'type', 'Unknown Locator type');
+    }
+  }
+
+  String toJsonString();
+}
+
+class EpubCfiLocator extends Locator {
+  final String cfi;
+  final int chapterIndex;
+  final String? chapterTitle;
+
+  const EpubCfiLocator({
+    required this.cfi,
+    required this.chapterIndex,
+    this.chapterTitle,
+  });
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'epubCfi',
+        'cfi': cfi,
+        'chapterIndex': chapterIndex,
+        if (chapterTitle != null) 'chapterTitle': chapterTitle,
+      };
+
+  @override
+  String toJsonString() => cfi;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EpubCfiLocator &&
+          cfi == other.cfi &&
+          chapterIndex == other.chapterIndex &&
+          chapterTitle == other.chapterTitle;
+
+  @override
+  int get hashCode => Object.hash(cfi, chapterIndex, chapterTitle);
+}
+
+class PdfPageLocator extends Locator {
+  final int page;
+  final double offsetX;
+  final double offsetY;
+
+  const PdfPageLocator({
+    required this.page,
+    required this.offsetX,
+    required this.offsetY,
+  });
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'pdfPage',
+        'page': page,
+        'offsetX': offsetX,
+        'offsetY': offsetY,
+      };
+
+  @override
+  String toJsonString() => 'page:$page';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PdfPageLocator &&
+          page == other.page &&
+          offsetX == other.offsetX &&
+          offsetY == other.offsetY;
+
+  @override
+  int get hashCode => Object.hash(page, offsetX, offsetY);
+}
