@@ -7,7 +7,7 @@ void main() {
     expect(s.fontSize, 16.0);
     expect(s.lineHeight, 1.5);
     expect(s.theme, ReadingTheme.light);
-    expect(s.fontFamily, isNotNull);
+    expect(s.fontFamily, null); // null = 系统默认字体
   });
 
   test('copyWith updates specific fields', () {
