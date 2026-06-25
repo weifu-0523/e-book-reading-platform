@@ -73,19 +73,23 @@ class EpubxRenderer implements EpubRenderer {
   Future<void> openFile(String filePath) async {
     _setState(const ReaderEngineLoading());
     try {
-      final bytes = await File(filePath).readAsBytes();
-      final book = await EpubReader.readBook(bytes);
+      const timeout = Duration(seconds: 15);
+      final bytes = await File(filePath).readAsBytes().timeout(timeout);
+      final book = await EpubReader.readBook(bytes).timeout(timeout);
       _book = book;
       _currentChapterIndex = 0;
       _scrollController.removeListener(_onScroll);  // prevent duplicate on repeated calls
       _scrollController.addListener(_onScroll);
       _setState(const ReaderEngineReady());
+    } on TimeoutException catch (e, st) {
+      debugPrint('EpubxRenderer.openFile timeout: $filePath\n$e\n$st');
+      _setState(ReaderEngineError(
+        message: 'EPUB 解析超时（15秒），文件可能损坏',
+        cause: TimeoutException('EPUB parse timeout (file: $filePath)'),
+      ));
     } catch (e, st) {
       debugPrint('EpubxRenderer.openFile failed: $filePath\n$e\n$st');
-      _setState(ReaderEngineError(
-        message: '$e',
-        cause: e,
-      ));  // ⚠️ plan said `cause: e` only — but message is required
+      _setState(ReaderEngineError(message: '$e', cause: e));
     }
   }
 

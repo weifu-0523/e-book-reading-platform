@@ -65,6 +65,24 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   @override
   Future<void> gotoLocator(Locator locator) => _renderer.gotoLocator(locator);
 
+  /// 打开书籍并尝试恢复到上次位置（spec §6.3 CFI fallback）。
+  ///
+  /// CFI 解码失败时降级到第一章开头，不抛异常。
+  Future<void> openWithLastProgress({
+    required BookRef book,
+    required Locator? lastLocator,
+  }) async {
+    await open(book);
+    if (_state is ReaderEngineReady && lastLocator != null) {
+      try {
+        await gotoLocator(lastLocator);
+      } catch (e, st) {
+        // spec §6.3：CFI 解码失败降级到第一章
+        debugPrint('CFI restore failed: $e\n$st');
+      }
+    }
+  }
+
   @override
   Future<void> gotoTocEntry(TocEntry entry) =>
       _renderer.gotoLocator(entry.locator);
