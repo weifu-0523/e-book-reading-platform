@@ -72,4 +72,56 @@ void main() {
     await dao.deleteAnnotation('a1');
     expect(await dao.getByBookNoteId('bn1'), isEmpty);
   });
+
+  test('insertOne respects provided timestamps', () async {
+    final created = DateTime(2026, 1, 1, 10, 0, 0);
+    final updated = DateTime(2026, 1, 2, 11, 30, 0);
+    await dao.insertOne(
+      id: 'a1',
+      bookNoteId: 'bn1',
+      locatorJson: '{}',
+      quote: '',
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+      createdAt: created,
+      updatedAt: updated,
+    );
+    final all = await dao.getByBookNoteId('bn1');
+    expect(all.first.createdAt, created);
+    expect(all.first.updatedAt, updated);
+  });
+
+  test('updateAll preserves createdAt and updates mutable fields', () async {
+    final originalCreated = DateTime(2026, 1, 1, 10, 0, 0);
+    await dao.insertOne(
+      id: 'a1',
+      bookNoteId: 'bn1',
+      locatorJson: '{"type":"epubCfi"}',
+      quote: '原文',
+      note: '旧',
+      color: 'yellow',
+      tagsJson: '["t1"]',
+      source: 'manual',
+      createdAt: originalCreated,
+      updatedAt: originalCreated,
+    );
+    final newUpdated = DateTime(2026, 6, 25, 9, 0, 0);
+    await dao.updateAll(
+      id: 'a1',
+      locatorJson: '{"type":"epubCfi","cfi":"x"}',
+      quote: '新文',
+      note: '新笔记',
+      color: 'blue',
+      tagsJson: '["t1","t2"]',
+      source: 'aiAssisted',
+      updatedAt: newUpdated,
+    );
+    final all = await dao.getByBookNoteId('bn1');
+    expect(all.first.createdAt, originalCreated); // 保留
+    expect(all.first.updatedAt, newUpdated);
+    expect(all.first.note, '新笔记');
+    expect(all.first.color, 'blue');
+    expect(all.first.source, 'aiAssisted');
+  });
 }
