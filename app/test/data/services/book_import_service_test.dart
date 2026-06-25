@@ -65,4 +65,22 @@ void main() {
     expect(r2.isNew, isFalse); // dedup
     expect(r2.book.id, r1.book.id);
   });
+
+  test('importFile concurrent same file returns existing for second caller',
+      () async {
+    final source = File(p.join(tempRoot.path, 'book.epub'))
+      ..writeAsBytesSync([9, 8, 7, 6]);
+
+    // 并发触发同一文件的两次导入（不等第一次完成）
+    final r1Future = service.importFile(source, format: BookFormat.epub);
+    final r2Future = service.importFile(source, format: BookFormat.epub);
+    final results = await Future.wait([r1Future, r2Future]);
+
+    // 恰好一次 isNew
+    final newCount = results.where((r) => r.isNew).length;
+    expect(newCount, 1);
+
+    // 两次返回的 book id 相同
+    expect(results[0].book.id, results[1].book.id);
+  });
 }

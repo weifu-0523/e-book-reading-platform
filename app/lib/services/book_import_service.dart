@@ -36,7 +36,7 @@ class BookImportService {
     final hash = sha1.convert(bytes).toString();
     final extension = format == BookFormat.epub ? 'epub' : 'pdf';
 
-    // Dedup by hash
+    // Dedup by hash（先快路径）
     final existing = await _bookRepository.findByHash(hash);
     if (existing != null) {
       return ImportResult(book: existing, isNew: false);
@@ -63,8 +63,18 @@ class BookImportService {
       addedAt: DateTime.now(),
       lastReadAt: null,
     );
-    await _bookRepository.save(book);
 
-    return ImportResult(book: book, isNew: true);
+    // 并发安全：upsert-on-hash；若并发下另一路已写入同 hash，
+    // 唯一约束会触发冲突，回退查询返回已存在记录。
+    try {
+      await _bookRepository.save(book);
+      return ImportResult(book: book, isNew: true);
+    } on Object catch (_) {
+      final fallback = await _bookRepository.findByHash(hash);
+      if (fallback != null) {
+        return ImportResult(book: fallback, isNew: false);
+      }
+      rethrow;
+    }
   }
 }
