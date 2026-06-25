@@ -36,6 +36,8 @@ dependencies:
   # M2 阅读引擎
   reader_engine:
     path: ../reader_engine
+  reader_engine_epub_view:
+    path: ../reader_engine_epub_view
 
   # i18n
   flutter_localizations:
