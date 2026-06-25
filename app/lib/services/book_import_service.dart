@@ -69,10 +69,14 @@ class BookImportService {
     try {
       await _bookRepository.save(book);
       return ImportResult(book: book, isNew: true);
-    } on Object catch (_) {
-      final fallback = await _bookRepository.findByHash(hash);
-      if (fallback != null) {
-        return ImportResult(book: fallback, isNew: false);
+    } on Exception catch (e) {
+      // 仅捕获 SQLite 唯一约束冲突（idx_books_file_hash）；其他异常
+      // （磁盘 I/O、OOM、UUID 冲突等）应直接抛出，避免吞掉真实错误。
+      if (e.toString().contains('UNIQUE constraint failed')) {
+        final fallback = await _bookRepository.findByHash(hash);
+        if (fallback != null) {
+          return ImportResult(book: fallback, isNew: false);
+        }
       }
       rethrow;
     }
