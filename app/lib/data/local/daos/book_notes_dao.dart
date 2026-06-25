@@ -19,12 +19,16 @@ class BookNotesDao extends DatabaseAccessor<AppDatabase>
     required String id,
     required String bookId,
     required String title,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return into(bookNotes).insert(
       BookNotesCompanion.insert(
         id: id,
         bookId: bookId,
         title: title,
+        createdAt: createdAt == null ? const Value.absent() : Value(createdAt),
+        updatedAt: updatedAt == null ? const Value.absent() : Value(updatedAt),
       ),
     );
   }
@@ -33,6 +37,7 @@ class BookNotesDao extends DatabaseAccessor<AppDatabase>
     String id, {
     String? summary,
     String? keyTakeawaysJson,
+    DateTime? updatedAt,
   }) {
     return (update(bookNotes)..where((t) => t.id.equals(id))).write(
       BookNotesCompanion(
@@ -40,7 +45,7 @@ class BookNotesDao extends DatabaseAccessor<AppDatabase>
         keyTakeaways: keyTakeawaysJson == null
             ? const Value.absent()
             : Value(keyTakeawaysJson),
-        updatedAt: Value(DateTime.now()),
+        updatedAt: Value(updatedAt ?? DateTime.now()),
       ),
     );
   }

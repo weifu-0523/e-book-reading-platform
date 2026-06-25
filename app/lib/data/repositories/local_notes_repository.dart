@@ -40,7 +40,13 @@ class LocalNotesRepository implements NotesRepository {
     required String bookTitle,
   }) async {
     final note = BookNote.empty(id: id, bookId: bookId, bookTitle: bookTitle);
-    await _notesDao.insertOne(id: id, bookId: bookId, title: note.title);
+    await _notesDao.insertOne(
+      id: id,
+      bookId: bookId,
+      title: note.title,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+    );
     return note;
   }
 
