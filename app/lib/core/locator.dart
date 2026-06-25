@@ -28,7 +28,14 @@ sealed class Locator {
           offsetY: (json['offsetY'] as num).toDouble(),
         );
       default:
-        throw ArgumentError.value(type, 'type', 'Unknown Locator type');
+        // M3: 用 FormatException 而非 ArgumentError——
+        // 这是"数据格式不兼容"信号（语义比 ArgumentError 更精确）。
+        // 主要触发场景：未来 schema 演进后旧版本读取新数据。
+        // 上层应 catch 并通过日志/监控识别此类事件。
+        throw FormatException(
+          'Unknown Locator type "$type", JSON: $json. '
+          'This may indicate data written by a newer app version.',
+        );
     }
   }
 

@@ -54,8 +54,24 @@ void main() {
     });
   });
 
-  test('Locator.fromJson throws on unknown type', () {
-    expect(() => Locator.fromJson({'type': 'unknown'}), throwsArgumentError);
+  // M3: 默认分支改抛 FormatException 而非 ArgumentError——
+  // 未来 schema 演进（新增 Locator 子类型）后，旧版本读取新数据时此分支会被触发。
+  // FormatException 是语义更明确的"数据格式不兼容"信号，便于上层 catch + 日志。
+  test('Locator.fromJson throws FormatException on unknown type', () {
+    expect(
+      () => Locator.fromJson({'type': 'unknown', 'cfi': 'epubcfi(/6)'}),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('Locator.fromJson FormatException message mentions the unknown type', () {
+    try {
+      Locator.fromJson({'type': 'futureType', 'foo': 'bar'});
+      fail('expected FormatException');
+    } on FormatException catch (e) {
+      // 消息应包含未知类型字符串，便于日志诊断
+      expect(e.message, contains('futureType'));
+    }
   });
 
   test('round-trip serialization preserves data', () {
