@@ -1,5 +1,3 @@
-import 'package:drift/drift.dart' show Value;
-
 import '../local/database.dart' as db;
 import '../local/daos/books_dao.dart';
 import '../models/book.dart';
@@ -29,21 +27,17 @@ class LocalBookRepository implements BookRepository {
   }
 
   @override
-  Future<void> save(Book book) async {
-    final existing = await _dao.getById(book.id);
-    if (existing == null) {
-      await _dao.insertOne(
-        id: book.id,
-        title: book.title,
-        author: book.author,
-        format: book.format == BookFormat.epub ? 'epub' : 'pdf',
-        filePath: book.filePath,
-        fileHash: book.fileHash,
-        fileSizeBytes: book.fileSizeBytes,
-        coverPath: book.coverPath,
-      );
-    }
-    // 已存在：M1 阶段书籍元数据不变更，跳过更新
+  Future<void> save(Book book) {
+    return _dao.upsert(
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      format: book.format == BookFormat.epub ? 'epub' : 'pdf',
+      filePath: book.filePath,
+      fileHash: book.fileHash,
+      fileSizeBytes: book.fileSizeBytes,
+      coverPath: book.coverPath,
+    );
   }
 
   @override
