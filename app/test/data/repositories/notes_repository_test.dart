@@ -3,7 +3,6 @@ import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/data/local/database.dart' as db;
 import 'package:zhiyue/data/local/daos/books_dao.dart';
 import 'package:zhiyue/data/models/annotation.dart';
-import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/local_notes_repository.dart';
 
 import '../../helpers/drift_test_helper.dart';

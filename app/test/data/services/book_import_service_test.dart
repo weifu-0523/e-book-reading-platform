@@ -42,7 +42,7 @@ void main() {
     final result = await service.importFile(source, format: BookFormat.epub);
 
     expect(result.isNew, isTrue);
-    expect(result.book.title, 'book.epub'); // 无元数据时用文件名
+    expect(result.book.title, 'book'); // 无元数据时用文件名（去扩展名）
     expect(result.book.format, BookFormat.epub);
 
     final stored = File(p.join(

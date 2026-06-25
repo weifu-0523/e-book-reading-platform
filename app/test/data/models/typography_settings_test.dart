@@ -18,6 +18,25 @@ void main() {
     expect(updated.lineHeight, 1.5); // 未变
   });
 
+  test('copyWith can reset fontFamily to null', () {
+    final withFont = TypographySettings.defaults().copyWith(
+      fontFamily: 'SourceHanSans',
+    );
+    expect(withFont.fontFamily, 'SourceHanSans');
+
+    // 显式传 null 应重置回系统默认
+    final reset = withFont.copyWith(fontFamily: null);
+    expect(reset.fontFamily, isNull);
+  });
+
+  test('copyWith without fontFamily keeps existing value', () {
+    final withFont = TypographySettings.defaults().copyWith(
+      fontFamily: 'SourceHanSans',
+    );
+    final updated = withFont.copyWith(fontSize: 22.0);
+    expect(updated.fontFamily, 'SourceHanSans'); // 保留
+  });
+
   test('equality', () {
     final s1 = TypographySettings.defaults();
     final s2 = TypographySettings.defaults();

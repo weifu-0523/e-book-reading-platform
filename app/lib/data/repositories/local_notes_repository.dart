@@ -9,11 +9,13 @@ import '../models/book_note.dart';
 import 'notes_repository.dart';
 
 class LocalNotesRepository implements NotesRepository {
+  final db.AppDatabase _db;
   final BookNotesDao _notesDao;
   final AnnotationsDao _annotationsDao;
 
   LocalNotesRepository(db.AppDatabase database)
-      : _notesDao = BookNotesDao(database),
+      : _db = database,
+        _notesDao = BookNotesDao(database),
         _annotationsDao = AnnotationsDao(database);
 
   @override
@@ -74,10 +76,12 @@ class LocalNotesRepository implements NotesRepository {
   }
 
   @override
-  Future<void> updateAnnotation(Annotation a) async {
-    // 简单实现：delete + insert。生产可改为 update。
-    await _annotationsDao.deleteAnnotation(a.id);
-    await addAnnotation(a);
+  Future<void> updateAnnotation(Annotation a) {
+    // 用事务包裹 delete + insert，避免崩溃时丢失标注。
+    return _db.transaction(() async {
+      await _annotationsDao.deleteAnnotation(a.id);
+      await addAnnotation(a);
+    });
   }
 
   @override

@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhiyue/data/local/database.dart';
 
 import '../../helpers/drift_test_helper.dart';
 

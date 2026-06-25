@@ -50,7 +50,7 @@ class BookImportService {
     );
 
     // Create book record
-    final fileName = p.basename(source.path);
+    final fileName = p.basenameWithoutExtension(source.path);
     final book = Book(
       id: _uuid.v4(),
       title: fileName,

@@ -28,17 +28,23 @@ class TypographySettings {
         pageMargin: PageMargin.normal,
       );
 
+  // 使用哨兵对象区分"未传入"和"显式传入 null"。
+  // copyWith(fontFamily: null) 会重置为系统字体；不传 fontFamily 保持原值。
+  static const _sentinel = Object();
+
   TypographySettings copyWith({
     double? fontSize,
     double? lineHeight,
-    String? fontFamily,
+    Object? fontFamily = _sentinel,
     ReadingTheme? theme,
     PageMargin? pageMargin,
   }) {
     return TypographySettings(
       fontSize: fontSize ?? this.fontSize,
       lineHeight: lineHeight ?? this.lineHeight,
-      fontFamily: fontFamily ?? this.fontFamily,
+      fontFamily: identical(fontFamily, _sentinel)
+          ? this.fontFamily
+          : fontFamily as String?,
       theme: theme ?? this.theme,
       pageMargin: pageMargin ?? this.pageMargin,
     );
