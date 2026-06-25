@@ -4,5 +4,6 @@
 library reader_engine;
 
 export 'core/locator.dart';
+export 'core/typography_settings.dart';
 
 const String readerEngineLibraryVersion = '0.1.0';
