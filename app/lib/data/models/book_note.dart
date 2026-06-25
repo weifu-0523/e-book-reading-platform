@@ -1,4 +1,5 @@
 import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 import 'package:meta/meta.dart';
 
 import 'annotation.dart';
@@ -66,4 +67,33 @@ class BookNote {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is BookNote &&
+        runtimeType == other.runtimeType &&
+        id == other.id &&
+        bookId == other.bookId &&
+        title == other.title &&
+        summary == other.summary &&
+        createdAt == other.createdAt &&
+        updatedAt == other.updatedAt &&
+        // List 字段（UnmodifiableListView）按内容比较：默认 == 是引用相等，
+        // 这里需要深度比较，否则 Riverpod 的 select + 自动 rebuild 会失效。
+        listEquals(_keyTakeaways, other._keyTakeaways) &&
+        listEquals(_annotations, other._annotations);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+        id,
+        bookId,
+        title,
+        summary,
+        Object.hashAll(_keyTakeaways),
+        Object.hashAll(_annotations),
+        createdAt,
+        updatedAt,
+      );
 }

@@ -17,4 +17,17 @@ class ReadingProgress {
   }) : _percent = percent.clamp(0.0, 1.0);
 
   double get percent => _percent;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReadingProgress &&
+          runtimeType == other.runtimeType &&
+          bookId == other.bookId &&
+          locator == other.locator &&
+          _percent == other._percent &&
+          updatedAt == other.updatedAt;
+
+  @override
+  int get hashCode => Object.hash(bookId, locator, _percent, updatedAt);
 }

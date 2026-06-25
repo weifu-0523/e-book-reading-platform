@@ -28,4 +28,17 @@ class TypographyProfile {
       isDefault: isDefault ?? this.isDefault,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TypographyProfile &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          name == other.name &&
+          settings == other.settings &&
+          isDefault == other.isDefault;
+
+  @override
+  int get hashCode => Object.hash(id, name, settings, isDefault);
 }
