@@ -28,7 +28,14 @@ part 'database.g.dart';
     BookTypographyOverrides,
     Settings,
   ],
-  daos: [BooksDao, BookNotesDao, AnnotationsDao, ReadingProgressDao, TypographyDao, SettingsDao],
+  daos: [
+    BooksDao,
+    BookNotesDao,
+    AnnotationsDao,
+    ReadingProgressDao,
+    TypographyDao,
+    SettingsDao
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(createDatabaseConnection());

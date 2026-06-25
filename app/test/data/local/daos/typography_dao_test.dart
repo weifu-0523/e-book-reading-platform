@@ -42,7 +42,8 @@ void main() {
   });
 
   test('override upsert', () async {
-    await dao.upsertOverride(bookId: 'b1', customSettingsJson: '{"fontSize":18}');
+    await dao.upsertOverride(
+        bookId: 'b1', customSettingsJson: '{"fontSize":18}');
     final override = await dao.getOverride('b1');
     expect(override?.customSettings, '{"fontSize":18}');
   });

@@ -6,8 +6,7 @@ import '../local/daos/reading_progress_dao.dart';
 import '../models/reading_progress.dart';
 import 'reading_progress_repository.dart';
 
-class LocalReadingProgressRepository
-    implements ReadingProgressRepository {
+class LocalReadingProgressRepository implements ReadingProgressRepository {
   final ReadingProgressDao _dao;
 
   LocalReadingProgressRepository(AppDatabase db)

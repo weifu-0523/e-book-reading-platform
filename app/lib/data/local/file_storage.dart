@@ -12,8 +12,7 @@ import 'package:path_provider/path_provider.dart';
 class FileStorage {
   final Directory rootDir;
 
-  FileStorage({Directory? rootDir})
-      : rootDir = rootDir ?? _defaultRootSync();
+  FileStorage({Directory? rootDir}) : rootDir = rootDir ?? _defaultRootSync();
 
   /// 测试用：传入自定义根目录。
   const FileStorage.forTesting({required this.rootDir});

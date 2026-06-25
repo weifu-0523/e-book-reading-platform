@@ -11,8 +11,7 @@ class ReadingProgressDao extends DatabaseAccessor<AppDatabase>
   ReadingProgressDao(super.db);
 
   Future<ReadingProgressTableData?> getByBookId(String bookId) {
-    return (select(readingProgressTable)
-          ..where((t) => t.bookId.equals(bookId)))
+    return (select(readingProgressTable)..where((t) => t.bookId.equals(bookId)))
         .getSingleOrNull();
   }
 

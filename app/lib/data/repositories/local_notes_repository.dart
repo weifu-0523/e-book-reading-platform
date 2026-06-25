@@ -81,7 +81,8 @@ class LocalNotesRepository implements NotesRepository {
   }
 
   @override
-  Future<void> deleteAnnotation(String id) => _annotationsDao.deleteAnnotation(id);
+  Future<void> deleteAnnotation(String id) =>
+      _annotationsDao.deleteAnnotation(id);
 
   @override
   Future<List<Annotation>> searchAnnotations(

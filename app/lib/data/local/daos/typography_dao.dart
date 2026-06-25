@@ -11,7 +11,8 @@ class TypographyDao extends DatabaseAccessor<AppDatabase>
     with _$TypographyDaoMixin {
   TypographyDao(super.db);
 
-  Future<List<TypographyProfile>> getAllProfiles() => select(typographyProfiles).get();
+  Future<List<TypographyProfile>> getAllProfiles() =>
+      select(typographyProfiles).get();
 
   Future<TypographyProfile?> getProfile(String id) =>
       (select(typographyProfiles)..where((t) => t.id.equals(id)))

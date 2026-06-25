@@ -9,8 +9,7 @@ class Books extends Table {
   TextColumn get fileHash => text()();
   IntColumn get fileSizeBytes => integer()();
   TextColumn get coverPath => text().nullable()();
-  DateTimeColumn get addedAt =>
-      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get addedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastReadAt => dateTime().nullable()();
 
   @override

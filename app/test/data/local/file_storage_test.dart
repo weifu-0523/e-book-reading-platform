@@ -44,8 +44,7 @@ void main() {
   });
 
   test('deleteLibraryFile removes by hash', () async {
-    final source = File(p.join(tempRoot.path, 's.epub'))
-      ..writeAsBytesSync([1]);
+    final source = File(p.join(tempRoot.path, 's.epub'))..writeAsBytesSync([1]);
     final stored = await storage.storeLibraryFile(
       source: source,
       fileHash: 'abc',

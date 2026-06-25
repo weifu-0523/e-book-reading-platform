@@ -15,8 +15,7 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
       (select(books)..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<Book?> findByHash(String hash) =>
-      (select(books)..where((t) => t.fileHash.equals(hash)))
-          .getSingleOrNull();
+      (select(books)..where((t) => t.fileHash.equals(hash))).getSingleOrNull();
 
   Future<int> insertOne({
     required String id,
