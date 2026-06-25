@@ -63,4 +63,31 @@ void main() {
     final restored = Locator.fromJson(original.toJson());
     expect(restored, original);
   });
+
+  // I4: 跨平台/外部 JSON 编码器可能输出 double 形式的整数（如 JS、备份导入），
+  // `as int` 强转在此场景下抛 TypeError；应改用 (num).toInt() 容错。
+  test('EpubCfiLocator.fromJson tolerates double chapterIndex', () {
+    final json = {
+      'type': 'epubCfi',
+      'cfi': 'epubcfi(/6/4)',
+      'chapterIndex': 0.0, // double 形式
+      'offsetX': 0.0,
+      'offsetY': 0.0,
+    };
+    final locator = Locator.fromJson(json);
+    expect(locator, isA<EpubCfiLocator>());
+    expect((locator as EpubCfiLocator).chapterIndex, 0);
+  });
+
+  test('PdfPageLocator.fromJson tolerates double page', () {
+    final json = {
+      'type': 'pdfPage',
+      'page': 5.0, // double 形式
+      'offsetX': 0.0,
+      'offsetY': 0.0,
+    };
+    final locator = Locator.fromJson(json);
+    expect(locator, isA<PdfPageLocator>());
+    expect((locator as PdfPageLocator).page, 5);
+  });
 }

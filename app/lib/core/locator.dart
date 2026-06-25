@@ -16,12 +16,14 @@ sealed class Locator {
       case 'epubCfi':
         return EpubCfiLocator(
           cfi: json['cfi'] as String,
-          chapterIndex: json['chapterIndex'] as int,
+          // 容错：跨平台 JSON 编码器可能输出 double 形式的整数（如 JS、备份导入），
+          // `as int` 在此场景抛 TypeError；与 offsetX/offsetY 一致改用 num.toInt()。
+          chapterIndex: (json['chapterIndex'] as num).toInt(),
           chapterTitle: json['chapterTitle'] as String?,
         );
       case 'pdfPage':
         return PdfPageLocator(
-          page: json['page'] as int,
+          page: (json['page'] as num).toInt(),
           offsetX: (json['offsetX'] as num).toDouble(),
           offsetY: (json['offsetY'] as num).toDouble(),
         );
