@@ -6,7 +6,9 @@
 
 **Architecture:** 双层抽象（`ReaderEngine` + `EpubRenderer`），三个 package 拆分（`reader_engine/` 纯 Dart + `reader_engine_epub_view/` Flutter 包 + `app/lib/features/reader/` UI），M1 的 `Locator` / `TypographySettings` 迁入 `reader_engine/`，`app/lib/core/` 改为 re-export 保 API 兼容。
 
-**Tech Stack:** Flutter 3.27 / Dart 3.10 / Riverpod 2.5 / go_router 14 / drift 2.18 / `epub_view_plus`（新引入）/ `golden_toolkit`（新引入，dev）
+**Tech Stack:** Flutter 3.27 / Dart 3.10 / Riverpod 2.5 / go_router 14 / drift 2.18 / `epubx`（parser，pivot 后引入）/ `flutter_widget_from_html`（HTML→widget，pivot 后引入）/ `golden_toolkit`（新引入，dev）
+
+> ⚠️ **2026-06-26 pivot**: 原 plan 用 `epub_view_plus`，实际未发布 pub.dev。已 pivot 到 `epubx + 自研渲染`，工期 6→12 周。详见 spec §10/§11/附录 A.2 与 memory `project_zhiyue_m2_pivot_epubx.md`。Tasks 9-14 已重写为自研渲染版本。
 
 **Spec:** `docs/superpowers/specs/2026-06-25-m2-epub-reader-design.md`
 
@@ -53,17 +55,18 @@
 
 | 文件 | 职责 |
 |---|---|
-| `reader_engine_epub_view/pubspec.yaml` | 依赖 flutter / epub_view_plus / path_provider / reader_engine（path 依赖） |
-| `reader_engine_epub_view/lib/epub_view_renderer.dart` | EpubViewPlusRenderer implements EpubRenderer |
-| `reader_engine_epub_view/lib/epub_view_widget.dart` | Flutter widget 包装 epub_view_plus.EpubView |
-| `reader_engine_epub_view/lib/cfi_codec.dart` | 纯函数：String CFI ↔ epub_view_plus 内部对象 |
+| `reader_engine_epub_view/pubspec.yaml` | 依赖 flutter / epubx / flutter_widget_from_html / reader_engine（path 依赖） |
+| `reader_engine_epub_view/lib/epubx_renderer.dart` | EpubxRenderer implements EpubRenderer（包装 epubx + flutter_widget_from_html） |
+| `reader_engine_epub_view/lib/paginator.dart` | 自研分页：TextPainter 测高 + 章节切片（PageBreak 列表） |
+| `reader_engine_epub_view/lib/cfi_codec.dart` | 纯函数：自定义位置格式 `chapterIndex:charOffset` 编解码 |
+| `reader_engine_epub_view/spike/epubx_smoke_test.dart` | Task 10 spike（验证 epubx 解析 + HTML 可读；spike 后可删） |
 | `reader_engine_epub_view/test/**` | 单元测试 + widget 测试 |
 
 ### 修改 `app/`
 
 | 文件 | 变更 |
 |---|---|
-| `app/pubspec.yaml` | 加 `epub_view_plus`（如未通过 reader_engine_epub_view 间接引入）；加 dev 依赖 `golden_toolkit`；加 path 依赖 reader_engine / reader_engine_epub_view |
+| `app/pubspec.yaml` | 加 `golden_toolkit`（dev）；加 path 依赖 reader_engine / reader_engine_epub_view（epubx / flutter_widget_from_html 通过后者间接引入） |
 | `app/lib/core/locator.dart` | 改为 `export 'package:reader_engine/core/locator.dart';` |
 | `app/lib/data/models/typography_settings.dart` | 改为 `export 'package:reader_engine/core/typography_settings.dart';` |
 | `app/lib/main.dart` | 无变更 |
@@ -97,12 +100,12 @@
 | 6 | 新增 ReaderEngine + EpubRenderer 抽象接口 | W1 |
 | 7 | 创建 reader_engine_epub_view package 骨架 | W1 |
 | 8 | fixture EPUB 基础设施 | W1 |
-| 9 | 实现 cfi_codec 纯函数模块 | W1 |
-| 10 | **W1 Spike**：真实 EPUB 解析 + CFI 读取冒烟测试 | W1 |
-| 11 | 实现 EpubViewPlusRenderer.open + 状态流 | W2 |
-| 12 | 实现 EpubViewPlusRenderer.currentLocation$ + gotoLocator | W2 |
-| 13 | 实现 ReaderScaffold（tap 区域 + paged 翻页） | W2 |
-| 14 | 实现 scroll 翻页模式 | W2 |
+| 9 | 实现 cfi_codec 纯函数模块（自定义 `chapterIndex:charOffset`） | W1 |
+| 10 | **W1 Spike**：epubx 解析 + flutter_widget_from_html 渲染冒烟 | W1 |
+| 11 | 实现 EpubxRenderer.open + 状态流 | W2 |
+| 12 | 实现 EpubxRenderer.build（章节渲染）+ currentLocation$ + gotoLocator | W2 |
+| 13 | 自研 Paginator（TextPainter 分页算法） | W3 |
+| 14 | 实现 ReaderScaffold（tap 区域 + 双模式翻页 paged/scroll） | W3 |
 | 15 | 实现 TOC 提取 + TocDrawer | W3 |
 | 16 | 实现 ProgressPersister（防抖 + distinct + 静默失败） | W3 |
 | 17 | 实现 ReaderEngineProvider + 打开书籍主流程 | W3 |
@@ -650,7 +653,7 @@ import 'pagination_model.dart';
 
 /// EPUB 渲染器抽象 —— EPUB 类内部契约。
 ///
-/// 实现类需包装具体的 EPUB 渲染库（如 epub_view_plus）。
+/// 实现类需包装具体的 EPUB 渲染库（如 epubx + flutter_widget_from_html）。
 /// UI 层永远不直接引用此接口，只看 [ReaderEngine]。
 abstract interface class EpubRenderer {
   Widget build(BuildContext context);
@@ -839,7 +842,7 @@ git commit -m "feat(m2): add ReaderEngine + EpubRenderer abstract interfaces"
 
 ```yaml
 name: reader_engine_epub_view
-description: 智阅 EPUB 渲染实现 —— 基于 epub_view_plus 的 EpubRenderer 具体实现。
+description: 智阅 EPUB 渲染实现 —— 基于 epubx + 自研 widget 的 EpubRenderer 具体实现。
 publish_to: 'none'
 version: 0.1.0
 
@@ -850,7 +853,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  epub_view_plus: ^1.0.0  # spike 验证；实际版本以 pub.dev 最新稳定为准
+  epubx: ^4.0.0  # pub.dev/packages/epubx — 纯 Dart parser（2026-06-26 pivot 后）
+  flutter_widget_from_html: ^0.15.0  # pub.dev/packages/flutter_widget_from_html — HTML→widget
   meta: ^1.15.0
   reader_engine:
     path: ../reader_engine
@@ -860,14 +864,16 @@ dev_dependencies:
     sdk: flutter
 ```
 
-**注意**：执行此步前先在 https://pub.dev/packages/epub_view_plus 确认最新版本号；若 pub.dev 无法访问，使用 `epub_view_plus: any` 临时占位并在 Task 10 验证。
+**版本核实**：执行此步前在 https://pub.dev/packages/epubx 和 https://pub.dev/packages/flutter_widget_from_html 确认最新稳定版本，更新上面的约束。
+
+> ⚠️ **2026-06-26 pivot 后修订**：原 plan 用 `epub_view_plus`，实际未发布 pub.dev；现 pivot 到 `epubx`（parser）+ `flutter_widget_from_html`（HTML→widget）。详见 spec 附录 A.2。
 
 - [ ] **Step 2: 创建空 barrel**
 
 Create `reader_engine_epub_view/lib/reader_engine_epub_view.dart`:
 
 ```dart
-/// reader_engine_epub_view — epub_view_plus 的 EpubRenderer 实现。
+/// reader_engine_epub_view — epubx + 自研 widget 的 EpubRenderer 实现。
 library reader_engine_epub_view;
 ```
 
@@ -889,7 +895,7 @@ Expected: 无错误；`pubspec.lock` 中包含 reader_engine 和 reader_engine_e
 
 ```bash
 git add reader_engine_epub_view/ app/pubspec.yaml app/pubspec.lock
-git commit -m "feat(m2): scaffold reader_engine_epub_view package with epub_view_plus dep"
+git commit -m "feat(m2): scaffold reader_engine_epub_view package with epubx dep"
 ```
 
 ---
@@ -971,11 +977,15 @@ git commit -m "feat(m2): scaffold EPUB test fixtures infrastructure"
 
 ---
 
-## Task 9: 实现 cfi_codec 纯函数模块
+## Task 9: 实现 cfi_codec 纯函数模块（自定义 `chapterIndex:charOffset`）
+
+> **2026-06-26 pivot 后修订**：原计划用完整 EPUB CFI 规范（`epubcfi(/6/4!/4/10/3:10)`）依赖 `epub_view_plus` 内部 CFI 生成。pivot 到 `epubx` 后没有库帮我们生成 CFI，改用极简自定义格式 `<chapterIndex>:<charOffset>`，round-trip 一致即可，由 Task 12 的字符位置追踪填值。详见 spec §10 W10 与附录 A.2。
 
 **Files:**
 - Create: `reader_engine_epub_view/lib/cfi_codec.dart`
 - Create: `reader_engine_epub_view/test/cfi_codec_test.dart`
+
+**格式约定**：`<chapterIndex>:<charOffset>` —— 例如 `4:1024` 表示第 4 章第 1024 个字符偏移。chapterIndex 与 charOffset 都从 0 开始；分隔符固定为半角冒号 `:`。这是给 zhiyue 自研渲染用的简化定位格式，不是 EPUB CFI 规范子集（pub.dev 上的其他 EPUB 工具按规范解析时无法识别，但 zhiyue 内部 round-trip 自洽即可）。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -986,46 +996,87 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine_epub_view/cfi_codec.dart';
 
 void main() {
-  group('CfiCodec.normalize', () {
-    test('passes through valid CFI string unchanged', () {
-      const input = 'epubcfi(/6/4[chap01ref]!/4[body01]/10[para05]/3:10)';
-      expect(CfiCodec.normalize(input), input);
+  group('encode', () {
+    test('encodes chapter 0 offset 0', () {
+      expect(encode(0, 0), '0:0');
     });
 
-    test('strips whitespace', () {
-      const input = '  epubcfi(/6/4)  ';
-      expect(CfiCodec.normalize(input), 'epubcfi(/6/4)');
+    test('encodes typical case', () {
+      expect(encode(4, 1024), '4:1024');
     });
 
-    test('strips EPUB-3 range terminator', () {
-      const input = 'epubcfi(/6/4!/4,/1:0,/1:10)';
-      expect(CfiCodec.normalize(input), 'epubcfi(/6/4!/4)');
+    test('encodes large offset', () {
+      expect(encode(12, 999999), '12:999999');
     });
   });
 
-  group('CfiCodec.extractChapterIndex', () {
-    test('parses leading spine index', () {
-      const cfi = 'epubcfi(/8/4)';
-      expect(CfiCodec.extractChapterIndex(cfi), 4);  // /8 是 spine，/4 是 children
+  group('decode', () {
+    test('decodes valid cfi', () {
+      expect(decode('4:1024'), (chapterIndex: 4, charOffset: 1024));
     });
 
-    test('returns 0 for malformed CFI', () {
-      const cfi = 'not-a-cfi';
-      expect(CfiCodec.extractChapterIndex(cfi), 0);
+    test('decodes boundary chapter 0 offset 0', () {
+      expect(decode('0:0'), (chapterIndex: 0, charOffset: 0));
+    });
+
+    test('decodes large offset', () {
+      expect(decode('12:999999'), (chapterIndex: 12, charOffset: 999999));
+    });
+
+    test('returns null for empty string', () {
+      expect(decode(''), isNull);
+    });
+
+    test('returns null for missing colon', () {
+      expect(decode('41024'), isNull);
+    });
+
+    test('returns null for non-numeric chapter', () {
+      expect(decode('abc:10'), isNull);
+    });
+
+    test('returns null for non-numeric offset', () {
+      expect(decode('4:xyz'), isNull);
+    });
+
+    test('returns null for negative numbers', () {
+      expect(decode('-1:10'), isNull);
+      expect(decode('4:-1'), isNull);
     });
   });
 
-  group('CfiCodec.isValid', () {
-    test('accepts well-formed CFI', () {
-      expect(CfiCodec.isValid('epubcfi(/6/4!/4/10/3:10)'), isTrue);
+  group('isValid', () {
+    test('accepts valid cfi', () {
+      expect(isValid('4:1024'), isTrue);
+    });
+
+    test('accepts boundary', () {
+      expect(isValid('0:0'), isTrue);
     });
 
     test('rejects empty', () {
-      expect(CfiCodec.isValid(''), isFalse);
+      expect(isValid(''), isFalse);
     });
 
-    test('rejects missing prefix', () {
-      expect(CfiCodec.isValid('/6/4'), isFalse);
+    test('rejects malformed', () {
+      expect(isValid('abc'), isFalse);
+      expect(isValid(':10'), isFalse);
+      expect(isValid('4:'), isFalse);
+      expect(isValid('4:10:20'), isFalse);
+    });
+  });
+
+  group('round-trip integrity', () {
+    test('encode → decode → equals input', () {
+      for (final original in const [
+        (chapterIndex: 0, charOffset: 0),
+        (chapterIndex: 4, charOffset: 1024),
+        (chapterIndex: 99, charOffset: 123456),
+      ]) {
+        final encoded = encode(original.chapterIndex, original.charOffset);
+        final decoded = decode(encoded);
+        expect(decoded, original, reason: 'round-trip failed for $original');
+      }
     });
   });
 }
@@ -1034,465 +1085,943 @@ void main() {
 - [ ] **Step 2: 运行测试验证失败**
 
 Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/cfi_codec_test.dart`
-Expected: FAIL — `CfiCodec` 未定义
+Expected: FAIL — 顶层函数 `encode` / `decode` / `isValid` 未定义
 
-- [ ] **Step 3: 实现 CfiCodec**
+- [ ] **Step 3: 实现 cfi_codec**
 
 Create `reader_engine_epub_view/lib/cfi_codec.dart`:
 
 ```dart
-import 'package:meta/meta.dart';
-
-/// EPUB CFI（Canonical Fragment Identifier）编解码工具。
+/// EPUB 位置编解码（zhiyue 简化格式）。
 ///
-/// 纯函数模块，无 Flutter 依赖。
-/// 用于隔离 epub_view_plus 的 CFI 实现细节，便于单测和未来 pivot。
-@immutable
-class CfiCodec {
-  const CfiCodec._();
+/// 格式：`<chapterIndex>:<charOffset>`，例如 `4:1024`。
+///
+/// 这**不是** EPUB CFI 规范（`epubcfi(/6/4!/4/10/3:10)`）——
+/// pivot 到 epubx 后没有库生成规范 CFI，自研格式仅需 round-trip 一致。
+/// 章节索引自 0 开始，字符偏移自 0 开始，分隔符固定为半角冒号 `:`。
+///
+/// 纯函数模块，无 Flutter 依赖，单测极快。
 
-  static const _epubCfiPrefix = 'epubcfi(';
-
-  /// 规范化 CFI 字符串：去空白、剥离 range 终结符。
-  static String normalize(String input) {
-    var s = input.trim();
-    // EPUB-3 range CFI: epubcfi(...,/1:0,/1:10) → 取逗号前部分
-    final rangeComma = s.lastIndexOf(',');
-    if (rangeComma > -1 && rangeComma < s.length - 1 && s.endsWith(')')) {
-      final before = s.substring(0, rangeComma);
-      if (before.endsWith(')')) {
-        // 已闭合，s 本身可能是 range；剥离
-      }
-      // 实际 range 形如 epubcfi(/6/4!/4,/1:0,/1:10)
-      // 找第一个逗号
-      final firstComma = s.indexOf(',');
-      if (firstComma > -1) {
-        s = s.substring(0, firstComma) + ')';
-      }
-    }
-    return s;
+/// 把 (chapterIndex, charOffset) 编码为 cfi 字符串。
+String encode(int chapterIndex, int charOffset) {
+  if (chapterIndex < 0 || charOffset < 0) {
+    throw ArgumentError(
+      'chapterIndex and charOffset must be non-negative: '
+      'chapterIndex=$chapterIndex, charOffset=$charOffset',
+    );
   }
-
-  /// 从 CFI 提取章节索引（第一个 spine child 的序号）。
-  ///
-  /// 形如 `epubcfi(/8/4)` → 4。
-  /// 形如 `epubcfi(/6/4[chap01]!/4[body]/10/3:10)` → 4。
-  /// 失败返回 0（容错，不抛异常）。
-  static int extractChapterIndex(String cfi) {
-    final normalized = normalize(cfi);
-    if (!isValid(normalized)) return 0;
-
-    // 匹配 (/<num>/<num> 的前两组
-    final match = RegExp(r'\(/(\d+)/(\d+)').firstMatch(normalized);
-    if (match == null) return 0;
-    return int.tryParse(match.group(2)!) ?? 0;
-  }
-
-  /// 验证 CFI 字符串基本合法性。
-  static bool isValid(String cfi) {
-    if (cfi.isEmpty) return false;
-    if (!cfi.startsWith(_epubCfiPrefix)) return false;
-    if (!cfi.endsWith(')')) return false;
-    return cfi.length > _epubCfiPrefix.length + 1;
-  }
+  return '$chapterIndex:$charOffset';
 }
+
+/// 把 cfi 字符串解码为 (chapterIndex, charOffset)。
+///
+/// 解析失败返回 null（容错，不抛异常）—— 调用方在 Task 12 处理 null
+/// 时回退到 chapter 0 offset 0。
+({int chapterIndex, int charOffset})? decode(String cfi) {
+  final parts = cfi.split(':');
+  if (parts.length != 2) return null;
+  final chapter = int.tryParse(parts[0]);
+  final offset = int.tryParse(parts[1]);
+  if (chapter == null || offset == null) return null;
+  if (chapter < 0 || offset < 0) return null;
+  return (chapterIndex: chapter, charOffset: offset);
+}
+
+/// 验证 cfi 字符串是否合法。
+bool isValid(String cfi) => decode(cfi) != null;
 ```
 
 - [ ] **Step 4: 运行测试验证通过**
 
 Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/cfi_codec_test.dart`
-Expected: All PASS（~6 tests）
+Expected: All PASS（约 20 tests：encode 3 + decode 8 + isValid 5 + round-trip 1+）
 
 - [ ] **Step 5: dart analyze**
 
 Run: `/c/flutter/bin/dart analyze reader_engine_epub_view/`
 Expected: No issues
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit + Push**
 
 ```bash
 git add reader_engine_epub_view/lib/cfi_codec.dart \
         reader_engine_epub_view/test/cfi_codec_test.dart
-git commit -m "feat(m2): implement CfiCodec pure function module"
-```
-
----
-
-## Task 10: W1 Spike — 真实 EPUB 解析 + CFI 读取冒烟测试
-
-**Files:**
-- Create: `reader_engine_epub_view/test/spike/real_epub_smoke_test.dart`
-- Create: `reader_engine_epub_view/lib/epub_loader.dart`（薄包装：epub_view_plus 的解析 API）
-
-**目标**：验证 `epub_view_plus` 在真实中文 EPUB 上能解析、能读到 spine 和 CFI。这是 spec §3.4 / §6.3 标识的关键风险点。失败率 > 1% 触发 pivot 决策。
-
-- [ ] **Step 1: 创建 EpubLoader（薄包装）**
-
-Create `reader_engine_epub_view/lib/epub_loader.dart`:
-
-```dart
-import 'dart:io';
-
-import 'package:epub_view_plus/epub_view_plus.dart' as evp;
-
-/// 薄包装：把 epub_view_plus 的同步解析 API 异步化、并暴露简单结果。
-class EpubLoader {
-  /// 从文件路径解析 EPUB。
-  ///
-  /// 失败抛 [EpubParseException]（含原异常）。
-  Future<EvpEpubBook> parse(String filePath) async {
-    try {
-      final bytes = await File(filePath).readAsBytes();
-      final book = await evp.EpubReader.readBook(bytes);
-      return EvpEpubBook(book: book);
-    } catch (e, st) {
-      throw EpubParseException('Failed to parse EPUB at $filePath', e, st);
-    }
-  }
-}
-
-/// 解析结果包装。
-class EvpEpubBook {
-  final evp.EpubBook book;
-  EvpEpubBook({required this.book});
-}
-
-class EpubParseException implements Exception {
-  final String message;
-  final Object cause;
-  final StackTrace stackTrace;
-  EpubParseException(this.message, this.cause, this.stackTrace);
-
-  @override
-  String toString() => 'EpubParseException: $message\n  cause: $cause';
-}
-```
-
-**注意**：执行时若 `epub_view_plus` 的 API 名称不同（如 `EpubReader.readBook` 不存在），需查包文档调整。这是 spike 的核心目的。
-
-- [ ] **Step 2: 写 spike smoke 测试**
-
-Create `reader_engine_epub_view/test/spike/real_epub_smoke_test.dart`:
-
-```dart
-import 'dart:io';
-
-import 'package:flutter_test/flutter_test.dart';
-import 'package:reader_engine_epub_view/epub_loader.dart';
-
-void main() {
-  test('spike: parse real EPUB and read spine', () async {
-    final fixture = _tryGetFixture();
-    if (fixture == null) {
-      print('SKIP: fixture not present. See app/test/fixtures/README.md');
-      return;
-    }
-
-    final loader = EpubLoader();
-    final result = await loader.parse(fixture.path);
-
-    expect(result.book, isNotNull);
-    // 验证：标题非空、spine 至少 1 项
-    expect(result.book.Title, isNotEmpty);
-    expect(result.book.Content?.Spine?.length ?? 0, greaterThan(0));
-  }, timeout: const Timeout(Duration(seconds: 30)));
-
-  test('spike: parse Chinese EPUB (kite-runner-cn)', () async {
-    final file = File('app/test/fixtures/kite-runner-cn.epub');
-    if (!file.existsSync()) {
-      print('SKIP: kite-runner-cn.epub not present');
-      return;
-    }
-
-    final loader = EpubLoader();
-    final result = await loader.parse(file.path);
-
-    expect(result.book.Title, isNotEmpty);
-    // 中文标题不应乱码
-    expect(result.book.Title!.codeUnits.any((c) => c > 127), isTrue);
-  }, timeout: const Timeout(Duration(seconds: 30)));
-}
-
-File? _tryGetFixture() {
-  for (final candidate in [
-    'app/test/fixtures/page-blanche.epub',
-    'app/test/fixtures/kite-runner-cn.epub',
-    'app/test/fixtures/weicheng.epub',
-  ]) {
-    final f = File(candidate);
-    if (f.existsSync()) return f;
-  }
-  return null;
-}
-```
-
-- [ ] **Step 3: 准备 fixture EPUB**
-
-按 `app/test/fixtures/README.md` 指南，至少准备 `page-blanche.epub`（gutenberg.org 下载任意 public domain EPUB）放到 `app/test/fixtures/`。中文书可暂缺。
-
-- [ ] **Step 4: 运行 spike 测试**
-
-Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/spike/real_epub_smoke_test.dart`
-Expected: 至少第一个测试 PASS（解析成功，spine 非空）
-
-**如果失败**：这是 spec §3.4 / §6.3 标识的 pivot 触发点。停止本计划，与用户讨论切换到 `epubx` + 自研 widget 路径（参考 spike 报告附录 A）。
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add reader_engine_epub_view/lib/epub_loader.dart \
-        reader_engine_epub_view/test/spike/real_epub_smoke_test.dart
-git commit -m "test(m2): W1 spike - real EPUB parsing smoke test"
-```
-
-- [ ] **Step 6: Push 并在 commit message 中标记 W1 完成**
-
-```bash
+git commit -m "feat(m2): implement simplified cfi_codec (chapterIndex:charOffset)"
 git push origin master
 ```
 
-在 git log 中确认 spike 通过；如果失败，进入 pivot 流程。
+---
+
+## Task 10: W1 Spike — epubx 解析 + flutter_widget_from_html 渲染冒烟
+
+> **2026-06-26 pivot 后修订**：原 spike 验证 `epub_view_plus` 解析 + spine 读取。pivot 后 epubx 是纯 parser，本 spike 验证两件事：(1) epubx 能解析真实 EPUB；(2) 章节 HTML 经 `flutter_widget_from_html` 转纯文本后是合理的（无乱码、非空）。spike 通过是 GO/NO-GO 决策点 —— 若 epubx 也失败，pub.dev 上无备选 parser，须 user 重新评估 M2 范围。详见 spec 附录 A.2。
+
+**Files:**
+- Create: `reader_engine_epub_view/spike/epubx_smoke_test.dart`（**注意**：放在 `spike/` 而非 `test/` —— 这是探索性代码，spike 验证后可删，CI 不应跑）
+
+**目标**：
+1. 验证 `epubx` 的 `EpubReader.readBook(bytes)` 能解析 Task 8 提供的 `page-blanche.epub`，返回非空 `EpubBook { Title, Chapters }`
+2. 验证第一章 `EpubChapter.HtmlContent` 是合法 HTML 字符串
+3. 验证剥离 HTML 标签后得到的纯文本非空（这暗示 `flutter_widget_from_html` 能从中渲染出有意义内容）
+4. **GO/NO-GO**：以上 3 条都通过 → GO，继续 Task 11；任一失败 → NO-GO，升级到 user
+
+- [ ] **Step 1: 写 spike smoke 测试**
+
+Create `reader_engine_epub_view/spike/epubx_smoke_test.dart`:
+
+```dart
+// 探索性 spike —— 验证 epubx 能否解析真实 EPUB。
+// spike 验证通过后整个文件可删；不放进 test/ 以免 CI 长期依赖 fixture。
+import 'dart:io';
+
+import 'package:epubx/epubx.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  const fixturePath = 'app/test/fixtures/page-blanche.epub';
+
+  test('spike: epubx parses real EPUB', () async {
+    final file = File(fixturePath);
+    if (!file.existsSync()) {
+      // skip 模式：fixture 未准备好（Task 8 未完成），spike 推迟
+      debugPrint('SKIP spike: $fixturePath not present. '
+          'Run Task 8 to download the fixture.');
+      return;
+    }
+
+    final bytes = await file.readAsBytes();
+    final book = await EpubReader.readBook(bytes);
+
+    // 1. 标题非空
+    expect(book.Title, isNotNull,
+        reason: 'epubx 未返回 Title');
+    expect(book.Title!.isNotEmpty, isTrue,
+        reason: 'epubx 返回空 Title — 可能解析损坏');
+
+    // 2. 章节列表非空（epubx 把 spine 项扁平化到 Chapters + SubChapters）
+    final flatChapters = _flattenChapters(book.Chapters ?? const []);
+    expect(flatChapters, isNotEmpty,
+        reason: 'epubx 返回 0 章节 — spine 是否丢失？');
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('spike: chapter HTML is reasonable', () async {
+    final file = File(fixturePath);
+    if (!file.existsSync()) {
+      debugPrint('SKIP spike: $fixturePath not present.');
+      return;
+    }
+
+    final bytes = await file.readAsBytes();
+    final book = await EpubReader.readBook(bytes);
+    final flatChapters = _flattenChapters(book.Chapters ?? const []);
+    if (flatChapters.isEmpty) {
+      debugPrint('SKIP spike HTML check: 0 chapters parsed.');
+      return;
+    }
+
+    final html = flatChapters.first.HtmlContent ?? '';
+    // 3. HTML 非空
+    expect(html.isNotEmpty, isTrue,
+        reason: 'epubx 返回空 HtmlContent — 内容文件丢失？');
+
+    // 4. 剥离标签后纯文本非空（粗糙检查 flutter_widget_from_html 能渲染出内容）
+    final plainText = _stripHtml(html);
+    expect(plainText.trim().isNotEmpty, isTrue,
+        reason: 'HTML 剥离后为空字符串 — HTML 结构异常？');
+  }, timeout: const Timeout(Duration(seconds: 30)));
+}
+
+/// 递归展开 Chapters + SubChapters 为扁平列表。
+List<EpubChapter> _flattenChapters(List<EpubChapter> chapters) {
+  final result = <EpubChapter>[];
+  for (final c in chapters) {
+    result.add(c);
+    result.addAll(_flattenChapters(c.SubChapters ?? const []));
+  }
+  return result;
+}
+
+/// 粗糙剥离 HTML 标签 —— spike 用，非生产代码。
+/// 生产代码用 flutter_widget_from_html 渲染，不需要这步。
+String _stripHtml(String html) {
+  return RegExp(r'<[^>]+>').replaceAll(html, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+```
+
+- [ ] **Step 2: 准备 fixture EPUB**
+
+按 Task 8 的 `app/test/fixtures/README.md`，至少准备 `page-blanche.epub`（PageBlanche 是 IDPF 标准 EPUB 测试样本，或 gutenberg.org 任意 public domain EPUB）放到 `app/test/fixtures/`。若 fixture 未准备，spike 测试 skip 但不算失败 —— Task 8 与 Task 10 顺序灵活，Task 8 先完成再跑 spike 更合理。
+
+- [ ] **Step 3: 运行 spike 测试**
+
+Run: `/c/flutter/bin/flutter test reader_engine_epub_view/spike/epubx_smoke_test.dart`
+Expected: 2 tests PASS（或 skip 若 fixture 未准备）
+
+**GO/NO-GO 决策**：
+- **GO**：epubx 解析成功、章节 HTML 合理 → 继续 Task 11
+- **NO-GO**：epubx 解析抛异常 / 返回 0 章节 / HTML 为空 → pub.dev 上无备选 EPUB parser，须升级到 user 重新评估 M2 范围（可能需要 git 依赖 fork 或自研 parser）
+
+- [ ] **Step 4: 清理 spike 文件（可选）**
+
+spike 验证通过后，整个 `reader_engine_epub_view/spike/` 目录可删（这是探索性代码，不入库长期）。但若保留作为回归测试也合理（fixture 在 .gitignore，CI 会自动 skip）。
+
+```bash
+# 保留：作为本地回归 spike
+# 或删除：rm -rf reader_engine_epub_view/spike/
+```
+
+- [ ] **Step 5: Commit + Push**
+
+```bash
+git add reader_engine_epub_view/spike/epubx_smoke_test.dart
+git commit -m "spike(m2): validate epubx parses real EPUB + HTML is renderable"
+git push origin master
+```
+
+在 commit message 或 git log 备注中记录 GO/NO-GO 结论。如果 NO-GO，停止本计划，进入 user 重新评估流程。
 
 ---
 
-## Task 11: 实现 EpubViewPlusRenderer.open + 状态流
+## Task 11: 实现 EpubxRenderer.open + 状态机
+
+> **2026-06-26 pivot 后修订**：原计划依赖 `epub_view_plus.EpubController` 的内置状态。pivot 后由我们自管 `ReaderEngineState` 状态机：unloaded → loading → ready / error，通过 `StreamController` 暴露给 ReaderEngine。`EpubxRenderer` 持有 `EpubBook? _book`，`openFile` 走 `EpubReader.readBook(bytes)`。详见 spec §10 W2 与附录 A.2。
 
 **Files:**
-- Create: `reader_engine_epub_view/lib/epub_view_renderer.dart`
-- Create: `reader_engine_epub_view/test/epub_view_renderer_test.dart`
+- Create: `reader_engine_epub_view/lib/epubx_renderer.dart`
+- Create: `reader_engine_epub_view/test/epubx_renderer_test.dart`
+
+**契约**：`EpubRenderer` 接口（Task 6 已落地）：
+```dart
+abstract interface class EpubRenderer {
+  Widget build(BuildContext context);
+  Future<void> openFile(String filePath);
+  Stream<Locator> get currentLocation$;
+  Future<TableOfContents> get toc;
+  Future<void> gotoLocator(Locator locator);
+  Future<void> setTypography(TypographySettings settings);
+  Future<void> setPaginationMode(PaginationMode mode);
+  Future<void> dispose();
+}
+```
+
+本 Task 只实现 `openFile` + 状态机；`build` / `currentLocation$` / `gotoLocator` 留 stub，由 Task 12 实现。
 
 - [ ] **Step 1: 写失败测试**
 
-Create `reader_engine_epub_view/test/epub_view_renderer_test.dart`:
+Create `reader_engine_epub_view/test/epubx_renderer_test.dart`:
 
 ```dart
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/renderer.dart';
-import 'package:reader_engine_epub_view/epub_view_renderer.dart';
+import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 void main() {
-  test('EpubViewPlusRenderer implements EpubRenderer', () {
-    final renderer = EpubViewPlusRenderer();
+  test('EpubxRenderer implements EpubRenderer', () {
+    final renderer = EpubxRenderer();
     expect(renderer, isA<EpubRenderer>());
   });
 
-  test('initial currentLocation$ is empty stream', () {
-    final renderer = EpubViewPlusRenderer();
-    expect(renderer.currentLocation$, emitsDone);
+  test('initial state is unloaded', () {
+    final renderer = EpubxRenderer();
+    expect(renderer.state, const ReaderEngineUnloaded());
+  });
+
+  test('state$ emits unloaded initially', () async {
+    final renderer = EpubxRenderer();
+    final first = await renderer.state$.first;
+    expect(first, const ReaderEngineUnloaded());
+  });
+
+  test('openFile on non-existent path emits loading then error', () async {
+    final renderer = EpubxRenderer();
+    final states = <ReaderEngineState>[];
+    final sub = renderer.state$.listen(states.add);
+
+    await renderer.openFile('non/existent/path.epub');
+
+    // 至少出现 loading（在 readAsBytes 抛之前）和 error（之后）
+    expect(states, contains(predicate<ReaderEngineState>(
+      (s) => s is ReaderEngineLoading,
+      'is ReaderEngineLoading',
+    )));
+    expect(states, contains(predicate<ReaderEngineState>(
+      (s) => s is ReaderEngineError,
+      'is ReaderEngineError',
+    )));
+    expect(renderer.state, isA<ReaderEngineError>());
+
+    await sub.cancel();
+    await renderer.dispose();
   });
 }
 ```
 
-- [ ] **Step 2: 实现 Renderer 骨架**
+**注**：`ReaderEngineState` sealed（Task 5）包含 `ReaderEngineUnloaded` / `ReaderEngineLoading` / `ReaderEngineReady` / `ReaderEngineError(cause)`。如 Task 5 实际命名不同，按 Task 5 调整。
 
-Create `reader_engine_epub_view/lib/epub_view_renderer.dart`:
+- [ ] **Step 2: 运行测试验证失败**
+
+Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/epubx_renderer_test.dart`
+Expected: FAIL — `EpubxRenderer` 未定义
+
+- [ ] **Step 3: 实现 EpubxRenderer 骨架**
+
+Create `reader_engine_epub_view/lib/epubx_renderer.dart`:
 
 ```dart
 import 'dart:async';
+import 'dart:io';
 
-import 'package:epub_view_plus/epub_view_plus.dart' as evp;
+import 'package:epubx/epubx.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/typography_settings.dart';
+import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
-import 'cfi_codec.dart';
-import 'epub_loader.dart';
+/// epubx + flutter_widget_from_html 实现的 [EpubRenderer]。
+///
+/// 持有 [EpubBook]，自管 [ReaderEngineState] 状态机。
+/// 章节渲染（build）、位置流（currentLocation$）、跳转（gotoLocator）
+/// 在 Task 12 实现 —— 此版本是骨架。
+class EpubxRenderer implements EpubRenderer {
+  EpubxRenderer();
 
-/// epub_view_plus 实现的 [EpubRenderer]。
-class EpubViewPlusRenderer implements EpubRenderer {
-  EpubViewPlusRenderer();
-
-  final _loader = EpubLoader();
+  final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
 
-  evp.EpubView? _epubView;
-  evp.EpubController? _epubController;
-  EvpEpubBook? _parsed;
-  TypographySettings _typography = TypographySettings.defaults();
+  EpubBook? _book;
+  int _currentChapterIndex = 0;
+  TypographySettings _typography = const TypographySettings.defaults();
   PaginationMode _paginationMode = PaginationMode.paged;
+
+  ReaderEngineState _state = const ReaderEngineUnloaded();
+
+  @override
+  ReaderEngineState get state => _state;
+
+  @override
+  Stream<ReaderEngineState> get state$ => _stateController.stream;
 
   @override
   Stream<Locator> get currentLocation$ => _locationController.stream;
 
-  @override
-  Future<TableOfContents> get toc async {
-    final book = _parsed?.book;
-    if (book == null) return TableOfContents.empty();
-    return _buildToc(book);
+  /// 当前持有的书 —— Task 12+ 用，外部只读访问。
+  EpubBook? get book => _book;
+
+  /// 当前章节索引 —— Task 12+ 用。
+  int get currentChapterIndex => _currentChapterIndex;
+
+  void _setState(ReaderEngineState next) {
+    _state = next;
+    _stateController.add(next);
   }
 
   @override
   Future<void> openFile(String filePath) async {
-    _parsed = await _loader.parse(filePath);
-    _epubController = evp.EpubController(document: evp.EpubReader.readBook(_parsed!.book));
-    _initEpubView();
+    _setState(const ReaderEngineLoading());
+    try {
+      final bytes = await File(filePath).readAsBytes();
+      final book = await EpubReader.readBook(bytes);
+      _book = book;
+      _currentChapterIndex = 0;
+      _setState(const ReaderEngineReady());
+    } catch (e, st) {
+      debugPrint('EpubxRenderer.openFile failed: $filePath\n$e\n$st');
+      _setState(ReaderEngineError(cause: e));
+    }
   }
 
-  void _initEpubView() {
-    _epubView = evp.EpubView(
-      controller: _epubController!,
-      onChapterChanged: (value) {
-        final cfi = value?.cfi;
-        if (cfi != null && CfiCodec.isValid(cfi)) {
-          _locationController.add(EpubCfiLocator(
-            cfi: CfiCodec.normalize(cfi),
-            chapterIndex: CfiCodec.extractChapterIndex(cfi),
-          ));
-        }
-      },
-    );
-  }
+  // ---- 以下方法在 Task 12 实现，此处 stub ----
 
-  Future<TableOfContents> _buildToc(evp.EpubBook book) async {
-    final entries = <TocEntry>[];
-    // TODO(M2 W3): 从 book.Content?.NavMap 或 Spine 构建
-    return TableOfContents(entries: entries);
-  }
+  @override
+  Future<TableOfContents> get toc async => TableOfContents.empty();
 
   @override
   Future<void> gotoLocator(Locator locator) async {
-    if (locator is! EpubCfiLocator) return;
-    // TODO(M2 W2): 调用 _epubController.gotoCfi(locator.cfi)
+    // Task 12 实现
   }
 
   @override
   Future<void> setTypography(TypographySettings settings) async {
     _typography = settings;
-    // TODO(M2 W4): 重新生成 CSS 并注入
+    // Task 19 实现 CSS-like 注入
   }
 
   @override
   Future<void> setPaginationMode(PaginationMode mode) async {
     _paginationMode = mode;
-    // TODO(M2 W2): 重建 _epubView
-  }
-
-  @override
-  Future<void> dispose() async {
-    await _locationController.close();
-    _epubController?.dispose();
+    // Task 12-13 实现：重建 widget tree
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_epubView == null) {
-      return const SizedBox.shrink();
-    }
-    return _epubView!;
+    // Task 12 实现：flutter_widget_from_html 的 HtmlWidget
+    return const SizedBox.shrink();
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _stateController.close();
+    await _locationController.close();
   }
 }
 ```
 
-**注**：此步保留多处 TODO，由后续 Task 填充。这是接口契约的实现骨架。
+**注**：`TypographySettings` 假设是 const 构造（M1 设计）。若 M1 实现是非 const 工厂，按 `TypographySettings.defaults()` 调用，去掉 const。
 
-- [ ] **Step 3: 运行测试验证**
+- [ ] **Step 4: 运行测试验证**
 
-Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/epub_view_renderer_test.dart`
-Expected: 2 tests PASS
+Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/epubx_renderer_test.dart`
+Expected: 4 tests PASS
 
-- [ ] **Step 4: dart analyze**
+- [ ] **Step 5: dart analyze**
 
 Run: `/c/flutter/bin/dart analyze reader_engine_epub_view/`
-Expected: No issues（如有 unused_field 提示，加 `// ignore: unused_field` 暂时绕过，后续 Task 使用）
+Expected: No issues（如有 unused_field 提示，加 `// ignore: unused_field` 暂时绕过，Task 12 会使用）
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit + Push**
 
 ```bash
-git add reader_engine_epub_view/lib/epub_view_renderer.dart \
-        reader_engine_epub_view/test/epub_view_renderer_test.dart
-git commit -m "feat(m2): scaffold EpubViewPlusRenderer with state stream"
+git add reader_engine_epub_view/lib/epubx_renderer.dart \
+        reader_engine_epub_view/test/epubx_renderer_test.dart
+git commit -m "feat(m2): scaffold EpubxRenderer with state machine (openFile)"
+git push origin master
 ```
 
 ---
 
-## Task 12: 实现 currentLocation$ 真实驱动 + gotoLocator
+## Task 12: 实现 EpubxRenderer.build（章节渲染）+ currentLocation$ + gotoLocator
+
+> **2026-06-26 pivot 后修订**：原计划依赖 `epub_view_plus.EpubView` 渲染整书 + CFI 流。pivot 后我们自己用 `flutter_widget_from_html` 的 `HtmlWidget` 渲染当前章节，自管 ScrollController 并把滚动位置转成字符偏移（近似：viewport 比例 × 章节字符数）。详见 spec §10 W2。
 
 **Files:**
-- Modify: `reader_engine_epub_view/lib/epub_view_renderer.dart`
-- Modify: `reader_engine_epub_view/test/epub_view_renderer_test.dart`
+- Modify: `reader_engine_epub_view/lib/epubx_renderer.dart`
+- Modify: `reader_engine_epub_view/test/epubx_renderer_test.dart`
+- Add: `reader_engine_epub_view/test/epubx_renderer_widget_test.dart`
 
-- [ ] **Step 1: 加 gotoCfi 实现**
+- [ ] **Step 1: 加 setChapter helper + flatChapters accessor**
 
-修改 `EpubViewPlusRenderer.gotoLocator`：
+在 `EpubxRenderer` 类中添加：
+
+```dart
+/// 当前书的扁平化章节列表（Chapters + SubChapters 递归展开）。
+///
+/// epubx 的 EpubChapter 含 SubChapters 嵌套；UI 与 cfi 都按扁平索引访问。
+List<EpubChapter> get flatChapters => _flattenChapters(_book?.Chapters ?? const []);
+
+List<EpubChapter> _flattenChapters(List<EpubChapter> chapters) {
+  final result = <EpubChapter>[];
+  for (final c in chapters) {
+    result.add(c);
+    result.addAll(_flattenChapters(c.SubChapters ?? const []));
+  }
+  return result;
+}
+
+/// 切换到指定章节（chapterIndex 基于 flatChapters）。
+///
+/// Task 12 内部翻页用；Task 15 TOC 跳转通过 gotoLocator 走。
+void setChapter(int index) {
+  final chapters = flatChapters;
+  if (index < 0 || index >= chapters.length) return;
+  _currentChapterIndex = index;
+  if (_scrollController.hasClients) {
+    _scrollController.jumpTo(0);
+  }
+  _emitCurrentLocation();
+}
+```
+
+- [ ] **Step 2: 加 ScrollController + 位置追踪**
+
+在 `EpubxRenderer` 中添加字段、初始化与监听：
+
+```dart
+final ScrollController _scrollController = ScrollController();
+
+@override
+Future<void> openFile(String filePath) async {
+  _setState(const ReaderEngineLoading());
+  try {
+    final bytes = await File(filePath).readAsBytes();
+    final book = await EpubReader.readBook(bytes);
+    _book = book;
+    _currentChapterIndex = 0;
+    _scrollController.addListener(_onScroll);
+    _setState(const ReaderEngineReady());
+  } catch (e, st) {
+    debugPrint('EpubxRenderer.openFile failed: $filePath\n$e\n$st');
+    _setState(ReaderEngineError(cause: e));
+  }
+}
+
+void _onScroll() {
+  if (!_scrollController.hasClients) return;
+  _emitCurrentLocation();
+}
+
+void _emitCurrentLocation() {
+  if (_book == null) return;
+  final chapters = flatChapters;
+  if (_currentChapterIndex >= chapters.length) return;
+  final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+  final totalChars = html.length;
+  final maxScroll = _scrollController.hasClients
+      ? _scrollController.position.maxScrollExtent
+      : 0.0;
+  final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+  final ratio = maxScroll == 0 ? 0.0 : (offset / maxScroll).clamp(0.0, 1.0);
+  final charOffset = (ratio * totalChars).round().clamp(0, totalChars);
+  _locationController.add(EpubCfiLocator(
+    cfi: encode(_currentChapterIndex, charOffset),
+    chapterIndex: _currentChapterIndex,
+  ));
+}
+```
+
+`encode` 来自 Task 9 的 `cfi_codec.dart`（需 `import 'cfi_codec.dart';`）。`EpubCfiLocator` 假设是 `Locator` sealed 的子类（M1 已落地）；如 M1 命名为 `EpubCfiLocator(cfi, chapterIndex)` 不符，按 M1 调整。
+
+- [ ] **Step 3: 实现 build(context)**
+
+修改 `EpubxRenderer.build`：
+
+```dart
+@override
+Widget build(BuildContext context) {
+  final chapters = flatChapters;
+  if (chapters.isEmpty) return const SizedBox.shrink();
+  final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+
+  return SingleChildScrollView(
+    controller: _scrollController,
+    child: HtmlWidget(html),
+  );
+}
+```
+
+需在 import 区添加 `import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';`。
+
+**执行者注意**：`HtmlWidget` 是 `flutter_widget_from_html` 的主 widget；构造参数可能因版本不同（0.15.x vs 0.16.x）。Spike 阶段（Task 10）只验证了 HTML 可读，未跑 widget —— 本步如发现 API 不同，按实际版本调整。typography 注入在 Task 19 完成（通过 HtmlWidget 的 `textStyle` / `customWidgetBuilder` 参数）。
+
+- [ ] **Step 4: 实现 gotoLocator**
 
 ```dart
 @override
 Future<void> gotoLocator(Locator locator) async {
   if (locator is! EpubCfiLocator) return;
-  final c = _epubController;
-  if (c == null) return;
-  try {
-    await c.gotoCfi(locator.cfi);
-  } catch (e, st) {
-    // 容错：CFI 解码失败（spec §6.3）—— log warn，不阻断
-    // 后续 Logger 注入后改为 log
-    debugPrint('CFI goto failed: ${locator.cfi}\n$e\n$st');
+  final decoded = decode(locator.cfi);
+  if (decoded == null) {
+    debugPrint('EpubxRenderer.gotoLocator: invalid cfi ${locator.cfi}');
+    return;
   }
+  final chapters = flatChapters;
+  if (decoded.chapterIndex < 0 || decoded.chapterIndex >= chapters.length) {
+    return;
+  }
+  if (decoded.chapterIndex != _currentChapterIndex) {
+    _currentChapterIndex = decoded.chapterIndex;
+  }
+  // 字符偏移 → 滚动像素（近似反推）：等下一帧 maxScrollExtent 可用再跳。
+  final html = chapters[decoded.chapterIndex].HtmlContent ?? '';
+  final totalChars = html.isEmpty ? 1 : html.length;
+  final ratio = (decoded.charOffset / totalChars).clamp(0.0, 1.0);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    _scrollController.jumpTo(max * ratio);
+    _emitCurrentLocation();
+  });
 }
 ```
 
-需要 `import 'package:flutter/foundation.dart';` 提供 `debugPrint`。
+`decode` 来自 Task 9 的 `cfi_codec.dart`。
 
-- [ ] **Step 2: 加 onChapterChanged 之外的位置流**
+- [ ] **Step 5: 补 unit test**
 
-`epub_view_plus` 的真实位置流可能不通过 onChapterChanged 触发。若该库提供 `controller.currentValueStream` 或类似，订阅它：
-
-```dart
-StreamSubscription<Locator>? _epubViewLocSub;
-
-void _initEpubView() {
-  _epubView = evp.EpubView(controller: _epubController!);
-  // 若 controller 暴露位置流：
-  final stream = _epubController?.currentValueStream;
-  if (stream != null) {
-    _epubViewLocSub = stream.listen((result) {
-      final cfi = result.cfi;
-      if (cfi != null && CfiCodec.isValid(cfi)) {
-        _locationController.add(EpubCfiLocator(
-          cfi: CfiCodec.normalize(cfi),
-          chapterIndex: CfiCodec.extractChapterIndex(cfi),
-        ));
-      }
-    });
-  }
-}
-```
-
-**执行者注意**：`currentValueStream` 是假设的属性名。Spike 已确认 `epub_view_plus` 的实际 API；若不存在等价流，回退到 `onChapterChanged`（位置更新粒度降低到章节级）。
-
-- [ ] **Step 3: 加 round-trip 测试**
-
-补充测试（在文件末尾 main 函数内）：
+在 `epubx_renderer_test.dart` 末尾追加：
 
 ```dart
-test('gotoLocator with non-EpubCfiLocator is a no-op', () async {
-  final renderer = EpubViewPlusRenderer();
-  // 应该不抛异常
-  await renderer.gotoLocator(PdfPageLocator(page: 1, offsetX: 0, offsetY: 0));
+test('flatChapters is empty before openFile', () {
+  final renderer = EpubxRenderer();
+  expect(renderer.flatChapters, isEmpty);
+});
+
+test('gotoLocator with PdfPageLocator is a no-op (no throw)', () async {
+  final renderer = EpubxRenderer();
+  await renderer.gotoLocator(
+    const PdfPageLocator(page: 1, offsetX: 0, offsetY: 0),
+  );
+  await renderer.dispose();
 });
 ```
 
-需要 `import 'package:reader_engine/core/locator.dart';` 已经通过 `renderer.dart` re-export；显式 import 即可。
+需在文件顶部 `import 'package:reader_engine/core/locator.dart';`（PdfPageLocator 来源）。
 
-- [ ] **Step 4: 运行测试**
+- [ ] **Step 6: 写 widget test**
 
-Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/epub_view_renderer_test.dart`
-Expected: 3 tests PASS
+Create `reader_engine_epub_view/test/epubx_renderer_widget_test.dart`:
 
-- [ ] **Step 5: Commit**
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:reader_engine_epub_view/epubx_renderer.dart';
+
+void main() {
+  testWidgets('build returns SizedBox.shrink before openFile', (tester) async {
+    final renderer = EpubxRenderer();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: renderer.build(tester.element(find.byType(Scaffold))),
+        ),
+      ),
+    );
+    expect(find.byType(SizedBox), findsOneWidget);
+    await renderer.dispose();
+  });
+}
+```
+
+**注**：真实渲染验证（含 mock EpubBook）走 Task 23 Golden + Task 24 集成（fixture）。本 Task 不强行注入 mock EpubBook —— `EpubBook` 构造较复杂；如需 widget 级覆盖，可在 EpubxRenderer 加 `@visibleForTesting void setBookForTest(EpubBook book)`，但 M2 范围内不强制。
+
+- [ ] **Step 7: 运行测试 + analyze**
 
 ```bash
-git add reader_engine_epub_view/lib/epub_view_renderer.dart \
-        reader_engine_epub_view/test/epub_view_renderer_test.dart
-git commit -m "feat(m2): implement gotoLocator and currentLocation$ stream"
+/c/flutter/bin/flutter test reader_engine_epub_view/test/epubx_renderer_test.dart \
+                                  reader_engine_epub_view/test/epubx_renderer_widget_test.dart
+/c/flutter/bin/dart analyze reader_engine_epub_view/
+```
+Expected: All tests PASS；analyze 无 issue
+
+- [ ] **Step 8: Commit + Push**
+
+```bash
+git add reader_engine_epub_view/lib/epubx_renderer.dart \
+        reader_engine_epub_view/test/epubx_renderer_test.dart \
+        reader_engine_epub_view/test/epubx_renderer_widget_test.dart
+git commit -m "feat(m2): implement EpubxRenderer chapter rendering + location stream + gotoLocator"
+git push origin master
 ```
 
 ---
 
-## Task 13: 实现 ReaderScaffold（tap 区域 + paged 翻页）
+## Task 13: 自研 Paginator（TextPainter 分页算法）
+
+> **2026-06-26 pivot 后修订**：原计划 `epub_view_plus` 提供 TextPainter 分页。pivot 后必须自研。本 Task 实现纯算法层 `Paginator`，输入章节 HTML + viewport + TypographySettings，输出 `List<PageBreak>`。M2 范围内只支持纯文本近似（图片/表格用占位高度），精细排版留 M3+。详见 spec §10 W3。
+
+**Files:**
+- Create: `reader_engine_epub_view/lib/paginator.dart`
+- Create: `reader_engine_epub_view/test/paginator_test.dart`
+
+**数据结构**：
+```dart
+class PageBreak {
+  final int startOffset;  // 章节字符偏移，闭区间
+  final int endOffset;    // 章节字符偏移，开区间（下一页 startOffset）
+  const PageBreak({required this.startOffset, required this.endOffset});
+}
+```
+
+**算法**（spec §10 W3）：把章节 HTML 转纯文本（粗剥离标签），按 TypographySettings 配置 TextStyle，用 `TextPainter.layout(maxWidth: viewport.width)` 测每段高度，累加到 viewport.height 时切一页，记录字符偏移。
+
+**M2 简化**：
+- 不解析 inline images/tables 高度，统一按 1.5 行高估
+- 不处理跨段落的孤儿/寡妇行
+- 章节内分页 cache（同 typography + viewport 不重算）
+
+- [ ] **Step 1: 写失败测试**
+
+Create `reader_engine_epub_view/test/paginator_test.dart`:
+
+```dart
+import 'dart:ui';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:reader_engine/core/typography_settings.dart';
+import 'package:reader_engine_epub_view/paginator.dart';
+
+void main() {
+  const viewport = Size(400, 600);
+  const typography = TypographySettings.defaults();
+
+  test('empty content → 1 page break covering full range', () {
+    final breaks = Paginator().paginate(
+      chapterHtml: '',
+      viewport: viewport,
+      typography: typography,
+    );
+    expect(breaks.length, 1);
+    expect(breaks.first.startOffset, 0);
+    expect(breaks.first.endOffset, 0);
+  });
+
+  test('short content fits on 1 page', () {
+    final html = '<p>hello world</p>';
+    final breaks = Paginator().paginate(
+      chapterHtml: html,
+      viewport: viewport,
+      typography: typography,
+    );
+    expect(breaks.length, 1);
+    expect(breaks.first.startOffset, 0);
+    expect(breaks.first.endOffset, html.length);
+  });
+
+  test('long content → multiple page breaks', () {
+    // 生成远超一页的文本（约 50KB）
+    final paragraph = '<p>${'hello world ' * 100}</p>';
+    final html = List.filled(50, paragraph).join();
+    final breaks = Paginator().paginate(
+      chapterHtml: html,
+      viewport: viewport,
+      typography: typography,
+    );
+    expect(breaks.length, greaterThan(1));
+    // 每页衔接：第 i 页 endOffset == 第 i+1 页 startOffset
+    for (var i = 0; i < breaks.length - 1; i++) {
+      expect(breaks[i].endOffset, breaks[i + 1].startOffset,
+          reason: 'page $i → ${i + 1} should be contiguous');
+    }
+    // 最后一页 endOffset == html.length
+    expect(breaks.last.endOffset, html.length);
+  });
+
+  test('cache: same input returns identical result', () {
+    final p = Paginator();
+    final html = '<p>${'hello ' * 200}</p>';
+    final a = p.paginate(chapterHtml: html, viewport: viewport, typography: typography);
+    final b = p.paginate(chapterHtml: html, viewport: viewport, typography: typography);
+    expect(breaksEqual(a, b), isTrue);
+  });
+
+  test('cache invalidated on typography change', () {
+    final p = Paginator();
+    final html = '<p>${'hello ' * 200}</p>';
+    final small = p.paginate(
+      chapterHtml: html,
+      viewport: viewport,
+      typography: typography,
+    );
+    final large = p.paginate(
+      chapterHtml: html,
+      viewport: viewport,
+      typography: typography.copyWith(fontSize: 32.0),  // 大字号 → 页数变多
+    );
+    expect(large.length, greaterThan(small.length));
+  });
+}
+
+bool breaksEqual(List<PageBreak> a, List<PageBreak> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].startOffset != b[i].startOffset || a[i].endOffset != b[i].endOffset) {
+      return false;
+    }
+  }
+  return true;
+}
+```
+
+**注**：`TypographySettings.defaults()` 与 `copyWith(fontSize:)` 假设 M1 接口。若 M1 用不同的字段名（如 `fontScale`），按 M1 调整测试。
+
+- [ ] **Step 2: 运行测试验证失败**
+
+Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/paginator_test.dart`
+Expected: FAIL — `Paginator` 与 `PageBreak` 未定义
+
+- [ ] **Step 3: 实现 Paginator**
+
+Create `reader_engine_epub_view/lib/paginator.dart`:
+
+```dart
+import 'dart:ui';
+
+import 'package:flutter/widgets.dart';
+import 'package:reader_engine/core/typography_settings.dart';
+
+/// 一页的字符范围（章节内偏移）。
+class PageBreak {
+  final int startOffset;
+  final int endOffset;
+  const PageBreak({required this.startOffset, required this.endOffset});
+
+  @override
+  bool operator ==(Object other) =>
+      other is PageBreak && startOffset == other.startOffset && endOffset == other.endOffset;
+
+  @override
+  int get hashCode => Object.hash(startOffset, endOffset);
+}
+
+/// TextPainter 驱动的章节分页器。
+///
+/// 输入：章节 HTML + viewport + typography。
+/// 输出：PageBreak 列表，覆盖 [0, chapterText.length] 的连续区间。
+///
+/// M2 简化：图片/表格用占位高度，不精细处理。
+class Paginator {
+  Paginator();
+
+  // cache key: (chapterHtml, viewport, typography) → breaks
+  final _cache = <_CacheKey, List<PageBreak>>{};
+
+  List<PageBreak> paginate({
+    required String chapterHtml,
+    required Size viewport,
+    required TypographySettings typography,
+  }) {
+    final key = _CacheKey(chapterHtml, viewport, typography);
+    return _cache.putIfAbsent(key, () => _paginateUncached(chapterHtml, viewport, typography));
+  }
+
+  List<PageBreak> _paginateUncached(
+    String chapterHtml,
+    Size viewport,
+    TypographySettings typography,
+  ) {
+    final plain = _stripHtml(chapterHtml);
+    if (plain.isEmpty) {
+      return const [PageBreak(startOffset: 0, endOffset: 0)];
+    }
+
+    // 按段落（HTML <p> 分隔）粗切，逐段累加测高
+    final paragraphs = _splitParagraphs(chapterHtml);
+    final style = _textStyle(typography);
+    final usableHeight = viewport.height;
+
+    final breaks = <PageBreak>[];
+    var startChar = 0;  // 累计到 chapterHtml 的字符偏移
+    var pageStart = 0;  // 当前页起始字符偏移
+    var pageHeight = 0.0;
+
+    for (final para in paragraphs) {
+      final paraHeight = _measureHeight(para.plain, style, viewport.width);
+      if (pageHeight + paraHeight > usableHeight && pageHeight > 0) {
+        // 切页
+        breaks.add(PageBreak(startOffset: pageStart, endOffset: startChar));
+        pageStart = startChar;
+        pageHeight = 0;
+      }
+      pageHeight += paraHeight;
+      startChar += para.rawLength;  // 包含 <p></p> 标签的字符数
+    }
+    // 收尾：把剩余部分作为最后一页
+    breaks.add(PageBreak(startOffset: pageStart, endOffset: chapterHtml.length));
+    return breaks;
+  }
+
+  TextStyle _textStyle(TypographySettings t) {
+    return TextStyle(fontSize: t.fontSize, height: t.lineHeight);
+  }
+
+  double _measureHeight(String text, TextStyle style, double maxWidth) {
+    if (text.isEmpty) return 0;
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: maxWidth);
+    final h = tp.height;
+    tp.dispose();
+    return h;
+  }
+
+  String _stripHtml(String html) {
+    return RegExp(r'<[^>]+>').replaceAll(html, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  List<_Paragraph> _splitParagraphs(String html) {
+    // 粗切：<p>...</p> 或 <div>...</div> 之间作为段落
+    final result = <_Paragraph>[];
+    final blockRe = RegExp(r'<(p|div)[^>]*>([\s\S]*?)</\1>', caseSensitive: false);
+    var rawCursor = 0;
+    for (final match in blockRe.allMatches(html)) {
+      final rawStart = match.start;
+      // 把标签外的空白也算作 raw 长度
+      if (rawStart > rawCursor) {
+        final between = html.substring(rawCursor, rawStart);
+        if (between.trim().isNotEmpty) {
+          result.add(_Paragraph(
+            plain: _stripHtml(between),
+            rawLength: between.length,
+          ));
+        }
+      }
+      final whole = match.group(0)!;
+      result.add(_Paragraph(
+        plain: _stripHtml(match.group(2)!),
+        rawLength: whole.length,
+      ));
+      rawCursor = match.end;
+    }
+    if (rawCursor < html.length) {
+      final tail = html.substring(rawCursor);
+      if (tail.trim().isNotEmpty) {
+        result.add(_Paragraph(plain: _stripHtml(tail), rawLength: tail.length));
+      }
+    }
+    if (result.isEmpty && html.trim().isNotEmpty) {
+      result.add(_Paragraph(plain: _stripHtml(html), rawLength: html.length));
+    }
+    return result;
+  }
+}
+
+class _Paragraph {
+  final String plain;
+  final int rawLength;  // 在 chapterHtml 中占用的字符数（含标签）
+  const _Paragraph({required this.plain, required this.rawLength});
+}
+
+class _CacheKey {
+  final String html;
+  final Size viewport;
+  final TypographySettings typography;
+  const _CacheKey(this.html, this.viewport, this.typography);
+
+  @override
+  bool operator ==(Object other) =>
+      other is _CacheKey &&
+      html == other.html &&
+      viewport == other.viewport &&
+      typography == other.typography;
+
+  @override
+  int get hashCode => Object.hash(html, viewport, typography);
+}
+```
+
+**执行者注意**：
+- `_measureHeight` 是性能热点；长章节会用 N×TextPainter.layout，N=段落数。M2 接受（典型章节 ~50 段，单测 < 100ms）。如 W11 buffer 发现卡顿，再考虑批测量或 memoize。
+- 图片/表格统一走 `_stripHtml` 后变空文本，相当于占位高度 0 —— 这是 M2 简化，不渲染真实高度。M3 再加 `WidgetSpan` 测量。
+
+- [ ] **Step 4: 运行测试验证通过**
+
+Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/paginator_test.dart`
+Expected: 5 tests PASS
+
+- [ ] **Step 5: dart analyze**
+
+Run: `/c/flutter/bin/dart analyze reader_engine_epub_view/`
+Expected: No issues
+
+- [ ] **Step 6: Commit + Push**
+
+```bash
+git add reader_engine_epub_view/lib/paginator.dart \
+        reader_engine_epub_view/test/paginator_test.dart
+git commit -m "feat(m2): implement TextPainter-based Paginator with cache"
+git push origin master
+```
+
+---
+
+## Task 14: 实现 ReaderScaffold（tap 区域 + 双模式翻页 paged/scroll）
+
+> **2026-06-26 pivot 后修订**：原计划 Task 13（paged）+ Task 14（scroll）是两个 task；pivot 后合并为单 task。`ReaderScaffold` 接受 `PaginationMode` 参数，paged 模式调 Task 13 的 Paginator，scroll 模式用 SingleChildScrollView。tap 区域分派逻辑两种模式共享。详见 spec §10 W3-W4。
 
 **Files:**
 - Create: `app/lib/features/reader/widgets/reader_scaffold.dart`
@@ -1557,16 +2086,18 @@ Create `app/test/features/reader/widgets/reader_scaffold_test.dart`:
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/widgets/reader_scaffold.dart';
 
 void main() {
-  testWidgets('tap center toggles chrome', (tester) async {
+  testWidgets('tap center toggles chrome (paged mode)', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
           home: ReaderScaffold(
             content: const Center(child: Text('book content')),
+            paginationMode: PaginationMode.paged,
             onTapPrev: () {},
             onTapNext: () {},
           ),
@@ -1585,13 +2116,14 @@ void main() {
     expect(find.byKey(const Key('reader_app_bar')), findsOneWidget);
   });
 
-  testWidgets('tap right triggers next', (tester) async {
+  testWidgets('paged mode tap right triggers next', (tester) async {
     var nextTapped = false;
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
           home: ReaderScaffold(
             content: const Center(child: Text('book')),
+            paginationMode: PaginationMode.paged,
             onTapPrev: () {},
             onTapNext: () => nextTapped = true,
           ),
@@ -1604,36 +2136,109 @@ void main() {
 
     expect(nextTapped, isTrue);
   });
+
+  testWidgets('paged mode tap left triggers prev', (tester) async {
+    var prevTapped = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            paginationMode: PaginationMode.paged,
+            onTapPrev: () => prevTapped = true,
+            onTapNext: () {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.tapAt(const Offset(50, 400));
+    await tester.pumpAndSettle();
+
+    expect(prevTapped, isTrue);
+  });
+
+  testWidgets('scroll mode tap right does NOT trigger prev/next', (tester) async {
+    var nextTapped = false;
+    var prevTapped = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            paginationMode: PaginationMode.scroll,
+            onTapPrev: () => prevTapped = true,
+            onTapNext: () => nextTapped = true,
+          ),
+        ),
+      ),
+    );
+
+    // tap 左右两侧
+    await tester.tapAt(const Offset(750, 400));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(50, 400));
+    await tester.pumpAndSettle();
+
+    expect(nextTapped, isFalse);
+    expect(prevTapped, isFalse);
+  });
+
+  testWidgets('scroll mode tap middle toggles chrome', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            paginationMode: PaginationMode.scroll,
+            onTapPrev: () {},
+            onTapNext: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('reader_app_bar')), findsNothing);
+    await tester.tapAt(const Offset(400, 400));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('reader_app_bar')), findsOneWidget);
+  });
 }
 ```
 
-- [ ] **Step 3: 实现 ReaderScaffold**
+- [ ] **Step 3: 实现 ReaderScaffold（双模式）**
 
 Create `app/lib/features/reader/widgets/reader_scaffold.dart`:
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 
 import '../controllers/reader_ui_controller.dart';
 
+/// 沉浸式阅读容器：tap 区域分派 + chrome 显隐。
+///
+/// - **paged 模式**：tap 左 1/3 → onTapPrev；右 1/3 → onTapNext；中央 → toggle chrome
+/// - **scroll 模式**：tap 左右无效（用户用滚动手势）；中央 → toggle chrome
 class ReaderScaffold extends ConsumerWidget {
   final Widget content;
   final VoidCallback onTapPrev;
   final VoidCallback onTapNext;
+  final PaginationMode paginationMode;
 
   const ReaderScaffold({
     super.key,
     required this.content,
     required this.onTapPrev,
     required this.onTapNext,
+    this.paginationMode = PaginationMode.paged,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ui = ref.watch(readerUiControllerProvider);
     final size = MediaQuery.sizeOf(context);
-    final third = size.width / 3;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1666,86 +2271,6 @@ class ReaderScaffold extends ConsumerWidget {
   }
 
   void _handleTap(double dx, double width, WidgetRef ref) {
-    final third = width / 3;
-    if (dx < third) {
-      onTapPrev();
-    } else if (dx > width - third) {
-      onTapNext();
-    } else {
-      ref.read(readerUiControllerProvider.notifier).toggleChrome();
-    }
-  }
-}
-```
-
-- [ ] **Step 4: 运行测试**
-
-Run: `/c/flutter/bin/flutter test app/test/features/reader/widgets/reader_scaffold_test.dart`
-Expected: 2 tests PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add app/lib/features/reader/controllers/ \
-        app/lib/features/reader/widgets/reader_scaffold.dart \
-        app/test/features/reader/widgets/reader_scaffold_test.dart
-git commit -m "feat(m2): implement ReaderScaffold with tap zones"
-```
-
----
-
-## Task 14: 实现 scroll 翻页模式
-
-**Files:**
-- Modify: `app/lib/features/reader/widgets/reader_scaffold.dart`
-- Modify: `app/test/features/reader/widgets/reader_scaffold_test.dart`
-
-- [ ] **Step 1: 加 scroll 模式测试**
-
-```dart
-testWidgets('in scroll mode, tap left/right does not trigger prev/next', (tester) async {
-  var nextTapped = false;
-  await tester.pumpWidget(
-    ProviderScope(
-      child: MaterialApp(
-        home: ReaderScaffold(
-          content: const Center(child: Text('book')),
-          paginationMode: PaginationMode.scroll,  // 新参数
-          onTapPrev: () {},
-          onTapNext: () => nextTapped = true,
-        ),
-      ),
-    ),
-  );
-
-  await tester.tapAt(const Offset(750, 400));
-  await tester.pumpAndSettle();
-
-  expect(nextTapped, isFalse);
-});
-```
-
-- [ ] **Step 2: ReaderScaffold 加 paginationMode 参数**
-
-修改 `ReaderScaffold` 类：
-
-```dart
-class ReaderScaffold extends ConsumerWidget {
-  final Widget content;
-  final VoidCallback onTapPrev;
-  final VoidCallback onTapNext;
-  final PaginationMode paginationMode;
-
-  const ReaderScaffold({
-    super.key,
-    required this.content,
-    required this.onTapPrev,
-    required this.onTapNext,
-    this.paginationMode = PaginationMode.paged,
-  });
-
-  // ...
-  void _handleTap(double dx, double width, WidgetRef ref) {
     // scroll 模式下，tap 左右无意义（用户在滚动）
     if (paginationMode == PaginationMode.scroll) {
       ref.read(readerUiControllerProvider.notifier).toggleChrome();
@@ -1763,19 +2288,26 @@ class ReaderScaffold extends ConsumerWidget {
 }
 ```
 
-加 import `import 'package:reader_engine/rendering/pagination_model.dart';`
+**注**：ReaderScaffold 只负责 tap 分派 + chrome。content widget 本身（paged 模式下用 Paginator 切片渲染，scroll 模式下用 SingleChildScrollView）由 ReaderEngineProvider 在上层组装（Task 17），作为 `content` 参数注入。这样 ReaderScaffold 与 Paginator 解耦，单测不需要构造 EpubBook。
 
-- [ ] **Step 3: 运行测试**
+- [ ] **Step 4: 运行测试**
 
 Run: `/c/flutter/bin/flutter test app/test/features/reader/widgets/reader_scaffold_test.dart`
-Expected: 3 tests PASS
+Expected: 5 tests PASS
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: dart analyze**
+
+Run: `/c/flutter/bin/dart analyze app/lib/features/reader/`
+Expected: No issues
+
+- [ ] **Step 6: Commit + Push**
 
 ```bash
-git add app/lib/features/reader/widgets/reader_scaffold.dart \
+git add app/lib/features/reader/controllers/ \
+        app/lib/features/reader/widgets/reader_scaffold.dart \
         app/test/features/reader/widgets/reader_scaffold_test.dart
-git commit -m "feat(m2): add scroll pagination mode tap behavior"
+git commit -m "feat(m2): implement ReaderScaffold with paged+scroll tap zones"
+git push origin master
 ```
 
 ---
@@ -1783,41 +2315,73 @@ git commit -m "feat(m2): add scroll pagination mode tap behavior"
 ## Task 15: 实现 TOC 提取 + TocDrawer
 
 **Files:**
-- Modify: `reader_engine_epub_view/lib/epub_view_renderer.dart`（填充 `_buildToc`）
+- Modify: `reader_engine_epub_view/lib/epubx_renderer.dart`（实现 `toc` getter，从 `_book.Chapters` 递归构建）
 - Create: `app/lib/features/reader/widgets/toc_drawer.dart`
 - Create: `app/test/features/reader/widgets/toc_drawer_test.dart`
 
-- [ ] **Step 1: 实现 `_buildToc`**
+- [ ] **Step 1: 实现 `toc` getter（从 EpubxRenderer._book.Chapters 构建）**
 
-修改 `epub_view_renderer.dart` 中的 `_buildToc`：
+修改 `epubx_renderer.dart`，把 stub 的 `toc` getter 替换为：
 
 ```dart
-Future<TableOfContents> _buildToc(evp.EpubBook book) async {
-  final nav = book.Content?.NavMap;
-  if (nav == null) return TableOfContents.empty();
-
-  final entries = <TocEntry>[];
-  for (final point in nav.Points ?? const []) {
-    entries.add(_convertTocPoint(point));
-  }
-  return TableOfContents(entries: entries);
+@override
+Future<TableOfContents> get toc async {
+  final book = _book;
+  if (book == null) return TableOfContents.empty();
+  return TableOfContents(entries: _chaptersToToc(book.Chapters ?? const [], 0));
 }
 
-TocEntry _convertTocPoint(evp.EpubNavigationPoint point) {
-  return TocEntry(
-    title: point.Label?.Text ?? point.NavigationSource ?? '(无标题)',
-    locator: EpubCfiLocator(
-      cfi: 'epubcfi(/${point.PlayOrder ?? 1}/)',
-      chapterIndex: (point.PlayOrder ?? 1) - 1,
-    ),
-    children: (point.ChildNavigationPoints ?? const [])
-        .map(_convertTocPoint)
-        .toList(),
-  );
+/// 把 epubx 的 EpubChapter 树转 TocEntry 树。
+///
+/// chapterIndex 走 flatChapters 的扁平索引（与 cfi_codec 对齐）。
+/// startIndex 是当前 subtree 在扁平序列中的起始偏移。
+List<TocEntry> _chaptersToToc(List<EpubChapter> chapters, int startIndex) {
+  final result = <TocEntry>[];
+  var flatIndex = startIndex;
+  for (final ch in chapters) {
+    final selfIndex = flatIndex;
+    result.add(TocEntry(
+      title: ch.Title ?? '(无标题)',
+      locator: EpubCfiLocator(
+        cfi: encode(selfIndex, 0),
+        chapterIndex: selfIndex,
+      ),
+      children: _chaptersToSubEntries(ch.SubChapters ?? const [], selfIndex),
+    ));
+    flatIndex += 1 + _countFlat(ch.SubChapters ?? const []);
+  }
+  return result;
+}
+
+List<TocEntry> _chaptersToSubEntries(List<EpubChapter> subChapters, int parentFlatIndex) {
+  // 子章节在扁平序列中紧跟 parent，索引 = parentFlatIndex + 1 + 累计
+  final result = <TocEntry>[];
+  var flatIndex = parentFlatIndex + 1;
+  for (final ch in subChapters) {
+    final selfIndex = flatIndex;
+    result.add(TocEntry(
+      title: ch.Title ?? '(无标题)',
+      locator: EpubCfiLocator(
+        cfi: encode(selfIndex, 0),
+        chapterIndex: selfIndex,
+      ),
+      children: _chaptersToSubEntries(ch.SubChapters ?? const [], selfIndex),
+    ));
+    flatIndex += 1 + _countFlat(ch.SubChapters ?? const []);
+  }
+  return result;
+}
+
+int _countFlat(List<EpubChapter> chapters) {
+  var n = 0;
+  for (final c in chapters) {
+    n += 1 + _countFlat(c.SubChapters ?? const []);
+  }
+  return n;
 }
 ```
 
-**执行者注意**：`EpubNavigationPoint.Label.Text` 等属性名根据 epub_view_plus 实际导出调整。spike 已验证。
+**执行者注意**：epubx 的 `EpubChapter { Title, SubChapters, HtmlContent }` API 在 Task 10 spike 已验证。如属性名不同（如 `EpubChapter.title` 小写），按 spike 实测调整。`encode` 来自 Task 9 的 cfi_codec；`EpubCfiLocator` 是 M1 Locator sealed 子类。
 
 - [ ] **Step 2: 写 TocDrawer 测试**
 
@@ -1948,13 +2512,14 @@ class _TocTile extends StatelessWidget {
 Run: `/c/flutter/bin/flutter test app/test/features/reader/widgets/toc_drawer_test.dart`
 Expected: 2 tests PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit + Push**
 
 ```bash
-git add reader_engine_epub_view/lib/epub_view_renderer.dart \
+git add reader_engine_epub_view/lib/epubx_renderer.dart \
         app/lib/features/reader/widgets/toc_drawer.dart \
         app/test/features/reader/widgets/toc_drawer_test.dart
 git commit -m "feat(m2): implement TOC extraction and TocDrawer widget"
+git push origin master
 ```
 
 ---
@@ -2176,7 +2741,7 @@ git commit -m "feat(m2): implement ProgressPersister with debounce + distinct + 
 
 **Files:**
 - Create: `app/lib/features/reader/providers/reader_engine_provider.dart`
-- Modify: `reader_engine_epub_view/lib/epub_view_renderer.dart`（包装 ReaderEngine 接口）
+- Modify: `reader_engine_epub_view/lib/epubx_renderer.dart`（包装 ReaderEngine 接口）
 - Create: `app/lib/features/reader/providers/concrete_reader_engine.dart`
 - Create: `app/test/features/reader/providers/reader_engine_provider_test.dart`
 
@@ -2197,16 +2762,16 @@ import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
-import 'epub_view_renderer.dart';
+import 'epubx_renderer.dart';
 
-/// 包装 [EpubViewPlusRenderer] 的 [ReaderEngine] 具体实现。
+/// 包装 [EpubxRenderer] 的 [ReaderEngine] 具体实现。
 ///
 /// 当 [BookRef.format] == epub 时由 provider 选择此实现。
 class ConcreteEpubReaderEngine implements ReaderEngine {
-  ConcreteEpubReaderEngine({required EpubViewPlusRenderer renderer})
+  ConcreteEpubReaderEngine({required EpubxRenderer renderer})
       : _renderer = renderer;
 
-  final EpubViewPlusRenderer _renderer;
+  final EpubxRenderer _renderer;
   final _stateController = StreamController<ReaderEngineState>.broadcast();
 
   ReaderEngineState _state = const ReaderEngineUnloaded();
@@ -2320,7 +2885,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/book_ref.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
-import 'package:reader_engine_epub_view/epub_view_renderer.dart';
+import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 import '../../../core/providers.dart';
 
@@ -2343,7 +2908,7 @@ final readerEngineForBookProvider =
   );
 
   if (ref.format == ReaderBookFormat.epub) {
-    return ConcreteEpubReaderEngine(renderer: EpubViewPlusRenderer());
+    return ConcreteEpubReaderEngine(renderer: EpubxRenderer());
   }
   throw UnimplementedError('PDF engine is M4');
 });
@@ -2381,7 +2946,7 @@ final ref = BookRef(
 );
 
 if (ref.format == re.BookFormat.epub) {
-  return ConcreteEpubReaderEngine(renderer: EpubViewPlusRenderer());
+  return ConcreteEpubReaderEngine(renderer: EpubxRenderer());
 }
 ```
 
@@ -2511,12 +3076,14 @@ git commit -m "feat(m2): implement ReaderBottomBar with progress display"
 
 ---
 
-## Task 19: 实现 TypographySettings → CSS 注入
+## Task 19: 实现 TypographySettings → flutter_widget_from_html 主题映射
+
+> **2026-06-26 pivot 后修订**：原计划生成 CSS 字符串注入 `epub_view_plus` 的 WebView。pivot 后没有 WebView，由 `flutter_widget_from_html` 的 `HtmlWidget(textStyle:, customWidgetBuilder:)` 直接吃 TextStyle。本 Task 保留 `typography_css.dart` 命名以减少 diff，但实际输出是 `TextStyle` + `WidgetBuilder` 配置（而非字符串 CSS）。详见 spec §10 W5。
 
 **Files:**
-- Create: `reader_engine_epub_view/lib/typography_css.dart`
+- Create: `reader_engine_epub_view/lib/typography_css.dart`（实际是 TextStyle 工厂，非字符串 CSS）
 - Create: `reader_engine_epub_view/test/typography_css_test.dart`
-- Modify: `reader_engine_epub_view/lib/epub_view_renderer.dart`（在 setTypography 中调用）
+- Modify: `reader_engine_epub_view/lib/epubx_renderer.dart`（在 setTypography / build 中传 HtmlWidget 参数）
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2599,30 +3166,54 @@ class TypographyCss {
 Run: `/c/flutter/bin/flutter test reader_engine_epub_view/test/typography_css_test.dart`
 Expected: 3 tests PASS
 
-- [ ] **Step 4: 在 EpubViewPlusRenderer.setTypography 中注入 CSS**
+- [ ] **Step 4: 在 EpubxRenderer.setTypography / build 中应用 textStyle**
 
-修改 `epub_view_renderer.dart`：
+修改 `epubx_renderer.dart` 的 `setTypography` 与 `build`：
 
 ```dart
 @override
 Future<void> setTypography(TypographySettings settings) async {
   _typography = settings;
-  final css = TypographyCss.fromSettings(settings);
-  // epub_view_plus 的 CSS 注入 API（spike 验证后填具体调用）：
-  // _epubController?.injectStyle(css);
-  debugPrint('Injecting typography CSS (${css.length} bytes)');
+  // build 时读取 _typography，无需主动 invalidate（widget tree 重建由上层 Provider 触发）
+}
+
+@override
+Widget build(BuildContext context) {
+  final chapters = flatChapters;
+  if (chapters.isEmpty) return const SizedBox.shrink();
+  final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+  final style = TypographyCss.textStyleFromSettings(_typography);
+
+  return SingleChildScrollView(
+    controller: _scrollController,
+    child: HtmlWidget(
+      html,
+      textStyle: style,  // flutter_widget_from_html ^0.15.0
+    ),
+  );
 }
 ```
 
-加 import `import 'package:flutter/foundation.dart';` 和 `import 'typography_css.dart';`
+加 import `import 'typography_css.dart';`。`HtmlWidget` 的 `textStyle` 参数是 inheritance-style —— 它会作为根文本样式被子标签覆盖。
 
-- [ ] **Step 5: Commit**
+**执行者注意**：本 Task 只接字号 + 行距 + 主题（背景色 + 前景色）。字体族（Han Serif/Sans）在 flutter_widget_from_html 中通过 `textStyle.fontFamily` 设置；M2 不接入字体下载，先用系统默认。字体注入留 M3。
+
+- [ ] **Step 5: 运行测试 + analyze**
+
+```bash
+/c/flutter/bin/flutter test reader_engine_epub_view/test/typography_css_test.dart
+/c/flutter/bin/dart analyze reader_engine_epub_view/
+```
+Expected: All PASS；analyze 无 issue
+
+- [ ] **Step 6: Commit + Push**
 
 ```bash
 git add reader_engine_epub_view/lib/typography_css.dart \
         reader_engine_epub_view/test/typography_css_test.dart \
-        reader_engine_epub_view/lib/epub_view_renderer.dart
-git commit -m "feat(m2): implement TypographyCss injection"
+        reader_engine_epub_view/lib/epubx_renderer.dart
+git commit -m "feat(m2): implement TypographySettings → HtmlWidget textStyle mapping"
+git push origin master
 ```
 
 ---
@@ -2779,29 +3370,36 @@ git commit -m "feat(m2): implement TypographyPanel UI"
 
 **Files:**
 - Create: `app/lib/features/reader/widgets/reader_error_view.dart`
-- Modify: `reader_engine_epub_view/lib/epub_view_renderer.dart`（加超时 + Recoverable 跳过）
-- Modify: `reader_engine_epub_view/lib/epub_loader.dart`（加 15s 超时）
+- Modify: `reader_engine_epub_view/lib/epubx_renderer.dart`（openFile 加 15s 超时 + 把 epubx 异常映射成 ReaderEngineError）
 - Create: `app/test/features/reader/widgets/reader_error_view_test.dart`
 
-- [ ] **Step 1: 给 EpubLoader.parse 加超时**
+- [ ] **Step 1: 给 EpubxRenderer.openFile 加超时**
 
-修改 `epub_loader.dart`：
+修改 `epubx_renderer.dart` 的 `openFile`：
 
 ```dart
-Future<EvpEpubBook> parse(String filePath, {Duration timeout = const Duration(seconds: 15)}) async {
+@override
+Future<void> openFile(String filePath) async {
+  _setState(const ReaderEngineLoading());
   try {
+    const timeout = Duration(seconds: 15);
     final bytes = await File(filePath).readAsBytes().timeout(timeout);
-    final book = await evp.EpubReader.readBook(bytes).timeout(timeout);
-    return EvpEpubBook(book: book);
+    final book = await EpubReader.readBook(bytes).timeout(timeout);
+    _book = book;
+    _currentChapterIndex = 0;
+    _scrollController.addListener(_onScroll);
+    _setState(const ReaderEngineReady());
   } on TimeoutException catch (e, st) {
-    throw EpubParseException('EPUB parse timeout (file: $filePath)', e, st);
+    debugPrint('EpubxRenderer.openFile timeout: $filePath\n$e\n$st');
+    _setState(ReaderEngineError(cause: TimeoutException('EPUB parse timeout (file: $filePath)')));
   } catch (e, st) {
-    throw EpubParseException('Failed to parse EPUB at $filePath', e, st);
+    debugPrint('EpubxRenderer.openFile failed: $filePath\n$e\n$st');
+    _setState(ReaderEngineError(cause: e));
   }
 }
 ```
 
-加 `import 'dart:async';`
+加 `import 'dart:async';`（TimeoutException 来源）。
 
 - [ ] **Step 2: 写错误视图测试**
 
@@ -2903,14 +3501,14 @@ Future<void> openWithLastProgress({
 Run: `/c/flutter/bin/flutter test app/test/features/reader/widgets/reader_error_view_test.dart`
 Expected: 1 test PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit + Push**
 
 ```bash
 git add app/lib/features/reader/widgets/reader_error_view.dart \
         app/test/features/reader/widgets/reader_error_view_test.dart \
-        reader_engine_epub_view/lib/epub_loader.dart \
-        reader_engine_epub_view/lib/concrete_reader_engine.dart
+        reader_engine_epub_view/lib/epubx_renderer.dart
 git commit -m "feat(m2): implement error states (Fatal/Recoverable) + 15s parse timeout"
+git push origin master
 ```
 
 ---
@@ -3337,6 +3935,8 @@ git push origin m2-complete
 - Task 22 的 _ReaderBody 使用 dynamic 是临时简化，M3 重构为具类型
 
 **4. 风险点（已知）：**
-- Task 10 spike 失败可能触发 pivot；pivot 路径超出本计划范围，需要新 plan
-- Task 12 / 15 中 epub_view_plus 的具体 API 名称（`currentValueStream`、`EpubNavigationPoint.Label.Text`）需 spike 后确认；本计划假设合理 API，若有出入则在该 Task 内调整
+- Task 10 epubx spike 失败（解析抛异常 / 章节为空 / HTML 乱码）→ pub.dev 上无备选 parser，须升级到 user 重新评估 M2 范围。已 pivot 一次，再 pivot 等于推倒重来
+- Task 12 / 15 中 epubx 的 `EpubChapter.HtmlContent` / `SubChapters` 属性名假设来自 pub.dev ^4.0.0 文档；spike 已验证；若属性不同（如 `htmlContent` 小写）在该 Task 内调整
+- Task 12 字符偏移位置追踪是 viewport 比例近似，不精确 —— M2 接受；M3 可改 widget-level offset
+- Task 13 Paginator M2 简化：图片/表格占位高度 0，不处理 inline 图片分页；M3+
 - Task 23 golden 在不同平台字体差异；CI 跑 Linux baseline，本地 Windows 可忽略

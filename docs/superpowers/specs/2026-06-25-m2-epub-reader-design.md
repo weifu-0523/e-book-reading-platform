@@ -364,16 +364,24 @@ test('cfi_codec encode(decode(x)) == x for valid CFIs', () {
 
 ## 10. 工期估算
 
+> ⚠️ **2026-06-26 修订**：原 6 周计划因 `epub_view_plus` 实际未发布到 pub.dev 而 pivot 到 `epubx` + 自研渲染（详见 §11 与附录 A）。工期扩到 12 周，原 W6 buffer 现已使用。
+
 | 周 | 主任务 |
 |---|---|
-| W1 | spike 真实 EPUB + 基础架构落地（M1 模型迁移到 `reader_engine/`、`ReaderEngine` 抽象、`cfi_codec`、fixture 引入） |
-| W2 | 渲染 + 翻页（双模式） |
-| W3 | TOC + 进度持久化 |
-| W4 | 排版 + 错误处理 |
-| W5 | 测试补全（golden + 集成） |
-| W6 | buffer / pivot 兜底 |
+| W1 | ~~spike 真实 EPUB~~ + 基础架构落地（已完成 Tasks 1-6：M1 模型迁移到 `reader_engine/`、`ReaderEngine` 抽象、fixture 引入） |
+| W2 | epubx 解析 + HTML 渲染（用 `flutter_widget_from_html` 把 `EpubChapter.HtmlContent` 转 Flutter widgets）+ spike 验证 |
+| W3 | 自研分页算法（TextPainter 测高 + 章节切片）+ paged 翻页 |
+| W4 | scroll 翻页 + TOC 提取（walk `EpubBook.Chapters` 递归）+ 进度持久化 |
+| W5 | 排版注入（CSS-like 主题、字号、行距映射到 widget tree）+ 错误处理 |
+| W6 | ReaderEngineProvider + 打开书籍主流程 + ReaderPage 装配 |
+| W7 | Widget 测试补全（所有 UI 组件） |
+| W8 | Golden 测试（6 个渲染快照，覆盖 paged/scroll × 中文/英文 × 主题） |
+| W9 | 集成测试（端到端阅读流程） |
+| W10 | 自研 CFI（参考 EPUB CFI 规范，自定义 `chapterIndex:charOffset` 格式，编码/解码 round-trip） |
+| W11 | buffer（自研分页/CFI 边界 case、性能优化） |
+| W12 | 最终全局 code review + 验收清单 |
 
-总计 6 周。W6 的 buffer 专门为 pivot 风险准备（spike 估算 pivot 会让工期翻倍到 12 周，但本里程碑不允许溢出，所以前置预留 buffer）。
+总计 12 周。原 6 周计划的 W6 buffer 专为 pivot 预留，现已使用并扩到 W11-W12。**不允许再溢出**——再遇重大风险须 user 介入重新评估 M2 范围。
 
 ---
 
@@ -384,21 +392,39 @@ test('cfi_codec encode(decode(x)) == x for valid CFIs', () {
 | M2 合并 M3 的"基础排版" | 用户决策：M2 结束即可获得完整基础阅读体验 | M3 工期缩短约 1 周 |
 | 仅 reflowable，不做 fixed-layout | spike 验证：fixed-layout 需 WebView，`flutter_inappwebview` Windows 实验性不稳 | 后续若用户强需求，单独立项 |
 | `vepub` 不存在（原 spec 候选库） | spike 发现 pub.dev 无此包（疑似笔误） | 改用 `epub_view_plus` |
+| **`epub_view_plus` 实际未上 pub.dev**（2026-06-26 发现） | spec 假设破裂：原计划用的 `epub_view_plus` 只在 GitHub，未发布 pub.dev；备选 `epub_view` v3.2.0 在 pub.dev 但有 CFI bug 且无维护 | **pivot 到 `epubx` + 自研渲染**——工期 6 周 → 12 周（详见 §10） |
 | 新增 `reader_engine_epub_view` 独立 package | 原平台 spec 倾向 monolithic，本设计强化隔离 | M4 PDF 加入时零 UI 改造 |
 | M1 模型 (`Locator` / `TypographySettings`) 迁入 `reader_engine/` 包 | M2 引入独立 package，依赖方向需单向；M1 模型留在 `app/` 会形成循环依赖 | W1 多 0.5 天迁移成本，`app/lib/core/` 改为 re-export 保 M1 测试 API 兼容 |
+| **自研分页 + CFI**（pivot 后新增） | `epubx` 是纯 parser，无渲染层；原计划 `epub_view_plus` 提供的 TextPainter 分页、CFI 生成全部需自建 | +5 周工期（W3 分页 + W10 CFI + W11 buffer）|
 
 ---
 
-## 附录 A：选型记录（spike 结论摘要）
+## 附录 A：选型记录（spike 结论摘要 + pivot 后修订）
+
+### A.1 原选型（2026-06-25，已废弃）
 
 通过 opus subagent 对 pub.dev 上 5 个候选 EPUB 渲染库做 hands-on 调研：
 
 | 候选库 | 结论 |
 |---|---|
-| `epub_view_plus`（活跃 fork） | **采用** — MIT，AGPLv3 兼容，部分修复原版 CFI bug |
+| `epub_view_plus`（活跃 fork） | ~~采用~~ — **实际未发布 pub.dev**，只在 GitHub `hosseinshaya/epub_view_plus` |
 | `epub_view`（原版，ScerIO） | 淘汰 — CFI bug #361/#499/#567，作者已挂出寻找新维护者 |
-| `vepub` | 淘汰 — **pub.dev 不存在此包**（原平台 spec 候选，疑似笔误） |
+| `vepub` | 淘汰 — **pub.dev 不存在此包**（疑似笔误） |
 | `flutter_epub_viewer` / `sakura_epub` | 淘汰 — 走 epub.js + WebView 路径，`flutter_inappwebview` Windows 实验性不稳 |
-| `epubx` | 备选 pivot 路径 — 仅解析无渲染，需自研 widget（工期翻倍） |
+| `epubx` | ~~备选 pivot 路径~~ — **pivot 已触发，详见 A.2** |
 
-**关键风险**：`epub_view_plus` 的 CFI 实现需要 hands-on 验证（M2 W1 跑真实中文 EPUB，失败率 > 1% 则 pivot 到 `epubx` + 自研 widget）。
+### A.2 2026-06-26 pivot 决策
+
+**触发**：M2 Task 7（创建 `reader_engine_epub_view` package）执行时验证发现 `epub_view_plus` 实际未发布到 pub.dev。implementer 单方面替换为 `epub_view` v3.2.0，但这是 spec 明确淘汰的包（CFI bug、无维护）。controller 升级到 user，user 选 **D 选项：立刻 pivot 到 epubx + 自研**。
+
+**新方案**：
+- **`epubx` ^4.0.0**（pub.dev）：纯 Dart parser，API `EpubReader.readBook(bytes) → EpubBook { Title, Chapters[EpubChapter{Title, HtmlContent, SubChapters}] }`，无 `dart:io` 依赖
+- **`flutter_widget_from_html`**：把 `EpubChapter.HtmlContent` 转 Flutter widget 树（pending spike 验证排版质量）
+- **自研分页**：基于 TextPainter 测高，按 viewport 切片章节内容
+- **自研 CFI**：参考 EPUB CFI 规范，简化为 `chapterIndex:charOffset` 格式，编码/解码 round-trip 一致即可
+
+**工期影响**：6 周 → 12 周（详见 §10）。W6 buffer 现已使用，新增 W7-W12 容纳自研分页、CFI、额外 buffer。
+
+**为什么不用 git 依赖 `epub_view_plus`**：用户评估 git 依赖稳定性 + fork 实际是否有 CFI 修复未验证，风险大于直接 pivot。Pivot 一次到位，避免半路再 pivot。
+
+**为什么不用 `epub_pro` 等其他 pub.dev fork**：spec §A.1 候选库调研未覆盖，重新做 spike 等于多一次不确定的赌注。`epubx` 是 spec 已识别的备选路径，路径已知。

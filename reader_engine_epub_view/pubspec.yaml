@@ -1,5 +1,5 @@
 name: reader_engine_epub_view
-description: 智阅 EPUB 渲染实现 —— 基于 epub_view_plus 的 EpubRenderer 具体实现。
+description: 智阅 EPUB 渲染实现 —— 基于 epubx + 自研 widget 的 EpubRenderer 具体实现。
 publish_to: 'none'
 version: 0.1.0
 
@@ -10,7 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  epub_view: ^3.2.0  # spike 验证；epub_view_plus 是 epub_view 的维护分支，使用原包
+  epubx: ^4.0.0
+  flutter_widget_from_html: ^0.15.0
   meta: ^1.15.0
   reader_engine:
     path: ../reader_engine
