@@ -12,6 +12,7 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
 import 'cfi_codec.dart';
+import 'typography_css.dart';
 
 /// epubx + flutter_widget_from_html 实现的 [EpubRenderer]。
 ///
@@ -211,7 +212,7 @@ class EpubxRenderer implements EpubRenderer {
   @override
   Future<void> setTypography(TypographySettings settings) async {
     _typography = settings;
-    // Task 19 实现 CSS-like 注入
+    // Task 19: build() 直接读 _typography → TextStyle，无需手动重建 widget tree。
   }
 
   @override
@@ -225,10 +226,21 @@ class EpubxRenderer implements EpubRenderer {
     final chapters = flatChapters;
     if (chapters.isEmpty) return const SizedBox.shrink();
     final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final style = TypographyCss.textStyleFromSettings(_typography);
+    final (fg, bg) = TypographyCss.themeColors(_typography.theme);
 
-    return SingleChildScrollView(
-      controller: _scrollController,
-      child: HtmlWidget(html),
+    return ColoredBox(
+      color: bg,
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        child: DefaultTextStyle(
+          style: style.copyWith(color: fg),
+          child: HtmlWidget(
+            html,
+            textStyle: style.copyWith(color: fg),
+          ),
+        ),
+      ),
     );
   }
 
