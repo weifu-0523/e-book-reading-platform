@@ -76,6 +76,7 @@ class EpubxRenderer implements EpubRenderer {
       final book = await EpubReader.readBook(bytes);
       _book = book;
       _currentChapterIndex = 0;
+      _scrollController.removeListener(_onScroll);  // prevent duplicate on repeated calls
       _scrollController.addListener(_onScroll);
       _setState(const ReaderEngineReady());
     } catch (e, st) {
