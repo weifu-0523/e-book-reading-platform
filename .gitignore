@@ -1,3 +1,6 @@
+# === Brainstorming visual companion (local only) ===
+.superpowers/
+
 # === Flutter / Dart ===
 build/
 .dart_tool/
