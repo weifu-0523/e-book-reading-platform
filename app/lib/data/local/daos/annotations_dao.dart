@@ -24,6 +24,8 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
     required String color,
     required String tagsJson,
     required String source,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) {
     return into(annotations).insert(
       AnnotationsCompanion.insert(
@@ -35,6 +37,8 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
         color: color,
         tags: Value(tagsJson),
         source: Value(source),
+        createdAt: createdAt == null ? const Value.absent() : Value(createdAt),
+        updatedAt: updatedAt == null ? const Value.absent() : Value(updatedAt),
       ),
     );
   }
@@ -44,6 +48,30 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
       AnnotationsCompanion(
         note: note == null ? const Value.absent() : Value(note),
         updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// 用真正的 UPDATE 更新所有可变字段，保留原 createdAt。
+  Future<int> updateAll({
+    required String id,
+    required String locatorJson,
+    required String quote,
+    String? note,
+    required String color,
+    required String tagsJson,
+    required String source,
+    required DateTime updatedAt,
+  }) {
+    return (update(annotations)..where((t) => t.id.equals(id))).write(
+      AnnotationsCompanion(
+        locator: Value(locatorJson),
+        quote: Value(quote),
+        note: note == null ? const Value.absent() : Value(note),
+        color: Value(color),
+        tags: Value(tagsJson),
+        source: Value(source),
+        updatedAt: Value(updatedAt),
       ),
     );
   }

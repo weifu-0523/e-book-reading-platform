@@ -9,13 +9,11 @@ import '../models/book_note.dart';
 import 'notes_repository.dart';
 
 class LocalNotesRepository implements NotesRepository {
-  final db.AppDatabase _db;
   final BookNotesDao _notesDao;
   final AnnotationsDao _annotationsDao;
 
   LocalNotesRepository(db.AppDatabase database)
-      : _db = database,
-        _notesDao = BookNotesDao(database),
+      : _notesDao = BookNotesDao(database),
         _annotationsDao = AnnotationsDao(database);
 
   @override
@@ -72,16 +70,24 @@ class LocalNotesRepository implements NotesRepository {
       color: _colorToString(a.color),
       tagsJson: jsonEncode(a.tags.toList()),
       source: a.source == AnnotationSource.manual ? 'manual' : 'aiAssisted',
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
     );
   }
 
   @override
   Future<void> updateAnnotation(Annotation a) {
-    // 用事务包裹 delete + insert，避免崩溃时丢失标注。
-    return _db.transaction(() async {
-      await _annotationsDao.deleteAnnotation(a.id);
-      await addAnnotation(a);
-    });
+    // 用真正的 UPDATE，保留原 createdAt；单条 SQL 不需要事务。
+    return _annotationsDao.updateAll(
+      id: a.id,
+      locatorJson: jsonEncode(a.locator.toJson()),
+      quote: a.quote,
+      note: a.note,
+      color: _colorToString(a.color),
+      tagsJson: jsonEncode(a.tags.toList()),
+      source: a.source == AnnotationSource.manual ? 'manual' : 'aiAssisted',
+      updatedAt: a.updatedAt,
+    );
   }
 
   @override

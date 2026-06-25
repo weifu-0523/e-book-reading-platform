@@ -78,4 +78,37 @@ void main() {
     final list = await repo.listAnnotations('bn1');
     expect(list.first.note, '新');
   });
+
+  test('updateAnnotation preserves createdAt and updates other fields', () async {
+    await repo.createEmptyNote(id: 'bn1', bookId: 'b1', bookTitle: 't');
+    final original = Annotation(
+      id: 'a1',
+      bookNoteId: 'bn1',
+      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      quote: '原文',
+      note: '旧笔记',
+      color: HighlightColor.yellow,
+      tags: const ['风险'],
+      source: AnnotationSource.manual,
+      createdAt: DateTime(2026, 6, 24),
+      updatedAt: DateTime(2026, 6, 24),
+    );
+    await repo.addAnnotation(original);
+
+    // 修改 note + color + tags；createdAt 不变
+    await repo.updateAnnotation(
+      original.copyWith(
+        note: '新笔记',
+        color: HighlightColor.blue,
+        tags: const ['风险', '决策'],
+      ),
+    );
+
+    final list = await repo.listAnnotations('bn1');
+    expect(list, hasLength(1));
+    expect(list.first.createdAt, DateTime(2026, 6, 24)); // createdAt 保留
+    expect(list.first.note, '新笔记');
+    expect(list.first.color, HighlightColor.blue);
+    expect(list.first.tags, ['风险', '决策']);
+  });
 }
