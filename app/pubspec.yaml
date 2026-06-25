@@ -33,6 +33,10 @@ dependencies:
   crypto: ^3.0.5
   meta: ^1.15.0
 
+  # M2 阅读引擎
+  reader_engine:
+    path: ../reader_engine
+
   # i18n
   flutter_localizations:
     sdk: flutter
