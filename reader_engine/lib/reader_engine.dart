@@ -3,4 +3,6 @@
 /// 永远不依赖 Flutter，所有抽象和模型在此。
 library reader_engine;
 
+export 'core/locator.dart';
+
 const String readerEngineLibraryVersion = '0.1.0';
