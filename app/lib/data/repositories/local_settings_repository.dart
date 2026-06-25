@@ -1,13 +1,14 @@
 import 'dart:convert';
 
-import '../local/database.dart';
+import '../local/database.dart' as db;
 import '../local/daos/settings_dao.dart';
 import 'settings_repository.dart';
 
 class LocalSettingsRepository implements SettingsRepository {
   final SettingsDao _dao;
 
-  LocalSettingsRepository(AppDatabase db) : _dao = SettingsDao(db);
+  LocalSettingsRepository(db.AppDatabase database)
+      : _dao = SettingsDao(database);
 
   @override
   Future<T> get<T>(String key, T defaultValue) async {

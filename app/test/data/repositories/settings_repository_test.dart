@@ -1,19 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/local/database.dart' as db;
 import 'package:zhiyue/data/repositories/local_settings_repository.dart';
 
 import '../../helpers/drift_test_helper.dart';
 
 void main() {
-  late AppDatabase db;
+  late db.AppDatabase database;
   late LocalSettingsRepository repo;
 
   setUp(() {
-    db = createTestDatabase();
-    repo = LocalSettingsRepository(db);
+    database = createTestDatabase();
+    repo = LocalSettingsRepository(database);
   });
 
-  tearDown(() async => db.close());
+  tearDown(() async => database.close());
 
   test('get returns default for missing key', () async {
     expect(await repo.get<String>('missing', 'fallback'), 'fallback');

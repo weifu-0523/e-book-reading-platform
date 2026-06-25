@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import '../../core/locator.dart';
-import '../local/database.dart';
+import '../local/database.dart' as db;
 import '../local/daos/reading_progress_dao.dart';
 import '../models/reading_progress.dart';
 import 'reading_progress_repository.dart';
@@ -9,8 +9,8 @@ import 'reading_progress_repository.dart';
 class LocalReadingProgressRepository implements ReadingProgressRepository {
   final ReadingProgressDao _dao;
 
-  LocalReadingProgressRepository(AppDatabase db)
-      : _dao = ReadingProgressDao(db);
+  LocalReadingProgressRepository(db.AppDatabase database)
+      : _dao = ReadingProgressDao(database);
 
   @override
   Future<ReadingProgress?> get(String bookId) async {

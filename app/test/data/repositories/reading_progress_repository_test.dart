@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/locator.dart';
-import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/local/database.dart' as db;
 import 'package:zhiyue/data/local/daos/books_dao.dart';
 import 'package:zhiyue/data/models/reading_progress.dart';
 import 'package:zhiyue/data/repositories/local_reading_progress_repository.dart';
@@ -8,13 +8,13 @@ import 'package:zhiyue/data/repositories/local_reading_progress_repository.dart'
 import '../../helpers/drift_test_helper.dart';
 
 void main() {
-  late AppDatabase db;
+  late db.AppDatabase database;
   late LocalReadingProgressRepository repo;
 
   setUp(() async {
-    db = createTestDatabase();
-    repo = LocalReadingProgressRepository(db);
-    await BooksDao(db).insertOne(
+    database = createTestDatabase();
+    repo = LocalReadingProgressRepository(database);
+    await BooksDao(database).insertOne(
       id: 'b1',
       title: 't',
       format: 'epub',
@@ -24,7 +24,7 @@ void main() {
     );
   });
 
-  tearDown(() async => db.close());
+  tearDown(() async => database.close());
 
   test('save and get', () async {
     final p = ReadingProgress(
