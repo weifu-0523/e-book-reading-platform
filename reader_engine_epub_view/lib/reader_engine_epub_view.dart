@@ -1,2 +1,4 @@
-/// reader_engine_epub_view — epub_view_plus 的 EpubRenderer 实现。
+/// reader_engine_epub_view — epubx + 自研 widget 的 EpubRenderer 实现。
 library reader_engine_epub_view;
+
+export 'concrete_reader_engine.dart';
