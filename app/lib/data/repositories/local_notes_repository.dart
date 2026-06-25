@@ -154,6 +154,9 @@ class LocalNotesRepository implements NotesRepository {
 
   List<String> _decodeStringList(String json) {
     final list = jsonDecode(json) as List<dynamic>;
-    return list.cast<String>();
+    // 用 whereType<String> 而非 cast<String>：tags/keyTakeaways 由用户/AI 可控，
+    // 外部写入（备份导入、同步、其他客户端 bug）可能含非 String 元素。
+    // cast 是 lazy cast，会延迟到访问时抛；whereType 在解码时静默过滤。
+    return list.whereType<String>().toList();
   }
 }
