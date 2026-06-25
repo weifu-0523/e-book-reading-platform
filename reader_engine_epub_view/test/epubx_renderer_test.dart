@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
@@ -39,6 +40,19 @@ void main() {
     expect(renderer.state, isA<ReaderEngineError>());
 
     await sub.cancel();
+    await renderer.dispose();
+  });
+
+  test('flatChapters is empty before openFile', () {
+    final renderer = EpubxRenderer();
+    expect(renderer.flatChapters, isEmpty);
+  });
+
+  test('gotoLocator with PdfPageLocator is a no-op (no throw)', () async {
+    final renderer = EpubxRenderer();
+    await renderer.gotoLocator(
+      const PdfPageLocator(page: 1, offsetX: 0, offsetY: 0),
+    );
     await renderer.dispose();
   });
 }

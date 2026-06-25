@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:epubx/epubx.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
@@ -10,16 +11,19 @@ import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
+import 'cfi_codec.dart';
+
 /// epubx + flutter_widget_from_html 实现的 [EpubRenderer]。
 ///
 /// 持有 [EpubBook]，自管 [ReaderEngineState] 状态机。
 /// 章节渲染（build）、位置流（currentLocation$）、跳转（gotoLocator）
-/// 在 Task 12 实现 —— 此版本是骨架。
+/// 已在 Task 12 实现。
 class EpubxRenderer implements EpubRenderer {
   EpubxRenderer();
 
   final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
+  final ScrollController _scrollController = ScrollController();
 
   EpubBook? _book;
   int _currentChapterIndex = 0;
@@ -44,6 +48,21 @@ class EpubxRenderer implements EpubRenderer {
   /// 当前章节索引 —— Task 12+ 用。
   int get currentChapterIndex => _currentChapterIndex;
 
+  /// 当前书的扁平化章节列表（Chapters + SubChapters 递归展开）。
+  ///
+  /// epubx 的 EpubChapter 含 SubChapters 嵌套；UI 与 cfi 都按扁平索引访问。
+  List<EpubChapter> get flatChapters =>
+      _flattenChapters(_book?.Chapters ?? const []);
+
+  List<EpubChapter> _flattenChapters(List<EpubChapter> chapters) {
+    final result = <EpubChapter>[];
+    for (final c in chapters) {
+      result.add(c);
+      result.addAll(_flattenChapters(c.SubChapters ?? const []));
+    }
+    return result;
+  }
+
   void _setState(ReaderEngineState next) {
     _state = next;
     _stateController.add(next);
@@ -57,21 +76,83 @@ class EpubxRenderer implements EpubRenderer {
       final book = await EpubReader.readBook(bytes);
       _book = book;
       _currentChapterIndex = 0;
+      _scrollController.addListener(_onScroll);
       _setState(const ReaderEngineReady());
     } catch (e, st) {
       debugPrint('EpubxRenderer.openFile failed: $filePath\n$e\n$st');
-      _setState(ReaderEngineError(message: '$e', cause: e));  // ⚠️ plan said `cause: e` only — but message is required
+      _setState(ReaderEngineError(
+        message: '$e',
+        cause: e,
+      ));  // ⚠️ plan said `cause: e` only — but message is required
     }
   }
 
-  // ---- 以下方法在 Task 12 实现，此处 stub ----
+  // ---- 章节渲染 / 位置流 / 跳转 (Task 12) ----
+
+  /// 切换到指定章节（chapterIndex 基于 flatChapters）。
+  void setChapter(int index) {
+    final chapters = flatChapters;
+    if (index < 0 || index >= chapters.length) return;
+    _currentChapterIndex = index;
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    _emitCurrentLocation();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    _emitCurrentLocation();
+  }
+
+  void _emitCurrentLocation() {
+    if (_book == null) return;
+    final chapters = flatChapters;
+    if (_currentChapterIndex >= chapters.length) return;
+    final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final totalChars = html.length;
+    final maxScroll = _scrollController.hasClients
+        ? _scrollController.position.maxScrollExtent
+        : 0.0;
+    final offset =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
+    final ratio =
+        maxScroll == 0 ? 0.0 : (offset / maxScroll).clamp(0.0, 1.0);
+    final charOffset = (ratio * totalChars).round().clamp(0, totalChars);
+    _locationController.add(EpubCfiLocator(
+      cfi: encode(_currentChapterIndex, charOffset),
+      chapterIndex: _currentChapterIndex,
+    ));
+  }
 
   @override
   Future<TableOfContents> get toc async => TableOfContents.empty();
 
   @override
   Future<void> gotoLocator(Locator locator) async {
-    // Task 12 实现
+    if (locator is! EpubCfiLocator) return;
+    final decoded = decode(locator.cfi);
+    if (decoded == null) {
+      debugPrint('EpubxRenderer.gotoLocator: invalid cfi ${locator.cfi}');
+      return;
+    }
+    final chapters = flatChapters;
+    if (decoded.chapterIndex < 0 || decoded.chapterIndex >= chapters.length) {
+      return;
+    }
+    if (decoded.chapterIndex != _currentChapterIndex) {
+      _currentChapterIndex = decoded.chapterIndex;
+    }
+    // 字符偏移 → 滚动像素（近似反推）：等下一帧 maxScrollExtent 可用再跳。
+    final html = chapters[decoded.chapterIndex].HtmlContent ?? '';
+    final totalChars = html.isEmpty ? 1 : html.length;
+    final ratio = (decoded.charOffset / totalChars).clamp(0.0, 1.0);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      _scrollController.jumpTo(max * ratio);
+      _emitCurrentLocation();
+    });
   }
 
   @override
@@ -88,12 +169,20 @@ class EpubxRenderer implements EpubRenderer {
 
   @override
   Widget build(BuildContext context) {
-    // Task 12 实现：flutter_widget_from_html 的 HtmlWidget
-    return const SizedBox.shrink();
+    final chapters = flatChapters;
+    if (chapters.isEmpty) return const SizedBox.shrink();
+    final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+
+    return SingleChildScrollView(
+      controller: _scrollController,
+      child: HtmlWidget(html),
+    );
   }
 
   @override
   Future<void> dispose() async {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     await _stateController.close();
     await _locationController.close();
   }
