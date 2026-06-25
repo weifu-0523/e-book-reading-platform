@@ -1,15 +1,17 @@
 name: reader_engine
-description: 智阅阅读引擎抽象层 —— 纯 Dart 包，定义 ReaderEngine 接口和共享模型。
+description: 智阅阅读引擎抽象层 —— ReaderEngine 接口与共享模型。
 publish_to: 'none'
 version: 0.1.0
 
 environment:
   sdk: ^3.10.0
+  flutter: ^3.27.0
 
 dependencies:
+  flutter:
+    sdk: flutter
   meta: ^1.15.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  test: ^1.25.0
