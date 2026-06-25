@@ -127,7 +127,59 @@ class EpubxRenderer implements EpubRenderer {
   }
 
   @override
-  Future<TableOfContents> get toc async => TableOfContents.empty();
+  Future<TableOfContents> get toc async {
+    final book = _book;
+    if (book == null) return TableOfContents.empty();
+    return TableOfContents(entries: _chaptersToToc(book.Chapters ?? const [], 0));
+  }
+
+  /// 把 epubx 的 EpubChapter 树转 TocEntry 树。
+  ///
+  /// chapterIndex 走 flatChapters 的扁平索引（与 cfi_codec 对齐）。
+  /// startIndex 是当前 subtree 在扁平序列中的起始偏移。
+  List<TocEntry> _chaptersToToc(List<EpubChapter> chapters, int startIndex) {
+    final result = <TocEntry>[];
+    var flatIndex = startIndex;
+    for (final ch in chapters) {
+      final selfIndex = flatIndex;
+      result.add(TocEntry(
+        title: ch.Title ?? '(无标题)',
+        locator: EpubCfiLocator(
+          cfi: encode(selfIndex, 0),
+          chapterIndex: selfIndex,
+        ),
+        children: _chaptersToSubEntries(ch.SubChapters ?? const [], selfIndex),
+      ));
+      flatIndex += 1 + _countFlat(ch.SubChapters ?? const []);
+    }
+    return result;
+  }
+
+  List<TocEntry> _chaptersToSubEntries(List<EpubChapter> subChapters, int parentFlatIndex) {
+    final result = <TocEntry>[];
+    var flatIndex = parentFlatIndex + 1;
+    for (final ch in subChapters) {
+      final selfIndex = flatIndex;
+      result.add(TocEntry(
+        title: ch.Title ?? '(无标题)',
+        locator: EpubCfiLocator(
+          cfi: encode(selfIndex, 0),
+          chapterIndex: selfIndex,
+        ),
+        children: _chaptersToSubEntries(ch.SubChapters ?? const [], selfIndex),
+      ));
+      flatIndex += 1 + _countFlat(ch.SubChapters ?? const []);
+    }
+    return result;
+  }
+
+  int _countFlat(List<EpubChapter> chapters) {
+    var n = 0;
+    for (final c in chapters) {
+      n += 1 + _countFlat(c.SubChapters ?? const []);
+    }
+    return n;
+  }
 
   @override
   Future<void> gotoLocator(Locator locator) async {
