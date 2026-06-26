@@ -89,11 +89,24 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
 
   @override
   Future<void> nextSpine() async {
-    // TODO(M3): 完整 spine 导航
+    final renderer = _renderer;
+    final currentIdx = renderer.currentChapterIndex;
+    final nextIdx = currentIdx + 1;
+    if (nextIdx < renderer.flatChapters.length) {
+      renderer.setChapter(nextIdx);
+    }
+    // At end of book: no-op (could emit event later)
   }
 
   @override
-  Future<void> previousSpine() async {}
+  Future<void> previousSpine() async {
+    final renderer = _renderer;
+    final currentIdx = renderer.currentChapterIndex;
+    if (currentIdx > 0) {
+      renderer.setChapter(currentIdx - 1);
+    }
+    // At start of book: no-op
+  }
 
   @override
   Future<void> setTypography(TypographySettings settings) =>
