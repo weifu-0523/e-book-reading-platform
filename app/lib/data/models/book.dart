@@ -12,9 +12,9 @@ class Book {
   final String fileHash;
   final int fileSizeBytes;
   final String? coverPath;
-
   final DateTime addedAt;
   final DateTime? lastReadAt;
+  final int? sortOrder;
 
   const Book({
     required this.id,
@@ -27,6 +27,7 @@ class Book {
     required this.coverPath,
     required this.addedAt,
     required this.lastReadAt,
+    this.sortOrder,
   });
 
   Book copyWith({
@@ -34,6 +35,7 @@ class Book {
     String? author,
     String? coverPath,
     DateTime? lastReadAt,
+    int? sortOrder,
   }) {
     return Book(
       id: id,
@@ -46,6 +48,7 @@ class Book {
       coverPath: coverPath ?? this.coverPath,
       addedAt: addedAt,
       lastReadAt: lastReadAt ?? this.lastReadAt,
+      sortOrder: sortOrder ?? this.sortOrder,
     );
   }
 

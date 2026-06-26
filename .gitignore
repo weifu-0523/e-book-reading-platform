@@ -37,7 +37,9 @@ desktop.ini
 !README.md
 
 # === 项目特定：用户数据 / 本地配置 / 测试书 ===
-library/
+# 锚定到仓库根目录的 library/ —— 用户运行时电子书库；
+# 之前未锚定的 `library/` 会误伤 app/lib/features/library/ 等源码目录。
+/library/
 covers/
 cache/
 *.db

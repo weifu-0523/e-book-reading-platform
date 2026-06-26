@@ -11,6 +11,10 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
 
   Future<List<Book>> getAll() => select(books).get();
 
+  /// 监听整张 books 表的变化。M3.1 书架 reactive UI 使用。
+  /// 排序 / 过滤在 Repository 层完成（drift 的 stream 组合在多标签 AND 过滤下不够灵活）。
+  Stream<List<Book>> watchAllBooks() => select(books).watch();
+
   Future<Book?> getById(String id) =>
       (select(books)..where((t) => t.id.equals(id))).getSingleOrNull();
 

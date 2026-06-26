@@ -7,6 +7,7 @@ import 'package:zhiyue/data/local/file_storage.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/data/repositories/local_book_repository.dart';
+import 'package:zhiyue/features/library/models/sort_by.dart';
 import 'package:zhiyue/services/book_import_service.dart';
 
 import '../../helpers/drift_test_helper.dart';
@@ -192,11 +193,31 @@ class _ThrowingBookRepository implements BookRepository {
   }
 
   @override
-  Future<List<Book>> getAll() => inner.getAll();
+  Future<List<Book>> getAll({
+    SortBy sortBy = SortBy.addedDesc,
+    String? searchQuery,
+    Set<String>? tagFilters,
+  }) =>
+      inner.getAll(sortBy: sortBy, searchQuery: searchQuery, tagFilters: tagFilters);
+
+  @override
+  Stream<List<Book>> watchAll({
+    SortBy sortBy = SortBy.addedDesc,
+    String? searchQuery,
+    Set<String>? tagFilters,
+  }) =>
+      inner.watchAll(sortBy: sortBy, searchQuery: searchQuery, tagFilters: tagFilters);
 
   @override
   Future<Book?> getById(String id) => inner.getById(id);
 
   @override
   Future<void> delete(String id) => inner.delete(id);
+
+  @override
+  Future<void> deleteBooks(Set<String> ids) => inner.deleteBooks(ids);
+
+  @override
+  Future<void> setSortOrder({required String bookId, required int sortOrder}) =>
+      inner.setSortOrder(bookId: bookId, sortOrder: sortOrder);
 }
