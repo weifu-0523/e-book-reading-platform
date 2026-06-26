@@ -245,27 +245,43 @@ class EpubxRenderer implements EpubRenderer {
     final html = chapters[_currentChapterIndex].HtmlContent ?? '';
     final style = TypographyCss.textStyleFromSettings(_typography);
     final (fg, bg) = TypographyCss.themeColors(_typography.theme);
+    final margin = _marginValue(_typography.pageMargin);
 
     return ColoredBox(
       color: bg,
       child: DefaultTextStyle(
         style: style.copyWith(color: fg),
         child: _paginationMode == PaginationMode.scroll
-            ? _buildScroll(style, fg, html)
-            : _buildPaged(style, fg, html),
+            ? _buildScroll(style, fg, html, margin)
+            : _buildPaged(style, fg, html, margin),
       ),
     );
   }
 
   /// scroll 模式：单章 SingleChildScrollView + 富文本 HtmlWidget。
-  Widget _buildScroll(TextStyle style, Color fg, String html) {
+  Widget _buildScroll(TextStyle style, Color fg, String html, double margin) {
     return SingleChildScrollView(
       controller: _scrollController,
-      child: HtmlWidget(
-        html,
-        textStyle: style.copyWith(color: fg),
+      child: Padding(
+        padding: EdgeInsets.all(margin),
+        child: HtmlWidget(
+          html,
+          textStyle: style.copyWith(color: fg),
+        ),
       ),
     );
+  }
+
+  /// 把 [PageMargin] 映射为像素值，供渲染时 Padding 使用。
+  double _marginValue(PageMargin m) {
+    switch (m) {
+      case PageMargin.compact:
+        return 8.0;
+      case PageMargin.normal:
+        return 16.0;
+      case PageMargin.wide:
+        return 24.0;
+    }
   }
 
   /// paged 模式：Paginator 把章节切成多页，PageView 左右翻页。
@@ -273,7 +289,7 @@ class EpubxRenderer implements EpubRenderer {
   /// M2.5 简化：paged 模式渲染**纯文本**（与 Paginator 的测量基准一致），
   /// 丢失 HtmlWidget 的富文本格式。富文本 + 真分页留到 M3。
   /// break 偏移以 Paginator 输出的 plainText 坐标为准（见 [Paginator.paginateWithText]）。
-  Widget _buildPaged(TextStyle style, Color fg, String html) {
+  Widget _buildPaged(TextStyle style, Color fg, String html, double margin) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewport = Size(
@@ -295,7 +311,7 @@ class EpubxRenderer implements EpubRenderer {
             final end = breaks[i].endOffset.clamp(start, plain.length);
             final pageText = plain.substring(start, end);
             return Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(margin),
               child: Text(pageText, style: style.copyWith(color: fg)),
             );
           },
