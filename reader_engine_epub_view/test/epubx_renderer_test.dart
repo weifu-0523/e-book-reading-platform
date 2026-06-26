@@ -4,6 +4,7 @@ import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
+import 'package:reader_engine/rendering/highlight_selection.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 void main() {
@@ -89,5 +90,29 @@ void main() {
     final html = renderer.currentHighlightedHtml();
     expect(html, contains('rgba(255, 235, 59'));
     expect(html, contains('rgba(33, 150, 243'));
+  });
+
+  test('emitSelection pushes to selection\$ stream', () async {
+    final renderer = EpubxRenderer();
+    final events = <HighlightSelection>[];
+    renderer.selection$.listen(events.add);
+    const sel = HighlightSelection(
+        text: 'hi', chapterIndex: 0, startOffset: 0, endOffset: 2);
+    renderer.emitSelection(sel);
+    await Future.microtask(() {});
+    expect(events, [sel]);
+  });
+
+  test('selection\$ is broadcast (multiple subscribers both receive)', () async {
+    final renderer = EpubxRenderer();
+    final a = <HighlightSelection>[];
+    final b = <HighlightSelection>[];
+    renderer.selection$.listen(a.add);
+    renderer.selection$.listen(b.add);
+    renderer.emitSelection(const HighlightSelection(
+        text: 'x', chapterIndex: 0, startOffset: 0, endOffset: 1));
+    await Future.microtask(() {});
+    expect(a, hasLength(1));
+    expect(b, hasLength(1));
   });
 }

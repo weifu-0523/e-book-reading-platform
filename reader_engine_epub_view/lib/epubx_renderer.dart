@@ -274,6 +274,12 @@ class EpubxRenderer implements EpubRenderer {
   @override
   Stream<HighlightSelection> get selection$ => _selectionController.stream;
 
+  /// 由上层 SelectableRegion 在用户松开选区时调用。
+  /// EpubxRenderer 自身不订阅 Flutter selection API（reader_engine 包不依赖 Flutter selection 框架）。
+  void emitSelection(HighlightSelection selection) {
+    _selectionController.add(selection);
+  }
+
   @override
   Widget build(BuildContext context) {
     final chapters = flatChapters;
@@ -363,5 +369,6 @@ class EpubxRenderer implements EpubRenderer {
     _pageController.dispose();
     await _stateController.close();
     await _locationController.close();
+    await _selectionController.close();
   }
 }
