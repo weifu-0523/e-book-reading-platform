@@ -14,6 +14,12 @@ abstract interface class ReaderEngine {
   ReaderEngineState get state;
   Stream<ReaderEngineState> get state$;
   Stream<Locator> get currentLocation$;
+
+  /// Plain text of the current spine item, parsed from the chapter's HTML.
+  ///
+  /// Used by app layer to compute character offsets for `EpubRangeLocator`.
+  /// Implementation caches per `chapterIndex` for the engine's lifetime.
+  Future<String> get currentChapterPlainText;
   TableOfContents? get toc;
   TypographySettings get typography;
   PaginationMode get paginationMode;

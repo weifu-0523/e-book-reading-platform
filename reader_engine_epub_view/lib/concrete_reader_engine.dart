@@ -34,6 +34,10 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   Stream<Locator> get currentLocation$ => _renderer.currentLocation$;
 
   @override
+  Future<String> get currentChapterPlainText =>
+      _renderer.currentChapterPlainText;
+
+  @override
   TableOfContents? get toc => _toc;
 
   @override

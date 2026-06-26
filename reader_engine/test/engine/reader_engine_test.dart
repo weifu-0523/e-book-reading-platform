@@ -20,6 +20,9 @@ class _FakeEngine implements ReaderEngine {
   Stream<Locator> get currentLocation$ => const Stream.empty();
 
   @override
+  Future<String> get currentChapterPlainText => Future.value('');
+
+  @override
   TableOfContents? get toc => null;
 
   @override

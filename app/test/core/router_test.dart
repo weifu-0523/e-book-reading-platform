@@ -38,6 +38,9 @@ class _FakeReaderEngine implements ReaderEngine {
   Stream<Locator> get currentLocation$ => _locationController.stream;
 
   @override
+  Future<String> get currentChapterPlainText => Future.value('');
+
+  @override
   ReaderEngineState get state => const ReaderEngineReady();
 
   @override

@@ -10,6 +10,7 @@ import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
+import 'package:reader_engine/rendering/html_text_utils.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
@@ -39,6 +40,7 @@ class EpubxRenderer implements EpubRenderer {
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
   PaginationMode _paginationMode = PaginationMode.paged;
   final List<HighlightRange> _allHighlights = [];
+  final Map<int, String> _plainTextCache = {};
 
   ReaderEngineState _state = const ReaderEngineUnloaded();
 
@@ -63,6 +65,20 @@ class EpubxRenderer implements EpubRenderer {
   /// epubx 的 EpubChapter 含 SubChapters 嵌套；UI 与 cfi 都按扁平索引访问。
   List<EpubChapter> get flatChapters =>
       _flattenChapters(_book?.Chapters ?? const []);
+
+  /// Plain text of the current chapter, parsed from
+  /// `flatChapters[_currentChapterIndex].HtmlContent`.
+  /// Cached per `chapterIndex` for the renderer's lifetime.
+  Future<String> get currentChapterPlainText async {
+    final chapters = flatChapters;
+    if (chapters.isEmpty) return '';
+    final cached = _plainTextCache[_currentChapterIndex];
+    if (cached != null) return cached;
+    final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final plain = HtmlTextUtils.htmlToPlainText(html);
+    _plainTextCache[_currentChapterIndex] = plain;
+    return plain;
+  }
 
   /// 仅用于测试：直接注入一本书（跳过 openFile 的文件 IO 与解析）。
   @visibleForTesting
