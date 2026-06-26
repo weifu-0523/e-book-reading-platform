@@ -6,26 +6,59 @@ import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/widgets/highlight_selection_controls.dart';
 
 void main() {
-  group('resolveSelectionLocator', () {
-    test('returns null for empty text', () {
-      expect(resolveSelectionLocator('', 0), isNull);
+  group('resolveSelectionLocator (async, real offset)', () {
+    test('returns null for empty text', () async {
+      final loc = await resolveSelectionLocator(
+        selectedText: '',
+        chapterIndex: 0,
+        chapterPlainText: 'hello world',
+      );
+      expect(loc, isNull);
     });
 
-    test('builds EpubRangeLocator spanning [0, text.length] for chapter 0', () {
-      const text = 'hello world';
-      final loc = resolveSelectionLocator(text, 0);
+    test('computes real startOffset/endOffset via indexOf', () async {
+      const plain = 'hello world foo bar';
+      final loc = await resolveSelectionLocator(
+        selectedText: 'world',
+        chapterIndex: 0,
+        chapterPlainText: plain,
+      );
       expect(loc, isA<EpubRangeLocator>());
       final range = loc!;
       expect(range.chapterIndex, 0);
-      expect(range.startOffset, 0);
-      expect(range.endOffset, text.length);
-      expect(range.quote, text);
+      expect(range.startOffset, 6);
+      expect(range.endOffset, 11);
+      expect(range.quote, 'world');
     });
 
-    test('carries chapter index through', () {
-      const text = 'abc';
-      final loc = resolveSelectionLocator(text, 7)!;
-      expect(loc.chapterIndex, 7);
+    test('returns null when selectedText not in plainText', () async {
+      final loc = await resolveSelectionLocator(
+        selectedText: 'missing',
+        chapterIndex: 0,
+        chapterPlainText: 'hello world',
+      );
+      expect(loc, isNull);
+    });
+
+    test('uses first match on duplicate substring (MVP disambiguation)', () async {
+      const plain = 'foo bar foo bar';
+      final loc = await resolveSelectionLocator(
+        selectedText: 'foo',
+        chapterIndex: 0,
+        chapterPlainText: plain,
+      );
+      expect(loc!.startOffset, 0); // first 'foo' wins
+      expect(loc.endOffset, 3);
+    });
+
+    test('chapterTitle passes through to locator', () async {
+      final loc = await resolveSelectionLocator(
+        selectedText: 'world',
+        chapterIndex: 2,
+        chapterPlainText: 'hello world',
+        chapterTitle: 'Chapter Two',
+      );
+      expect(loc!.chapterTitle, 'Chapter Two');
     });
   });
 

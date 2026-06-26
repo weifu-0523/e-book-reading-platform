@@ -12,6 +12,7 @@ import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
 import '../services/progress_persister.dart';
+import '../services/toc_title_resolver.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
 import '../widgets/highlight_selection_controls.dart';
 import '../widgets/note_editor_sheet.dart';
@@ -22,18 +23,29 @@ import '../widgets/reader_scaffold.dart';
 import '../widgets/toc_drawer.dart';
 import '../widgets/typography_panel.dart';
 
-/// 把用户选中的纯文本 + 当前章节索引解析为 [EpubRangeLocator]。
+/// Resolve user-selected plain text to an [EpubRangeLocator] carrying
+/// real character offsets within the chapter plain text.
 ///
-/// 简化实现：startOffset/endOffset 用 0..text.length 占位（并非字符流真实位置）。
-/// reader_engine 暂未暴露 currentChapterPlainText API，M3.3 会接入精确 offset
-/// 解析。当前阶段 quote 字段足以支撑高亮持久化与搜索（FTS5 索引 quote）。
-EpubRangeLocator? resolveSelectionLocator(String text, int chapterIdx) {
-  if (text.isEmpty) return null;
+/// Algorithm: indexOf the selected text within [chapterPlainText].
+/// Returns null if selectedText is empty or not found.
+///
+/// Multi-match: indexOf returns first hit (M3.3 MVP disambiguation).
+/// M3.4 may upgrade to anchor-based disambiguation.
+Future<EpubRangeLocator?> resolveSelectionLocator({
+  required String selectedText,
+  required int chapterIndex,
+  required String chapterPlainText,
+  String? chapterTitle,
+}) async {
+  if (selectedText.isEmpty) return null;
+  final startOffset = chapterPlainText.indexOf(selectedText);
+  if (startOffset < 0) return null;
   return EpubRangeLocator(
-    chapterIndex: chapterIdx,
-    startOffset: 0,
-    endOffset: text.length,
-    quote: text,
+    chapterIndex: chapterIndex,
+    chapterTitle: chapterTitle,
+    startOffset: startOffset,
+    endOffset: startOffset + selectedText.length,
+    quote: selectedText,
   );
 }
 
@@ -125,6 +137,10 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   SelectedContent? _selection;
   Locator? _currentLocation;
 
+  // 章节标题缓存。build 中从 engine.toc 通过 TocTitleResolver 解析得到，
+  // 供高亮 locator 的 chapterTitle 字段使用。
+  Map<int, String> _chapterTitlesCache = const {};
+
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
   @override
@@ -155,6 +171,12 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
       return const Center(child: CircularProgressIndicator());
     }
     final ui = ref.watch(readerUiControllerProvider);
+
+    // 刷新章节标题缓存：toc 可用即解析。
+    final toc = engine.toc;
+    if (toc != null) {
+      _chapterTitlesCache = TocTitleResolver.resolve(toc);
+    }
 
     // typographyPanelOpen 由 _TypographyPanelTrigger 监听并弹出/收起 bottom sheet。
     return Scaffold(
@@ -293,8 +315,18 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     );
     if (color == null || !mounted) return;
     final text = sel.plainText;
-    final locator = resolveSelectionLocator(text, _currentChapterIndex());
+    final plainText = await engine.currentChapterPlainText;
+    if (!mounted) return;
+    final chapterIdx = _currentChapterIndex();
+    final chapterTitle = _chapterTitlesCache[chapterIdx];
+    final locator = await resolveSelectionLocator(
+      selectedText: text,
+      chapterIndex: chapterIdx,
+      chapterPlainText: plainText,
+      chapterTitle: chapterTitle,
+    );
     if (locator == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('无法定位选区，请重试')),
       );
