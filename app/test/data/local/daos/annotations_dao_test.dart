@@ -124,4 +124,42 @@ void main() {
     expect(all.first.color, 'blue');
     expect(all.first.source, 'aiAssisted');
   });
+
+  test('watchByBookNoteId emits on insert and delete', () async {
+    final db = createTestDatabase();
+    addTearDown(db.close);
+    await BooksDao(db).insertOne(
+      id: 'b1',
+      title: 't',
+      format: 'epub',
+      filePath: 'p',
+      fileHash: 'h',
+      fileSizeBytes: 0,
+    );
+    await BookNotesDao(db).insertOne(id: 'bn1', bookId: 'b1', title: 't');
+    final dao = AnnotationsDao(db);
+    final stream = dao.watchByBookNoteId('bn1');
+    final emitted = <List<Annotation>>[];
+    final sub = stream.listen(emitted.add);
+    await Future.delayed(const Duration(milliseconds: 50));
+    expect(emitted.last, isEmpty); // 初始空
+    await dao.insertOne(
+      id: 'a1',
+      bookNoteId: 'bn1',
+      locatorJson: '{}',
+      quote: 'q',
+      note: null,
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+      createdAt: DateTime(2026, 1, 2),
+      updatedAt: DateTime(2026, 1, 2),
+    );
+    await Future.delayed(const Duration(milliseconds: 50));
+    expect(emitted.last.length, 1);
+    await dao.deleteAnnotation('a1');
+    await Future.delayed(const Duration(milliseconds: 50));
+    expect(emitted.last, isEmpty);
+    await sub.cancel();
+  });
 }

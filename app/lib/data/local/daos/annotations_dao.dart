@@ -15,6 +15,15 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  /// 反应式订阅：按 bookNoteId 观察该 note 的全部 annotation，
+  /// 按 updatedAt 倒序（最近更新的在前）。
+  Stream<List<Annotation>> watchByBookNoteId(String bookNoteId) {
+    final query = select(annotations)
+      ..where((t) => t.bookNoteId.equals(bookNoteId))
+      ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)]);
+    return query.watch();
+  }
+
   Future<int> insertOne({
     required String id,
     required String bookNoteId,
