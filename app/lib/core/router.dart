@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../features/library/pages/book_detail_page.dart';
 import '../features/library/pages/library_page.dart';
 import '../features/reader/pages/reader_page.dart';
+import '../features/search/pages/search_highlights_page.dart';
 
 /// 应用路由配置。
 ///
@@ -29,6 +30,10 @@ GoRouter createAppRouter() {
           final id = state.pathParameters['id']!;
           return BookDetailPage(bookId: id);
         },
+      ),
+      GoRoute(
+        path: '/search/highlights',
+        builder: (context, state) => const SearchHighlightsPage(),
       ),
     ],
   );
