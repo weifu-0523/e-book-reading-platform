@@ -32,6 +32,7 @@ dependencies:
   collection: ^1.18.0
   crypto: ^3.0.5
   meta: ^1.15.0
+  reorderables: ^0.6.0
 
   # M2 阅读引擎
   reader_engine:
