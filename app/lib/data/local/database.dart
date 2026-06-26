@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
           );
         }
         if (from < 3) {
-          // 加列：drift 默认 SQLite 不支持 add column in-DSL，用 customStatement
+          // 加列：用 raw SQL ALTER TABLE（比 m.addField 更直观，等价）
           await m.database.customStatement(
             'ALTER TABLE books ADD COLUMN sort_order INTEGER',
           );
