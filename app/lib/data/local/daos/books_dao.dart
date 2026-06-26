@@ -26,6 +26,7 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
     required String fileHash,
     required int fileSizeBytes,
     String? coverPath,
+    int? sortOrder,
   }) {
     return into(books).insert(
       BooksCompanion.insert(
@@ -37,6 +38,7 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
         fileHash: fileHash,
         fileSizeBytes: fileSizeBytes,
         coverPath: Value(coverPath),
+        sortOrder: Value(sortOrder),
       ),
     );
   }
@@ -57,6 +59,7 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
     required String fileHash,
     required int fileSizeBytes,
     String? coverPath,
+    int? sortOrder,
   }) {
     return into(books).insertOnConflictUpdate(
       BooksCompanion(
@@ -68,6 +71,7 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
         fileHash: Value(fileHash),
         fileSizeBytes: Value(fileSizeBytes),
         coverPath: Value(coverPath),
+        sortOrder: Value(sortOrder),
       ),
     );
   }
@@ -79,5 +83,20 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
 
   Future<int> deleteBook(String id) {
     return (delete(books)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// 设置单本书的手动排序顺序。M3.1 书架拖拽排序使用。
+  Future<int> setSortOrder({required String id, required int sortOrder}) {
+    return (update(books)..where((t) => t.id.equals(id)))
+        .write(BooksCompanion(sortOrder: Value(sortOrder)));
+  }
+
+  /// 批量删除多本书，单事务保证原子性。M3.1 书架多选删除使用。
+  Future<void> deleteBooks(Set<String> ids) async {
+    await db.transaction(() async {
+      for (final id in ids) {
+        await (delete(books)..where((t) => t.id.equals(id))).go();
+      }
+    });
   }
 }

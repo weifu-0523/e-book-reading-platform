@@ -75,4 +75,56 @@ void main() {
     final found = await dao.findByHash('hash123');
     expect(found?.id, 'b1');
   });
+
+  test('upsert with sortOrder persists', () async {
+    await dao.upsert(
+      id: 'b1',
+      title: '书1',
+      format: 'epub',
+      filePath: '/1.epub',
+      fileHash: 'h1',
+      fileSizeBytes: 100,
+      sortOrder: 5,
+    );
+    final row = await dao.getById('b1');
+    expect(row?.sortOrder, 5);
+  });
+
+  test('setSortOrder updates only the given book', () async {
+    await dao.upsert(
+      id: 'b1',
+      title: '书1',
+      format: 'epub',
+      filePath: '/1.epub',
+      fileHash: 'h1',
+      fileSizeBytes: 100,
+    );
+    await dao.upsert(
+      id: 'b2',
+      title: '书2',
+      format: 'epub',
+      filePath: '/2.epub',
+      fileHash: 'h2',
+      fileSizeBytes: 200,
+    );
+    await dao.setSortOrder(id: 'b1', sortOrder: 10);
+    expect((await dao.getById('b1'))?.sortOrder, 10);
+    expect((await dao.getById('b2'))?.sortOrder, isNull);
+  });
+
+  test('deleteBooks removes multiple in one transaction', () async {
+    for (var i = 0; i < 5; i++) {
+      await dao.upsert(
+        id: 'b$i',
+        title: '书$i',
+        format: 'epub',
+        filePath: '/$i.epub',
+        fileHash: 'h$i',
+        fileSizeBytes: 100 * i,
+      );
+    }
+    await dao.deleteBooks({'b0', 'b1', 'b2'});
+    final remaining = await dao.getAll();
+    expect(remaining.map((b) => b.id).toSet(), {'b3', 'b4'});
+  });
 }
