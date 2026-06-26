@@ -12,6 +12,7 @@ void main() {
         child: MaterialApp(
           home: ReaderScaffold(
             content: const Center(child: Text('book content')),
+            title: 't',
             paginationMode: PaginationMode.paged,
             onTapPrev: () {},
             onTapNext: () {},
@@ -35,6 +36,7 @@ void main() {
         child: MaterialApp(
           home: ReaderScaffold(
             content: const Center(child: Text('book')),
+            title: 't',
             paginationMode: PaginationMode.paged,
             onTapPrev: () {},
             onTapNext: () => nextTapped = true,
@@ -56,6 +58,7 @@ void main() {
         child: MaterialApp(
           home: ReaderScaffold(
             content: const Center(child: Text('book')),
+            title: 't',
             paginationMode: PaginationMode.paged,
             onTapPrev: () => prevTapped = true,
             onTapNext: () {},
@@ -78,6 +81,7 @@ void main() {
         child: MaterialApp(
           home: ReaderScaffold(
             content: const Center(child: Text('book')),
+            title: 't',
             paginationMode: PaginationMode.scroll,
             onTapPrev: () => prevTapped = true,
             onTapNext: () => nextTapped = true,
@@ -101,6 +105,7 @@ void main() {
         child: MaterialApp(
           home: ReaderScaffold(
             content: const Center(child: Text('book')),
+            title: 't',
             paginationMode: PaginationMode.scroll,
             onTapPrev: () {},
             onTapNext: () {},

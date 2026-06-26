@@ -14,12 +14,28 @@ class ReaderScaffold extends ConsumerWidget {
   final VoidCallback onTapNext;
   final PaginationMode paginationMode;
 
+  /// 显示在 chrome AppBar 中的标题（通常是书名）。
+  final String title;
+
+  /// 返回按钮回调（通常是 `Navigator.maybePop`）。
+  final VoidCallback? onBack;
+
+  /// 点击 TOC 图标回调（由父组件触发抽屉打开）。
+  final VoidCallback? onOpenToc;
+
+  /// 点击排版图标回调（由父组件触发 bottom sheet 打开）。
+  final VoidCallback? onOpenTypography;
+
   const ReaderScaffold({
     super.key,
     required this.content,
     required this.onTapPrev,
     required this.onTapNext,
+    required this.title,
     this.paginationMode = PaginationMode.paged,
+    this.onBack,
+    this.onOpenToc,
+    this.onOpenTypography,
   });
 
   @override
@@ -29,7 +45,8 @@ class ReaderScaffold extends ConsumerWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTapUp: (details) => _handleTap(details.localPosition.dx, size.width, ref),
+      onTapUp: (details) =>
+          _handleTap(details.localPosition.dx, size.width, ref),
       child: Stack(
         children: [
           content,
@@ -43,11 +60,23 @@ class ReaderScaffold extends ConsumerWidget {
                 color: Colors.black54,
                 child: SafeArea(
                   child: AppBar(
-                    title: const Text('阅读中'),
+                    title: Text(title),
                     leading: IconButton(
                       icon: const Icon(Icons.arrow_back),
-                      onPressed: () {},
+                      onPressed: onBack ?? () => Navigator.maybePop(context),
                     ),
+                    actions: [
+                      IconButton(
+                        icon: const Icon(Icons.list),
+                        tooltip: '目录',
+                        onPressed: onOpenToc,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.text_fields),
+                        tooltip: '排版',
+                        onPressed: onOpenTypography,
+                      ),
+                    ],
                   ),
                 ),
               ),
