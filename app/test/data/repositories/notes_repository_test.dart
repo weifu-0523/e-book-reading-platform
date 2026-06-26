@@ -128,4 +128,54 @@ void main() {
     expect(list, hasLength(1));
     expect(list.first.tags, ['a', 'b']); // 1 和 true 被过滤
   });
+
+  // ===== watchAnnotations =====
+
+  test('watchAnnotations emits initial empty when no BookNote exists', () async {
+    final db = createTestDatabase();
+    addTearDown(db.close);
+    final repo = LocalNotesRepository(db);
+    final emitted = <List<Annotation>>[];
+    final sub = repo.watchAnnotations('b1').listen(emitted.add);
+    await Future.delayed(const Duration(milliseconds: 50));
+    expect(emitted.last, isEmpty);
+    await sub.cancel();
+  });
+
+  test('watchAnnotations emits after addAnnotation', () async {
+    // 不能复用 setUp 的 repo/database，因为需要在订阅前 setup 状态；
+    // 但 FK 要求 book b1 必须先存在，所以手动插入 book + note。
+    final db = createTestDatabase();
+    addTearDown(db.close);
+    await BooksDao(db).insertOne(
+      id: 'b1',
+      title: 't',
+      format: 'epub',
+      filePath: 'p',
+      fileHash: 'h',
+      fileSizeBytes: 0,
+    );
+    final repo = LocalNotesRepository(db);
+    await repo.createEmptyNote(id: 'bn1', bookId: 'b1', bookTitle: '活着');
+
+    final emitted = <List<Annotation>>[];
+    final sub = repo.watchAnnotations('b1').listen(emitted.add);
+    await Future.delayed(const Duration(milliseconds: 50));
+    await repo.addAnnotation(Annotation(
+      id: 'a1',
+      bookNoteId: 'bn1',
+      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      quote: 'abc',
+      note: null,
+      color: HighlightColor.yellow,
+      tags: const [],
+      source: AnnotationSource.manual,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+    ));
+    await Future.delayed(const Duration(milliseconds: 50));
+    expect(emitted.last.length, 1);
+    expect(emitted.last.first.quote, 'abc');
+    await sub.cancel();
+  });
 }

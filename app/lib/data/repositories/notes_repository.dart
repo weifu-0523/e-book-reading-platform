@@ -17,4 +17,8 @@ abstract class NotesRepository {
     String query, {
     List<String>? tags,
   });
+
+  /// 反应式订阅本书全部 Annotation。
+  /// BookNote 不存在时立即 emit 空 list（让 UI 显示空状态而非 loading）。
+  Stream<List<Annotation>> watchAnnotations(String bookId);
 }

@@ -109,6 +109,18 @@ class LocalNotesRepository implements NotesRepository {
     return <Annotation>[];
   }
 
+  @override
+  Stream<List<Annotation>> watchAnnotations(String bookId) async* {
+    final noteRow = await _notesDao.getByBookId(bookId);
+    if (noteRow == null) {
+      yield const <Annotation>[];
+      return;
+    }
+    yield* _annotationsDao
+        .watchByBookNoteId(noteRow.id)
+        .map((rows) => rows.map(_toAnnotationModel).toList());
+  }
+
   // ====== 私有 helpers ======
 
   Annotation _toAnnotationModel(db.Annotation row) {
