@@ -18,5 +18,6 @@ dependencies:
     path: ../reader_engine
 
 dev_dependencies:
+  archive: ^3.6.0
   flutter_test:
     sdk: flutter

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:epubx/epubx.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
@@ -29,7 +30,9 @@ class EpubCoverExtractor {
       final file = File(p.join(coversDir.path, '$bookId.png'));
       await file.writeAsBytes(pngBytes);
       return file.path;
-    } catch (_) {
+    } catch (e, st) {
+      // 保留 null 返回以让调用方降级，但记录诊断信息以便排查
+      debugPrint('EpubCoverExtractor.extract failed for $bookId: $e\n$st');
       return null;
     }
   }
