@@ -1,7 +1,9 @@
+import 'package:epubx/epubx.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/renderer.dart';
+import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 void main() {
@@ -54,5 +56,38 @@ void main() {
       const PdfPageLocator(page: 1, offsetX: 0, offsetY: 0),
     );
     await renderer.dispose();
+  });
+
+  test('currentHighlightedHtml applies injector output', () {
+    final renderer = EpubxRenderer();
+    final chapter = EpubChapter()
+      ..Title = 'C1'
+      ..HtmlContent = '<p>hello world</p>';
+    final book = EpubBook()..Chapters = [chapter];
+    renderer.bookForTesting = book;
+    // ignore: invalid_use_of_protected_member
+    expect(renderer.currentHighlightedHtml(),
+        '<p>hello world</p>'); // no highlights
+    renderer.injectHighlightsSync(const [
+      HighlightRange(0, 5, 'rgba(255, 235, 59, 0.4)'),
+    ]);
+    expect(renderer.currentHighlightedHtml(),
+        contains('<span style="background-color: rgba(255, 235, 59, 0.4)">'));
+  });
+
+  test('currentHighlightedHtml with multiple highlights', () {
+    final renderer = EpubxRenderer();
+    final chapter = EpubChapter()
+      ..Title = 'C1'
+      ..HtmlContent = '<p>abc def</p>';
+    final book = EpubBook()..Chapters = [chapter];
+    renderer.bookForTesting = book;
+    renderer.injectHighlightsSync(const [
+      HighlightRange(0, 3, 'rgba(255, 235, 59, 0.4)'),
+      HighlightRange(4, 7, 'rgba(33, 150, 243, 0.4)'),
+    ]);
+    final html = renderer.currentHighlightedHtml();
+    expect(html, contains('rgba(255, 235, 59'));
+    expect(html, contains('rgba(33, 150, 243'));
   });
 }

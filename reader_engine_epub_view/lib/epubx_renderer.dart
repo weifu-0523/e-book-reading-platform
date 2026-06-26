@@ -8,10 +8,13 @@ import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
+import 'package:reader_engine/rendering/highlight_range.dart';
+import 'package:reader_engine/rendering/highlight_selection.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
 import 'cfi_codec.dart';
+import 'html_highlight_injector.dart';
 import 'paginator.dart';
 import 'typography_css.dart';
 
@@ -25,6 +28,8 @@ class EpubxRenderer implements EpubRenderer {
 
   final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
+  final StreamController<HighlightSelection> _selectionController =
+      StreamController<HighlightSelection>.broadcast();
   final ScrollController _scrollController = ScrollController();
   final PageController _pageController = PageController();
   final Paginator _paginator = Paginator();
@@ -33,6 +38,7 @@ class EpubxRenderer implements EpubRenderer {
   int _currentChapterIndex = 0;
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
   PaginationMode _paginationMode = PaginationMode.paged;
+  final List<HighlightRange> _allHighlights = [];
 
   ReaderEngineState _state = const ReaderEngineUnloaded();
 
@@ -239,10 +245,40 @@ class EpubxRenderer implements EpubRenderer {
   }
 
   @override
+  Future<void> injectHighlights(List<HighlightRange> highlights) async {
+    _allHighlights
+      ..clear()
+      ..addAll(highlights);
+  }
+
+  /// 仅测试用：同步版本，避免 async setup。
+  @visibleForTesting
+  void injectHighlightsSync(List<HighlightRange> highlights) {
+    _allHighlights
+      ..clear()
+      ..addAll(highlights);
+  }
+
+  /// 当前章节经过高亮注入后的 HTML（测试入口）。
+  ///
+  /// M3.2 简化：每章独立 0-based plain-text offset（不做跨章累计，spec §11 留 M3.x）。
+  @visibleForTesting
+  String currentHighlightedHtml() {
+    final chapters = flatChapters;
+    if (chapters.isEmpty) return '';
+    final rawHtml = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final inChapter = _allHighlights.toList();
+    return HtmlHighlightInjector.inject(rawHtml, inChapter);
+  }
+
+  @override
+  Stream<HighlightSelection> get selection$ => _selectionController.stream;
+
+  @override
   Widget build(BuildContext context) {
     final chapters = flatChapters;
     if (chapters.isEmpty) return const SizedBox.shrink();
-    final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final html = currentHighlightedHtml();
     final style = TypographyCss.textStyleFromSettings(_typography);
     final (fg, bg) = TypographyCss.themeColors(_typography.theme);
     final margin = _marginValue(_typography.pageMargin);
