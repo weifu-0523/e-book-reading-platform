@@ -16,6 +16,8 @@ void main() {
     ValueChanged<String>? onSearch,
     ValueChanged<String>? onTagFilterToggled,
     VoidCallback? onImportTap,
+    VoidCallback? onEnterSearch,
+    VoidCallback? onExitSearch,
   }) {
     return LibraryAppBar(
       viewMode: viewMode,
@@ -28,6 +30,8 @@ void main() {
       onSearch: onSearch ?? (_) {},
       onTagFilterToggled: onTagFilterToggled ?? (_) {},
       onImportTap: onImportTap ?? () {},
+      onEnterSearch: onEnterSearch ?? () {},
+      onExitSearch: onExitSearch ?? () {},
     );
   }
 
@@ -81,6 +85,34 @@ void main() {
     ));
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('智阅'), findsNothing);
+  });
+
+  testWidgets('tapping search icon fires onEnterSearch', (tester) async {
+    var entered = false;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        appBar: buildAppBar(onEnterSearch: () => entered = true),
+      ),
+    ));
+    await tester.tap(find.byIcon(Icons.search));
+    expect(entered, isTrue);
+  });
+
+  testWidgets('searching mode hides search icon + shows back arrow',
+      (tester) async {
+    var exited = false;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        appBar: buildAppBar(
+          searching: true,
+          onExitSearch: () => exited = true,
+        ),
+      ),
+    ));
+    expect(find.byIcon(Icons.search), findsNothing);
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    expect(exited, isTrue);
   });
 
   testWidgets('tag filter icon appears only when allTags non-empty',

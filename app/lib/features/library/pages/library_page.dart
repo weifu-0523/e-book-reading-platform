@@ -35,14 +35,23 @@ class LibraryPage extends ConsumerStatefulWidget {
 }
 
 class _LibraryPageState extends ConsumerState<LibraryPage> {
-  // 搜索态当前未启用（AppBar 的搜索按钮 onToggle 留待后续接入）；
-  // 保留 controller 以便后续无重建切换。
+  bool _searching = false;
   final _searchController = TextEditingController();
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _enterSearch() {
+    setState(() => _searching = true);
+  }
+
+  void _exitSearch() {
+    setState(() => _searching = false);
+    _searchController.clear();
+    ref.read(libraryControllerProvider.notifier).setSearchQuery('');
   }
 
   @override
@@ -56,13 +65,15 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         sortBy: state.sortBy,
         allTags: state.allTags,
         activeTagFilters: state.activeTagFilters,
-        searching: false,
+        searching: _searching,
         searchController: _searchController,
         onViewModeChanged: controller.setViewMode,
         onSortChanged: controller.setSortBy,
         onSearch: controller.setSearchQuery,
         onTagFilterToggled: controller.toggleTagFilter,
         onImportTap: _importBook,
+        onEnterSearch: _enterSearch,
+        onExitSearch: _exitSearch,
       ),
       body: _buildBody(context, state),
       bottomNavigationBar: state.mode == LibraryMode.selecting

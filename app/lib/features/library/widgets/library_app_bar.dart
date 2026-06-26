@@ -16,6 +16,8 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
   final ValueChanged<String> onSearch;
   final ValueChanged<String> onTagFilterToggled;
   final VoidCallback onImportTap;
+  final VoidCallback onEnterSearch;
+  final VoidCallback onExitSearch;
   final bool searching;
   final TextEditingController? searchController;
 
@@ -30,6 +32,8 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onSearch,
     required this.onTagFilterToggled,
     required this.onImportTap,
+    required this.onEnterSearch,
+    required this.onExitSearch,
     this.searching = false,
     this.searchController,
   });
@@ -40,6 +44,13 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
+      leading: searching
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: onExitSearch,
+              tooltip: '退出搜索',
+            )
+          : null,
       title: searching
           ? TextField(
               controller: searchController,
@@ -52,11 +63,12 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
             )
           : const Text('智阅'),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: () {},
-          tooltip: '搜索',
-        ),
+        if (!searching)
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: onEnterSearch,
+            tooltip: '搜索',
+          ),
         if (allTags.isNotEmpty)
           IconButton(
             icon: const Icon(Icons.label_outline),
