@@ -47,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration {
@@ -62,6 +62,9 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
           'CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag)',
         );
+        // schema v4 起带 annotations_fts 全文检索虚表 + 同步触发器。
+        // fresh install 表为空，无需回填，触发器立即生效。
+        await _createFts5(m);
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
@@ -79,10 +82,52 @@ class AppDatabase extends _$AppDatabase {
             'CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag)',
           );
         }
+        if (from < 4) {
+          // schema v4：annotations FTS5 全文检索 + INSERT/DELETE/UPDATE 同步触发器
+          // + 已有数据回填（onUpgrade 时 annotations 表可能已有数据）
+          await _createFts5(m);
+          await m.database.customStatement('''
+            INSERT INTO annotations_fts(rowid, quote, note, tags)
+            SELECT rowid, quote, note, tags FROM annotations
+          ''');
+        }
       },
       beforeOpen: (details) async {
         await customStatement('PRAGMA foreign_keys = ON;');
       },
     );
+  }
+
+  /// 创建 annotations 的 FTS5 外部内容虚表 + 3 个同步触发器。
+  ///
+  /// 虚表通过 content='annotations' + content_rowid='rowid' 关联到原表，
+  /// 不重复存储原数据。'delete' 特殊语句是 FTS5 的删除语法（不是 SQL DELETE）。
+  /// 回填由调用方在 onUpgrade 时执行；fresh install 表空无需回填。
+  Future<void> _createFts5(Migrator m) async {
+    await m.database.customStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS annotations_fts USING fts5(
+        quote, note, tags, content='annotations', content_rowid='rowid'
+      )
+    ''');
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS annotations_ai AFTER INSERT ON annotations BEGIN
+        INSERT INTO annotations_fts(rowid, quote, note, tags)
+        VALUES (new.rowid, new.quote, new.note, new.tags);
+      END
+    ''');
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS annotations_ad AFTER DELETE ON annotations BEGIN
+        INSERT INTO annotations_fts(annotations_fts, rowid, quote, note, tags)
+        VALUES ('delete', old.rowid, old.quote, old.note, old.tags);
+      END
+    ''');
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS annotations_au AFTER UPDATE ON annotations BEGIN
+        INSERT INTO annotations_fts(annotations_fts, rowid, quote, note, tags)
+        VALUES ('delete', old.rowid, old.quote, old.note, old.tags);
+        INSERT INTO annotations_fts(rowid, quote, note, tags)
+        VALUES (new.rowid, new.quote, new.note, new.tags);
+      END
+    ''');
   }
 }
