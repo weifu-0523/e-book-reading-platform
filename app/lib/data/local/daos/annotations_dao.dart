@@ -24,6 +24,23 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
     return query.watch();
   }
 
+  /// 在 quote/note/tags 上做子串搜索，返回命中的全部 Annotation。
+  ///
+  /// 实现取子串 LIKE 而非 FTS5 MATCH：annotations_fts 虚表使用 FTS5 默认的
+  /// unicode61 分词器，CJK 文本无词边界会被当作单个 token，导致「活着」这类
+  /// 短中文查询无法命中「人是为了活着本身而活着」——对本应用以中文为主的高亮
+  /// 文本，子串匹配才是用户预期。FTS5 表保留供未来按相关度排序/英文全文检索使用。
+  Future<List<Annotation>> searchFts(String ftsQuery) async {
+    if (ftsQuery.isEmpty) return const [];
+    final pattern = '%$ftsQuery%';
+    return (select(annotations)
+          ..where((t) =>
+              t.quote.like(pattern) |
+              t.note.like(pattern) |
+              t.tags.like(pattern)))
+        .get();
+  }
+
   Future<int> insertOne({
     required String id,
     required String bookNoteId,

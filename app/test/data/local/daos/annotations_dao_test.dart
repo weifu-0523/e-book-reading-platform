@@ -162,4 +162,58 @@ void main() {
     expect(emitted.last, isEmpty);
     await sub.cancel();
   });
+
+  test('searchFts matches annotations via FTS5', () async {
+    await dao.insertOne(
+      id: 'a1',
+      bookNoteId: 'bn1',
+      locatorJson: '{"type":"epubCfi"}',
+      quote: '人是为了活着本身而活着',
+      note: '关于生命意义的笔记',
+      color: 'yellow',
+      tagsJson: '["哲学","人生"]',
+      source: 'manual',
+    );
+    await dao.insertOne(
+      id: 'a2',
+      bookNoteId: 'bn1',
+      locatorJson: '{"type":"epubCfi"}',
+      quote: '另外一段无关文本',
+      note: null,
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+    );
+
+    // MATCH quote
+    final byQuote = await dao.searchFts('活着');
+    expect(byQuote.map((a) => a.id).toList(), contains('a1'));
+    expect(byQuote.any((a) => a.id == 'a2'), isFalse);
+
+    // MATCH note
+    final byNote = await dao.searchFts('笔记');
+    expect(byNote.map((a) => a.id).toList(), contains('a1'));
+
+    // MATCH tags (stored as JSON array string)
+    final byTag = await dao.searchFts('哲学');
+    expect(byTag.map((a) => a.id).toList(), contains('a1'));
+
+    // No match
+    final noMatch = await dao.searchFts('不存在的内容xyz');
+    expect(noMatch, isEmpty);
+  });
+
+  test('searchFts handles empty query gracefully', () async {
+    await dao.insertOne(
+      id: 'a1',
+      bookNoteId: 'bn1',
+      locatorJson: '{}',
+      quote: '任意',
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+    );
+    // Empty query should return empty list (no MATCH syntax error)
+    expect(await dao.searchFts(''), isEmpty);
+  });
 }
