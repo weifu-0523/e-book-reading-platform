@@ -4,6 +4,7 @@ import 'package:drift/native.dart';
 import 'connections/database_connection.dart';
 import 'daos/annotations_dao.dart';
 import 'daos/book_notes_dao.dart';
+import 'daos/book_tags_dao.dart';
 import 'daos/books_dao.dart';
 import 'daos/reading_progress_dao.dart';
 import 'daos/settings_dao.dart';
@@ -32,6 +33,7 @@ part 'database.g.dart';
   ],
   daos: [
     BooksDao,
+    BookTagsDao,
     BookNotesDao,
     AnnotationsDao,
     ReadingProgressDao,
