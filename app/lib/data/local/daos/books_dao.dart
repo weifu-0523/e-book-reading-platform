@@ -91,12 +91,9 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
         .write(BooksCompanion(sortOrder: Value(sortOrder)));
   }
 
-  /// 批量删除多本书，单事务保证原子性。M3.1 书架多选删除使用。
-  Future<void> deleteBooks(Set<String> ids) async {
-    await db.transaction(() async {
-      for (final id in ids) {
-        await (delete(books)..where((t) => t.id.equals(id))).go();
-      }
-    });
+  /// 批量删除多本书。M3.1 书架多选删除使用。
+  /// 单条 SQL `DELETE ... WHERE id IN (...)` 自然原子，无需显式事务。
+  Future<int> deleteBooks(Set<String> ids) {
+    return (delete(books)..where((t) => t.id.isIn(ids.toList()))).go();
   }
 }

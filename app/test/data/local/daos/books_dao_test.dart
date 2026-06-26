@@ -112,7 +112,21 @@ void main() {
     expect((await dao.getById('b2'))?.sortOrder, isNull);
   });
 
-  test('deleteBooks removes multiple in one transaction', () async {
+  test('insertOne with sortOrder persists', () async {
+    await dao.insertOne(
+      id: 'b1',
+      title: '书1',
+      format: 'epub',
+      filePath: '/1.epub',
+      fileHash: 'h1',
+      fileSizeBytes: 100,
+      sortOrder: 7,
+    );
+    final row = await dao.getById('b1');
+    expect(row?.sortOrder, 7);
+  });
+
+  test('deleteBooks removes all matching ids in one statement', () async {
     for (var i = 0; i < 5; i++) {
       await dao.upsert(
         id: 'b$i',
