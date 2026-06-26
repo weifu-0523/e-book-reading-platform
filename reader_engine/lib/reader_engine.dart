@@ -6,6 +6,8 @@ export 'core/typography_settings.dart';
 export 'core/book_ref.dart';
 export 'rendering/pagination_model.dart';
 export 'rendering/renderer.dart';
+export 'rendering/highlight_range.dart';
+export 'rendering/highlight_selection.dart';
 export 'engine/reader_engine_state.dart';
 export 'engine/reader_engine.dart';
 export 'navigation/toc.dart';

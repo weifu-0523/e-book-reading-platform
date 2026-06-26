@@ -1,25 +1,9 @@
 import 'plain_text_utils.dart';
-import 'package:meta/meta.dart';
-
-/// 高亮区间数据（plain text 坐标）。
-/// 注：本类在 T5 会移到 reader_engine 包，本任务内本地定义。
-@immutable
-class HighlightRange {
-  final int startOffset;
-  final int endOffset;
-  final String colorRgba;
-  final bool hasNote;
-  const HighlightRange(
-    this.startOffset,
-    this.endOffset,
-    this.colorRgba, {
-    this.hasNote = false,
-  });
-}
+import 'package:reader_engine/rendering/highlight_range.dart';
 
 /// 把高亮区间注入 HTML。
 ///
-/// 1. 用 [PlainTextUtils] 把 html → plainText + offsetMap
+/// 1. 用 [PlainUtils] 把 html → plainText + offsetMap
 /// 2. 对每个 HighlightRange，反查 html start/end offset
 /// 3. 在 html 对应位置插 `<span style="...">...</span>`
 /// 4. 多个高亮重叠时：按 startOffset 升序处理，已注入区间内的后续高亮被截断

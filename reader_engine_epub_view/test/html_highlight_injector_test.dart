@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine_epub_view/html_highlight_injector.dart';
 
 HighlightRange _hl(int start, int end,
