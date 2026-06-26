@@ -15,6 +15,10 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  /// 拉取全表 annotation。供 Repository 在用户已选定 color/tags 但无文本 query
+  /// 时做内存过滤——单用户笔记规模通常 < 1 万，无需复杂 WHERE 拼接。
+  Future<List<Annotation>> getAll() => select(annotations).get();
+
   /// 反应式订阅：按 bookNoteId 观察该 note 的全部 annotation，
   /// 按 updatedAt 倒序（最近更新的在前）。
   Stream<List<Annotation>> watchByBookNoteId(String bookNoteId) {

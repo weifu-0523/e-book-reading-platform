@@ -89,11 +89,18 @@ class FakeNotesRepository implements NotesRepository {
   Future<List<Annotation>> searchAnnotations(
     String query, {
     List<String>? tags,
+    HighlightColor? color,
   }) async {
-    // T12 会接入 FTS5，此处简化为子串匹配。
     final all = _annotationsByNote.values.expand((l) => l).toList();
-    var filtered = all.where((a) =>
-        a.quote.contains(query) || (a.note?.contains(query) ?? false)).toList();
+    var filtered = query.isEmpty
+        ? all
+        : all
+            .where((a) =>
+                a.quote.contains(query) || (a.note?.contains(query) ?? false))
+            .toList();
+    if (color != null) {
+      filtered = filtered.where((a) => a.color == color).toList();
+    }
     if (tags != null && tags.isNotEmpty) {
       filtered = filtered.where((a) => tags.every(a.tags.contains)).toList();
     }

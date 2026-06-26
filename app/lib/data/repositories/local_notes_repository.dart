@@ -104,9 +104,28 @@ class LocalNotesRepository implements NotesRepository {
   Future<List<Annotation>> searchAnnotations(
     String query, {
     List<String>? tags,
+    HighlightColor? color,
   }) async {
-    // M1 简单实现：FTS5 全文搜索留待 M6（笔记库 UI 阶段）实现。
-    return <Annotation>[];
+    if (query.isEmpty && color == null && (tags == null || tags.isEmpty)) {
+      return const <Annotation>[];
+    }
+    // 策略：query 非空时走 searchFts（子串 LIKE）；query 空但需要按 color/tags
+    // 过滤时拉全表后内存过滤。数据规模（单用户笔记总数通常 < 1 万）允许这么做，
+    // 避免在 DAO 拼接复杂 WHERE。
+    final List<db.Annotation> rows;
+    if (query.isNotEmpty) {
+      rows = await _annotationsDao.searchFts(query);
+    } else {
+      rows = await _annotationsDao.getAll();
+    }
+    var models = rows.map(_toAnnotationModel).toList();
+    if (color != null) {
+      models = models.where((a) => a.color == color).toList();
+    }
+    if (tags != null && tags.isNotEmpty) {
+      models = models.where((a) => tags.every(a.tags.contains)).toList();
+    }
+    return models;
   }
 
   @override

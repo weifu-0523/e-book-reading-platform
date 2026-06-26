@@ -16,6 +16,7 @@ abstract class NotesRepository {
   Future<List<Annotation>> searchAnnotations(
     String query, {
     List<String>? tags,
+    HighlightColor? color,
   });
 
   /// 反应式订阅本书全部 Annotation。
