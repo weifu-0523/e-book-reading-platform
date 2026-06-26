@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine_epub_view/reader_engine_epub_view.dart';
 
+import '../data/local/daos/book_tags_dao.dart';
 import '../data/local/database.dart';
 import '../data/local/file_storage.dart';
 import '../data/repositories/local_book_repository.dart';
@@ -11,6 +12,8 @@ import '../data/repositories/book_repository.dart';
 import '../data/repositories/notes_repository.dart';
 import '../data/repositories/reading_progress_repository.dart';
 import '../data/repositories/settings_repository.dart';
+import '../features/library/models/library_state.dart';
+import '../features/library/providers/library_controller.dart';
 import '../services/book_import_service.dart';
 
 /// 全局单例 AppDatabase。M1 阶段无同步包装。
@@ -55,5 +58,17 @@ final bookImportServiceProvider =
     bookRepository: ref.watch(bookRepositoryProvider),
     fileStorage: storage,
     coverExtractor: coverExtractor,
+  );
+});
+
+/// Library 页面的中央状态机：订阅 books stream，管理选择模式与筛选，
+/// 并持久化 viewMode/sortBy 到设置存储。
+final libraryControllerProvider =
+    StateNotifierProvider<LibraryController, LibraryState>((ref) {
+  return LibraryController(
+    bookRepository: ref.watch(bookRepositoryProvider),
+    bookTagsLookup:
+        BookTagsDaoLookupAdapter(BookTagsDao(ref.watch(appDatabaseProvider))),
+    settingsRepository: ref.watch(settingsRepositoryProvider),
   );
 });
