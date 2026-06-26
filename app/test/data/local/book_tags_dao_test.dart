@@ -68,10 +68,13 @@ void main() {
     expectLater(
       stream,
       emitsInOrder([
+        isEmpty,
         ['t'],
         ['t', 'u'],
       ]),
     );
+    // Allow the stream subscription to settle and capture the initial empty state.
+    await Future<void>.delayed(const Duration(milliseconds: 50));
     await dao.addTag(bookId: 'b1', tag: 't');
     await dao.addTag(bookId: 'b1', tag: 'u');
     await Future<void>.delayed(const Duration(milliseconds: 50));
