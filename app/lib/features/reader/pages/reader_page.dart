@@ -1,21 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 
 import '../../../core/providers.dart';
+import '../../../data/models/annotation.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
 import '../services/progress_persister.dart';
+import '../widgets/highlight_color_picker_dialog.dart';
+import '../widgets/highlight_selection_controls.dart';
+import '../widgets/note_editor_sheet.dart';
 import '../widgets/notes_drawer.dart';
 import '../widgets/reader_bottom_bar.dart';
 import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
 import '../widgets/toc_drawer.dart';
 import '../widgets/typography_panel.dart';
+
+/// 把用户选中的纯文本 + 当前章节索引解析为 [EpubRangeLocator]。
+///
+/// 简化实现：startOffset/endOffset 用 0..text.length 占位（并非字符流真实位置）。
+/// reader_engine 暂未暴露 currentChapterPlainText API，M3.3 会接入精确 offset
+/// 解析。当前阶段 quote 字段足以支撑高亮持久化与搜索（FTS5 索引 quote）。
+EpubRangeLocator? resolveSelectionLocator(String text, int chapterIdx) {
+  if (text.isEmpty) return null;
+  return EpubRangeLocator(
+    chapterIndex: chapterIdx,
+    startOffset: 0,
+    endOffset: text.length,
+    quote: text,
+  );
+}
 
 /// 阅读器主页面。
 ///
@@ -101,9 +121,9 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   ReaderEngine get engine => widget.engine;
   ReaderEngineState _engineState;
 
-  // 当前选区。T21 会读取它来弹出高亮/笔记 toolbar；T20 只存储。
-  // ignore: unused_field
+  // 当前选区。toolbar overlay 与高亮/笔记/复制 handlers 共用。
   SelectedContent? _selection;
+  Locator? _currentLocation;
 
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
@@ -113,6 +133,9 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     _engineState = engine.state;
     engine.state$.listen((s) {
       if (mounted) setState(() => _engineState = s);
+    });
+    engine.currentLocation$.listen((loc) {
+      if (mounted) _currentLocation = loc;
     });
   }
 
@@ -166,6 +189,20 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
                     .openTypographyPanel(),
               ),
             ),
+            // 选区 toolbar overlay。仅在有非空 selection 时显示。
+            if (_selection != null && _selection!.plainText.isNotEmpty)
+              Positioned(
+                top: 80,
+                left: 16,
+                right: 16,
+                child: Center(
+                  child: HighlightSelectionControls(
+                    onHighlight: _onToolbarHighlight,
+                    onNote: _onToolbarNote,
+                    onCopy: _onCopySelection,
+                  ),
+                ),
+              ),
             // 底栏始终可见，显示阅读进度。
             Positioned(
               left: 0,
@@ -199,11 +236,86 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   }
 
   Future<void> _onAnnotationTap(String id) async {
-    // T21：定位 annotation → gotoLocator → 关闭 endDrawer。
+    final notesState = ref.read(notesControllerProvider).valueOrNull;
+    final ann = notesState?.annotations
+        .cast<Annotation?>()
+        .firstWhere((a) => a?.id == id, orElse: () => null);
+    if (ann == null) return;
+    await engine.gotoLocator(ann.locator);
+    if (!mounted) return;
+    await Navigator.of(context).maybePop(); // 关闭 endDrawer
   }
 
   Future<void> _onAnnotationLongPress(String id) async {
-    // T21：打开 NoteEditorSheet。
+    final notesState = ref.read(notesControllerProvider).valueOrNull;
+    final ann = notesState?.annotations
+        .cast<Annotation?>()
+        .firstWhere((a) => a?.id == id, orElse: () => null);
+    if (ann == null || !mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: NoteEditorSheet(
+          annotation: ann,
+          suggestions: const [],
+          onSave: (note, color) async {
+            await ref.read(notesControllerProvider.notifier).updateAnnotation(
+                  ann.copyWith(note: note, color: color),
+                );
+          },
+          onDelete: () async {
+            await ref
+                .read(notesControllerProvider.notifier)
+                .deleteAnnotation(ann.id);
+          },
+        ),
+      ),
+    );
+  }
+
+  int _currentChapterIndex() {
+    final loc = _currentLocation;
+    if (loc is EpubCfiLocator) return loc.chapterIndex;
+    return 0;
+  }
+
+  /// toolbar 「高亮」：选颜色 → addHighlight → 清选区。
+  Future<void> _onToolbarHighlight() async {
+    final sel = _selection;
+    if (sel == null) return;
+    final color = await showDialog<HighlightColor>(
+      context: context,
+      builder: (_) => const HighlightColorPickerDialog(),
+    );
+    if (color == null || !mounted) return;
+    final text = sel.plainText;
+    final locator = resolveSelectionLocator(text, _currentChapterIndex());
+    if (locator == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法定位选区，请重试')),
+      );
+      return;
+    }
+    await ref
+        .read(notesControllerProvider.notifier)
+        .addHighlight(locator, color, text);
+    if (mounted) setState(() => _selection = null);
+  }
+
+  /// toolbar 「笔记」：与「高亮」共用 flow；颜色选好后写入高亮，
+  /// 用户在 drawer 长按该条目再编辑 note。M3.2 简化，避免在 toolbar
+  /// 里串行弹出 color picker + NoteEditorSheet 造成 UX 摩擦。
+  Future<void> _onToolbarNote() => _onToolbarHighlight();
+
+  void _onCopySelection() {
+    final sel = _selection;
+    if (sel == null) return;
+    Clipboard.setData(ClipboardData(text: sel.plainText));
+    if (mounted) setState(() => _selection = null);
   }
 
   Widget _buildTocDrawer(BuildContext context) {
