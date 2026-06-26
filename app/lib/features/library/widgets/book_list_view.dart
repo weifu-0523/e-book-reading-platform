@@ -48,7 +48,9 @@ class BookListView extends StatelessWidget {
         onReorder: (oldIdx, newIdx) {
           final ordered = List<Book>.of(books);
           final moved = ordered.removeAt(oldIdx);
-          ordered.insert(newIdx > oldIdx ? newIdx - 1 : newIdx, moved);
+          // reorderables 的 newIdx 已经是目标 slot，无需 -1 调整
+          // （不同于 Flutter 内置 ReorderableListView 的语义）
+          ordered.insert(newIdx, moved);
           onReorder(ordered.map((b) => b.id).toList());
         },
         children: tiles,

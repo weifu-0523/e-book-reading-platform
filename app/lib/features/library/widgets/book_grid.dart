@@ -13,6 +13,11 @@ typedef CoverResolver = File? Function(String bookId);
 /// [manualSortEnabled] 为 true 时使用 [ReorderableWrap] 支持拖拽排序；
 /// 否则用普通 [GridView.builder]。
 class BookGrid extends StatelessWidget {
+  /// 网格单元的宽度与高度，两分支共用，避免 manualSortEnabled 切换时
+  /// 出现可见的尺寸跳变。
+  static const double _cellWidth = 160;
+  static const double _cellHeight = 291; // ≈ 160 / 0.55
+
   final List<Book> books;
   final CoverResolver coverResolver;
   final ValueChanged<String> onTap;
@@ -44,13 +49,16 @@ class BookGrid extends StatelessWidget {
           onReorder: (oldIdx, newIdx) {
             final ordered = List<Book>.of(books);
             final moved = ordered.removeAt(oldIdx);
-            ordered.insert(newIdx > oldIdx ? newIdx - 1 : newIdx, moved);
+            // reorderables 的 newIdx 已经是目标 slot，无需 -1 调整
+            // （不同于 Flutter 内置 ReorderableListView 的语义）
+            ordered.insert(newIdx, moved);
             onReorder(ordered.map((b) => b.id).toList());
           },
           children: books
               .map((b) => SizedBox(
-                    width: 160,
-                    height: 240,
+                    key: ValueKey('grid-${b.id}'),
+                    width: _cellWidth,
+                    height: _cellHeight,
                     child: _card(b),
                   ))
               .toList(),
@@ -59,9 +67,9 @@ class BookGrid extends StatelessWidget {
     }
     return GridView.builder(
       padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 160,
-        childAspectRatio: 0.55,
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: _cellWidth,
+        mainAxisExtent: _cellHeight,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
