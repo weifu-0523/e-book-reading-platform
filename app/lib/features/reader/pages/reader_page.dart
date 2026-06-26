@@ -245,8 +245,7 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     return notesAsync.when(
       data: (s) => NotesDrawer(
         annotations: s.annotations,
-        // chapterTitles 暂留空 — M3.3 接入章节元数据后填充。
-        chapterTitles: const {},
+        chapterTitles: _chapterTitlesCache,
         onTap: (id) => _onAnnotationTap(id),
         onLongPress: (id) => _onAnnotationLongPress(id),
         onClose: () => Navigator.of(context).maybePop(),
