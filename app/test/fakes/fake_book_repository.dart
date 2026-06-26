@@ -11,6 +11,9 @@ import 'package:zhiyue/features/library/models/sort_by.dart';
 class FakeBookRepository implements BookRepository {
   final List<Book> _books = [];
   final Set<String> deletedIds = {};
+  /// 书籍 id → 该书拥有的标签集合。默认空，测试通过 [setTagsForBook] 填充。
+  /// 用于在 watchAll/getAll 中按 tagFilters 过滤，对齐 LocalBookRepository._filterByTags。
+  final Map<String, Set<String>> _tagsByBook = {};
   final StreamController<List<Book>> _controller =
       StreamController<List<Book>>.broadcast();
 
@@ -21,14 +24,20 @@ class FakeBookRepository implements BookRepository {
     _controller.add(List.unmodifiable(_books));
   }
 
+  /// 测试辅助：为指定书籍 id 设置标签集合，使 tagFilters 过滤逻辑生效。
+  void setTagsForBook(String bookId, Set<String> tags) {
+    _tagsByBook[bookId] = Set<String>.of(tags);
+  }
+
   @override
   Future<List<Book>> getAll({
     SortBy sortBy = SortBy.addedDesc,
     String? searchQuery,
     Set<String>? tagFilters,
   }) async {
-    final filtered = _applySearch(_books, searchQuery);
-    final sorted = _applySort(filtered, sortBy);
+    var books = _applySearch(_books, searchQuery);
+    books = _applyTagFilters(books, tagFilters);
+    final sorted = _applySort(books, sortBy);
     return List.unmodifiable(sorted);
   }
 
@@ -39,19 +48,30 @@ class FakeBookRepository implements BookRepository {
     Set<String>? tagFilters,
   }) {
     // 为每个新订阅者立即回放当前快照，然后转发后续事件。
-    // 与 LocalBookRepository 对齐：按 searchQuery 过滤 + sortBy 排序后再发送。
+    // 与 LocalBookRepository 对齐：按 searchQuery 过滤 + tagFilters 过滤 + sortBy 排序后再发送。
     final controller = StreamController<List<Book>>();
     controller.add(List.unmodifiable(
-        _applySort(_applySearch(_books, searchQuery), sortBy)));
+        _applySort(_applyTagFilters(_applySearch(_books, searchQuery), tagFilters), sortBy)));
     final sub = _controller.stream.listen((books) {
-      controller.add(
-          List.unmodifiable(_applySort(_applySearch(books, searchQuery), sortBy)));
+      controller.add(List.unmodifiable(
+          _applySort(_applyTagFilters(_applySearch(books, searchQuery), tagFilters), sortBy)));
     });
     controller.onCancel = () {
       sub.cancel();
       // 不 close，因为 controller 是一次性的；订阅关闭即清理。
     };
     return controller.stream;
+  }
+
+  /// 应用 tagFilters：保留拥有 tagFilters 中任意标签的书籍（OR 语义）。
+  /// 注意：LocalBookRepository 实际使用 AND 语义（交集），但本 fake 仅用于
+  /// controller 层的端到端测试，OR 语义已足以覆盖 toggleTagFilter 流程；
+  /// 且任务规范 T21 明确要求采用 OR 语义实现。
+  List<Book> _applyTagFilters(List<Book> books, Set<String>? tagFilters) {
+    if (tagFilters == null || tagFilters.isEmpty) return books;
+    return books
+        .where((b) => _tagsByBook[b.id]?.any(tagFilters.contains) ?? false)
+        .toList();
   }
 
   /// 与 LocalBookRepository._applySearch 对齐：标题或作者做大小写不敏感子串匹配。

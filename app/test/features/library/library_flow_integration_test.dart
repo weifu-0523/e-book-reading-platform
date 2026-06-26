@@ -16,10 +16,9 @@ import '../../fakes/fake_settings_repository.dart';
 /// 覆盖场景：
 /// 1. 空库：显示「书库为空」空态
 /// 2. 加载：emit 几本书后，书名出现在网格中
-/// 3. 搜索：点击搜索图标 → 输入关键字 → 搜索框回显
-///    （注：当前 [LibraryController] 只把 searchQuery 存到 state，未对 books
-///    做过滤；真实过滤需在仓库层 watchAll(searchQuery:) 完成，T19.5 仅做了
-///    搜索 UI 接入。此处只断言可观察的搜索 UI 行为，不断言过滤结果。）
+/// 3. 搜索：点击搜索图标 → 输入关键字 → 搜索框回显 + 书卡按关键字过滤
+///    （searchQuery 通过 controller 的 debounce + _resubscribe 传递到仓库层
+///    watchAll(searchQuery:)，并由 FakeBookRepository 应用过滤。）
 /// 4. 跳转阅读器：跳过 — 真实 ReaderEngine 需要 epub 文件 fixture，widget
 ///    测试无法满足，会在集成测试环境抛文件不存在异常。
 /// 5. 选择模式：长按书卡 → 底部 BatchSelectionBar 显示「已选 N 本」
@@ -111,15 +110,18 @@ void main() {
   });
 
   testWidgets(
-      'search: tapping search icon reveals text field and accepts input',
+      'search: tapping search icon reveals text field and filters books',
       (tester) async {
     bookRepo.emitBooks(sampleBooks());
     await tester.pumpWidget(buildApp());
     await tester.pumpAndSettle();
 
-    // 初始：AppBar 标题「智阅」，无 TextField
+    // 初始：AppBar 标题「智阅」，无 TextField；三本书都在网格中
     expect(find.text('智阅'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
+    expect(find.text('三体'), findsOneWidget);
+    expect(find.text('活着'), findsOneWidget);
+    expect(find.text('人类简史'), findsOneWidget);
 
     // 点击搜索图标进入搜索态
     await tester.tap(find.byTooltip('搜索'));
@@ -132,24 +134,33 @@ void main() {
     // 输入查询关键字，回显在 TextField 的 EditableText 中
     await tester.enterText(find.byType(TextField), '三体');
     await tester.pumpAndSettle();
-    // 搜索框内的 EditableText 持有输入文本（书卡中的同名 Text 仍存在，
-    // 因为当前实现不做过滤；这里只断言输入文本成功落进搜索框）
+    // 搜索框内的 EditableText 持有输入文本
     expect(find.byType(EditableText), findsOneWidget);
     expect(
       tester.widget<EditableText>(find.byType(EditableText)).controller.text,
       '三体',
     );
 
-    // 等待 debounce 结束，让 controller 把 query 写入 state
+    // 等待 debounce 结束 + pumpAndSettle 让 watchAll 重订阅 + stream emit 流回 UI
     await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+
+    // 关键断言：books 已按 searchQuery 过滤
+    // 不匹配的「活着」「人类简史」书卡被剔除（findsNothing）
+    expect(find.text('活着'), findsNothing);
+    expect(find.text('人类简史'), findsNothing);
+    // 「三体」匹配项：1 个书卡 Text + 1 个搜索框 EditableText（echo）= 2
+    expect(find.text('三体'), findsNWidgets(2));
 
     // 退出搜索：点击返回箭头，恢复 AppBar 标题
     await tester.tap(find.byTooltip('退出搜索'));
     await tester.pumpAndSettle();
     expect(find.text('智阅'), findsOneWidget);
 
-    // 注：当前实现下 books 不会按 searchQuery 过滤（仓库层未接线）。
-    // 真正的「过滤结果」断言留给仓库层 watchAll(searchQuery:) 完成后补回。
+    // 退出搜索态应清空 searchQuery，三本书全部恢复
+    expect(find.text('三体'), findsOneWidget);
+    expect(find.text('活着'), findsOneWidget);
+    expect(find.text('人类简史'), findsOneWidget);
   });
 
   // 跳转阅读器场景：跳过。

@@ -78,6 +78,35 @@ void main() {
     expect(controller.state.activeTagFilters, isEmpty);
   });
 
+  test('toggleTagFilter filters books end-to-end through state', () async {
+    // b1: {fiction}, b2: {history}, b3: {fiction, history}
+    bookRepo.emitBooks([
+      _fakeBook('b1', title: 'B1'),
+      _fakeBook('b2', title: 'B2'),
+      _fakeBook('b3', title: 'B3'),
+    ]);
+    bookRepo.setTagsForBook('b1', {'fiction'});
+    bookRepo.setTagsForBook('b2', {'history'});
+    bookRepo.setTagsForBook('b3', {'fiction', 'history'});
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // 初始：全部三本
+    expect(controller.state.books.map((b) => b.id), containsAll(['b1', 'b2', 'b3']));
+    expect(controller.state.books.map((b) => b.id).length, 3);
+
+    // 打开 fiction 标签过滤：保留 b1 和 b3（OR 语义），剔除 b2
+    await controller.toggleTagFilter('fiction');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(controller.state.activeTagFilters, {'fiction'});
+    expect(controller.state.books.map((b) => b.id).toSet(), {'b1', 'b3'});
+
+    // 再次点击关闭 fiction 过滤：恢复全部三本
+    await controller.toggleTagFilter('fiction');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(controller.state.activeTagFilters, isEmpty);
+    expect(controller.state.books.map((b) => b.id).toSet(),
+        {'b1', 'b2', 'b3'});
+  });
+
   test('watchAll subscription updates books in state', () async {
     bookRepo.emitBooks([
       _fakeBook('b1'),

@@ -160,8 +160,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '三体');
     await tester.pumpAndSettle();
-    // 等 debounce 写入 state
-    await tester.pump(const Duration(milliseconds: 250));
+    // 等 debounce 写入 state 并让 watchAll 重订阅后的 stream emit 流回 UI
+    // （用 pumpAndSettle 而非 pump，确保流订阅/状态变更都 reconcile 完）
+    await tester.pumpAndSettle(const Duration(milliseconds: 250));
 
     await screenMatchesGolden(tester, 'library_searching');
   });
