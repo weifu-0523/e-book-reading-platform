@@ -40,6 +40,9 @@ class EpubxRenderer implements EpubRenderer {
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
   PaginationMode _paginationMode = PaginationMode.paged;
   final List<HighlightRange> _allHighlights = [];
+  /// NOTE: keyed by chapter index only. MUST be cleared on any book-switch
+  /// entry point (openFile / bookForTesting) — otherwise stale entries from
+  /// the previous book shadow the new one at the same index.
   final Map<int, String> _plainTextCache = {};
 
   ReaderEngineState _state = const ReaderEngineUnloaded();
@@ -83,6 +86,7 @@ class EpubxRenderer implements EpubRenderer {
   /// 仅用于测试：直接注入一本书（跳过 openFile 的文件 IO 与解析）。
   @visibleForTesting
   set bookForTesting(EpubBook? book) {
+    _plainTextCache.clear();
     _book = book;
     _currentChapterIndex = 0;
   }
@@ -108,6 +112,7 @@ class EpubxRenderer implements EpubRenderer {
       const timeout = Duration(seconds: 15);
       final bytes = await File(filePath).readAsBytes().timeout(timeout);
       final book = await EpubReader.readBook(bytes).timeout(timeout);
+      _plainTextCache.clear();
       _book = book;
       _currentChapterIndex = 0;
       _scrollController.removeListener(_onScroll);  // prevent duplicate on repeated calls

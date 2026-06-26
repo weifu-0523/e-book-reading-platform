@@ -115,4 +115,29 @@ void main() {
     expect(a, hasLength(1));
     expect(b, hasLength(1));
   });
+
+  test('currentChapterPlainText cache invalidates on book switch', () async {
+    final renderer = EpubxRenderer();
+    final bookA = EpubBook()
+      ..Chapters = [
+        EpubChapter()
+          ..Title = 'A1'
+          ..HtmlContent = '<p>hello world</p>',
+      ];
+    renderer.bookForTesting = bookA;
+    expect(await renderer.currentChapterPlainText, 'hello world');
+
+    // Switch to book B whose chapter 0 has different text. If the cache were
+    // not cleared, we'd get stale 'hello world' instead.
+    final bookB = EpubBook()
+      ..Chapters = [
+        EpubChapter()
+          ..Title = 'B1'
+          ..HtmlContent = '<p>different text</p>',
+      ];
+    renderer.bookForTesting = bookB;
+    expect(await renderer.currentChapterPlainText, 'different text');
+
+    await renderer.dispose();
+  });
 }

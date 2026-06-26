@@ -17,7 +17,9 @@ class HtmlTextUtils {
   static String htmlToPlainText(String html) {
     if (html.isEmpty) return '';
     final doc = HtmlParser(html).parse();
-    doc.querySelectorAll('script, style').forEach((e) => e.remove());
+    for (final e in doc.querySelectorAll('script, style')) {
+      e.remove();
+    }
     final buf = StringBuffer();
     _walkText(doc, buf);
     return buf.toString();
@@ -27,7 +29,7 @@ class HtmlTextUtils {
     for (final n in node.nodes) {
       if (n.nodeType == Node.TEXT_NODE) {
         buf.write(n.text);
-      } else if (n.nodeType == Node.ELEMENT_NODE) {
+      } else {
         _walkText(n, buf);
       }
     }
