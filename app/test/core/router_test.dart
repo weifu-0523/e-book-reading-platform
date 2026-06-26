@@ -11,9 +11,15 @@ import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
+import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/core/router.dart';
+import 'package:zhiyue/features/library/providers/library_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
+
+import '../fakes/fake_book_repository.dart';
+import '../fakes/fake_book_tags_lookup.dart';
+import '../fakes/fake_settings_repository.dart';
 
 /// 用于测试的假 ReaderEngine —— 无需真实 EPUB 文件，避免 pumpAndSettle 卡住。
 class _FakeReaderEngine implements ReaderEngine {
@@ -74,16 +80,35 @@ class _FakeReaderEngine implements ReaderEngine {
 }
 
 void main() {
-  testWidgets('router initial location / renders HomePage', (tester) async {
+  // LibraryPage 现在挂在 '/'；它默认会通过 appDatabaseProvider 启动 drift，
+  // 测试 teardown 时 drift 会留下 zero-delay timer 导致 timersPending 断言失败。
+  // 这里 override LibraryController 的依赖为 fake，避免触碰真实 drift。
+  List<Override> libraryOverrides() {
+    final bookRepo = FakeBookRepository();
+    final tagsLookup = FakeBookTagsLookup();
+    final settings = FakeSettingsRepository();
+    return [
+      bookRepositoryProvider.overrideWith((ref) => bookRepo),
+      settingsRepositoryProvider.overrideWith((ref) => settings),
+      libraryControllerProvider.overrideWith((ref) => LibraryController(
+            bookRepository: bookRepo,
+            bookTagsLookup: tagsLookup,
+            settingsRepository: settings,
+          )),
+    ];
+  }
+
+  testWidgets('router initial location / renders LibraryPage', (tester) async {
     final router = createAppRouter();
     await tester.pumpWidget(
       ProviderScope(
+        overrides: libraryOverrides(),
         child: MaterialApp.router(routerConfig: router),
       ),
     );
     await tester.pumpAndSettle();
 
-    // HomePage AppBar 标题
+    // LibraryPage AppBar 标题
     expect(find.text('智阅'), findsOneWidget);
   });
 
@@ -92,6 +117,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...libraryOverrides(),
           readerEngineForBookProvider.overrideWith(
             (ref, arg) async => _FakeReaderEngine(),
           ),
@@ -109,8 +135,8 @@ void main() {
 
     // ReaderPage 出现
     expect(find.byType(ReaderPage), findsOneWidget);
-    // 不应再显示 HomePage 的标识
-    expect(find.text('M0 + M1 数据层脚手架'), findsNothing);
+    // 不应再显示 LibraryPage 的标识（AppBar 标题）
+    expect(find.text('智阅'), findsNothing);
   });
 
   test('router has /book/:id route defined', () {

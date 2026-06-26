@@ -117,6 +117,12 @@ class LibraryController extends StateNotifier<LibraryState> {
     state = state.copyWith(selectedIds: next);
   }
 
+  /// 选中所有给定 id（通常由 UI 传入当前 books 的全部 id）。
+  /// 直接替换 selectedIds，不进入选择模式由调用方负责。
+  void selectAll(Iterable<String> ids) {
+    state = state.copyWith(selectedIds: Set<String>.of(ids));
+  }
+
   void exitSelectionMode() {
     state = state.copyWith(
       mode: LibraryMode.idle,

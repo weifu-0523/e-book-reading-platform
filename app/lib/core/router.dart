@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../features/home/home_page.dart';
 import '../features/library/pages/book_detail_page.dart';
+import '../features/library/pages/library_page.dart';
 import '../features/reader/pages/reader_page.dart';
 
 /// 应用路由配置。
@@ -15,7 +14,7 @@ GoRouter createAppRouter() {
     routes: [
       GoRoute(
         path: '/',
-        builder: (context, state) => const HomePage(),
+        builder: (context, state) => const LibraryPage(),
       ),
       GoRoute(
         path: '/book/:id',

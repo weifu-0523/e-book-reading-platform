@@ -5,6 +5,9 @@ import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/features/library/models/sort_by.dart';
 
 /// In-memory fake [BookRepository] for tests.
+///
+/// `watchAll` 行为对齐真实 drift 实现：新订阅者会立即收到当前快照，
+/// 后续每次 save/delete 都会推送新事件。
 class FakeBookRepository implements BookRepository {
   final List<Book> _books = [];
   final Set<String> deletedIds = {};
@@ -30,8 +33,17 @@ class FakeBookRepository implements BookRepository {
     SortBy sortBy = SortBy.addedDesc,
     String? searchQuery,
     Set<String>? tagFilters,
-  }) =>
-      _controller.stream;
+  }) {
+    // 为每个新订阅者立即回放当前快照，然后转发后续事件。
+    final controller = StreamController<List<Book>>();
+    controller.add(List.unmodifiable(_books));
+    final sub = _controller.stream.listen(controller.add);
+    controller.onCancel = () {
+      sub.cancel();
+      // 不 close，因为 controller 是一次性的；订阅关闭即清理。
+    };
+    return controller.stream;
+  }
 
   @override
   Future<Book?> getById(String id) async =>

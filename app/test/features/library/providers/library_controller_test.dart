@@ -95,6 +95,12 @@ void main() {
     expect(controller.state.mode, LibraryMode.idle);
     expect(controller.state.selectedIds, isEmpty);
   });
+
+  test('selectAll replaces selectedIds with given ids', () {
+    controller.enterSelectionMode('b1');
+    controller.selectAll(['b1', 'b2', 'b3']);
+    expect(controller.state.selectedIds, {'b1', 'b2', 'b3'});
+  });
 }
 
 Book _fakeBook(String id) => Book(
