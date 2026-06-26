@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
@@ -6,8 +7,10 @@ import 'package:reader_engine/engine/reader_engine_state.dart';
 
 import '../../../core/providers.dart';
 import '../controllers/reader_ui_controller.dart';
+import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
 import '../services/progress_persister.dart';
+import '../widgets/notes_drawer.dart';
 import '../widgets/reader_bottom_bar.dart';
 import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
@@ -52,7 +55,23 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         ),
         data: (engine) {
           _ensureProgressPersister(engine);
-          return _ReaderBody(engine: engine);
+          // 用本地 ProviderScope 覆盖 currentBookIdProvider，让 NotesController
+          // 拿到当前 bookId（仅作用于本书的子树）。
+          // notesControllerProvider 是 autoDispose — 同作用域覆盖依赖时必须
+          // 同步覆盖消费方 provider，否则 riverpod 抛 "dependency overridden"
+          // 断言。
+          return ProviderScope(
+            overrides: [
+              currentBookIdProvider.overrideWith((_) => widget.bookId),
+              notesControllerProvider.overrideWith(
+                (ref) => NotesController(
+                  bookId: widget.bookId,
+                  repository: ref.watch(notesRepositoryProvider),
+                ),
+              ),
+            ],
+            child: _ReaderBody(engine: engine),
+          );
         },
       ),
     );
@@ -82,6 +101,10 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   ReaderEngine get engine => widget.engine;
   ReaderEngineState _engineState;
 
+  // 当前选区。T21 会读取它来弹出高亮/笔记 toolbar；T20 只存储。
+  // ignore: unused_field
+  SelectedContent? _selection;
+
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
   @override
@@ -91,6 +114,10 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     engine.state$.listen((s) {
       if (mounted) setState(() => _engineState = s);
     });
+  }
+
+  void _onSelectionChanged(SelectedContent? content) {
+    setState(() => _selection = content);
   }
 
   @override
@@ -119,19 +146,25 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
           notifier.closeTocDrawer();
         }
       },
+      endDrawer: _buildNotesDrawer(context),
       body: Builder(
         builder: (innerContext) => Stack(
           children: [
-            ReaderScaffold(
-              content: engine.build(innerContext),
-              title: _bookTitle(),
-              onTapPrev: () => engine.previousSpine(),
-              onTapNext: () => engine.nextSpine(),
-              onBack: () => Navigator.of(innerContext).maybePop(),
-              onOpenToc: () => Scaffold.of(innerContext).openDrawer(),
-              onOpenTypography: () => ref
-                  .read(readerUiControllerProvider.notifier)
-                  .openTypographyPanel(),
+            SelectableRegion(
+              selectionControls: materialTextSelectionControls,
+              onSelectionChanged: _onSelectionChanged,
+              child: ReaderScaffold(
+                content: engine.build(innerContext),
+                title: _bookTitle(),
+                onTapPrev: () => engine.previousSpine(),
+                onTapNext: () => engine.nextSpine(),
+                onBack: () => Navigator.of(innerContext).maybePop(),
+                onOpenToc: () => Scaffold.of(innerContext).openDrawer(),
+                onOpenNotes: () => Scaffold.of(innerContext).openEndDrawer(),
+                onOpenTypography: () => ref
+                    .read(readerUiControllerProvider.notifier)
+                    .openTypographyPanel(),
+              ),
             ),
             // 底栏始终可见，显示阅读进度。
             Positioned(
@@ -146,6 +179,31 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
         ),
       ),
     );
+  }
+
+  Widget _buildNotesDrawer(BuildContext context) {
+    final notesAsync = ref.watch(notesControllerProvider);
+    return notesAsync.when(
+      data: (s) => NotesDrawer(
+        annotations: s.annotations,
+        // chapterTitles 暂留空 — M3.3 接入章节元数据后填充。
+        chapterTitles: const {},
+        onTap: (id) => _onAnnotationTap(id),
+        onLongPress: (id) => _onAnnotationLongPress(id),
+        onClose: () => Navigator.of(context).maybePop(),
+      ),
+      loading: () =>
+          const Drawer(child: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Drawer(child: Center(child: Text('$e'))),
+    );
+  }
+
+  Future<void> _onAnnotationTap(String id) async {
+    // T21：定位 annotation → gotoLocator → 关闭 endDrawer。
+  }
+
+  Future<void> _onAnnotationLongPress(String id) async {
+    // T21：打开 NoteEditorSheet。
   }
 
   Widget _buildTocDrawer(BuildContext context) {

@@ -44,7 +44,7 @@ final notesControllerProvider =
   (ref) {
     final bookId = ref.watch(currentBookIdProvider);
     final repo = ref.watch(notesRepositoryProvider);
-    return NotesController(bookId: bookId, repository: repo).._init();
+    return NotesController(bookId: bookId, repository: repo);
   },
 );
 
@@ -55,7 +55,9 @@ class NotesController extends StateNotifier<AsyncValue<NotesState>> {
   static const _uuid = Uuid();
 
   NotesController({required this.bookId, required this.repository})
-      : super(const AsyncValue.loading());
+      : super(const AsyncValue.loading()) {
+    _init();
+  }
 
   Future<void> _init() async {
     if (bookId == null) {

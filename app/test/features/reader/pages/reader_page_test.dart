@@ -10,9 +10,12 @@ import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
+import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
 import 'package:zhiyue/features/reader/widgets/reader_error_view.dart';
+
+import '../../../fakes/fake_notes_repository.dart';
 
 /// 用于测试的假 ReaderEngine —— 无需真实 EPUB 文件。
 class FakeReaderEngine implements ReaderEngine {
@@ -207,5 +210,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReaderErrorView), findsOneWidget);
+  });
+
+  testWidgets('chrome notes icon opens NotesDrawer endDrawer', (tester) async {
+    final engine = FakeReaderEngine();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          readerEngineForBookProvider
+              .overrideWith((ref, arg) async => engine),
+          notesRepositoryProvider.overrideWithValue(FakeNotesRepository()),
+        ],
+        child: const MaterialApp(home: ReaderPage(bookId: 'fake')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Reveal chrome app bar.
+    await tester.tapAt(const Offset(400, 400));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('reader_app_bar')), findsOneWidget);
+
+    // Tap notes icon (Icons.menu_book).
+    await tester.tap(find.byIcon(Icons.menu_book));
+    await tester.pumpAndSettle();
+
+    // NotesDrawer header text should now be visible.
+    expect(find.text('本书高亮与笔记'), findsOneWidget);
   });
 }

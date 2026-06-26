@@ -26,6 +26,9 @@ class ReaderScaffold extends ConsumerWidget {
   /// 点击排版图标回调（由父组件触发 bottom sheet 打开）。
   final VoidCallback? onOpenTypography;
 
+  /// 点击笔记图标回调（由父组件触发 endDrawer 打开）。
+  final VoidCallback? onOpenNotes;
+
   const ReaderScaffold({
     super.key,
     required this.content,
@@ -36,6 +39,7 @@ class ReaderScaffold extends ConsumerWidget {
     this.onBack,
     this.onOpenToc,
     this.onOpenTypography,
+    this.onOpenNotes,
   });
 
   @override
@@ -75,6 +79,11 @@ class ReaderScaffold extends ConsumerWidget {
                         icon: const Icon(Icons.text_fields),
                         tooltip: '排版',
                         onPressed: onOpenTypography,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.menu_book),
+                        tooltip: '笔记',
+                        onPressed: onOpenNotes,
                       ),
                     ],
                   ),
