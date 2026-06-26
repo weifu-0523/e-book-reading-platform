@@ -9,42 +9,50 @@ void main() {
   final typography = TypographySettings.defaults(); // NOT const — M1 factory
 
   test('empty content -> 1 page break covering full range', () {
-    final breaks = Paginator().paginate(
+    final result = Paginator().paginateWithText(
       chapterHtml: '',
       viewport: viewport,
       typography: typography,
     );
-    expect(breaks.length, 1);
-    expect(breaks.first.startOffset, 0);
-    expect(breaks.first.endOffset, 0);
+    expect(result.breaks.length, 1);
+    expect(result.breaks.first.startOffset, 0);
+    expect(result.breaks.first.endOffset, 0);
+    expect(result.plainText, '');
   });
 
   test('short content fits on 1 page', () {
     const html = '<p>hello world</p>';
-    final breaks = Paginator().paginate(
+    final result = Paginator().paginateWithText(
       chapterHtml: html,
       viewport: viewport,
       typography: typography,
     );
-    expect(breaks.length, 1);
-    expect(breaks.first.startOffset, 0);
-    expect(breaks.first.endOffset, html.length);
+    expect(result.breaks.length, 1);
+    expect(result.breaks.first.startOffset, 0);
+    // 偏移以 plainText 坐标为准（M2.5-3：从 HTML 原始长度改为纯文本长度）。
+    expect(result.breaks.first.endOffset, result.plainText.length);
+    expect(result.plainText, 'hello world');
   });
 
   test('long content -> multiple page breaks', () {
     final paragraph = '<p>${'hello world ' * 100}</p>';
     final html = List.filled(50, paragraph).join();
-    final breaks = Paginator().paginate(
+    final result = Paginator().paginateWithText(
       chapterHtml: html,
       viewport: viewport,
       typography: typography,
     );
+    final breaks = result.breaks;
     expect(breaks.length, greaterThan(1));
     for (var i = 0; i < breaks.length - 1; i++) {
       expect(breaks[i].endOffset, breaks[i + 1].startOffset,
           reason: 'page $i -> ${i + 1} should be contiguous');
     }
-    expect(breaks.last.endOffset, html.length);
+    // 最后一页的 endOffset = plainText.length（plain 坐标，非 html.length）。
+    expect(breaks.last.endOffset, result.plainText.length);
+    // 简单 sanity：plainText 应该是去标签后的内容。
+    expect(result.plainText.contains('<p>'), isFalse);
+    expect(result.plainText.contains('hello world'), isTrue);
   });
 
   test('cache: same input returns identical result', () {

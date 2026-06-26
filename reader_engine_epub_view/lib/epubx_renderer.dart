@@ -12,6 +12,7 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
 import 'cfi_codec.dart';
+import 'paginator.dart';
 import 'typography_css.dart';
 
 /// epubx + flutter_widget_from_html 实现的 [EpubRenderer]。
@@ -25,6 +26,8 @@ class EpubxRenderer implements EpubRenderer {
   final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
   final ScrollController _scrollController = ScrollController();
+  final PageController _pageController = PageController();
+  final Paginator _paginator = Paginator();
 
   EpubBook? _book;
   int _currentChapterIndex = 0;
@@ -54,6 +57,13 @@ class EpubxRenderer implements EpubRenderer {
   /// epubx 的 EpubChapter 含 SubChapters 嵌套；UI 与 cfi 都按扁平索引访问。
   List<EpubChapter> get flatChapters =>
       _flattenChapters(_book?.Chapters ?? const []);
+
+  /// 仅用于测试：直接注入一本书（跳过 openFile 的文件 IO 与解析）。
+  @visibleForTesting
+  set bookForTesting(EpubBook? book) {
+    _book = book;
+    _currentChapterIndex = 0;
+  }
 
   List<EpubChapter> _flattenChapters(List<EpubChapter> chapters) {
     final result = <EpubChapter>[];
@@ -102,6 +112,9 @@ class EpubxRenderer implements EpubRenderer {
     _currentChapterIndex = index;
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
+    }
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(0);
     }
     _emitCurrentLocation();
   }
@@ -235,16 +248,59 @@ class EpubxRenderer implements EpubRenderer {
 
     return ColoredBox(
       color: bg,
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        child: DefaultTextStyle(
-          style: style.copyWith(color: fg),
-          child: HtmlWidget(
-            html,
-            textStyle: style.copyWith(color: fg),
-          ),
-        ),
+      child: DefaultTextStyle(
+        style: style.copyWith(color: fg),
+        child: _paginationMode == PaginationMode.scroll
+            ? _buildScroll(style, fg, html)
+            : _buildPaged(style, fg, html),
       ),
+    );
+  }
+
+  /// scroll 模式：单章 SingleChildScrollView + 富文本 HtmlWidget。
+  Widget _buildScroll(TextStyle style, Color fg, String html) {
+    return SingleChildScrollView(
+      controller: _scrollController,
+      child: HtmlWidget(
+        html,
+        textStyle: style.copyWith(color: fg),
+      ),
+    );
+  }
+
+  /// paged 模式：Paginator 把章节切成多页，PageView 左右翻页。
+  ///
+  /// M2.5 简化：paged 模式渲染**纯文本**（与 Paginator 的测量基准一致），
+  /// 丢失 HtmlWidget 的富文本格式。富文本 + 真分页留到 M3。
+  /// break 偏移以 Paginator 输出的 plainText 坐标为准（见 [Paginator.paginateWithText]）。
+  Widget _buildPaged(TextStyle style, Color fg, String html) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewport = Size(
+          constraints.maxWidth.isFinite ? constraints.maxWidth : 400,
+          constraints.maxHeight.isFinite ? constraints.maxHeight : 600,
+        );
+        final result = _paginator.paginateWithText(
+          chapterHtml: html,
+          viewport: viewport,
+          typography: _typography,
+        );
+        final plain = result.plainText;
+        final breaks = result.breaks;
+        return PageView.builder(
+          controller: _pageController,
+          itemCount: breaks.length,
+          itemBuilder: (context, i) {
+            final start = breaks[i].startOffset.clamp(0, plain.length);
+            final end = breaks[i].endOffset.clamp(start, plain.length);
+            final pageText = plain.substring(start, end);
+            return Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(pageText, style: style.copyWith(color: fg)),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -252,6 +308,7 @@ class EpubxRenderer implements EpubRenderer {
   Future<void> dispose() async {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _pageController.dispose();
     await _stateController.close();
     await _locationController.close();
   }
