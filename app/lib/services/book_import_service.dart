@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
+import 'package:reader_engine_epub_view/reader_engine_epub_view.dart';
 import 'package:uuid/uuid.dart';
 
 import '../data/local/file_storage.dart';
@@ -18,14 +19,17 @@ class ImportResult {
 class BookImportService {
   final BookRepository _bookRepository;
   final FileStorage _fileStorage;
+  final EpubCoverExtractor _coverExtractor;
   final Uuid _uuid;
 
   BookImportService({
     required BookRepository bookRepository,
     required FileStorage fileStorage,
+    required EpubCoverExtractor coverExtractor,
     Uuid? uuid,
   })  : _bookRepository = bookRepository,
         _fileStorage = fileStorage,
+        _coverExtractor = coverExtractor,
         _uuid = uuid ?? const Uuid();
 
   Future<ImportResult> importFile(
@@ -49,23 +53,39 @@ class BookImportService {
       extension: extension,
     );
 
-    // Create book record
     final fileName = p.basenameWithoutExtension(source.path);
+    final bookId = _uuid.v4();
+
+    // 仅 EPUB 提取封面；失败 coverPath=null，import 不中断
+    String? coverPath;
+    if (format == BookFormat.epub) {
+      try {
+        coverPath = await _coverExtractor.extract(
+          bookId: bookId,
+          epubBytes: bytes,
+        );
+      } catch (_) {
+        // 即使 extractor 抛错也不应阻断 import；coverPath 保持 null
+        coverPath = null;
+      }
+    }
+
     final book = Book(
-      id: _uuid.v4(),
+      id: bookId,
       title: fileName,
       author: null,
       format: format,
       filePath: stored.path,
       fileHash: hash,
       fileSizeBytes: bytes.length,
-      coverPath: null,
+      coverPath: coverPath,
       addedAt: DateTime.now(),
       lastReadAt: null,
     );
 
     // 并发安全：upsert-on-hash；若并发下另一路已写入同 hash，
     // 唯一约束会触发冲突，回退查询返回已存在记录。
+    // 注意：若已提取封面但 save 失败（极少见），封面文件将残留——可接受，M3.1 不做 GC。
     try {
       await _bookRepository.save(book);
       return ImportResult(book: book, isNew: true);

@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:reader_engine_epub_view/reader_engine_epub_view.dart'
+    show EpubCoverExtractor;
 import 'package:zhiyue/data/local/database.dart' hide Book;
 import 'package:zhiyue/data/local/file_storage.dart';
 import 'package:zhiyue/data/models/book.dart';
@@ -18,15 +21,18 @@ void main() {
   late FileStorage storage;
   late LocalBookRepository bookRepo;
   late BookImportService service;
+  late EpubCoverExtractor noopExtractor;
 
   setUp(() async {
     db = createTestDatabase();
     bookRepo = LocalBookRepository(db);
     tempRoot = await Directory.systemTemp.createTemp('zhiyue_import_test_');
     storage = FileStorage(rootDir: tempRoot);
+    noopExtractor = _FakeCoverExtractor(coversDir: storage.coversDir);
     service = BookImportService(
       bookRepository: bookRepo,
       fileStorage: storage,
+      coverExtractor: noopExtractor,
     );
   });
 
@@ -108,6 +114,7 @@ void main() {
     final serviceWithThrowingRepo = BookImportService(
       bookRepository: throwingRepo,
       fileStorage: storage,
+      coverExtractor: noopExtractor,
     );
 
     // 再次导入同一文件——findByHash 命中（first 已写入），所以快路径其实会命中。
@@ -125,6 +132,7 @@ void main() {
     final serviceForFallback = BookImportService(
       bookRepository: throwingRepoNullFirst,
       fileStorage: storage,
+      coverExtractor: noopExtractor,
     );
 
     // 预先在真实 db 中插入同 hash 记录（模拟"另一路已写入"）
@@ -153,6 +161,7 @@ void main() {
     final serviceWithThrowingRepo = BookImportService(
       bookRepository: throwingRepo,
       fileStorage: storage,
+      coverExtractor: noopExtractor,
     );
 
     await expectLater(
@@ -160,9 +169,60 @@ void main() {
       throwsA(isA<Exception>()),
     );
   });
-}
 
-/// 测试用 fake BookRepository：save 总抛预设异常，其他方法委托 [inner]。
+  test('importFile for EPUB writes coverPath on book record', () async {
+    // 使用真实的 page-blanche.epub fixture（具有封面）
+    File fixture = File(p.join('..', 'app', 'test', 'fixtures', 'page-blanche.epub'));
+    if (!fixture.existsSync()) {
+      // 当 cwd 是 app/ 时，相对路径不同
+      fixture = File(p.join('test', 'fixtures', 'page-blanche.epub'));
+    }
+    expect(fixture.existsSync(), isTrue, reason: 'fixture not found');
+
+    // fake 返回真实提取器约定格式：{coversDir}/{bookId}.png
+    final fakeExtractor = _FakeCoverExtractor(
+      coversDir: storage.coversDir,
+      returnPathFromBookId: true,
+    );
+    final serviceWithCover = BookImportService(
+      bookRepository: bookRepo,
+      fileStorage: storage,
+      coverExtractor: fakeExtractor,
+    );
+
+    final result = await serviceWithCover.importFile(
+      fixture,
+      format: BookFormat.epub,
+    );
+
+    expect(result.isNew, isTrue);
+    expect(result.book.coverPath, isNotNull);
+    expect(result.book.coverPath, contains(result.book.id));
+  });
+
+  test('importFile for EPUB tolerates cover extraction failure', () async {
+    final source = File(p.join(tempRoot.path, 'fake.epub'))
+      ..writeAsBytesSync([1, 2, 3, 4, 5]);
+
+    final failingExtractor = _FakeCoverExtractor(
+      coversDir: storage.coversDir,
+      alwaysReturnNull: true,
+    );
+    final serviceWithCover = BookImportService(
+      bookRepository: bookRepo,
+      fileStorage: storage,
+      coverExtractor: failingExtractor,
+    );
+
+    final result = await serviceWithCover.importFile(
+      source,
+      format: BookFormat.epub,
+    );
+
+    expect(result.isNew, isTrue);
+    expect(result.book.coverPath, isNull); // 降级，不阻断 import
+  });
+}
 /// 通过 [findHashReturnsNullFirst] 可让第一次 findByHash 返回 null，
 /// 用于强制 importFile 绕开快路径、进入 try/catch 回退分支。
 class _ThrowingBookRepository implements BookRepository {
@@ -220,4 +280,42 @@ class _ThrowingBookRepository implements BookRepository {
   @override
   Future<void> setSortOrder({required String bookId, required int sortOrder}) =>
       inner.setSortOrder(bookId: bookId, sortOrder: sortOrder);
+}
+
+/// 测试用 fake EpubCoverExtractor，可控返回固定路径或 null。
+class _FakeCoverExtractor implements EpubCoverExtractor {
+  _FakeCoverExtractor({
+    required this.coversDir,
+    this.alwaysReturnPath,
+    this.returnPathFromBookId = false,
+    this.alwaysReturnNull = false,
+  });
+
+  @override
+  final Directory coversDir;
+
+  final String? alwaysReturnPath;
+  final bool returnPathFromBookId;
+  final bool alwaysReturnNull;
+
+  @override
+  Future<String?> extract({
+    required String bookId,
+    required Uint8List epubBytes,
+  }) async {
+    if (alwaysReturnNull) return null;
+    if (returnPathFromBookId) {
+      // 约定格式：{coversDir}/{bookId}.png，与真实提取器一致
+      final path = p.join(coversDir.path, '$bookId.png');
+      await File(path).writeAsBytes([1, 2, 3]);
+      return path;
+    }
+    if (alwaysReturnPath != null) {
+      // 写入 fake 文件以让 path 真实存在
+      final file = File(alwaysReturnPath!);
+      await file.writeAsBytes([1, 2, 3]);
+      return alwaysReturnPath;
+    }
+    return null;
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reader_engine_epub_view/reader_engine_epub_view.dart';
 
 import '../data/local/database.dart';
 import '../data/local/file_storage.dart';
@@ -40,11 +41,19 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
   return LocalSettingsRepository(ref.watch(appDatabaseProvider));
 });
 
+final epubCoverExtractorProvider =
+    FutureProvider<EpubCoverExtractor>((ref) async {
+  final storage = await ref.watch(fileStorageProvider.future);
+  return EpubCoverExtractor(coversDir: storage.coversDir);
+});
+
 final bookImportServiceProvider =
     FutureProvider<BookImportService>((ref) async {
   final storage = await ref.watch(fileStorageProvider.future);
+  final coverExtractor = await ref.watch(epubCoverExtractorProvider.future);
   return BookImportService(
     bookRepository: ref.watch(bookRepositoryProvider),
     fileStorage: storage,
+    coverExtractor: coverExtractor,
   );
 });
