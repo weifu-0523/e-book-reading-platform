@@ -12,6 +12,9 @@ class Books extends Table {
   DateTimeColumn get addedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastReadAt => dateTime().nullable()();
 
+  /// M3.1：手动排序顺序；null = 不参与手动排序，按默认排序。
+  IntColumn get sortOrder => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

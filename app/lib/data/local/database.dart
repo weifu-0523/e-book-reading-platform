@@ -10,6 +10,7 @@ import 'daos/settings_dao.dart';
 import 'daos/typography_dao.dart';
 import 'tables/annotations.dart';
 import 'tables/book_notes.dart';
+import 'tables/book_tags.dart';
 import 'tables/book_typography_overrides.dart';
 import 'tables/books.dart';
 import 'tables/reading_progress.dart';
@@ -21,6 +22,7 @@ part 'database.g.dart';
 @DriftDatabase(
   tables: [
     Books,
+    BookTags,
     BookNotes,
     Annotations,
     ReadingProgressTable,
@@ -43,7 +45,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -54,11 +56,25 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
           'CREATE UNIQUE INDEX IF NOT EXISTS idx_books_file_hash ON books(file_hash)',
         );
+        // schema v3 起带 book_tags 索引
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag)',
+        );
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
           await m.database.customStatement(
             'CREATE UNIQUE INDEX IF NOT EXISTS idx_books_file_hash ON books(file_hash)',
+          );
+        }
+        if (from < 3) {
+          // 加列：drift 默认 SQLite 不支持 add column in-DSL，用 customStatement
+          await m.database.customStatement(
+            'ALTER TABLE books ADD COLUMN sort_order INTEGER',
+          );
+          await m.createTable(bookTags);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag)',
           );
         }
       },
