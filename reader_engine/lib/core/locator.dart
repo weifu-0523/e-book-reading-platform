@@ -27,6 +27,14 @@ sealed class Locator {
           offsetX: (json['offsetX'] as num).toDouble(),
           offsetY: (json['offsetY'] as num).toDouble(),
         );
+      case 'epubRange':
+        return EpubRangeLocator(
+          chapterIndex: (json['chapterIndex'] as num).toInt(),
+          chapterTitle: json['chapterTitle'] as String?,
+          startOffset: (json['startOffset'] as num).toInt(),
+          endOffset: (json['endOffset'] as num).toInt(),
+          quote: json['quote'] as String,
+        );
       default:
         // M3: 用 FormatException 而非 ArgumentError——
         // 这是"数据格式不兼容"信号（语义比 ArgumentError 更精确）。
@@ -108,4 +116,54 @@ class PdfPageLocator extends Locator {
 
   @override
   int get hashCode => Object.hash(page, offsetX, offsetY);
+}
+
+/// M3.2: 纯文本 EPUB 中字符 offset 区间定位，用于高亮范围。
+///
+/// 与 [EpubCfiLocator] 不同，此处用字符 offset 而非 CFI——
+/// 简化渲染层计算（无需 CFI 解析），适合非标准 EPUB 或自渲染文本流。
+class EpubRangeLocator extends Locator {
+  final int chapterIndex;
+  final String? chapterTitle;
+  final int startOffset;
+  final int endOffset;
+  final String quote;
+
+  const EpubRangeLocator({
+    required this.chapterIndex,
+    required this.startOffset,
+    required this.endOffset,
+    required this.quote,
+    this.chapterTitle,
+  })  : assert(startOffset >= 0),
+        assert(endOffset > startOffset),
+        // 使用 .length > 0 而非 .isNotEmpty —— const 构造器中 isNotEmpty 非常量表达式。
+        assert(quote.length > 0);
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'epubRange',
+        'chapterIndex': chapterIndex,
+        if (chapterTitle != null) 'chapterTitle': chapterTitle,
+        'startOffset': startOffset,
+        'endOffset': endOffset,
+        'quote': quote,
+      };
+
+  @override
+  String toJsonString() => '$chapterIndex:$startOffset-$endOffset';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EpubRangeLocator &&
+          chapterIndex == other.chapterIndex &&
+          chapterTitle == other.chapterTitle &&
+          startOffset == other.startOffset &&
+          endOffset == other.endOffset &&
+          quote == other.quote;
+
+  @override
+  int get hashCode =>
+      Object.hash(chapterIndex, chapterTitle, startOffset, endOffset, quote);
 }

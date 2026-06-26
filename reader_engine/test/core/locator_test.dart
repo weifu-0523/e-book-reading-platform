@@ -106,4 +106,48 @@ void main() {
     expect(locator, isA<PdfPageLocator>());
     expect((locator as PdfPageLocator).page, 5);
   });
+
+  // M3.2: EpubRangeLocator — 纯文本 EPUB 中字符 offset 区间定位，用于高亮范围。
+  test('EpubRangeLocator round-trips JSON with type=epubRange', () {
+    final loc = EpubRangeLocator(
+      chapterIndex: 3,
+      chapterTitle: '引论',
+      startOffset: 10,
+      endOffset: 20,
+      quote: '活着本身就是意义',
+    );
+    final json = loc.toJson();
+    expect(json['type'], 'epubRange');
+    expect(json['chapterIndex'], 3);
+    expect(json['chapterTitle'], '引论');
+    expect(json['startOffset'], 10);
+    expect(json['endOffset'], 20);
+    expect(json['quote'], '活着本身就是意义');
+
+    final back = Locator.fromJson(json);
+    expect(back, isA<EpubRangeLocator>());
+    expect(back, loc);
+  });
+
+  test('EpubRangeLocator.toJsonString returns compact form', () {
+    final loc = EpubRangeLocator(
+      chapterIndex: 3,
+      startOffset: 10,
+      endOffset: 20,
+      quote: 'x',
+    );
+    expect(loc.toJsonString(), '3:10-20');
+  });
+
+  test('EpubRangeLocator equality covers all 5 fields', () {
+    final a = EpubRangeLocator(
+        chapterIndex: 1, startOffset: 0, endOffset: 5, quote: 'abc');
+    final b = EpubRangeLocator(
+        chapterIndex: 1, startOffset: 0, endOffset: 5, quote: 'abc');
+    final c = EpubRangeLocator(
+        chapterIndex: 1, startOffset: 0, endOffset: 5, quote: 'abd');
+    expect(a, b);
+    expect(a.hashCode, b.hashCode);
+    expect(a, isNot(c));
+  });
 }
