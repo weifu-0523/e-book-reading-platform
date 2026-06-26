@@ -2,3 +2,4 @@
 library reader_engine_epub_view;
 
 export 'concrete_reader_engine.dart';
+export 'epub_cover_extractor.dart';

@@ -12,6 +12,7 @@ dependencies:
     sdk: flutter
   epubx: ^4.0.0
   flutter_widget_from_html: ^0.15.0
+  image: ^3.3.0
   meta: ^1.15.0
   reader_engine:
     path: ../reader_engine
