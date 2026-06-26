@@ -164,6 +164,7 @@ class FakeBookRepository implements BookRepository {
     final idx = _books.indexWhere((b) => b.id == bookId);
     if (idx >= 0) {
       _books[idx] = _books[idx].copyWith(sortOrder: sortOrder);
+      _controller.add(List.unmodifiable(_books));
     }
   }
 }
