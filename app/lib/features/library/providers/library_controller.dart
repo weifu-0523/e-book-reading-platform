@@ -66,13 +66,32 @@ class LibraryController extends StateNotifier<LibraryState> {
         orElse: () => SortBy.recentlyRead,
       ),
     );
+    // 持久化的 sortBy 可能与默认值不同，需要重新订阅才能让 repository 按新顺序输出。
+    _resubscribe();
   }
 
   void _subscribeToBooks() {
-    _booksSub = _bookRepository.watchAll().listen((books) async {
-      final tags = await _bookTagsLookup.allTags();
+    _resubscribe();
+  }
+
+  /// 用当前 state.sortBy / state.searchQuery / state.activeTagFilters 重新订阅 watchAll。
+  /// 在 _hydrateFromSettings、setSortBy、setSearchQuery 的 debounce 回调与
+  /// toggleTagFilter 之后调用，使过滤/排序参数真正传递到 repository 层
+  /// （否则它们仅写入 state 而 books 列表不变）。
+  void _resubscribe() {
+    _booksSub?.cancel();
+    final query = state.searchQuery.isEmpty ? null : state.searchQuery;
+    final tags = state.activeTagFilters.isEmpty ? null : state.activeTagFilters;
+    _booksSub = _bookRepository
+        .watchAll(
+          sortBy: state.sortBy,
+          searchQuery: query,
+          tagFilters: tags,
+        )
+        .listen((books) async {
+      final allTags = await _bookTagsLookup.allTags();
       if (!mounted) return;
-      state = state.copyWith(books: books, allTags: tags);
+      state = state.copyWith(books: books, allTags: allTags);
     });
   }
 
@@ -88,6 +107,7 @@ class LibraryController extends StateNotifier<LibraryState> {
     if (!mounted) return;
     state = state.copyWith(sortBy: sortBy);
     await _settingsRepository.set<String>(_keySortBy, sortBy.name);
+    _resubscribe();
   }
 
   Future<void> setSearchQuery(String query) async {
@@ -95,6 +115,7 @@ class LibraryController extends StateNotifier<LibraryState> {
     _searchDebounce = Timer(const Duration(milliseconds: 200), () {
       if (!mounted) return;
       state = state.copyWith(searchQuery: query);
+      _resubscribe();
     });
   }
 
@@ -102,6 +123,7 @@ class LibraryController extends StateNotifier<LibraryState> {
     final next = Set<String>.from(state.activeTagFilters);
     if (!next.add(tag)) next.remove(tag);
     state = state.copyWith(activeTagFilters: next);
+    _resubscribe();
   }
 
   void enterSelectionMode(String initialBookId) {

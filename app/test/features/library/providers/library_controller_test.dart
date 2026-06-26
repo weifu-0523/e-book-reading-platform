@@ -87,6 +87,83 @@ void main() {
     expect(controller.state.books.map((b) => b.id), containsAll(['b1', 'b2']));
   });
 
+  test('setSearchQuery filters books end-to-end through state', () async {
+    bookRepo.emitBooks([
+      _fakeBook('alpha', title: 'Alpha'),
+      _fakeBook('beta', title: 'Beta'),
+      _fakeBook('gamma', title: 'Gamma'),
+    ]);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // 初始：全部三本
+    expect(controller.state.books.map((b) => b.id), containsAll(['alpha', 'beta', 'gamma']));
+
+    await controller.setSearchQuery('ga'); // 仅匹配 Gamma
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(controller.state.searchQuery, 'ga');
+    expect(controller.state.books.map((b) => b.id), {'gamma'});
+
+    await controller.setSearchQuery(''); // 清空：恢复全部
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(controller.state.books.map((b) => b.id),
+        containsAll(['alpha', 'beta', 'gamma']));
+  });
+
+  test('setSortBy re-subscribes and re-orders books', () async {
+    // LibraryState 默认 sortBy = recentlyRead；无 lastReadAt 时按 title 升序兜底。
+    // 给三本书不同的 addedAt，让 addedDesc 与默认顺序明显不同。
+    final earlier = DateTime(2026, 1, 1);
+    final middle = DateTime(2026, 2, 1);
+    final later = DateTime(2026, 3, 1);
+    bookRepo.emitBooks([
+      Book(
+        id: 'z-added-middle',
+        title: 'Zzz',
+        author: null,
+        format: BookFormat.epub,
+        filePath: '/z.epub',
+        fileHash: 'hz',
+        fileSizeBytes: 1,
+        coverPath: null,
+        addedAt: middle,
+        lastReadAt: null,
+      ),
+      Book(
+        id: 'a-added-later',
+        title: 'Aaa',
+        author: null,
+        format: BookFormat.epub,
+        filePath: '/a.epub',
+        fileHash: 'ha',
+        fileSizeBytes: 1,
+        coverPath: null,
+        addedAt: later,
+        lastReadAt: null,
+      ),
+      Book(
+        id: 'm-added-earlier',
+        title: 'Mmm',
+        author: null,
+        format: BookFormat.epub,
+        filePath: '/m.epub',
+        fileHash: 'hm',
+        fileSizeBytes: 1,
+        coverPath: null,
+        addedAt: earlier,
+        lastReadAt: null,
+      ),
+    ]);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // 初始 recentlyRead（无 lastReadAt 时按 title 升序）：A → M → Z
+    expect(controller.state.books.map((b) => b.id).toList(),
+        ['a-added-later', 'm-added-earlier', 'z-added-middle']);
+
+    await controller.setSortBy(SortBy.addedDesc); // 切到 addedAt 倒序：later → middle → earlier
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(controller.state.sortBy, SortBy.addedDesc);
+    expect(controller.state.books.map((b) => b.id).toList(),
+        ['a-added-later', 'z-added-middle', 'm-added-earlier']);
+  });
+
   test('batchDelete deletes selected and exits selection mode', () async {
     controller.enterSelectionMode('b1');
     controller.toggleSelection('b2');
@@ -103,9 +180,9 @@ void main() {
   });
 }
 
-Book _fakeBook(String id) => Book(
+Book _fakeBook(String id, {String? title}) => Book(
       id: id,
-      title: id,
+      title: title ?? id,
       author: null,
       format: BookFormat.epub,
       filePath: '/$id.epub',
