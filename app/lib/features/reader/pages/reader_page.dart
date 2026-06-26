@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/engine/reader_engine_state.dart';
 
 import '../../../core/providers.dart';
 import '../controllers/reader_ui_controller.dart';
@@ -79,9 +80,30 @@ class _ReaderBody extends ConsumerStatefulWidget {
 
 class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   ReaderEngine get engine => widget.engine;
+  ReaderEngineState _engineState;
+
+  _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
+
+  @override
+  void initState() {
+    super.initState();
+    _engineState = engine.state;
+    engine.state$.listen((s) {
+      if (mounted) setState(() => _engineState = s);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_engineState is ReaderEngineError) {
+      return ReaderErrorView(
+        message: (_engineState as ReaderEngineError).message,
+        onBack: () => Navigator.of(context).maybePop(),
+      );
+    }
+    if (_engineState is! ReaderEngineReady) {
+      return const Center(child: CircularProgressIndicator());
+    }
     final ui = ref.watch(readerUiControllerProvider);
 
     // typographyPanelOpen 由 _TypographyPanelTrigger 监听并弹出/收起 bottom sheet。

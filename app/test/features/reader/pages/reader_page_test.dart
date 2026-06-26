@@ -12,42 +12,51 @@ import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
+import 'package:zhiyue/features/reader/widgets/reader_error_view.dart';
 
 /// 用于测试的假 ReaderEngine —— 无需真实 EPUB 文件。
 class FakeReaderEngine implements ReaderEngine {
-  FakeReaderEngine({TableOfContents? toc}) : _toc = toc;
+  FakeReaderEngine({TableOfContents? toc, ReaderEngineState? state})
+      : _toc = toc,
+        _state = state ?? const ReaderEngineReady();
 
   final TableOfContents? _toc;
   final StreamController<Locator> _locationController =
       StreamController<Locator>.broadcast();
+  final StreamController<ReaderEngineState> _stateController =
+      StreamController<ReaderEngineState>.broadcast();
 
-  TypographySettings _typography = TypographySettings.defaults();
+  ReaderEngineState _state;
+  bool stateStreamListened = false;
 
   @override
   TableOfContents? get toc => _toc;
 
   @override
-  TypographySettings get typography => _typography;
+  TypographySettings get typography => TypographySettings.defaults();
 
   @override
   Stream<Locator> get currentLocation$ => _locationController.stream;
+
+  @override
+  ReaderEngineState get state => _state;
+
+  @override
+  Stream<ReaderEngineState> get state$ {
+    stateStreamListened = true;
+    return _stateController.stream;
+  }
 
   void emitLocation(Locator loc) {
     _locationController.add(loc);
   }
 
-  @override
-  Future<void> setTypography(TypographySettings settings) async {
-    _typography = settings;
+  void emitState(ReaderEngineState s) {
+    _state = s;
+    _stateController.add(s);
   }
 
   // ---- 以下为本测试不需要的实现 ----
-
-  @override
-  ReaderEngineState get state => const ReaderEngineReady();
-
-  @override
-  Stream<ReaderEngineState> get state$ => const Stream.empty();
 
   @override
   PaginationMode get paginationMode => PaginationMode.paged;
@@ -69,6 +78,9 @@ class FakeReaderEngine implements ReaderEngine {
 
   @override
   Future<void> setPaginationMode(PaginationMode mode) async {}
+
+  @override
+  Future<void> setTypography(TypographySettings settings) async {}
 
   @override
   Future<void> close() async {
@@ -177,5 +189,23 @@ void main() {
 
     // Bottom bar should be visible and show chapter title from current location.
     expect(find.text('第四章'), findsOneWidget);
+  });
+
+  testWidgets('engine in error state shows ReaderErrorView', (tester) async {
+    final engine = FakeReaderEngine(
+      state: const ReaderEngineError(message: 'open failed'),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          readerEngineForBookProvider
+              .overrideWith((ref, arg) async => engine),
+        ],
+        child: const MaterialApp(home: ReaderPage(bookId: 'fake')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReaderErrorView), findsOneWidget);
   });
 }

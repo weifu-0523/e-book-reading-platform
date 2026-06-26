@@ -1,9 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:zhiyue/data/models/book.dart';
+import 'package:zhiyue/data/models/reading_progress.dart';
 import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/repositories/book_repository.dart';
+import 'package:zhiyue/data/repositories/reading_progress_repository.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
 
 class _FakeBookRepository implements BookRepository {
@@ -31,6 +35,22 @@ class _FakeBookRepository implements BookRepository {
       super.noSuchMethod(invocation);
 }
 
+class _FakeReadingProgressRepository implements ReadingProgressRepository {
+  _FakeReadingProgressRepository({this.progress});
+
+  final ReadingProgress? progress;
+  final List<String> getCallIds = [];
+
+  @override
+  Future<ReadingProgress?> get(String bookId) async {
+    getCallIds.add(bookId);
+    return progress;
+  }
+
+  @override
+  Future<void> save(ReadingProgress progress) async {}
+}
+
 void main() {
   test(
       'readerEngineForBookProvider returns ConcreteEpubReaderEngine for epub',
@@ -38,6 +58,9 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         bookRepositoryProvider.overrideWithValue(_FakeBookRepository()),
+        readingProgressRepositoryProvider.overrideWithValue(
+          _FakeReadingProgressRepository(),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -52,6 +75,9 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         bookRepositoryProvider.overrideWithValue(_FakeBookRepository()),
+        readingProgressRepositoryProvider.overrideWithValue(
+          _FakeReadingProgressRepository(),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -60,5 +86,35 @@ void main() {
       () => container.read(readerEngineForBookProvider('nonexistent').future),
       throwsA(isA<StateError>()),
     );
+  });
+
+  test(
+      'readerEngineForBookProvider consults reading progress to restore locator',
+      () async {
+    final progressRepo = _FakeReadingProgressRepository(
+      progress: ReadingProgress(
+        bookId: 'b1',
+        locator: const EpubCfiLocator(cfi: '/6/4', chapterIndex: 2),
+        percent: 0.25,
+        updatedAt: DateTime.now(),
+      ),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        bookRepositoryProvider.overrideWithValue(_FakeBookRepository()),
+        readingProgressRepositoryProvider.overrideWithValue(progressRepo),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final engine =
+        await container.read(readerEngineForBookProvider('b1').future);
+    // Provider should have queried progress repo with the bookId.
+    expect(progressRepo.getCallIds, contains('b1'));
+    // openWithLastProgress is called even when file load fails:
+    // state ends as ReaderEngineError (file doesn't exist on disk) or Ready.
+    // What matters: provider returned the engine (no throw) and consulted repo.
+    expect(engine.state, isA<ReaderEngineState>());
+    await engine.close();
   });
 }

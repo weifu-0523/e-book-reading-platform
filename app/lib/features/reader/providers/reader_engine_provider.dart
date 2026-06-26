@@ -7,11 +7,18 @@ import 'package:zhiyue/data/models/book.dart';
 
 import '../../../core/providers.dart';
 
-/// 给定 bookId，加载 BookRef 并创建对应 ReaderEngine。
+/// 给定 bookId，加载 BookRef、查询上次阅读位置，并打开 [ReaderEngine]。
+///
+/// Future 解析完成时引擎已 [ReaderEngine.openWithLastProgress]：
+/// - 文件加载失败 → 引擎状态为 [ReaderEngineError]（不抛异常）。
+/// - 成功且存在 [ReadingProgress.locator] → 尝试 gotoLocator，CFI 失败静默降级。
+/// - 无历史进度 → 从第一章开始。
 final readerEngineForBookProvider =
     FutureProvider.family<ReaderEngine, String>((ref, bookId) async {
-  final repo = ref.watch(bookRepositoryProvider);
-  final book = await repo.getById(bookId);
+  final bookRepo = ref.watch(bookRepositoryProvider);
+  final progressRepo = ref.watch(readingProgressRepositoryProvider);
+
+  final book = await bookRepo.getById(bookId);
   if (book == null) {
     throw StateError('Book not found: $bookId');
   }
@@ -26,7 +33,13 @@ final readerEngineForBookProvider =
   );
 
   if (bookRef.format == re.BookFormat.epub) {
-    return ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+    final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+    final lastProgress = await progressRepo.get(bookId);
+    await engine.openWithLastProgress(
+      book: bookRef,
+      lastLocator: lastProgress?.locator,
+    );
+    return engine;
   }
   throw UnimplementedError('PDF engine is M4');
 });
