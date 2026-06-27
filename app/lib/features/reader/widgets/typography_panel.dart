@@ -216,7 +216,7 @@ class TypographyPanel extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ).whenComplete(nameCtrl.dispose);
   }
 
   void _changeFontSize(double newSize) {
