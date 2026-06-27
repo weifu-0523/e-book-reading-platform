@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/book_ref.dart';
@@ -24,8 +23,7 @@ class _FakeEngine implements ReaderEngine {
   PageController? get pageController => null;
 
   @override
-  ValueListenable<int> get chapterRevisionNotifier => _noRevNotifier;
-  static final ValueNotifier<int> _noRevNotifier = ValueNotifier<int>(0);
+  Future<void> get chapterSwitchSettled => Future<void>.value();
 
   @override
   ReaderEngineState get state => throw UnimplementedError();

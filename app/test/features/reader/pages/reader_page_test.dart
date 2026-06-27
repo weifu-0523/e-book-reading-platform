@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:flutter_test/flutter_test.dart';
@@ -53,8 +52,7 @@ class FakeReaderEngine implements ReaderEngine {
   PageController? get pageController => null;
 
   @override
-  ValueListenable<int> get chapterRevisionNotifier => _noRevNotifier;
-  static final ValueNotifier<int> _noRevNotifier = ValueNotifier<int>(0);
+  Future<void> get chapterSwitchSettled => Future<void>.value();
 
   @override
   ReaderEngineState get state => _state;

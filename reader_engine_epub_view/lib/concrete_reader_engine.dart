@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:reader_engine/core/book_ref.dart';
 import 'package:reader_engine/core/locator.dart';
@@ -47,8 +46,7 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   PageController? get pageController => _renderer.pageController;
 
   @override
-  ValueListenable<int> get chapterRevisionNotifier =>
-      _renderer.chapterRevisionNotifier;
+  Future<void> get chapterSwitchSettled => _renderer.chapterSwitchSettled;
 
   @override
   TableOfContents? get toc => _toc;

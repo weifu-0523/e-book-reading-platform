@@ -151,15 +151,6 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   // initialLocator 已处理标志，避免 didChangeDependencies 重复触发。
   bool _initialLocatorHandled = false;
 
-  // 章节切换监听器（M3.4）：engine 切章时 bump `chapterRevisionNotifier`，
-  // 我们 setState 触发 rebuild，让 LayoutBuilder 在 _buildPaged 中重跑、
-  // 重新填充 `_cachedBreaks`，否则 `currentChapterPageBreaks` 返回 stale
-  // 或空（与 paged-mode 的 ScrollToOffsetService 调用链冲突）。
-  // 监听在 dispose 移除，避免泄露。
-  void _onChapterRevisionChanged() {
-    if (mounted) setState(() {});
-  }
-
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
   @override
@@ -172,12 +163,14 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     engine.currentLocation$.listen((loc) {
       if (mounted) _currentLocation = loc;
     });
-    engine.chapterRevisionNotifier.addListener(_onChapterRevisionChanged);
+    // Chapter switches are now awaited via `engine.chapterSwitchSettled`
+    // at call sites (see _maybeHandleInitialLocator / _onAnnotationTap).
+    // No global listener required: those are the only places that need to
+    // read `currentChapterPageBreaks` immediately after a chapter change.
   }
 
   @override
   void dispose() {
-    engine.chapterRevisionNotifier.removeListener(_onChapterRevisionChanged);
     super.dispose();
   }
 
@@ -188,8 +181,8 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   }
 
   /// 处理来自路由 extra 的 initialLocator：跳转到 locator 后，
-  /// 等待 endOfFrame 让 scrollable 完成布局，再调用
-  /// [ScrollToOffsetService] 滚动到字符 offset。
+  /// 等待 chapter switch settle 让 paged-mode LayoutBuilder 重跑、
+  /// 重新计算 `_cachedBreaks`，再调用 [ScrollToOffsetService] 滚动到字符 offset。
   ///
   /// 仅在引擎已 Ready 时触发；Ready 状态由 build 的 state$.listen 同步。
   Future<void> _maybeHandleInitialLocator() async {
@@ -197,14 +190,15 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     if (loc == null || _initialLocatorHandled) return;
     _initialLocatorHandled = true;
     await engine.gotoLocator(loc);
-    await WidgetsBinding.instance.endOfFrame;
+    // Wait for the chapter switch (if any) to settle so
+    // `currentChapterPageBreaks` reflects the new chapter before
+    // ScrollToOffsetService reads it. Same-chapter locators return an
+    // already-completed future, so this is cheap in the common case.
+    await engine.chapterSwitchSettled;
     if (!mounted) return;
     final scrollable = Scrollable.maybeOf(context);
     if (scrollable == null) return;
     if (loc is EpubRangeLocator) {
-      // Paged-mode paged break scroll (M3.4): gotoLocator navigates to the
-      // correct chapter; `endOfFrame` above lets `_cachedBreaks` refresh
-      // before ScrollToOffsetService reads `currentChapterPageBreaks`.
       await ScrollToOffsetService.scrollToCharacterOffset(
         scrollable: scrollable,
         targetOffset: loc.startOffset,
@@ -323,7 +317,10 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
         .firstWhere((a) => a?.id == id, orElse: () => null);
     if (ann == null) return;
     await engine.gotoLocator(ann.locator);
-    await WidgetsBinding.instance.endOfFrame;
+    // Wait for the chapter switch (if any) to settle so
+    // `currentChapterPageBreaks` reflects the new chapter before
+    // ScrollToOffsetService reads it.
+    await engine.chapterSwitchSettled;
     if (!mounted) return;
     await Navigator.of(context).maybePop(); // 关闭 endDrawer
     if (!mounted) return;
@@ -331,9 +328,6 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     if (scrollable == null) return;
     final loc = ann.locator;
     if (loc is EpubRangeLocator) {
-      // Paged-mode paged break scroll (M3.4): gotoLocator navigates to the
-      // correct chapter; `endOfFrame` above lets `_cachedBreaks` refresh
-      // before ScrollToOffsetService reads `currentChapterPageBreaks`.
       await ScrollToOffsetService.scrollToCharacterOffset(
         scrollable: scrollable,
         targetOffset: loc.startOffset,
