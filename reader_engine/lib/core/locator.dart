@@ -27,6 +27,13 @@ sealed class Locator {
           offsetX: (json['offsetX'] as num).toDouble(),
           offsetY: (json['offsetY'] as num).toDouble(),
         );
+      case 'pdfRange':
+        return PdfRangeLocator(
+          page: (json['page'] as num).toInt(),
+          startOffset: (json['startOffset'] as num).toInt(),
+          endOffset: (json['endOffset'] as num).toInt(),
+          quote: json['quote'] as String,
+        );
       case 'epubRange':
         return EpubRangeLocator(
           chapterIndex: (json['chapterIndex'] as num).toInt(),
@@ -166,4 +173,51 @@ class EpubRangeLocator extends Locator {
   @override
   int get hashCode =>
       Object.hash(chapterIndex, chapterTitle, startOffset, endOffset, quote);
+}
+
+/// M4: PDF 单页内字符 offset 区间定位，用于高亮范围。
+///
+/// 与 [EpubRangeLocator] 对称，差异仅在「page」（PDF 1-based 页码）取代
+/// EpubRangeLocator 的 chapterIndex（章索引）。两者都用于高亮存储；
+/// 导航用 [PdfPageLocator]。
+class PdfRangeLocator extends Locator {
+  final int page;
+  final int startOffset;
+  final int endOffset;
+  final String quote;
+
+  const PdfRangeLocator({
+    required this.page,
+    required this.startOffset,
+    required this.endOffset,
+    required this.quote,
+  })  : assert(page >= 1),
+        assert(startOffset >= 0),
+        assert(endOffset > startOffset),
+        // 使用 .length > 0 而非 .isNotEmpty —— const 构造器中 isNotEmpty 非常量表达式。
+        assert(quote.length > 0);
+
+  @override
+  Map<String, dynamic> toJson() => {
+        'type': 'pdfRange',
+        'page': page,
+        'startOffset': startOffset,
+        'endOffset': endOffset,
+        'quote': quote,
+      };
+
+  @override
+  String toJsonString() => 'p$page:$startOffset-$endOffset';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PdfRangeLocator &&
+          page == other.page &&
+          startOffset == other.startOffset &&
+          endOffset == other.endOffset &&
+          quote == other.quote;
+
+  @override
+  int get hashCode => Object.hash(page, startOffset, endOffset, quote);
 }
