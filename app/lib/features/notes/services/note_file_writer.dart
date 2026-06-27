@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 
 /// Filesystem wrapper for Markdown export.
 ///
@@ -23,11 +24,11 @@ class NoteFileWriter {
     if (dir == null) return null;
 
     var name = '$suggestedName.md';
-    var path = _join(dir, name);
+    var path = p.join(dir, name);
     var counter = 1;
     while (await File(path).exists()) {
       name = '$suggestedName ($counter).md';
-      path = _join(dir, name);
+      path = p.join(dir, name);
       counter++;
     }
 
@@ -48,9 +49,7 @@ class NoteFileWriter {
     var s = raw.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
     s = s.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (s.length > 80) s = s.substring(0, 80);
+    if (s.isEmpty) return 'untitled';
     return s;
   }
-
-  static String _join(String dir, String name) =>
-      '$dir${Platform.pathSeparator}$name';
 }

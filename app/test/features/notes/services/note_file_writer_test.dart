@@ -71,6 +71,21 @@ void main() {
       final result = NoteFileWriter.sanitizeForFilename(long);
       expect(result.length, 80);
     });
+
+    test('empty input returns "untitled"', () {
+      expect(NoteFileWriter.sanitizeForFilename(''), 'untitled');
+    });
+
+    test('whitespace-only input returns "untitled"', () {
+      expect(NoteFileWriter.sanitizeForFilename('   '), 'untitled');
+    });
+
+    test('all-forbidden-chars input returns "untitled" (after replacement, before guard)', () {
+      // All forbidden chars become underscores after replacement, so this
+      // case can't actually reach the empty guard via sanitization.
+      // The guard catches inputs that ARE empty or whitespace-only.
+      expect(NoteFileWriter.sanitizeForFilename('/////'), '_____');
+    });
   });
 
   group('NoteFileWriter.saveMarkdownFile', () {
