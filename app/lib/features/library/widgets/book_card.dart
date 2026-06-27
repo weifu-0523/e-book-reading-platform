@@ -44,9 +44,19 @@ class BookCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: BookCover(
-                  coverFile: coverFile,
-                  title: book.title,
+                child: Stack(
+                  children: [
+                    BookCover(
+                      coverFile: coverFile,
+                      title: book.title,
+                    ),
+                    if (book.format == BookFormat.pdf)
+                      const Positioned(
+                        right: 4,
+                        bottom: 4,
+                        child: _PdfChip(),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),
@@ -81,6 +91,26 @@ class BookCard extends StatelessWidget {
               child: BookCellActionMenu(onSelected: onAction!),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// PDF 文档标识 chip，叠加在封面右下角。
+class _PdfChip extends StatelessWidget {
+  const _PdfChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'PDF',
+        style: TextStyle(color: Colors.white, fontSize: 10),
       ),
     );
   }

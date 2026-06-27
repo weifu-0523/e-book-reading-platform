@@ -38,10 +38,20 @@ class BookListTile extends StatelessWidget {
     return ListTile(
       leading: SizedBox(
         width: 48,
-        child: BookCover(
-          coverFile: coverFile,
-          title: book.title,
-          aspectRatio: 0.7,
+        child: Stack(
+          children: [
+            BookCover(
+              coverFile: coverFile,
+              title: book.title,
+              aspectRatio: 0.7,
+            ),
+            if (book.format == BookFormat.pdf)
+              const Positioned(
+                right: 0,
+                bottom: 0,
+                child: _PdfChip(),
+              ),
+          ],
         ),
       ),
       title: Text(book.title, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -73,6 +83,26 @@ class BookListTile extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [handle, menu],
+    );
+  }
+}
+
+/// PDF 文档标识 chip，叠加在封面右下角。
+class _PdfChip extends StatelessWidget {
+  const _PdfChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'PDF',
+        style: TextStyle(color: Colors.white, fontSize: 10),
+      ),
     );
   }
 }
