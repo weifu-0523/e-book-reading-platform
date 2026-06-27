@@ -8,6 +8,7 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
+import 'package:reader_engine_epub_view/cfi_codec.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 /// 构造一本只有一章假数据的书（widget 测试辅助）。
@@ -247,6 +248,84 @@ void main() {
       await tester.pump();
       final breaksAfter = renderer.currentChapterPageBreaks;
       expect(breaksAfter, isNotEmpty);
+
+      await renderer.dispose();
+    },
+  );
+
+  // Regression for M3.4 review finding: stale `_cachedBreaks` after
+  // cross-chapter `gotoLocator`. The renderer's paged-mode breaks cache is
+  // populated inside `_buildPaged`, which only runs when Flutter rebuilds
+  // the LayoutBuilder. `gotoLocator` mutates `_currentChapterIndex` but does
+  // not trigger a rebuild — so the cache either stays null (if `setChapter`
+  // was called first) or holds the PREVIOUS chapter's breaks (if only
+  // `gotoLocator` was called). The reader_page call sequence is:
+  //   await engine.gotoLocator(loc);
+  //   await endOfFrame;
+  //   read engine.currentChapterPageBreaks;   // ← stale or empty here
+  // This test pins the contract: after a cross-chapter `gotoLocator`, the
+  // caller must observe breaks for the NEW chapter (or none at all) — never
+  // stale breaks from the previous chapter.
+  testWidgets(
+    'gotoLocator cross-chapter does NOT leave stale _cachedBreaks',
+    (tester) async {
+      final renderer = EpubxRenderer();
+      // Chapter 0: short → 1 page. Chapter 1: long → multiple pages.
+      // The break counts must DIFFER so a stale-cache bug is detectable.
+      renderer.bookForTesting = EpubBook()
+        ..Chapters = [
+          EpubChapter()
+            ..Title = 'Short'
+            ..HtmlContent = '<p>short</p>',
+          EpubChapter()
+            ..Title = 'Long'
+            ..HtmlContent =
+                List.filled(40, '<p>${'chapter one ' * 30}</p>').join(),
+        ];
+
+      Widget tree() => MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 400,
+                height: 600,
+                child: Builder(
+                  builder: (context) => renderer.build(context),
+                ),
+              ),
+            ),
+          );
+
+      // 1) Initial layout: chapter 0 (short) is current → 1 break expected.
+      await tester.pumpWidget(tree());
+      await tester.pump();
+      final breaksChapter0 = renderer.currentChapterPageBreaks;
+      expect(breaksChapter0, isNotEmpty);
+      final chapter0BreakCount = breaksChapter0.length;
+
+      // 2) Cross-chapter navigation via gotoLocator (no setChapter called —
+      //    mirrors reader_page._maybeHandleInitialLocator / _onAnnotationTap).
+      final chapter1Cfi = encode(1, 0);
+      await renderer.gotoLocator(EpubCfiLocator(
+        cfi: chapter1Cfi,
+        chapterIndex: 1,
+      ));
+      await tester.pump();  // advance one frame (mirrors `await endOfFrame`)
+
+      // 3) Read breaks. With the stale-cache bug, this returns chapter 0's
+      //    break count (chapter0BreakCount) because `_buildPaged` hasn't
+      //    re-run for chapter 1 and `_cachedBreaks` was never invalidated.
+      //    The contract: breaks MUST NOT be stale — either reflect chapter 1
+      //    (after rebuild) or be empty (if invalidated but not yet rebuilt).
+      final breaksAfterGoto = renderer.currentChapterPageBreaks;
+      expect(
+        breaksAfterGoto.length == chapter0BreakCount,
+        isFalse,
+        reason:
+            'Stale _cachedBreaks: chapter 0 breaks ($chapter0BreakCount) '
+            'leaked across cross-chapter gotoLocator. Got ${breaksAfterGoto.length} '
+            'breaks, expected either empty (invalidated) or >$chapter0BreakCount '
+            '(chapter 1 laid out).',
+      );
 
       await renderer.dispose();
     },

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../core/book_ref.dart';
@@ -39,6 +40,20 @@ abstract interface class ReaderEngine {
   /// implementation returns a non-null controller for the engine's
   /// lifetime (constructed eagerly in the field initializer).
   PageController? get pageController;
+
+  /// Revision counter that bumps every time the current chapter changes
+  /// (M3.4: paged-mode cache invalidation signal).
+  ///
+  /// Paged-mode page breaks are only repopulated when the engine's
+  /// LayoutBuilder re-runs, which is the **caller's** responsibility.
+  /// App-layer widgets should listen to this notifier (e.g. via
+  /// `ValueListenableBuilder` or `addListener` + `setState`) and trigger a
+  /// rebuild so that [currentChapterPageBreaks] returns fresh data for the
+  /// new chapter.
+  ///
+  /// Default value is a never-bumping notifier; concrete implementations
+  /// that actually navigate chapters override this.
+  ValueListenable<int> get chapterRevisionNotifier;
   TableOfContents? get toc;
   TypographySettings get typography;
   PaginationMode get paginationMode;

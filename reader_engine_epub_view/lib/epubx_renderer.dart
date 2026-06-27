@@ -50,6 +50,23 @@ class EpubxRenderer implements EpubRenderer {
   /// Reset to null on chapter change / book switch / pagination mode change.
   List<PageBreak>? _cachedBreaks;
 
+  /// Revision counter bumped every time the current chapter changes
+  /// (`setChapter`, cross-chapter `gotoLocator`, `bookForTesting` reset).
+  ///
+  /// Paged-mode `_cachedBreaks` is only repopulated when the LayoutBuilder
+  /// inside [build] re-runs. That rebuild is the *caller's* responsibility —
+  /// this notifier is the signal. App-layer widgets (e.g. reader_page)
+  /// listen to this and call `setState` to drive the rebuild, after which
+  /// [currentChapterPageBreaks] reflects the NEW chapter's breaks.
+  ///
+  /// Why a notifier and not a Stream: `ValueNotifier` integrates natively
+  /// with `AnimatedBuilder` / `ValueListenableBuilder` if the caller wants
+  /// a declarative rebuild, and avoids the broadcast-Stream + initial-value
+  /// ceremony that `state$` already provides for the engine state machine.
+  /// This notifier is chapter-revision only — keep it narrow.
+  final ValueNotifier<int> chapterRevisionNotifier =
+      ValueNotifier<int>(0);
+
   ReaderEngineState _state = const ReaderEngineUnloaded();
 
   ReaderEngineState get state => _state;
@@ -113,6 +130,7 @@ class EpubxRenderer implements EpubRenderer {
     _cachedBreaks = null;
     _book = book;
     _currentChapterIndex = 0;
+    chapterRevisionNotifier.value++;
   }
 
   List<EpubChapter> _flattenChapters(List<EpubChapter> chapters) {
@@ -158,11 +176,16 @@ class EpubxRenderer implements EpubRenderer {
   // ---- 章节渲染 / 位置流 / 跳转 (Task 12) ----
 
   /// 切换到指定章节（chapterIndex 基于 flatChapters）。
+  ///
+  /// 重置 `_cachedBreaks` 并 bump [chapterRevisionNotifier]：paged 模式的
+  /// 调用方必须监听该 notifier 并触发重建，否则 [currentChapterPageBreaks]
+  /// 会一直返回 `const []`（layout 未重跑）。
   void setChapter(int index) {
     final chapters = flatChapters;
     if (index < 0 || index >= chapters.length) return;
     _currentChapterIndex = index;
     _cachedBreaks = null;
+    chapterRevisionNotifier.value++;
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
@@ -252,6 +275,26 @@ class EpubxRenderer implements EpubRenderer {
     return n;
   }
 
+  /// Navigate to [locator].
+  ///
+  /// **Scroll-mode behavior**: mutates `_currentChapterIndex` (when the cfi
+  /// targets a different chapter), then schedules a post-frame callback that
+  /// reads `maxScrollExtent` and jumps to the character-offset ratio. This
+  /// method drives scroll positioning directly.
+  ///
+  /// **Paged-mode behavior**: this method navigates to the chapter ONLY.
+  /// Paged-mode page positioning (selecting the correct page index from
+  /// [currentChapterPageBreaks] and calling `pageController.jumpToPage`) is
+  /// the **caller's** responsibility — typically via `ScrollToOffsetService`.
+  /// When the cfi targets a different chapter, this method invalidates
+  /// `_cachedBreaks` and bumps [chapterRevisionNotifier]; the caller MUST
+  /// listen to that notifier and trigger a rebuild (e.g. `setState`) so the
+  /// LayoutBuilder in [build] re-runs and repopulates
+  /// [currentChapterPageBreaks] for the new chapter. Without that rebuild,
+  /// `currentChapterPageBreaks` returns `const []` (not stale data).
+  ///
+  /// Same-chapter locators are a no-op for the chapter index; scroll mode
+  /// still re-positions to the new offset.
   @override
   Future<void> gotoLocator(Locator locator) async {
     if (locator is! EpubCfiLocator) return;
@@ -266,6 +309,12 @@ class EpubxRenderer implements EpubRenderer {
     }
     if (decoded.chapterIndex != _currentChapterIndex) {
       _currentChapterIndex = decoded.chapterIndex;
+      // Invalidate stale paged-mode breaks and notify listeners that a
+      // rebuild is required to repopulate `_cachedBreaks` for the new
+      // chapter. Without this, callers reading `currentChapterPageBreaks`
+      // after this method returns would see the PREVIOUS chapter's breaks.
+      _cachedBreaks = null;
+      chapterRevisionNotifier.value++;
     }
     // 字符偏移 → 滚动像素（近似反推）：等下一帧 maxScrollExtent 可用再跳。
     final html = chapters[decoded.chapterIndex].HtmlContent ?? '';
@@ -289,7 +338,9 @@ class EpubxRenderer implements EpubRenderer {
   Future<void> setPaginationMode(PaginationMode mode) async {
     _paginationMode = mode;
     _cachedBreaks = null;
-    // Task 12-13 实现：重建 widget tree
+    // Pagination-mode change invalidates the cache; the chapter revision is
+    // unchanged so we don't bump the notifier here (chapter index did not
+    // change). Caller-driven rebuild repopulates the cache on next layout.
   }
 
   @override
@@ -416,6 +467,7 @@ class EpubxRenderer implements EpubRenderer {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _pageController.dispose();
+    chapterRevisionNotifier.dispose();
     await _stateController.close();
     await _locationController.close();
     await _selectionController.close();
