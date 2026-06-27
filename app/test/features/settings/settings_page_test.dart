@@ -50,7 +50,11 @@ void main() {
     await tester.pumpAndSettle();
     // 'Typography Profiles' is en.arb value for settingsTypographyProfiles
     await tester.tap(find.text('Typography Profiles'));
-    await tester.pumpAndSettle();
-    expect(find.text('Typography Profiles (T3)'), findsOneWidget);
+    // Don't use pumpAndSettle — the live page's CircularProgressIndicator animates forever.
+    // Pump a few frames to let the route push resolve and the page widget mount.
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+    // T3 replaced the stub with a full TypographyProfilesPage; verify navigation occurred.
+    expect(find.byType(TypographyProfilesPage), findsOneWidget);
   });
 }
