@@ -8,6 +8,7 @@ import 'package:reader_engine/engine/reader_engine_state.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/annotation.dart';
+import '../../../features/settings/providers/font_library_provider.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
@@ -470,9 +471,47 @@ class _TypographyPanelTriggerState
       _sheetShown = true;
       showModalBottomSheet<void>(
         context: context,
-        builder: (_) => TypographyPanel(
-          current: widget.engine.typography,
-          onChanged: (settings) => widget.engine.setTypography(settings),
+        builder: (_) => Consumer(
+          builder: (ctx, ref, _) {
+            final profilesAsync = ref.watch(typographyProfileProvider);
+            final fontsAsync = ref.watch(fontLibraryProvider);
+            final profiles = profilesAsync.valueOrNull ?? const [];
+            final userFonts = fontsAsync.valueOrNull ?? const [];
+            final currentProfile = profiles.isEmpty
+                ? null
+                : profiles.firstWhere(
+                    (p) => p.settings == widget.engine.typography,
+                    orElse: () => profiles.first,
+                  );
+            return TypographyPanel(
+              current: widget.engine.typography,
+              onChanged: (settings) => widget.engine.setTypography(settings),
+              profiles: profiles,
+              currentProfile: currentProfile,
+              onSelectProfile: (p) {
+                widget.engine.setTypography(p.settings);
+                ref.read(typographyProfileRepositoryProvider).setDefault(p.id);
+              },
+              onSaveAsProfile:
+                  ({required settings, required overwrite, newName}) async {
+                final repo =
+                    ref.read(typographyProfileRepositoryProvider);
+                if (overwrite) {
+                  final def = await repo.getDefault();
+                  if (def != null) {
+                    await repo.update(def.id, settings: settings);
+                  }
+                } else {
+                  await repo.insert(
+                      name: newName ?? '新预设',
+                      settings: settings,
+                      isDefault: false);
+                }
+                ref.invalidate(typographyProfileProvider);
+              },
+              userFonts: userFonts,
+            );
+          },
         ),
       ).whenComplete(() {
         // 用户通过下滑或点击外部关闭 sheet 时，同步 UI 状态。
