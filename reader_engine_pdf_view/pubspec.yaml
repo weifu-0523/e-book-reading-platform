@@ -1,0 +1,20 @@
+name: reader_engine_pdf_view
+description: pdfrx-based PDF renderer adapter for the 智阅 reader_engine.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.0
+  flutter: ^3.27.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  pdfrx: ^2.3.0
+  reader_engine:
+    path: ../reader_engine
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0

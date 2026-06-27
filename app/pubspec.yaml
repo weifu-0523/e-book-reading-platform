@@ -39,6 +39,8 @@ dependencies:
     path: ../reader_engine
   reader_engine_epub_view:
     path: ../reader_engine_epub_view
+  reader_engine_pdf_view:
+    path: ../reader_engine_pdf_view
 
   # i18n
   flutter_localizations:
