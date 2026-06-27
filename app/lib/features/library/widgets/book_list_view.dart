@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:reorderables/reorderables.dart';
 
 import '../../../data/models/book.dart';
+import '../models/book_cell_action.dart';
 import 'book_grid.dart' show CoverResolver;
 import 'book_list_tile.dart';
 
@@ -17,6 +18,7 @@ class BookListView extends StatelessWidget {
   final Set<String> selectedIds;
   final bool manualSortEnabled;
   final ValueChanged<List<String>> onReorder;
+  final ValueChanged<BookCellAction>? onAction;
 
   const BookListView({
     super.key,
@@ -28,6 +30,7 @@ class BookListView extends StatelessWidget {
     required this.selectedIds,
     required this.manualSortEnabled,
     required this.onReorder,
+    this.onAction,
   });
 
   @override
@@ -40,6 +43,7 @@ class BookListView extends StatelessWidget {
               isSelectionMode: isSelectionMode,
               onTap: () => onTap(b.id),
               onLongPress: () => onLongPress(b.id),
+              onAction: onAction,
             ))
         .toList();
 

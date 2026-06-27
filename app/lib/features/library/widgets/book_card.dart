@@ -3,10 +3,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/book.dart';
+import '../models/book_cell_action.dart';
+import 'book_cell_action_menu.dart';
 import 'book_cover.dart';
 
 /// 书架网格视图的书卡。
 /// 由 [BookGrid]（T17）渲染；通过 [onTap]/[onLongPress] 与父级交互。
+///
+/// 当 [onAction] 不为 null 且非选择模式时，右上角渲染"更多操作"菜单
+/// （[BookCellActionMenu]），用于 阅读/详情/笔记/删除 等快捷入口。
 class BookCard extends StatelessWidget {
   final Book book;
   final File? coverFile;
@@ -14,6 +19,7 @@ class BookCard extends StatelessWidget {
   final bool isSelectionMode;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final ValueChanged<BookCellAction>? onAction;
 
   const BookCard({
     super.key,
@@ -23,6 +29,7 @@ class BookCard extends StatelessWidget {
     this.isSelectionMode = false,
     required this.onTap,
     required this.onLongPress,
+    this.onAction,
   });
 
   @override
@@ -66,6 +73,12 @@ class BookCard extends StatelessWidget {
                 value: isSelected,
                 onChanged: (_) => onTap(),
               ),
+            )
+          else if (onAction != null)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: BookCellActionMenu(onSelected: onAction!),
             ),
         ],
       ),

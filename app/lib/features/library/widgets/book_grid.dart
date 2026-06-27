@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:reorderables/reorderables.dart';
 
 import '../../../data/models/book.dart';
+import '../models/book_cell_action.dart';
 import 'book_card.dart';
 
 /// 封面文件解析器：按 bookId 返回封面 File（可能为 null）。
@@ -26,6 +27,7 @@ class BookGrid extends StatelessWidget {
   final Set<String> selectedIds;
   final bool manualSortEnabled;
   final ValueChanged<List<String>> onReorder;
+  final ValueChanged<BookCellAction>? onAction;
 
   const BookGrid({
     super.key,
@@ -37,6 +39,7 @@ class BookGrid extends StatelessWidget {
     required this.selectedIds,
     required this.manualSortEnabled,
     required this.onReorder,
+    this.onAction,
   });
 
   @override
@@ -86,6 +89,7 @@ class BookGrid extends StatelessWidget {
       isSelectionMode: isSelectionMode,
       onTap: () => onTap(b.id),
       onLongPress: () => onLongPress(b.id),
+      onAction: onAction,
     );
   }
 }
