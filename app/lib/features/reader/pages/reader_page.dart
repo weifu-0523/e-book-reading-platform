@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/annotation.dart';
@@ -185,10 +186,15 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     final scrollable = Scrollable.maybeOf(context);
     if (scrollable == null) return;
     if (loc is EpubRangeLocator) {
+      // In paged mode ScrollToOffsetService short-circuits (M3.3 limitation);
+      // gotoLocator has already navigated to the correct chapter. M3.4 will
+      // add Paginator-breaks-based precise paged scrolling.
+      final isPaged = engine.paginationMode == PaginationMode.paged;
       await ScrollToOffsetService.scrollToCharacterOffset(
         context: context,
         scrollable: scrollable,
         targetOffset: loc.startOffset,
+        isPagedMode: isPaged,
       );
     }
   }
@@ -309,10 +315,15 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     if (scrollable == null) return;
     final loc = ann.locator;
     if (loc is EpubRangeLocator) {
+      // In paged mode ScrollToOffsetService short-circuits (M3.3 limitation);
+      // gotoLocator has already navigated to the correct chapter. M3.4 will
+      // add Paginator-breaks-based precise paged scrolling.
+      final isPaged = engine.paginationMode == PaginationMode.paged;
       await ScrollToOffsetService.scrollToCharacterOffset(
         context: context,
         scrollable: scrollable,
         targetOffset: loc.startOffset,
+        isPagedMode: isPaged,
       );
     }
   }

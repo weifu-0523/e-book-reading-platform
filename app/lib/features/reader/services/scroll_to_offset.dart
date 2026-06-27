@@ -18,13 +18,33 @@ import 'package:flutter/rendering.dart';
 /// - Owner paragraph not found: silent return.
 /// - Caller responsible for ensuring [scrollable] has been laid out —
 ///   typically call after `await WidgetsBinding.instance.endOfFrame`.
+///
+/// **Limitation (M3.3)**: Only works in `PaginationMode.scroll`. In
+/// `PaginationMode.paged` (production default), the underlying `PageView`
+/// only mounts the current page's [RenderParagraph]s, so cumulative
+/// character offsets do not span the chapter. Pass [isPagedMode] = true
+/// to short-circuit (caller still benefits from `gotoLocator` chapter
+/// navigation). Full paged-mode support (Paginator breaks + jumpToPage)
+/// is planned for M3.4.
 class ScrollToOffsetService {
   static Future<void> scrollToCharacterOffset({
     required BuildContext context,
     required ScrollableState scrollable,
     required int targetOffset,
     Duration duration = const Duration(milliseconds: 300),
+    bool isPagedMode = false,
   }) async {
+    if (isPagedMode) {
+      // Paged mode: ScrollToOffsetService cannot precisely target offsets
+      // across page boundaries. Caller's gotoLocator has already navigated
+      // to the correct chapter; user can switch to scroll mode for precise
+      // scrolling. M3.4 will add Paginator-breaks-based paged mode support.
+      debugPrint(
+        '[ScrollToOffsetService] paged mode short-circuit (M3.3 limitation); '
+        'targetOffset=$targetOffset ignored. Use scroll mode for precise scroll.',
+      );
+      return;
+    }
     final scrollRenderObj = scrollable.context.findRenderObject();
     if (scrollRenderObj == null) return;
 

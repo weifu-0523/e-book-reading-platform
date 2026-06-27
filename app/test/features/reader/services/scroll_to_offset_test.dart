@@ -94,4 +94,57 @@ void main() {
 
     expect(scrollController.position.pixels, pixelsBefore);
   });
+
+  // Regression guard for M3.3 known limitation: in PaginationMode.paged
+  // (production default), PageView only mounts current page's paragraphs,
+  // so cumulative offset walk can't span chapter. Service must short-circuit.
+  testWidgets('paged mode: silent no-op (M3.3 limitation)', (tester) async {
+    final scrollController = ScrollController();
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          height: 80,
+          child: SingleChildScrollView(
+            controller: scrollController,
+            child: const Column(
+              children: [
+                Text('aaa bbb'),
+                Text('ccc ddd'),
+                Text('eee fff'),
+                Text('ggg hhh'),
+                Text('iii jjj'),
+                Text('kkk lll'),
+                Text('mmm nnn'),
+                Text('ooo ppp'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final scrollable = tester.state<ScrollableState>(
+        find.byType(Scrollable).first);
+    final pixelsBefore = scrollController.position.pixels;
+
+    // Sanity: scroll-mode call would actually scroll here.
+    expect(scrollController.position.maxScrollExtent, greaterThan(0));
+
+    // Fire-and-forget per T5 lesson (animateTo deadlock in tests).
+    final future = ScrollToOffsetService.scrollToCharacterOffset(
+      context: scrollable.context,
+      scrollable: scrollable,
+      targetOffset: 14,
+      duration: const Duration(milliseconds: 50),
+      isPagedMode: true, // simulate paged mode
+    );
+    await tester.pump();
+    await tester.pumpAndSettle();
+    await future;
+
+    // No scroll happened because paged mode short-circuits.
+    expect(scrollController.position.pixels, pixelsBefore);
+  });
 }
