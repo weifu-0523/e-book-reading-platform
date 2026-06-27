@@ -6,6 +6,7 @@ class AnnotationTile extends StatelessWidget {
   final String? chapterTitle;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final bool showMeta;
 
   const AnnotationTile({
     super.key,
@@ -13,6 +14,7 @@ class AnnotationTile extends StatelessWidget {
     this.chapterTitle,
     this.onTap,
     this.onLongPress,
+    this.showMeta = false,
   });
 
   static const _colors = <HighlightColor, Color>{
@@ -49,9 +51,28 @@ class AnnotationTile extends StatelessWidget {
               const SizedBox(height: 4),
               Text(chapterTitle!, style: Theme.of(context).textTheme.bodySmall),
             ],
+            if (showMeta) ...[
+              const SizedBox(height: 4),
+              Text(
+                _metaLine(),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  String _metaLine() {
+    final parts = <String>[_formatDate(annotation.updatedAt)];
+    if (annotation.tags.isNotEmpty) {
+      parts.add(annotation.tags.map((t) => '#$t').join(' '));
+    }
+    return parts.join(' · ');
+  }
+
+  static String _formatDate(DateTime d) =>
+      '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }

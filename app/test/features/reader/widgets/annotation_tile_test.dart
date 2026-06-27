@@ -63,4 +63,151 @@ void main() {
     await tester.longPress(find.text('选中片段'));
     expect(longPressed, isTrue);
   });
+
+  group('showMeta', () {
+    Annotation _annotation({
+      List<String> tags = const [],
+      DateTime? updatedAt,
+    }) {
+      final updated = updatedAt ?? DateTime(2026, 6, 27, 10, 30);
+      return Annotation(
+        id: 'm1',
+        bookNoteId: 'b1',
+        locator: const EpubRangeLocator(
+            chapterIndex: 0, startOffset: 0, endOffset: 1, quote: 'q'),
+        quote: 'q',
+        note: null,
+        color: HighlightColor.yellow,
+        tags: tags,
+        source: AnnotationSource.manual,
+        createdAt: DateTime(2026, 6, 20),
+        updatedAt: updated,
+      );
+    }
+
+    testWidgets('default (showMeta omitted) hides date + tags', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(tags: const ['t1']),
+          ),
+        ),
+      ));
+      expect(find.textContaining('#t1'), findsNothing);
+      expect(find.textContaining('06-27'), findsNothing);
+    });
+
+    testWidgets('showMeta=false explicitly hides date + tags', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(tags: const ['t1']),
+            showMeta: false,
+          ),
+        ),
+      ));
+      expect(find.textContaining('#t1'), findsNothing);
+    });
+
+    testWidgets('showMeta=true shows tags line', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(tags: const ['t1', 't2']),
+            showMeta: true,
+          ),
+        ),
+      ));
+      expect(find.textContaining('#t1'), findsOneWidget);
+      expect(find.textContaining('#t2'), findsOneWidget);
+    });
+
+    testWidgets('showMeta=true shows updated date', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation:
+                _annotation(updatedAt: DateTime(2026, 6, 27, 14, 32)),
+            showMeta: true,
+          ),
+        ),
+      ));
+      expect(find.textContaining('06-27 14:32'), findsOneWidget);
+    });
+
+    testWidgets('showMeta=true joins date + tags with ·', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(
+              tags: const ['psychology'],
+              updatedAt: DateTime(2026, 6, 27, 14, 32),
+            ),
+            showMeta: true,
+          ),
+        ),
+      ));
+      expect(find.textContaining('06-27 14:32 · #psychology'), findsOneWidget);
+    });
+
+    testWidgets('showMeta=true with no tags shows date only', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(tags: const []),
+            showMeta: true,
+          ),
+        ),
+      ));
+      expect(find.textContaining('06-27 10:30'), findsOneWidget);
+      expect(find.textContaining('·'), findsNothing);
+    });
+
+    testWidgets('showMeta=true with date but empty tags list omits ·',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(
+              tags: const [],
+              updatedAt: DateTime(2026, 6, 27, 14, 32),
+            ),
+            showMeta: true,
+          ),
+        ),
+      ));
+      expect(find.textContaining('06-27 14:32'), findsOneWidget);
+      expect(find.textContaining('·'), findsNothing);
+    });
+
+    testWidgets('showMeta=true does not break onTap', (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(),
+            showMeta: true,
+            onTap: () => tapped = true,
+          ),
+        ),
+      ));
+      await tester.tap(find.byType(AnnotationTile));
+      expect(tapped, isTrue);
+    });
+
+    testWidgets('showMeta=true does not break onLongPress', (tester) async {
+      var longPressed = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _annotation(),
+            showMeta: true,
+            onLongPress: () => longPressed = true,
+          ),
+        ),
+      ));
+      await tester.longPress(find.byType(AnnotationTile));
+      expect(longPressed, isTrue);
+    });
+  });
 }
