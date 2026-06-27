@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
-import '../../../data/models/book.dart';
 import '../models/library_mode.dart';
 import '../models/library_state.dart';
 import '../models/sort_by.dart';
@@ -155,21 +154,25 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     );
     if (result == null || result.files.single.path == null) return;
     final path = result.files.single.path!;
-    final format = path.toLowerCase().endsWith('.pdf')
-        ? BookFormat.pdf
-        : BookFormat.epub;
     final importService = await ref.read(bookImportServiceProvider.future);
     if (!mounted) return;
-    final importResult =
-        await importService.importFile(File(path), format: format);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(importResult.isNew
-            ? '已导入：${importResult.book.title}'
-            : '已在书库中：${importResult.book.title}'),
-      ),
-    );
+    try {
+      final importResult = await importService.importFile(File(path));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(importResult.isNew
+              ? '已导入：${importResult.book.title}'
+              : '已在书库中：${importResult.book.title}'),
+        ),
+      );
+    } on ArgumentError {
+      // 检测不到 PDF/EPUB magic bytes（可能文件损坏或扩展名被人为篡改）。
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂不支持该文件格式')),
+      );
+    }
   }
 
   Future<void> _confirmBatchDelete() async {

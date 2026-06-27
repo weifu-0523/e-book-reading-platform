@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../data/local/file_storage.dart';
 import '../data/models/book.dart';
 import '../data/repositories/book_repository.dart';
+import '../data/services/book_format_detector.dart';
 
 class ImportResult {
   final Book book;
@@ -32,18 +33,33 @@ class BookImportService {
         _coverExtractor = coverExtractor,
         _uuid = uuid ?? const Uuid();
 
+  /// 导入 [source] 指向的电子书文件。
+  ///
+  /// 当 [format] 缺省时，由 [BookFormatDetector] 依据文件 magic bytes 推断；
+  /// 推断失败抛 [ArgumentError]，调用方应提示用户文件不被支持。
   Future<ImportResult> importFile(
     File source, {
-    required BookFormat format,
+    BookFormat? format,
   }) async {
     final bytes = await source.readAsBytes();
     final hash = sha1.convert(bytes).toString();
-    final extension = format == BookFormat.epub ? 'epub' : 'pdf';
+
+    // 调用方未显式提供 format → 走 magic bytes 检测；失败则在 dedup 之后抛出，
+    // 以保证同 hash 已入库记录的复用不被打断（dedup-first）。
+    final effectiveFormat = format ?? BookFormatDetector.detect(source.path);
+    final extension =
+        effectiveFormat == BookFormat.epub ? 'epub' : 'pdf';
 
     // Dedup by hash（先快路径）
     final existing = await _bookRepository.findByHash(hash);
     if (existing != null) {
       return ImportResult(book: existing, isNew: false);
+    }
+
+    if (effectiveFormat == null) {
+      throw ArgumentError(
+        'Unsupported file format (no PDF/EPUB magic bytes): ${source.path}',
+      );
     }
 
     // Store file
@@ -58,7 +74,7 @@ class BookImportService {
 
     // 仅 EPUB 提取封面；失败 coverPath=null，import 不中断
     String? coverPath;
-    if (format == BookFormat.epub) {
+    if (effectiveFormat == BookFormat.epub) {
       try {
         coverPath = await _coverExtractor.extract(
           bookId: bookId,
@@ -74,7 +90,7 @@ class BookImportService {
       id: bookId,
       title: fileName,
       author: null,
-      format: format,
+      format: effectiveFormat,
       filePath: stored.path,
       fileHash: hash,
       fileSizeBytes: bytes.length,
