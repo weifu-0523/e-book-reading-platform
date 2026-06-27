@@ -1,0 +1,22 @@
+{
+  "@@locale": "en",
+  "appTitle": "Zhi Yue",
+  "settingsTitle": "Settings",
+  "settingsSectionReading": "Reading",
+  "settingsSectionFonts": "Fonts",
+  "settingsSectionAppearance": "Appearance",
+  "settingsSectionLanguage": "Language",
+  "settingsSectionAbout": "About",
+  "settingsTypographyProfiles": "Typography Profiles",
+  "settingsCustomFonts": "Custom Fonts",
+  "settingsTheme": "Theme",
+  "settingsLanguage": "Language",
+  "settingsAbout": "About Zhi Yue",
+  "settingsSourceCode": "Source Code",
+  "themeSystem": "Follow System",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "languageSystem": "Follow System",
+  "languageChinese": "中文",
+  "languageEnglish": "English"
+}
