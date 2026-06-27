@@ -3050,6 +3050,480 @@ class SettingsCompanion extends UpdateCompanion<Setting> {
   }
 }
 
+class $UserFontsTable extends UserFonts
+    with TableInfo<$UserFontsTable, UserFont> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UserFontsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fileNameMeta = const VerificationMeta(
+    'fileName',
+  );
+  @override
+  late final GeneratedColumn<String> fileName = GeneratedColumn<String>(
+    'file_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _familyNameMeta = const VerificationMeta(
+    'familyName',
+  );
+  @override
+  late final GeneratedColumn<String> familyName = GeneratedColumn<String>(
+    'family_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _hashSha1Meta = const VerificationMeta(
+    'hashSha1',
+  );
+  @override
+  late final GeneratedColumn<String> hashSha1 = GeneratedColumn<String>(
+    'hash_sha1',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _absolutePathMeta = const VerificationMeta(
+    'absolutePath',
+  );
+  @override
+  late final GeneratedColumn<String> absolutePath = GeneratedColumn<String>(
+    'absolute_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    displayName,
+    fileName,
+    familyName,
+    hashSha1,
+    absolutePath,
+    addedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'user_fonts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<UserFont> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('file_name')) {
+      context.handle(
+        _fileNameMeta,
+        fileName.isAcceptableOrUnknown(data['file_name']!, _fileNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fileNameMeta);
+    }
+    if (data.containsKey('family_name')) {
+      context.handle(
+        _familyNameMeta,
+        familyName.isAcceptableOrUnknown(data['family_name']!, _familyNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_familyNameMeta);
+    }
+    if (data.containsKey('hash_sha1')) {
+      context.handle(
+        _hashSha1Meta,
+        hashSha1.isAcceptableOrUnknown(data['hash_sha1']!, _hashSha1Meta),
+      );
+    } else if (isInserting) {
+      context.missing(_hashSha1Meta);
+    }
+    if (data.containsKey('absolute_path')) {
+      context.handle(
+        _absolutePathMeta,
+        absolutePath.isAcceptableOrUnknown(
+          data['absolute_path']!,
+          _absolutePathMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_absolutePathMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  UserFont map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return UserFont(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      fileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_name'],
+      )!,
+      familyName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}family_name'],
+      )!,
+      hashSha1: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}hash_sha1'],
+      )!,
+      absolutePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}absolute_path'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $UserFontsTable createAlias(String alias) {
+    return $UserFontsTable(attachedDatabase, alias);
+  }
+}
+
+class UserFont extends DataClass implements Insertable<UserFont> {
+  final String id;
+  final String displayName;
+  final String fileName;
+  final String familyName;
+  final String hashSha1;
+  final String absolutePath;
+  final DateTime addedAt;
+  const UserFont({
+    required this.id,
+    required this.displayName,
+    required this.fileName,
+    required this.familyName,
+    required this.hashSha1,
+    required this.absolutePath,
+    required this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['display_name'] = Variable<String>(displayName);
+    map['file_name'] = Variable<String>(fileName);
+    map['family_name'] = Variable<String>(familyName);
+    map['hash_sha1'] = Variable<String>(hashSha1);
+    map['absolute_path'] = Variable<String>(absolutePath);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  UserFontsCompanion toCompanion(bool nullToAbsent) {
+    return UserFontsCompanion(
+      id: Value(id),
+      displayName: Value(displayName),
+      fileName: Value(fileName),
+      familyName: Value(familyName),
+      hashSha1: Value(hashSha1),
+      absolutePath: Value(absolutePath),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory UserFont.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return UserFont(
+      id: serializer.fromJson<String>(json['id']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      fileName: serializer.fromJson<String>(json['fileName']),
+      familyName: serializer.fromJson<String>(json['familyName']),
+      hashSha1: serializer.fromJson<String>(json['hashSha1']),
+      absolutePath: serializer.fromJson<String>(json['absolutePath']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'displayName': serializer.toJson<String>(displayName),
+      'fileName': serializer.toJson<String>(fileName),
+      'familyName': serializer.toJson<String>(familyName),
+      'hashSha1': serializer.toJson<String>(hashSha1),
+      'absolutePath': serializer.toJson<String>(absolutePath),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  UserFont copyWith({
+    String? id,
+    String? displayName,
+    String? fileName,
+    String? familyName,
+    String? hashSha1,
+    String? absolutePath,
+    DateTime? addedAt,
+  }) => UserFont(
+    id: id ?? this.id,
+    displayName: displayName ?? this.displayName,
+    fileName: fileName ?? this.fileName,
+    familyName: familyName ?? this.familyName,
+    hashSha1: hashSha1 ?? this.hashSha1,
+    absolutePath: absolutePath ?? this.absolutePath,
+    addedAt: addedAt ?? this.addedAt,
+  );
+  UserFont copyWithCompanion(UserFontsCompanion data) {
+    return UserFont(
+      id: data.id.present ? data.id.value : this.id,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      fileName: data.fileName.present ? data.fileName.value : this.fileName,
+      familyName: data.familyName.present
+          ? data.familyName.value
+          : this.familyName,
+      hashSha1: data.hashSha1.present ? data.hashSha1.value : this.hashSha1,
+      absolutePath: data.absolutePath.present
+          ? data.absolutePath.value
+          : this.absolutePath,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UserFont(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('fileName: $fileName, ')
+          ..write('familyName: $familyName, ')
+          ..write('hashSha1: $hashSha1, ')
+          ..write('absolutePath: $absolutePath, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    displayName,
+    fileName,
+    familyName,
+    hashSha1,
+    absolutePath,
+    addedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is UserFont &&
+          other.id == this.id &&
+          other.displayName == this.displayName &&
+          other.fileName == this.fileName &&
+          other.familyName == this.familyName &&
+          other.hashSha1 == this.hashSha1 &&
+          other.absolutePath == this.absolutePath &&
+          other.addedAt == this.addedAt);
+}
+
+class UserFontsCompanion extends UpdateCompanion<UserFont> {
+  final Value<String> id;
+  final Value<String> displayName;
+  final Value<String> fileName;
+  final Value<String> familyName;
+  final Value<String> hashSha1;
+  final Value<String> absolutePath;
+  final Value<DateTime> addedAt;
+  final Value<int> rowid;
+  const UserFontsCompanion({
+    this.id = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.fileName = const Value.absent(),
+    this.familyName = const Value.absent(),
+    this.hashSha1 = const Value.absent(),
+    this.absolutePath = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  UserFontsCompanion.insert({
+    required String id,
+    required String displayName,
+    required String fileName,
+    required String familyName,
+    required String hashSha1,
+    required String absolutePath,
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       displayName = Value(displayName),
+       fileName = Value(fileName),
+       familyName = Value(familyName),
+       hashSha1 = Value(hashSha1),
+       absolutePath = Value(absolutePath);
+  static Insertable<UserFont> custom({
+    Expression<String>? id,
+    Expression<String>? displayName,
+    Expression<String>? fileName,
+    Expression<String>? familyName,
+    Expression<String>? hashSha1,
+    Expression<String>? absolutePath,
+    Expression<DateTime>? addedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (displayName != null) 'display_name': displayName,
+      if (fileName != null) 'file_name': fileName,
+      if (familyName != null) 'family_name': familyName,
+      if (hashSha1 != null) 'hash_sha1': hashSha1,
+      if (absolutePath != null) 'absolute_path': absolutePath,
+      if (addedAt != null) 'added_at': addedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  UserFontsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? displayName,
+    Value<String>? fileName,
+    Value<String>? familyName,
+    Value<String>? hashSha1,
+    Value<String>? absolutePath,
+    Value<DateTime>? addedAt,
+    Value<int>? rowid,
+  }) {
+    return UserFontsCompanion(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      fileName: fileName ?? this.fileName,
+      familyName: familyName ?? this.familyName,
+      hashSha1: hashSha1 ?? this.hashSha1,
+      absolutePath: absolutePath ?? this.absolutePath,
+      addedAt: addedAt ?? this.addedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (fileName.present) {
+      map['file_name'] = Variable<String>(fileName.value);
+    }
+    if (familyName.present) {
+      map['family_name'] = Variable<String>(familyName.value);
+    }
+    if (hashSha1.present) {
+      map['hash_sha1'] = Variable<String>(hashSha1.value);
+    }
+    if (absolutePath.present) {
+      map['absolute_path'] = Variable<String>(absolutePath.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UserFontsCompanion(')
+          ..write('id: $id, ')
+          ..write('displayName: $displayName, ')
+          ..write('fileName: $fileName, ')
+          ..write('familyName: $familyName, ')
+          ..write('hashSha1: $hashSha1, ')
+          ..write('absolutePath: $absolutePath, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3064,6 +3538,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BookTypographyOverridesTable bookTypographyOverrides =
       $BookTypographyOverridesTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
+  late final $UserFontsTable userFonts = $UserFontsTable(this);
   late final BooksDao booksDao = BooksDao(this as AppDatabase);
   late final BookTagsDao bookTagsDao = BookTagsDao(this as AppDatabase);
   late final BookNotesDao bookNotesDao = BookNotesDao(this as AppDatabase);
@@ -3075,6 +3550,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final TypographyDao typographyDao = TypographyDao(this as AppDatabase);
   late final SettingsDao settingsDao = SettingsDao(this as AppDatabase);
+  late final UserFontsDao userFontsDao = UserFontsDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3088,6 +3564,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     typographyProfiles,
     bookTypographyOverrides,
     settings,
+    userFonts,
   ];
 }
 
@@ -5666,6 +6143,244 @@ typedef $$SettingsTableProcessedTableManager =
       Setting,
       PrefetchHooks Function()
     >;
+typedef $$UserFontsTableCreateCompanionBuilder =
+    UserFontsCompanion Function({
+      required String id,
+      required String displayName,
+      required String fileName,
+      required String familyName,
+      required String hashSha1,
+      required String absolutePath,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+typedef $$UserFontsTableUpdateCompanionBuilder =
+    UserFontsCompanion Function({
+      Value<String> id,
+      Value<String> displayName,
+      Value<String> fileName,
+      Value<String> familyName,
+      Value<String> hashSha1,
+      Value<String> absolutePath,
+      Value<DateTime> addedAt,
+      Value<int> rowid,
+    });
+
+class $$UserFontsTableFilterComposer
+    extends Composer<_$AppDatabase, $UserFontsTable> {
+  $$UserFontsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get familyName => $composableBuilder(
+    column: $table.familyName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get hashSha1 => $composableBuilder(
+    column: $table.hashSha1,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get absolutePath => $composableBuilder(
+    column: $table.absolutePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$UserFontsTableOrderingComposer
+    extends Composer<_$AppDatabase, $UserFontsTable> {
+  $$UserFontsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get familyName => $composableBuilder(
+    column: $table.familyName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get hashSha1 => $composableBuilder(
+    column: $table.hashSha1,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get absolutePath => $composableBuilder(
+    column: $table.absolutePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$UserFontsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $UserFontsTable> {
+  $$UserFontsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fileName =>
+      $composableBuilder(column: $table.fileName, builder: (column) => column);
+
+  GeneratedColumn<String> get familyName => $composableBuilder(
+    column: $table.familyName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get hashSha1 =>
+      $composableBuilder(column: $table.hashSha1, builder: (column) => column);
+
+  GeneratedColumn<String> get absolutePath => $composableBuilder(
+    column: $table.absolutePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+}
+
+class $$UserFontsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $UserFontsTable,
+          UserFont,
+          $$UserFontsTableFilterComposer,
+          $$UserFontsTableOrderingComposer,
+          $$UserFontsTableAnnotationComposer,
+          $$UserFontsTableCreateCompanionBuilder,
+          $$UserFontsTableUpdateCompanionBuilder,
+          (UserFont, BaseReferences<_$AppDatabase, $UserFontsTable, UserFont>),
+          UserFont,
+          PrefetchHooks Function()
+        > {
+  $$UserFontsTableTableManager(_$AppDatabase db, $UserFontsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$UserFontsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$UserFontsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$UserFontsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<String> fileName = const Value.absent(),
+                Value<String> familyName = const Value.absent(),
+                Value<String> hashSha1 = const Value.absent(),
+                Value<String> absolutePath = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => UserFontsCompanion(
+                id: id,
+                displayName: displayName,
+                fileName: fileName,
+                familyName: familyName,
+                hashSha1: hashSha1,
+                absolutePath: absolutePath,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String displayName,
+                required String fileName,
+                required String familyName,
+                required String hashSha1,
+                required String absolutePath,
+                Value<DateTime> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => UserFontsCompanion.insert(
+                id: id,
+                displayName: displayName,
+                fileName: fileName,
+                familyName: familyName,
+                hashSha1: hashSha1,
+                absolutePath: absolutePath,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$UserFontsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $UserFontsTable,
+      UserFont,
+      $$UserFontsTableFilterComposer,
+      $$UserFontsTableOrderingComposer,
+      $$UserFontsTableAnnotationComposer,
+      $$UserFontsTableCreateCompanionBuilder,
+      $$UserFontsTableUpdateCompanionBuilder,
+      (UserFont, BaseReferences<_$AppDatabase, $UserFontsTable, UserFont>),
+      UserFont,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5689,4 +6404,6 @@ class $AppDatabaseManager {
       );
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
+  $$UserFontsTableTableManager get userFonts =>
+      $$UserFontsTableTableManager(_db, _db.userFonts);
 }

@@ -18,5 +18,22 @@
   "themeDark": "Dark",
   "languageSystem": "Follow System",
   "languageChinese": "中文",
-  "languageEnglish": "English"
+  "languageEnglish": "English",
+  "fontManagementTitle": "Font Management",
+  "fontManagementSystemFonts": "System Fonts",
+  "fontManagementImportFont": "Import Font",
+  "fontManagementImportButton": "Import .ttf / .otf file",
+  "fontManagementEmpty": "No fonts imported yet. Tap the button above to pick a .ttf or .otf file.",
+  "fontManagementImportCancelled": "Import cancelled",
+  "fontManagementImportExists": "Font already exists: {name}",
+  "fontManagementImportInvalid": "Invalid font file: {reason}",
+  "fontManagementImportReadError": "Failed to read file: {message}",
+  "fontManagementImportSuccess": "Imported: {name}",
+  "fontManagementRename": "Rename",
+  "fontManagementDelete": "Delete",
+  "fontManagementRenamePrompt": "New display name",
+  "fontManagementDeleteConfirmTitle": "Delete font",
+  "fontManagementDeleteConfirmBody": "Delete \"{name}\"?",
+  "fontManagementCancel": "Cancel",
+  "fontManagementConfirm": "Confirm"
 }

@@ -37,5 +37,69 @@
   "languageChinese": "中文",
   "@languageChinese": {},
   "languageEnglish": "English",
-  "@languageEnglish": {}
+  "@languageEnglish": {},
+  "fontManagementTitle": "字体管理",
+  "@fontManagementTitle": {},
+  "fontManagementSystemFonts": "系统字体",
+  "@fontManagementSystemFonts": {},
+  "fontManagementImportFont": "导入字体",
+  "@fontManagementImportFont": {},
+  "fontManagementImportButton": "导入 .ttf / .otf 文件",
+  "@fontManagementImportButton": {},
+  "fontManagementEmpty": "尚未导入任何字体。点击上方按钮选择 .ttf 或 .otf 文件。",
+  "@fontManagementEmpty": {},
+  "fontManagementImportCancelled": "已取消导入",
+  "@fontManagementImportCancelled": {},
+  "fontManagementImportExists": "该字体已存在：{name}",
+  "@fontManagementImportExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fontManagementImportInvalid": "字体文件无效：{reason}",
+  "@fontManagementImportInvalid": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "fontManagementImportReadError": "读取文件失败：{message}",
+  "@fontManagementImportReadError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "fontManagementImportSuccess": "已导入：{name}",
+  "@fontManagementImportSuccess": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fontManagementRename": "重命名",
+  "@fontManagementRename": {},
+  "fontManagementDelete": "删除",
+  "@fontManagementDelete": {},
+  "fontManagementRenamePrompt": "新的显示名称",
+  "@fontManagementRenamePrompt": {},
+  "fontManagementDeleteConfirmTitle": "删除字体",
+  "@fontManagementDeleteConfirmTitle": {},
+  "fontManagementDeleteConfirmBody": "确定要删除 “{name}” 吗？",
+  "@fontManagementDeleteConfirmBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fontManagementCancel": "取消",
+  "@fontManagementCancel": {},
+  "fontManagementConfirm": "确认",
+  "@fontManagementConfirm": {}
 }

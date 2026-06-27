@@ -9,6 +9,7 @@ import 'daos/books_dao.dart';
 import 'daos/reading_progress_dao.dart';
 import 'daos/settings_dao.dart';
 import 'daos/typography_dao.dart';
+import 'daos/user_fonts_dao.dart';
 import 'tables/annotations.dart';
 import 'tables/book_notes.dart';
 import 'tables/book_tags.dart';
@@ -17,6 +18,7 @@ import 'tables/books.dart';
 import 'tables/reading_progress.dart';
 import 'tables/settings.dart';
 import 'tables/typography_profiles.dart';
+import 'tables/user_fonts.dart';
 
 part 'database.g.dart';
 
@@ -30,6 +32,7 @@ part 'database.g.dart';
     TypographyProfiles,
     BookTypographyOverrides,
     Settings,
+    UserFonts,
   ],
   daos: [
     BooksDao,
@@ -38,7 +41,8 @@ part 'database.g.dart';
     AnnotationsDao,
     ReadingProgressDao,
     TypographyDao,
-    SettingsDao
+    SettingsDao,
+    UserFontsDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -47,7 +51,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -90,6 +94,10 @@ class AppDatabase extends _$AppDatabase {
             INSERT INTO annotations_fts(rowid, quote, note, tags)
             SELECT rowid, quote, note, tags FROM annotations
           ''');
+        }
+        if (from < 5) {
+          // schema v5：用户自定义字体表
+          await m.createTable(userFonts);
         }
       },
       beforeOpen: (details) async {

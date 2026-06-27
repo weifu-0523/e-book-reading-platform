@@ -211,6 +211,108 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'English'**
   String get languageEnglish;
+
+  /// No description provided for @fontManagementTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'字体管理'**
+  String get fontManagementTitle;
+
+  /// No description provided for @fontManagementSystemFonts.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统字体'**
+  String get fontManagementSystemFonts;
+
+  /// No description provided for @fontManagementImportFont.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入字体'**
+  String get fontManagementImportFont;
+
+  /// No description provided for @fontManagementImportButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入 .ttf / .otf 文件'**
+  String get fontManagementImportButton;
+
+  /// No description provided for @fontManagementEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未导入任何字体。点击上方按钮选择 .ttf 或 .otf 文件。'**
+  String get fontManagementEmpty;
+
+  /// No description provided for @fontManagementImportCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取消导入'**
+  String get fontManagementImportCancelled;
+
+  /// No description provided for @fontManagementImportExists.
+  ///
+  /// In zh, this message translates to:
+  /// **'该字体已存在：{name}'**
+  String fontManagementImportExists(String name);
+
+  /// No description provided for @fontManagementImportInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'字体文件无效：{reason}'**
+  String fontManagementImportInvalid(String reason);
+
+  /// No description provided for @fontManagementImportReadError.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取文件失败：{message}'**
+  String fontManagementImportReadError(String message);
+
+  /// No description provided for @fontManagementImportSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导入：{name}'**
+  String fontManagementImportSuccess(String name);
+
+  /// No description provided for @fontManagementRename.
+  ///
+  /// In zh, this message translates to:
+  /// **'重命名'**
+  String get fontManagementRename;
+
+  /// No description provided for @fontManagementDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get fontManagementDelete;
+
+  /// No description provided for @fontManagementRenamePrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'新的显示名称'**
+  String get fontManagementRenamePrompt;
+
+  /// No description provided for @fontManagementDeleteConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除字体'**
+  String get fontManagementDeleteConfirmTitle;
+
+  /// No description provided for @fontManagementDeleteConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定要删除 “{name}” 吗？'**
+  String fontManagementDeleteConfirmBody(String name);
+
+  /// No description provided for @fontManagementCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get fontManagementCancel;
+
+  /// No description provided for @fontManagementConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get fontManagementConfirm;
 }
 
 class _AppLocalizationsDelegate

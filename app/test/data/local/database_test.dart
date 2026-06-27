@@ -10,9 +10,9 @@ void main() {
     await db.close();
   });
 
-  test('database version is 4', () {
+  test('database version is 5', () {
     final db = createTestDatabase();
-    expect(db.schemaVersion, 4);
+    expect(db.schemaVersion, 5);
     db.close();
   });
 

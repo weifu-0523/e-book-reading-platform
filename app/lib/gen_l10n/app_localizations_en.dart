@@ -64,4 +64,66 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get languageEnglish => 'English';
+
+  @override
+  String get fontManagementTitle => 'Font Management';
+
+  @override
+  String get fontManagementSystemFonts => 'System Fonts';
+
+  @override
+  String get fontManagementImportFont => 'Import Font';
+
+  @override
+  String get fontManagementImportButton => 'Import .ttf / .otf file';
+
+  @override
+  String get fontManagementEmpty =>
+      'No fonts imported yet. Tap the button above to pick a .ttf or .otf file.';
+
+  @override
+  String get fontManagementImportCancelled => 'Import cancelled';
+
+  @override
+  String fontManagementImportExists(String name) {
+    return 'Font already exists: $name';
+  }
+
+  @override
+  String fontManagementImportInvalid(String reason) {
+    return 'Invalid font file: $reason';
+  }
+
+  @override
+  String fontManagementImportReadError(String message) {
+    return 'Failed to read file: $message';
+  }
+
+  @override
+  String fontManagementImportSuccess(String name) {
+    return 'Imported: $name';
+  }
+
+  @override
+  String get fontManagementRename => 'Rename';
+
+  @override
+  String get fontManagementDelete => 'Delete';
+
+  @override
+  String get fontManagementRenamePrompt => 'New display name';
+
+  @override
+  String get fontManagementDeleteConfirmTitle => 'Delete font';
+
+  @override
+  String fontManagementDeleteConfirmBody(String name) {
+    return 'Delete \"$name\"?';
+  }
+
+  @override
+  String get fontManagementCancel => 'Cancel';
+
+  @override
+  String get fontManagementConfirm => 'Confirm';
 }

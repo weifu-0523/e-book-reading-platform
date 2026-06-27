@@ -16,12 +16,14 @@ class FileStorage {
   final Directory rootDir;
   final Directory libraryDir;
   final Directory coversDir;
+  final Directory fontsDir;
   final Directory cacheDir;
 
   FileStorage._({
     required this.rootDir,
     required this.libraryDir,
     required this.coversDir,
+    required this.fontsDir,
     required this.cacheDir,
   });
 
@@ -34,16 +36,18 @@ class FileStorage {
       rootDir: root,
       libraryDir: _ensureDir(Directory(p.join(root.path, 'library'))),
       coversDir: _ensureDir(Directory(p.join(root.path, 'covers'))),
+      fontsDir: _ensureDir(Directory(p.join(root.path, 'fonts'))),
       cacheDir: _ensureDir(Directory(p.join(root.path, 'cache'))),
     );
   }
 
-  /// 测试用构造器：显式传入四个目录实例（不再创建子目录）。
+  /// 测试用构造器：显式传入五个目录实例（不再创建子目录）。
   /// 适合测试需要替换或预置目录的场景。
   const FileStorage.forTesting({
     required this.rootDir,
     required this.libraryDir,
     required this.coversDir,
+    required this.fontsDir,
     required this.cacheDir,
   });
 

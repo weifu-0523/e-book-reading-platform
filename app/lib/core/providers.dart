@@ -13,9 +13,11 @@ import '../data/repositories/notes_repository.dart';
 import '../data/repositories/reading_progress_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/typography_profile_repository.dart';
+import '../data/repositories/user_font_repository.dart';
 import '../data/models/typography_profile.dart' as model;
 import '../features/library/models/library_state.dart';
 import '../features/library/providers/library_controller.dart';
+import '../features/settings/services/font_import_service.dart';
 import '../services/book_import_service.dart';
 
 /// 全局单例 AppDatabase。M1 阶段无同步包装。
@@ -89,4 +91,19 @@ final typographyProfileProvider =
     return repo.getAll();
   }
   return profiles;
+});
+
+/// 用户字体仓储单例。
+final userFontRepositoryProvider = Provider<UserFontRepository>((ref) {
+  return UserFontRepository(ref.watch(appDatabaseProvider));
+});
+
+/// 字体导入服务。延迟创建——只在真正导入时把 [FileStorage.fontsDir] 注入。
+final fontImportServiceFutureProvider =
+    FutureProvider<FontImportService>((ref) async {
+  final storage = await ref.watch(fileStorageProvider.future);
+  return FontImportService(
+    ref.watch(userFontRepositoryProvider),
+    storage.fontsDir,
+  );
 });
