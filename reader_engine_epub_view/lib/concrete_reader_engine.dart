@@ -43,6 +43,9 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
       _renderer.currentChapterPageBreaks;
 
   @override
+  PageController? get pageController => _renderer.pageController;
+
+  @override
   TableOfContents? get toc => _toc;
 
   @override

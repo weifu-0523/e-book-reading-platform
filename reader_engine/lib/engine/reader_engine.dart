@@ -31,6 +31,12 @@ abstract interface class ReaderEngine {
   /// In paged mode after first layout, returns the breaks from the
   /// Paginator. Length matches `PageController.itemCount` of the paged view.
   List<PageBreak> get currentChapterPageBreaks;
+
+  /// PageController used by paged-mode PageView (M3.4).
+  ///
+  /// Returns null in scroll mode or before first build. App-layer uses this
+  /// to drive `jumpToPage` for deep-link scroll in paged mode.
+  PageController? get pageController;
   TableOfContents? get toc;
   TypographySettings get typography;
   PaginationMode get paginationMode;

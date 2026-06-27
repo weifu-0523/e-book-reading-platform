@@ -97,6 +97,15 @@ class EpubxRenderer implements EpubRenderer {
     return List.unmodifiable(cached);
   }
 
+  /// Read-only access for app-layer scroll positioning (M3.4).
+  ///
+  /// The returned controller is the same one bound to the paged-mode
+  /// [PageView.builder]. App layer uses it to `jumpToPage` for deep-link
+  /// scroll. The controller exists for the renderer's lifetime (constructed
+  /// eagerly in the field initializer); callers should still guard with
+  /// `hasClients` before invoking mutations if uncertain.
+  PageController? get pageController => _pageController;
+
   /// 仅用于测试：直接注入一本书（跳过 openFile 的文件 IO 与解析）。
   @visibleForTesting
   set bookForTesting(EpubBook? book) {

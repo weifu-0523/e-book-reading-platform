@@ -20,6 +20,9 @@ class _FakeEngine implements ReaderEngine {
       ];
 
   @override
+  PageController? get pageController => null;
+
+  @override
   ReaderEngineState get state => throw UnimplementedError();
 
   @override

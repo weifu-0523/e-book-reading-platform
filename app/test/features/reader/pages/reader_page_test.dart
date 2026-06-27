@@ -49,6 +49,9 @@ class FakeReaderEngine implements ReaderEngine {
   List<PageBreak> get currentChapterPageBreaks => const [];
 
   @override
+  PageController? get pageController => null;
+
+  @override
   ReaderEngineState get state => _state;
 
   @override
