@@ -142,12 +142,6 @@ class FontManagementPage extends ConsumerWidget {
           ),
         );
       case FontImportSuccess(:final font):
-        // 字体加载到 FontLoader 后才会真正可用——bootstrap 这里再保险一次
-        try {
-          final bytes = await File(font.absolutePath).readAsBytes();
-          // ignore: avoid_print
-          print('Imported font ${font.familyName}: ${bytes.length} bytes');
-        } catch (_) {/* loading 已在 service 内完成 */}
         messenger.showSnackBar(
           SnackBar(
             content: Text(l10n.fontManagementImportSuccess(font.displayName)),
