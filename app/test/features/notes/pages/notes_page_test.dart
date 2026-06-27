@@ -1,3 +1,7 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +12,57 @@ import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/notes/pages/notes_page.dart';
+
+/// Fake [FilePicker] that returns a pre-configured directory path (or null to
+/// simulate user cancel). Mirrors the T5 pattern — file_picker 8.3.7 uses FFI
+/// on Windows, so [MethodChannel] mocks do not work and we must override
+/// [FilePicker.platform] directly.
+class _FakeFilePicker extends FilePicker {
+  _FakeFilePicker(this._directoryPath);
+
+  final String? _directoryPath;
+
+  @override
+  Future<String?> getDirectoryPath({
+    String? dialogTitle,
+    bool lockParentWindow = false,
+    String? initialDirectory,
+  }) async =>
+      _directoryPath;
+
+  // Unused in tests; provide no-op stubs.
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async =>
+      null;
+
+  @override
+  Future<String?> saveFile({
+    String? dialogTitle,
+    String? fileName,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Uint8List? bytes,
+    bool lockParentWindow = false,
+  }) async =>
+      null;
+
+  @override
+  Future<bool?> clearTemporaryFiles() async => false;
+}
 
 class _FakeNotesRepository implements NotesRepository {
   final List<Annotation> annotations;
@@ -35,8 +90,11 @@ class _FakeNotesRepository implements NotesRepository {
 
 void main() {
   late List<Annotation> annotations;
+  // Reusable temp dir for export tests — created in setUp before testWidgets
+  // runs, so the createTemp disk I/O happens outside the fake-async zone.
+  late Directory exportTmpDir;
 
-  setUp(() {
+  setUp(() async {
     annotations = [
       Annotation(
         id: 'a1',
@@ -73,6 +131,13 @@ void main() {
         updatedAt: DateTime(2026, 6, 27),
       ),
     ];
+    exportTmpDir = await Directory.systemTemp.createTemp('m3.4_export_');
+  });
+
+  tearDown(() async {
+    if (await exportTmpDir.exists()) {
+      await exportTmpDir.delete(recursive: true);
+    }
   });
 
   testWidgets('renders empty state when no annotations', (tester) async {
@@ -129,6 +194,30 @@ void main() {
     expect(find.text('删除'), findsOneWidget);
     expect(find.text('复制引用'), findsOneWidget);
     expect(find.text('复制 Markdown 片段'), findsOneWidget);
+  });
+
+  testWidgets('export success shows SnackBar with 打开文件夹 action',
+      (tester) async {
+    // file_picker 8.3.7 uses FFI on Windows — must override the singleton,
+    // not the MethodChannel. Mirrors the T5 NoteFileWriter test pattern.
+    FilePicker.platform = _FakeFilePicker(exportTmpDir.path);
+
+    await tester.pumpWidget(_harness(annotations));
+    await tester.pumpAndSettle();
+
+    // _export awaits real disk I/O (File.writeAsString + provider.future).
+    // Wrap tap+pump+delay in runAsync so the awaited chain can make
+    // real-async progress; pump() after to render the SnackBar frame.
+    await tester.binding.runAsync(() async {
+      await tester.tap(find.byTooltip('导出 Markdown'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await tester.pump();
+    });
+    await tester.pump();
+
+    expect(find.textContaining('已保存'), findsOneWidget);
+    expect(find.text('打开文件夹'), findsOneWidget);
   });
 }
 

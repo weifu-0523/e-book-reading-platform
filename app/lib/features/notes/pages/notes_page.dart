@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -194,13 +196,31 @@ class NotesPage extends ConsumerWidget {
       );
       if (!context.mounted || path == null) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已保存：$path')),
+        SnackBar(
+          content: Text('已保存：$path'),
+          action: SnackBarAction(
+            label: '打开文件夹',
+            onPressed: () => _openFolder(path),
+          ),
+        ),
       );
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('导出失败：$e')),
       );
+    }
+  }
+
+  /// Best-effort open of Windows Explorer with [filePath] selected. No-op on
+  /// non-Windows platforms. Failures (e.g. explorer.exe missing) are silently
+  /// swallowed — this is a convenience action, not a critical path.
+  Future<void> _openFolder(String filePath) async {
+    if (!Platform.isWindows) return;
+    try {
+      await Process.run('explorer', ['/select,$filePath']);
+    } catch (_) {
+      // Best-effort; ignore failures.
     }
   }
 
