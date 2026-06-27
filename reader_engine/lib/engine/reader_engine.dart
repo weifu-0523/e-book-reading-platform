@@ -34,8 +34,10 @@ abstract interface class ReaderEngine {
 
   /// PageController used by paged-mode PageView (M3.4).
   ///
-  /// Returns null in scroll mode or before first build. App-layer uses this
-  /// to drive `jumpToPage` for deep-link scroll in paged mode.
+  /// Returns null when this engine doesn't drive a paged view (e.g.,
+  /// scroll-only renderers, test fakes). The concrete [EpubxRenderer]
+  /// implementation returns a non-null controller for the engine's
+  /// lifetime (constructed eagerly in the field initializer).
   PageController? get pageController;
   TableOfContents? get toc;
   TypographySettings get typography;
