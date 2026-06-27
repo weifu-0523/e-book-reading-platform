@@ -9,6 +9,7 @@ import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
 
 import 'pdf_outline_bridge.dart';
+import 'pdf_theme.dart';
 
 /// pdfrx 适配层 —— PDF 等价于 [EpubxRenderer]。
 ///
@@ -134,11 +135,16 @@ class PdfRenderer {
 
   /// 阅读区 widget。doc 未加载时返回 SizedBox.shrink。
   ///
-  /// 后续任务（T7 主题 / T8 选区 / T9 扫描 banner）会在此方法内插入钩子。
+  /// T7：根据 [_typography.theme] 用 [PdfTheme.applyTheme] 包装 PdfViewer，
+  /// 实现 sepia / night / eInk 主题适配（pdfrx 原生不支持）。
+  /// 后续任务（T8 选区 / T9 扫描 banner）会在此方法内继续插入钩子。
   Widget build(BuildContext context) {
     final doc = _doc;
     if (doc == null) return const SizedBox.shrink();
-    return PdfViewer.file(doc.sourceName);
+    return PdfTheme.applyTheme(
+      theme: _typography.theme,
+      child: PdfViewer.file(doc.sourceName),
+    );
   }
 
   /// 释放 pdfrx 文档与所有 StreamController。
