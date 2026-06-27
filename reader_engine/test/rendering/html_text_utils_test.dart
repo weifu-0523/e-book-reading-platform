@@ -36,4 +36,68 @@ void main() {
       expect(HtmlTextUtils.htmlToPlainText('<p>hello world</p>'), 'hello world');
     });
   });
+
+  group('HtmlTextUtils.htmlToParagraphs', () {
+    test('empty input returns empty plainText and no paragraphs', () {
+      final result = HtmlTextUtils.htmlToParagraphs('');
+      expect(result.plainText, '');
+      expect(result.paragraphs, isEmpty);
+    });
+
+    test('single paragraph returns one span covering the text', () {
+      final result = HtmlTextUtils.htmlToParagraphs('<p>hello world</p>');
+      expect(result.plainText, 'hello world');
+      expect(result.paragraphs.length, 1);
+      expect(result.paragraphs.first.start, 0);
+      expect(result.paragraphs.first.end, 11);
+    });
+
+    test('multiple paragraphs: plainText is concatenation (no separator), spans exclude between-text whitespace', () {
+      // Whitespace text node "\n" between </p> and <p> is preserved in plainText
+      // but NOT included in any paragraph span.
+      final result = HtmlTextUtils.htmlToParagraphs('<p>foo</p>\n<p>bar</p>');
+      expect(result.plainText, 'foo\nbar');
+      expect(result.paragraphs.length, 2);
+      expect(result.paragraphs[0].start, 0);
+      expect(result.paragraphs[0].end, 3);
+      expect(result.paragraphs[1].start, 4);  // after the "\n"
+      expect(result.paragraphs[1].end, 7);
+    });
+
+    test('nested block elements: inner block does not create separate span', () {
+      final result = HtmlTextUtils.htmlToParagraphs('<div><p>x</p></div>');
+      expect(result.plainText, 'x');
+      expect(result.paragraphs.length, 1);
+      expect(result.paragraphs.first.start, 0);
+      expect(result.paragraphs.first.end, 1);
+    });
+
+    test('inline elements within paragraph are part of the paragraph span', () {
+      final result = HtmlTextUtils.htmlToParagraphs('<p>a <b>bold</b> b</p>');
+      expect(result.plainText, 'a bold b');
+      expect(result.paragraphs.length, 1);
+      expect(result.paragraphs.first.start, 0);
+      // 'a bold b' is 8 chars (a + sp + bold + sp + b).
+      expect(result.paragraphs.first.end, 8);
+    });
+
+    test('strips script and style before extracting paragraphs', () {
+      const html = '<p>visible</p><script>hidden()</script>'
+          '<style>.x{color:red}</style><p>more</p>';
+      final result = HtmlTextUtils.htmlToParagraphs(html);
+      expect(result.plainText, 'visiblemore');
+      expect(result.paragraphs.length, 2);
+      expect(result.paragraphs[0].end, 7);  // "visible"
+      expect(result.paragraphs[1].start, 7);  // "more" starts immediately
+      expect(result.paragraphs[1].end, 11);
+    });
+
+    test('text outside any block element forms its own implicit paragraph', () {
+      final result = HtmlTextUtils.htmlToParagraphs('bare text');
+      expect(result.plainText, 'bare text');
+      expect(result.paragraphs.length, 1);
+      expect(result.paragraphs.first.start, 0);
+      expect(result.paragraphs.first.end, 9);
+    });
+  });
 }
