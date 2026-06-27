@@ -35,7 +35,16 @@ class FontManagementPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final fontsAsync = ref.watch(fontLibraryProvider);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.fontManagementTitle)),
+      appBar: AppBar(
+        title: Text(l10n.fontManagementTitle),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: l10n.fontManagementImportButton,
+            onPressed: () => _onImportTapped(context, ref),
+          ),
+        ],
+      ),
       body: fontsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('$e')),
@@ -56,14 +65,6 @@ class FontManagementPage extends ConsumerWidget {
 
             // 用户字体
             _SectionHeader(label: l10n.settingsCustomFonts),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: FilledButton.icon(
-                icon: const Icon(Icons.upload_file),
-                label: Text(l10n.fontManagementImportButton),
-                onPressed: () => _onImportTapped(context, ref),
-              ),
-            ),
             if (fonts.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(16),

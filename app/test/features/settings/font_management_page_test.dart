@@ -51,8 +51,8 @@ void main() {
     expect(find.text('Roboto'), findsWidgets);
     // Custom fonts header (zh: '自定义字体' — uses existing i18n key).
     expect(find.text('自定义字体'), findsOneWidget);
-    // Import button label.
-    expect(find.text('导入 .ttf / .otf 文件'), findsOneWidget);
+    // Import IconButton in AppBar (tooltip is the localized import label).
+    expect(find.byTooltip('导入 .ttf / .otf 文件'), findsOneWidget);
     // Empty hint.
     expect(find.textContaining('尚未导入任何字体'), findsOneWidget);
   });
