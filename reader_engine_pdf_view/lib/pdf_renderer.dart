@@ -5,7 +5,10 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
+import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
+
+import 'pdf_outline_bridge.dart';
 
 /// pdfrx 适配层 —— PDF 等价于 [EpubxRenderer]。
 ///
@@ -46,6 +49,24 @@ class PdfRenderer {
 
   /// 总页数；未打开返回 0。
   int get pageCount => _doc?.pages.length ?? 0;
+
+  /// 加载 PDF 书签（pdfrx outline）并转换为 reader_engine [TableOfContents]。
+  ///
+  /// pdfrx v2.4.4：`PdfDocument.loadOutline()` 返回顶级 outline 节点列表
+  /// （`Future<List<PdfOutlineNode>>`），由 [PdfOutlineBridge] 递归转换为
+  /// reader_engine 的 TocEntry 树；`dest == null` 的节点被跳过。
+  /// 未打开 / 失败时返回空 TOC，不抛异常（保持与 EPUB toc getter 同语义）。
+  Future<TableOfContents> get toc async {
+    final doc = _doc;
+    if (doc == null) return TableOfContents.empty();
+    try {
+      final nodes = await doc.loadOutline();
+      return PdfOutlineBridge.toTableOfContents(nodes);
+    } catch (e, st) {
+      debugPrint('PdfRenderer.toc loadOutline failed: $e\n$st');
+      return TableOfContents.empty();
+    }
+  }
 
   /// 打开 PDF 文件路径，更新状态机（loading → ready / error）。
   Future<void> openFile(String path) async {
