@@ -94,6 +94,15 @@ class PdfRenderer {
     _stateController.add(next);
   }
 
+  /// 阅读区 widget。doc 未加载时返回 SizedBox.shrink。
+  ///
+  /// 后续任务（T7 主题 / T8 选区 / T9 扫描 banner）会在此方法内插入钩子。
+  Widget build(BuildContext context) {
+    final doc = _doc;
+    if (doc == null) return const SizedBox.shrink();
+    return PdfViewer.file(doc.sourceName);
+  }
+
   /// 释放 pdfrx 文档与所有 StreamController。
   Future<void> dispose() async {
     await _doc?.dispose();
