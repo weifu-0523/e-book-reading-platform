@@ -3,6 +3,8 @@ import 'package:reader_engine/core/book_ref.dart' as re;
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
+import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
+import 'package:reader_engine_pdf_view/pdf_renderer.dart';
 import 'package:zhiyue/data/models/book.dart';
 
 import '../../../core/providers.dart';
@@ -41,5 +43,12 @@ final readerEngineForBookProvider =
     );
     return engine;
   }
-  throw UnimplementedError('PDF engine is M4');
+  // M4: PDF routing
+  final engine = PdfReaderEngine(renderer: PdfRenderer());
+  final lastProgress = await progressRepo.get(bookId);
+  await engine.openWithLastProgress(
+    book: bookRef,
+    lastLocator: lastProgress?.locator,
+  );
+  return engine;
 });

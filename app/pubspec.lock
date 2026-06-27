@@ -338,12 +338,11 @@ packages:
     source: hosted
     version: "2.28.0"
   epubx:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: epubx
-      sha256: "0ab9354efa177c4be52c46f857bc15bf83f83a92667fb673465c8f89fca26db3"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../epubx_patched"
+      relative: true
+    source: path
     version: "4.0.0"
   fake_async:
     dependency: transitive
@@ -412,7 +411,7 @@ packages:
     source: hosted
     version: "4.0.0"
   flutter_localizations:
-    dependency: "direct main"
+    dependency: "direct overridden"
     description: flutter
     source: sdk
     version: "0.0.0"
@@ -616,20 +615,20 @@ packages:
     source: hosted
     version: "4.1.2"
   image:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: image
-      sha256: "8e9d133755c3e84c73288363e6343157c383a0c6c56fc51afcc5d4d7180306d6"
+      sha256: f31d52537dc417fdcde36088fdf11d191026fd5e4fae742491ebd40e5a8bea7d
       url: "https://pub.dev"
     source: hosted
-    version: "3.3.0"
+    version: "4.3.0"
   integration_test:
     dependency: "direct dev"
     description: flutter
     source: sdk
     version: "0.0.0"
   intl:
-    dependency: "direct main"
+    dependency: "direct overridden"
     description:
       name: intl
       sha256: "3df61194eb431efc39c4ceba583b95633a403f46c9fd341e550ce0bfa50e9aa5"
@@ -1271,7 +1270,7 @@ packages:
     source: hosted
     version: "1.4.0"
   url_launcher:
-    dependency: "direct main"
+    dependency: "direct overridden"
     description:
       name: url_launcher
       sha256: f6a7e5c4835bb4e3026a04793a4199ca2d14c739ec378fdfe23fc8075d0439f8

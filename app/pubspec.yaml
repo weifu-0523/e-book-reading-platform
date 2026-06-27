@@ -42,6 +42,17 @@ dependencies:
   reader_engine_pdf_view:
     path: ../reader_engine_pdf_view
 
+dependency_overrides:
+  # M4: epubx 4.0.0 pins image ^3.0.8 AND passes List<int> to
+  # decodeImage (incompatible with image 4.x). pdfrx_engine 0.4.3
+  # needs image 4.x API (ChannelOrder.bgra, getBytes(order:)).
+  # Local fork patches decodeImage to accept List<int> via
+  # Uint8List.fromList + widens image constraint. Remove when
+  # upstream epubx publishes image 4.x-compatible release.
+  epubx:
+    path: ../epubx_patched
+  image: ^4.0.0
+
   # i18n
   flutter_localizations:
     sdk: flutter
