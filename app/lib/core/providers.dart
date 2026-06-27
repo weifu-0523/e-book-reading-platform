@@ -2,8 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine_epub_view/reader_engine_epub_view.dart';
 
 import '../data/local/daos/book_tags_dao.dart';
-import '../data/local/database.dart';
+import '../data/local/database.dart' hide Book;
 import '../data/local/file_storage.dart';
+import '../data/models/book.dart';
 import '../data/repositories/local_book_repository.dart';
 import '../data/repositories/local_notes_repository.dart';
 import '../data/repositories/local_reading_progress_repository.dart';
@@ -33,6 +34,12 @@ final fileStorageProvider = FutureProvider<FileStorage>((ref) async {
 
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   return LocalBookRepository(ref.watch(appDatabaseProvider));
+});
+
+/// 单本书的 [Book] 元数据。用于 NotesPage 等场景以查询单本书的真实信息。
+/// 找不到时返回 null（调用方负责处理）。
+final bookProvider = FutureProvider.family<Book?, String>((ref, id) async {
+  return ref.watch(bookRepositoryProvider).getById(id);
 });
 
 final readingProgressRepositoryProvider =

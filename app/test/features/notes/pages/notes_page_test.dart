@@ -7,8 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhiyue/core/locator.dart';
-import 'package:zhiyue/core/providers.dart' show notesRepositoryProvider;
+import 'package:zhiyue/core/providers.dart'
+    show bookProvider, notesRepositoryProvider;
 import 'package:zhiyue/data/models/annotation.dart';
+import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/notes/pages/notes_page.dart';
@@ -224,7 +226,19 @@ void main() {
 Widget _harness(List<Annotation> anns) {
   return ProviderScope(
     overrides: [
-      notesRepositoryProvider.overrideWithValue(_FakeNotesRepository(anns))
+      notesRepositoryProvider.overrideWithValue(_FakeNotesRepository(anns)),
+      bookProvider('b1').overrideWith((ref) async => Book(
+            id: 'b1',
+            title: '测试书',
+            author: '作者',
+            format: BookFormat.epub,
+            fileSizeBytes: 0,
+            filePath: '',
+            fileHash: '',
+            coverPath: null,
+            addedAt: DateTime(2026, 6, 27),
+            lastReadAt: null,
+          )),
     ],
     child: const MaterialApp(
       home: NotesPage(bookId: 'b1'),

@@ -5,9 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/locator.dart';
-import '../../../core/providers.dart' show notesRepositoryProvider;
+import '../../../core/providers.dart'
+    show bookProvider, notesRepositoryProvider;
 import '../../../data/models/annotation.dart';
-import '../../../data/models/book.dart';
 import '../../../data/models/book_note.dart';
 import '../../reader/widgets/annotation_tile.dart';
 import '../../reader/widgets/note_editor_sheet.dart';
@@ -148,7 +148,7 @@ class NotesPage extends ConsumerWidget {
     final action = await showAnnotationContextSheet(
       context,
       a,
-      chapterTitle: _chapterTitle(a),
+      chapterTitle: null,
     );
     if (action == null) return;
     switch (action) {
@@ -182,10 +182,11 @@ class NotesPage extends ConsumerWidget {
 
   Future<void> _export(BuildContext context, WidgetRef ref) async {
     final note = await ref.read(notesPageBookNoteProvider(bookId).future);
-    if (note == null || !context.mounted) return;
+    final book = await ref.read(bookProvider(bookId).future);
+    if (note == null || book == null || !context.mounted) return;
     final markdown = MarkdownExporter.export(
       bookNote: note,
-      book: _stubBookForExport(note),
+      book: book,
       now: DateTime.now(),
     );
     final name = '${NoteFileWriter.sanitizeForFilename(note.title)} - 读书笔记';
@@ -212,13 +213,19 @@ class NotesPage extends ConsumerWidget {
     }
   }
 
-  /// Best-effort open of Windows Explorer with [filePath] selected. No-op on
-  /// non-Windows platforms. Failures (e.g. explorer.exe missing) are silently
+  /// Best-effort open of the parent directory of [filePath] in the native
+  /// file manager. On Windows selects the file; on macOS opens the file
+  /// directly; on Linux opens the parent directory. Failures are silently
   /// swallowed — this is a convenience action, not a critical path.
   Future<void> _openFolder(String filePath) async {
-    if (!Platform.isWindows) return;
     try {
-      await Process.run('explorer', ['/select,$filePath']);
+      if (Platform.isWindows) {
+        await Process.run('explorer', ['/select,$filePath']);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [filePath]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [File(filePath).parent.path]);
+      }
     } catch (_) {
       // Best-effort; ignore failures.
     }
@@ -250,32 +257,5 @@ class NotesPage extends ConsumerWidget {
         .reduce((a, b) => a.isAfter(b) ? a : b);
     return '${latest.month.toString().padLeft(2, '0')}'
         '-${latest.day.toString().padLeft(2, '0')}';
-  }
-
-  /// M3.4 简化：NotesPage 只获取 BookNote，没有单独获取 Book。
-  ///
-  /// 为了让 MarkdownExporter 的 frontmatter 有数据，这里合成一个最小 Book。
-  /// M3.5 会接入真实 Book 元数据（包括 coverPath、lastReadAt 等）。
-  Book _stubBookForExport(BookNote note) {
-    var title = note.title;
-    if (title.startsWith('《')) {
-      title = title.substring(1);
-    }
-    final suffix = '》读书笔记';
-    if (title.endsWith(suffix)) {
-      title = title.substring(0, title.length - suffix.length);
-    }
-    return Book(
-      id: note.bookId,
-      title: title,
-      author: null,
-      format: BookFormat.epub,
-      fileSizeBytes: 0,
-      filePath: '',
-      fileHash: '',
-      coverPath: null,
-      addedAt: note.createdAt,
-      lastReadAt: null,
-    );
   }
 }

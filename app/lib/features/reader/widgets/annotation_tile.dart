@@ -3,6 +3,10 @@ import '../../../data/models/annotation.dart';
 
 class AnnotationTile extends StatelessWidget {
   final Annotation annotation;
+
+  /// 已废弃：章节标题应由父级以 section header 形式渲染。
+  /// 保留只是为了向后兼容，M4 会移除。
+  @Deprecated('Use section header in parent. Will be removed in M4.')
   final String? chapterTitle;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -11,6 +15,7 @@ class AnnotationTile extends StatelessWidget {
   const AnnotationTile({
     super.key,
     required this.annotation,
+    // ignore: deprecated_member_use_from_same_package
     this.chapterTitle,
     this.onTap,
     this.onLongPress,
@@ -49,6 +54,7 @@ class AnnotationTile extends StatelessWidget {
             ],
             if (chapterTitle != null) ...[
               const SizedBox(height: 4),
+              // ignore: deprecated_member_use_from_same_package
               Text(chapterTitle!, style: Theme.of(context).textTheme.bodySmall),
             ],
             if (showMeta) ...[

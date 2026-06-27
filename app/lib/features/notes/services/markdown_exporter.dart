@@ -38,50 +38,52 @@ class MarkdownExporter {
     final readingStarted = createdDates.isEmpty ? null : createdDates.first;
     final readingEnded = updatedDates.isEmpty ? null : updatedDates.last;
 
-    final buf = StringBuffer();
-
     // Frontmatter
-    buf.writeln('---');
-    buf.writeln('title: "${_escapeYaml(book.title)}"');
+    final buf = StringBuffer()
+      ..writeln('---')
+      ..writeln('title: "${_escapeYaml(book.title)}"');
     if (book.author != null && book.author!.isNotEmpty) {
       buf.writeln('author: "${_escapeYaml(book.author!)}"');
     }
-    buf.writeln('source: "${_sourceLabel(book.format)}"');
-    buf.writeln('exported_at: ${_formatIso(now)}');
-    buf.writeln('total_highlights: $totalHighlights');
-    buf.writeln('total_notes: $totalNotes');
-    buf.writeln(
-        'reading_started: ${readingStarted == null ? 'null' : _formatIso(readingStarted)}');
-    buf.writeln(
-        'reading_ended: ${readingEnded == null ? 'null' : _formatIso(readingEnded)}');
-    buf.writeln('tags: [${tags.map(_escapeYaml).join(', ')}]');
-    buf.writeln('---');
-    buf.writeln();
-
-    // Title
-    buf.writeln('# 《${book.title}》读书笔记');
-    buf.writeln();
+    buf
+      ..writeln('source: "${_sourceLabel(book.format)}"')
+      ..writeln('exported_at: ${_formatIso(now)}')
+      ..writeln('total_highlights: $totalHighlights')
+      ..writeln('total_notes: $totalNotes')
+      ..writeln(
+          'reading_started: ${readingStarted == null ? 'null' : _formatIso(readingStarted)}')
+      ..writeln(
+          'reading_ended: ${readingEnded == null ? 'null' : _formatIso(readingEnded)}')
+      ..writeln('tags: [${tags.map(_escapeYaml).join(', ')}]')
+      ..writeln('---')
+      ..writeln()
+      // Title
+      ..writeln('# 《${book.title}》读书笔记')
+      ..writeln();
 
     // Reading summary line
     final startedStr =
         readingStarted == null ? '（暂无）' : _formatDate(readingStarted);
     final endedStr = readingEnded == null ? '（暂无）' : _formatDate(readingEnded);
-    buf.writeln('> 阅读时间：$startedStr ~ $endedStr');
-    buf.writeln('> 共 $totalHighlights 条高亮 · $totalNotes 条笔记');
-    buf.writeln();
+    buf
+      ..writeln('> 阅读时间：$startedStr ~ $endedStr')
+      ..writeln('> 共 $totalHighlights 条高亮 · $totalNotes 条笔记')
+      ..writeln();
 
     // 核心摘要 (conditional)
     if (bookNote.summary.isNotEmpty) {
-      buf.writeln('## 核心摘要');
-      buf.writeln();
-      buf.writeln(bookNote.summary);
-      buf.writeln();
+      buf
+        ..writeln('## 核心摘要')
+        ..writeln()
+        ..writeln(bookNote.summary)
+        ..writeln();
     }
 
     // 核心知识点 (conditional)
     if (bookNote.keyTakeaways.isNotEmpty) {
-      buf.writeln('## 核心知识点');
-      buf.writeln();
+      buf
+        ..writeln('## 核心知识点')
+        ..writeln();
       for (final k in bookNote.keyTakeaways) {
         buf.writeln('- $k');
       }
@@ -89,16 +91,19 @@ class MarkdownExporter {
     }
 
     // 高亮与笔记 (always present)
-    buf.writeln('## 高亮与笔记');
-    buf.writeln();
+    buf
+      ..writeln('## 高亮与笔记')
+      ..writeln();
 
     if (annotations.isEmpty) {
-      buf.writeln('（暂无高亮）');
-      buf.writeln();
+      buf
+        ..writeln('（暂无高亮）')
+        ..writeln();
     } else {
       for (final entry in _groupByChapter(annotations).entries) {
-        buf.writeln('### ${entry.key}');
-        buf.writeln();
+        buf
+          ..writeln('### ${entry.key}')
+          ..writeln();
         for (final a in entry.value) {
           buf.writeln('> ${_colorEmoji(a.color)} ${a.quote}');
           if (a.hasNote) {
@@ -119,12 +124,13 @@ class MarkdownExporter {
     // When tags are empty, the document ends with the highlight block's
     // trailing blank line (no separator, no tags section).
     if (tags.isNotEmpty) {
-      buf.writeln('---');
-      buf.writeln();
-      buf.writeln('## 标签');
-      buf.writeln();
-      buf.write(tags.map((t) => '#$t').join(' '));
-      buf.writeln();
+      buf
+        ..writeln('---')
+        ..writeln()
+        ..writeln('## 标签')
+        ..writeln()
+        ..write(tags.map((t) => '#$t').join(' '))
+        ..writeln();
     }
 
     return buf.toString();
@@ -134,8 +140,8 @@ class MarkdownExporter {
   /// (T5 will add tests for this; implementation included now to avoid
   /// an extra round trip.)
   static String exportSingle(Annotation annotation, {String? chapterTitle}) {
-    final buf = StringBuffer();
-    buf.writeln('> ${_colorEmoji(annotation.color)} ${annotation.quote}');
+    final buf = StringBuffer()
+      ..writeln('> ${_colorEmoji(annotation.color)} ${annotation.quote}');
     if (annotation.hasNote) {
       buf.writeln('- 💬 ${annotation.note}');
       if (annotation.tags.isNotEmpty) {
