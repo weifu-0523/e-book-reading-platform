@@ -2,6 +2,7 @@
 title: "测试书名"
 author: "测试作者"
 source: "EPUB"
+format: epub
 exported_at: 2026-06-27T14:32:00
 total_highlights: 1
 total_notes: 0

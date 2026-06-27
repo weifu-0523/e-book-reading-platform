@@ -233,6 +233,7 @@ class NotesPage extends ConsumerWidget {
 
   int _chapterIndex(Annotation a) {
     final loc = a.locator;
+    if (loc is PdfRangeLocator) return loc.page;
     if (loc is EpubRangeLocator) return loc.chapterIndex;
     if (loc is EpubCfiLocator) return loc.chapterIndex;
     return 0;
@@ -240,6 +241,10 @@ class NotesPage extends ConsumerWidget {
 
   String _chapterTitle(Annotation a) {
     final loc = a.locator;
+    if (loc is PdfRangeLocator) {
+      // PDF 没有「章节」概念，按页分组（与 MarkdownExporter 一致）。
+      return '第 ${loc.page} 页';
+    }
     if (loc is EpubRangeLocator) {
       final t = loc.chapterTitle;
       return (t != null && t.isNotEmpty) ? t : '第 ${loc.chapterIndex + 1} 章';

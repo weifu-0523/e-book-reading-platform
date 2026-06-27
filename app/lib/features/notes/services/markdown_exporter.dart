@@ -47,6 +47,11 @@ class MarkdownExporter {
     }
     buf
       ..writeln('source: "${_sourceLabel(book.format)}"')
+      // M4/T13: explicit lowercase format tag for machine-readable routing
+      // (Obsidian/Bear plugins key off `format:` to switch renderers; `source:`
+      // is kept as a human-readable alias for backward-compat with existing
+      // fixtures).
+      ..writeln('format: ${_formatKey(book.format)}')
       ..writeln('exported_at: ${_formatIso(now)}')
       ..writeln('total_highlights: $totalHighlights')
       ..writeln('total_notes: $totalNotes')
@@ -158,6 +163,7 @@ class MarkdownExporter {
 
   static int _chapterIndexOf(Annotation a) {
     final loc = a.locator;
+    if (loc is PdfRangeLocator) return loc.page;
     if (loc is EpubRangeLocator) return loc.chapterIndex;
     if (loc is EpubCfiLocator) return loc.chapterIndex;
     return 0;
@@ -165,6 +171,10 @@ class MarkdownExporter {
 
   static String _chapterKey(Annotation a) {
     final loc = a.locator;
+    if (loc is PdfRangeLocator) {
+      // PDF 高亮永远落在单页内，page 即为分组键；章节概念不适用。
+      return '第 ${loc.page} 页';
+    }
     int? chapterIndex;
     String? chapterTitle;
     if (loc is EpubRangeLocator) {
@@ -232,6 +242,11 @@ class MarkdownExporter {
 
   static String _sourceLabel(BookFormat f) =>
       f == BookFormat.epub ? 'EPUB' : 'PDF';
+
+  /// Lowercase machine-readable format tag (matches [BookFormat.name]).
+  /// Distinct from [_sourceLabel] which is a human-readable alias.
+  static String _formatKey(BookFormat f) =>
+      f == BookFormat.epub ? 'epub' : 'pdf';
 
   static String _formatDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'
