@@ -71,6 +71,18 @@ class PdfReaderEngine implements ReaderEngine {
   @override
   Future<void> close() => _renderer.dispose();
 
+  // ----- PDF-specific getters (not on ReaderEngine interface) -----
+  //
+  // reader_page 进度条/章节标题 fallback 用：pdfrx 内部 currentPage 是 0-based，
+  // pageCount 取自 PdfDocument.pages.length。不通过 ReaderEngine 接口暴露（接口
+  // 是 EPUB+PDF 共用，EPUB 无 pageCount 概念）。
+
+  /// 当前 pdfrx 0-based 页索引（外部展示时 +1 转 1-based）。
+  int get currentPage => _renderer.currentPage;
+
+  /// PDF 总页数；未打开返回 0。
+  int get pageCount => _renderer.pageCount;
+
   // ----- ReaderEngine EPUB-flavored members (Page-as-Chapter semantics) -----
 
   @override

@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
+import 'package:reader_engine/rendering/highlight_selection.dart';
+import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
+import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/annotation.dart';
@@ -49,6 +52,33 @@ Future<EpubRangeLocator?> resolveSelectionLocator({
     endOffset: startOffset + selectedText.length,
     quote: selectedText,
   );
+}
+
+/// ReaderBottomBar 的章节/页标题 fallback。PDF 用「第 N 页」取代章节标题。
+///
+/// 抽成顶层纯函数方便单测（[_ReaderProgressBarState._chapterTitle] 内部调用）。
+/// `loc` 为 null 时返回 null（与原 `_chapterTitle` 行为一致）。
+String? chapterOrPageLabel(Locator? loc) {
+  if (loc is PdfPageLocator) return '第 ${loc.page} 页';
+  if (loc is EpubCfiLocator) return loc.chapterTitle;
+  return null;
+}
+
+/// ReaderBottomBar 的进度比 fallback。PDF 用 page/total，EPUB 沿用
+/// chapterIndex/100（M2 MVP 近似）。
+///
+/// 抽成顶层纯函数方便单测。`pdfPageCount` 仅 PDF 路径需要；
+/// 0 或 null 时 PDF fallback 返回 0（避免除零）。
+double estimateProgressPercent(Locator? loc, {int? pdfPageCount}) {
+  if (loc is PdfPageLocator) {
+    final total = pdfPageCount ?? 0;
+    if (total <= 0) return 0.0;
+    return (loc.page / total).clamp(0.0, 1.0);
+  }
+  if (loc is EpubCfiLocator) {
+    return (loc.chapterIndex / 100).clamp(0.0, 1.0);
+  }
+  return 0.0;
 }
 
 /// 阅读器主页面。
@@ -141,6 +171,11 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   ReaderEngineState _engineState;
 
   // 当前选区。toolbar overlay 与高亮/笔记/复制 handlers 共用。
+  //
+  // EPUB：来自 SelectableRegion 的 SelectedContent（含 plainText）。
+  // PDF：来自 PdfReaderEngine.selection$ 的 HighlightSelection（pdfrx 自管
+  // 选区 UI，不经过 Flutter SelectableRegion），由 initState 注册的 listener
+  // 直接 dispatch 给 _onPdfHighlight，不缓存到本字段。
   SelectedContent? _selection;
   Locator? _currentLocation;
 
@@ -163,6 +198,16 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     engine.currentLocation$.listen((loc) {
       if (mounted) _currentLocation = loc;
     });
+    // PDF 选区订阅：pdfrx 内部 buildContextMenu 的「高亮」按钮点击后，
+    // 通过 PdfRenderer.emitSelection → PdfReaderEngine.selection$ 流推送
+    // HighlightSelection。这里订阅并缓存，供 _onToolbarHighlight（实际上
+    // PDF 路径直接走 _onPdfHighlight，不走 toolbar overlay）使用。
+    if (engine is PdfReaderEngine) {
+      (engine as PdfReaderEngine).selection$.listen((sel) {
+        if (!mounted) return;
+        _onPdfHighlight(sel);
+      });
+    }
     // Chapter switches are now awaited via `engine.chapterSwitchSettled`
     // at call sites (see _maybeHandleInitialLocator / _onAnnotationTap).
     // No global listener required: those are the only places that need to
@@ -408,6 +453,25 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     if (mounted) setState(() => _selection = null);
   }
 
+  /// PDF 高亮提交路径：pdfrx 自管选区 + 上下文菜单，用户点「高亮」按钮后
+  /// 由 [PdfSelectionBridge.fromSelection] 构造 [HighlightSelection] 推到
+  /// [PdfReaderEngine.selection$] 流；此方法把 selection 转为 [PdfRangeLocator]
+  /// 写入数据库。颜色由用户从 [HighlightColorPickerDialog] 选择。
+  ///
+  /// 与 [_onToolbarHighlight] 的差异：PDF 路径不需要「先选区再点 toolbar」，
+  /// 选区已经携带 page + offset（pdfrx 直接给出），无需 `indexOf` 回查。
+  Future<void> _onPdfHighlight(HighlightSelection sel) async {
+    final color = await showDialog<HighlightColor>(
+      context: context,
+      builder: (_) => const HighlightColorPickerDialog(),
+    );
+    if (color == null || !mounted) return;
+    final locator = PdfSelectionBridge.toPdfRangeLocator(sel);
+    await ref
+        .read(notesControllerProvider.notifier)
+        .addHighlight(locator, color, sel.text);
+  }
+
   /// toolbar 「笔记」：与「高亮」共用 flow；颜色选好后写入高亮，
   /// 用户在 drawer 长按该条目再编辑 note。M3.2 简化，避免在 toolbar
   /// 里串行弹出 color picker + NoteEditorSheet 造成 UX 摩擦。
@@ -550,20 +614,15 @@ class _ReaderProgressBarState extends State<_ReaderProgressBar> {
   @override
   Widget build(BuildContext context) {
     return ReaderBottomBar(
-      chapterTitle: _chapterTitle(_current),
-      percent: _estimatePercent(_current),
+      chapterTitle: chapterOrPageLabel(_current),
+      percent: estimateProgressPercent(_current, pdfPageCount: _pdfPageCount),
     );
   }
 
-  String? _chapterTitle(Locator? loc) {
-    if (loc is EpubCfiLocator) return loc.chapterTitle;
+  /// PDF 总页数（仅 PdfReaderEngine 暴露；EPUB 引擎此值为 null）。
+  int? get _pdfPageCount {
+    final engine = widget.engine;
+    if (engine is PdfReaderEngine) return engine.pageCount;
     return null;
-  }
-
-  double _estimatePercent(Locator? loc) {
-    if (loc is EpubCfiLocator) {
-      return (loc.chapterIndex / 100).clamp(0.0, 1.0);
-    }
-    return 0.0;
   }
 }

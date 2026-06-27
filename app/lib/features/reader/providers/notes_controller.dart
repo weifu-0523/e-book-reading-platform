@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:uuid/uuid.dart';
 
 import '../../../core/locator.dart';
@@ -82,8 +82,14 @@ class NotesController extends StateNotifier<AsyncValue<NotesState>> {
     }
   }
 
+  /// 把高亮写入数据库。
+  ///
+  /// [locator] 是任意 [Locator] 子类：EPUB 走 [EpubRangeLocator]，PDF 走
+  /// [PdfRangeLocator]（reader_page 通过 PdfSelectionBridge.toPdfRangeLocator
+  /// 转换）。`Annotation.locator` 字段类型就是基类 [Locator]，所以这里直接
+  /// 放宽参数类型即可，无需为 PDF 新增方法。
   Future<void> addHighlight(
-      EpubRangeLocator locator, HighlightColor color, String quote) async {
+      Locator locator, HighlightColor color, String quote) async {
     final note = await _ensureBookNote();
     final now = DateTime.now();
     await repository.addAnnotation(Annotation(
