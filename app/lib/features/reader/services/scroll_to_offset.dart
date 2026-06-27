@@ -17,7 +17,6 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 /// `ReaderEngine.currentChapterPlainText` (post-T0 unification).
 class ScrollToOffsetService {
   static Future<void> scrollToCharacterOffset({
-    required BuildContext context,
     required ScrollableState scrollable,
     required int targetOffset,
     required PaginationMode paginationMode,
@@ -36,8 +35,8 @@ class ScrollToOffsetService {
 
     // paged mode
     if (pageController == null) {
-      assert(false, 'pageController required in paged mode');
-      return;
+      throw ArgumentError(
+          'pageController is required when paginationMode is paged');
     }
     if (pageBreaks.isEmpty) return;
 

@@ -50,7 +50,6 @@ void main() {
     // the call, advance the animation with pumpAndSettle, then await to
     // verify completion.
     final future = ScrollToOffsetService.scrollToCharacterOffset(
-      context: scrollable.context,
       scrollable: scrollable,
       targetOffset: 49,
       duration: const Duration(milliseconds: 50),
@@ -88,7 +87,6 @@ void main() {
     final pixelsBefore = scrollController.position.pixels;
 
     await ScrollToOffsetService.scrollToCharacterOffset(
-      context: scrollable.context,
       scrollable: scrollable,
       targetOffset: 99999,
       duration: const Duration(milliseconds: 50),
@@ -123,7 +121,6 @@ void main() {
     final scrollable = tester
         .state<ScrollableState>(find.byType(Scrollable).first);
     await ScrollToOffsetService.scrollToCharacterOffset(
-      context: tester.element(find.byType(PageView)),
       scrollable: scrollable,
       targetOffset: 15, // in page 1
       paginationMode: PaginationMode.paged,
@@ -144,7 +141,6 @@ void main() {
     final scrollable = tester
         .state<ScrollableState>(find.byType(Scrollable).first);
     await ScrollToOffsetService.scrollToCharacterOffset(
-      context: tester.element(find.byType(PageView)),
       scrollable: scrollable,
       targetOffset: 5,
       paginationMode: PaginationMode.paged,
@@ -172,7 +168,6 @@ void main() {
     final scrollable = tester
         .state<ScrollableState>(find.byType(Scrollable).first);
     await ScrollToOffsetService.scrollToCharacterOffset(
-      context: tester.element(find.byType(PageView)),
       scrollable: scrollable,
       targetOffset: 999, // out of range
       paginationMode: PaginationMode.paged,
@@ -181,5 +176,62 @@ void main() {
     );
     await tester.pump();
     expect(pageController.page, 1); // last page
+  });
+
+  testWidgets('paged mode: missing pageController throws ArgumentError',
+      (tester) async {
+    final breaks = [
+      const PageBreak(startOffset: 0, endOffset: 10),
+      const PageBreak(startOffset: 10, endOffset: 20),
+    ];
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: PageView.builder(
+        controller: PageController(),
+        itemCount: breaks.length,
+        itemBuilder: (_, i) => Text('Page $i'),
+      ),
+    ));
+    final scrollable =
+        tester.state<ScrollableState>(find.byType(Scrollable).first);
+    expect(
+      () => ScrollToOffsetService.scrollToCharacterOffset(
+        scrollable: scrollable,
+        targetOffset: 5,
+        paginationMode: PaginationMode.paged,
+        pageBreaks: breaks,
+        // pageController intentionally omitted
+      ),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
+
+  testWidgets(
+      'paged mode: offset exactly at break boundary lands on next page',
+      (tester) async {
+    final pageController = PageController();
+    final breaks = [
+      const PageBreak(startOffset: 0, endOffset: 10),
+      const PageBreak(startOffset: 10, endOffset: 20),
+    ];
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: PageView.builder(
+        controller: pageController,
+        itemCount: breaks.length,
+        itemBuilder: (_, i) => Text('Page $i'),
+      ),
+    ));
+    final scrollable =
+        tester.state<ScrollableState>(find.byType(Scrollable).first);
+    await ScrollToOffsetService.scrollToCharacterOffset(
+      scrollable: scrollable,
+      targetOffset: 10, // exactly at boundary; should land on page 1, not 0
+      paginationMode: PaginationMode.paged,
+      pageBreaks: breaks,
+      pageController: pageController,
+    );
+    await tester.pump();
+    expect(pageController.page, 1);
   });
 }
