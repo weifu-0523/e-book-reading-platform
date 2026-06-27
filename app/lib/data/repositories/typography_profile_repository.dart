@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:uuid/uuid.dart';
+
 import '../local/database.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import '../models/typography_profile.dart' as model;
@@ -31,8 +33,8 @@ class TypographyProfileRepository {
   }
 
   Future<model.TypographyProfile?> getById(String id) async {
-    final rows = await _db.typographyDao.getAllProfiles();
-    final r = rows.firstWhere((x) => x.id == id);
+    final r = await _db.typographyDao.getProfile(id);
+    if (r == null) return null;
     return model.TypographyProfile(
       id: r.id,
       name: r.name,
@@ -57,7 +59,7 @@ class TypographyProfileRepository {
     required TypographySettings settings,
     required bool isDefault,
   }) async {
-    final id = _uuid();
+    final id = const Uuid().v4();
     await _db.typographyDao.insertProfile(
       id: id,
       name: name,
@@ -87,9 +89,4 @@ class TypographyProfileRepository {
     final all = await getAll();
     return all.where((p) => p.settings.fontFamily == familyName).toList();
   }
-
-  String _uuid() =>
-      DateTime.now().microsecondsSinceEpoch.toRadixString(36) +
-      (idCounter++).toRadixString(36);
-  static int idCounter = 0;
 }

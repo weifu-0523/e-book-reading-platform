@@ -34,18 +34,15 @@ class TypographyDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  /// 事务：把当前 default 全部清零，再把目标 id 设为 true。
-  /// 使用 batch 减少往返；不直接使用事务包裹是因为 batch 自身在单次事务内执行。
+  /// 事务包裹两步写：先把当前 default 清零，再把目标 id 设为 true。
+  /// 必须在同一事务内，否则中途失败会导致表里没有 default。
   Future<void> setDefault(String profileId) async {
-    await batch((b) {
-      b.update(
-        typographyProfiles,
-        const TypographyProfilesCompanion(isDefault: Value(false)),
-        where: (t) => t.isDefault.equals(true),
-      );
+    return transaction(() async {
+      await (update(typographyProfiles)..where((t) => t.isDefault.equals(true)))
+          .write(const TypographyProfilesCompanion(isDefault: Value(false)));
+      await (update(typographyProfiles)..where((t) => t.id.equals(profileId)))
+          .write(const TypographyProfilesCompanion(isDefault: Value(true)));
     });
-    await (update(typographyProfiles)..where((t) => t.id.equals(profileId)))
-        .write(const TypographyProfilesCompanion(isDefault: Value(true)));
   }
 
   Future<void> deleteProfile(String id) =>

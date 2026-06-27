@@ -54,4 +54,41 @@ void main() {
     final renamed = await repo.getAll();
     expect(renamed.firstWhere((x) => x.id == p.id).name, 'BigRenamed');
   });
+
+  test('getById returns the profile when found', () async {
+    final inserted = await repo.insert(
+        name: 'FindMe',
+        settings: TypographySettings.defaults(),
+        isDefault: false);
+    final fetched = await repo.getById(inserted.id);
+    expect(fetched, isNotNull);
+    expect(fetched!.name, 'FindMe');
+  });
+
+  test('getById returns null when id does not exist', () async {
+    final fetched = await repo.getById('nonexistent-id');
+    expect(fetched, isNull);
+  });
+
+  test('delete removes the profile', () async {
+    final p = await repo.insert(
+        name: 'ToDelete',
+        settings: TypographySettings.defaults(),
+        isDefault: false);
+    await repo.delete(p.id);
+    final fetched = await repo.getById(p.id);
+    expect(fetched, isNull);
+  });
+
+  test('update can change settings, not just name', () async {
+    final p = await repo.insert(
+        name: 'Original',
+        settings: TypographySettings.defaults(),
+        isDefault: false);
+    final newSettings =
+        TypographySettings.defaults().copyWith(fontSize: 22.0);
+    await repo.update(p.id, settings: newSettings);
+    final fetched = await repo.getById(p.id);
+    expect(fetched!.settings.fontSize, 22.0);
+  });
 }
