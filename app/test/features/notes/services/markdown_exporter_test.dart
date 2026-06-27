@@ -210,6 +210,36 @@ void main() {
       expect(markdown, contains('### 第三章'));
     });
 
+    test('escapes backslash and double-quote in YAML frontmatter', () {
+      final book = Book(
+        id: 'b1',
+        title: r'Test "C:\Path"',
+        author: r'Author "X"\Y',
+        format: BookFormat.epub,
+        filePath: '',
+        fileHash: '',
+        fileSizeBytes: 0,
+        coverPath: null,
+        addedAt: DateTime(2026, 1, 1),
+        lastReadAt: null,
+      );
+      final note = BookNote(
+        id: 'bn1',
+        bookId: 'b1',
+        title: 't',
+        summary: '',
+        keyTakeaways: const [],
+        annotations: const [],
+        createdAt: DateTime(2026, 6, 27),
+        updatedAt: DateTime(2026, 6, 27),
+      );
+      final md = MarkdownExporter.export(
+          book: book, bookNote: note, now: DateTime(2026, 6, 27));
+      // Backslash escaped first, then quote.
+      expect(md, contains(r'title: "Test \"C:\\Path\""'));
+      expect(md, contains(r'author: "Author \"X\"\\Y"'));
+    });
+
     test('color emoji mapping covers all 5 colors', () {
       for (final c in HighlightColor.values) {
         final book = makeBook();

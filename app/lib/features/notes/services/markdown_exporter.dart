@@ -240,5 +240,8 @@ class MarkdownExporter {
       '${d.minute.toString().padLeft(2, '0')}:'
       '${d.second.toString().padLeft(2, '0')}';
 
-  static String _escapeYaml(String s) => s.replaceAll('"', r'\"');
+  /// Escape backslash first (so injected escapes aren't double-escaped), then
+  /// double-quote. YAML double-quoted strings treat `\` as escape char.
+  static String _escapeYaml(String s) =>
+      s.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
 }
