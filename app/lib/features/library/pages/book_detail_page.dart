@@ -54,7 +54,16 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('书籍详情')),
+      appBar: AppBar(
+        title: const Text('书籍详情'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.article_outlined),
+            tooltip: '查看笔记',
+            onPressed: () => context.push('/book/${widget.bookId}/notes'),
+          ),
+        ],
+      ),
       body: _buildBody(context),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _confirmDelete,
@@ -90,6 +99,13 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         Text('添加时间：${book.addedAt.toLocal()}'),
         if (book.lastReadAt != null)
           Text('最近阅读：${book.lastReadAt!.toLocal()}'),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.article_outlined),
+          title: const Text('查看笔记'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/book/${widget.bookId}/notes'),
+        ),
       ],
     );
   }

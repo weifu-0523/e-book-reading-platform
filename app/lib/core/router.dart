@@ -3,6 +3,7 @@ import 'package:reader_engine/core/locator.dart';
 
 import '../features/library/pages/book_detail_page.dart';
 import '../features/library/pages/library_page.dart';
+import '../features/notes/pages/notes_page.dart';
 import '../features/reader/pages/reader_page.dart';
 import '../features/search/pages/search_highlights_page.dart';
 
@@ -31,6 +32,13 @@ GoRouter createAppRouter() {
         builder: (context, state) {
           final id = state.pathParameters['id']!;
           return BookDetailPage(bookId: id);
+        },
+      ),
+      GoRoute(
+        path: '/book/:id/notes',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return NotesPage(bookId: id);
         },
       ),
       GoRoute(
