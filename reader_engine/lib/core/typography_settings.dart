@@ -28,6 +28,26 @@ class TypographySettings {
         pageMargin: PageMargin.normal,
       );
 
+  /// 序列化为 JSON（用于 drift typography_profiles.settings 列）。
+  /// enum 使用 `.name` 字符串，反序列化时 `byName` 还原。
+  Map<String, dynamic> toJson() => {
+        'fontSize': fontSize,
+        'lineHeight': lineHeight,
+        'fontFamily': fontFamily,
+        'theme': theme.name,
+        'pageMargin': pageMargin.name,
+      };
+
+  factory TypographySettings.fromJson(Map<String, dynamic> json) {
+    return TypographySettings(
+      fontSize: (json['fontSize'] as num).toDouble(),
+      lineHeight: (json['lineHeight'] as num).toDouble(),
+      fontFamily: json['fontFamily'] as String?,
+      theme: ReadingTheme.values.byName(json['theme'] as String),
+      pageMargin: PageMargin.values.byName(json['pageMargin'] as String),
+    );
+  }
+
   // 使用哨兵对象区分"未传入"和"显式传入 null"。
   // copyWith(fontFamily: null) 会重置为系统字体；不传 fontFamily 保持原值。
   static const _sentinel = Object();

@@ -12,6 +12,8 @@ import '../data/repositories/book_repository.dart';
 import '../data/repositories/notes_repository.dart';
 import '../data/repositories/reading_progress_repository.dart';
 import '../data/repositories/settings_repository.dart';
+import '../data/repositories/typography_profile_repository.dart';
+import '../data/models/typography_profile.dart' as model;
 import '../features/library/models/library_state.dart';
 import '../features/library/providers/library_controller.dart';
 import '../services/book_import_service.dart';
@@ -71,4 +73,20 @@ final libraryControllerProvider =
         BookTagsDaoLookupAdapter(BookTagsDao(ref.watch(appDatabaseProvider))),
     settingsRepository: ref.watch(settingsRepositoryProvider),
   );
+});
+
+final typographyProfileRepositoryProvider =
+    Provider<TypographyProfileRepository>((ref) {
+  return TypographyProfileRepository(ref.watch(appDatabaseProvider));
+});
+
+final typographyProfileProvider =
+    FutureProvider.autoDispose<List<model.TypographyProfile>>((ref) async {
+  final repo = ref.watch(typographyProfileRepositoryProvider);
+  final profiles = await repo.getAll();
+  if (profiles.isEmpty) {
+    await repo.seedDefaultIfEmpty();
+    return repo.getAll();
+  }
+  return profiles;
 });
