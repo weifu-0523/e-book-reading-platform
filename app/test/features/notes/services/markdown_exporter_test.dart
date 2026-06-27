@@ -268,4 +268,34 @@ void main() {
       }
     });
   });
+
+  group('MarkdownExporter.exportSingle', () {
+    test('renders quote with color emoji + note + tags', () {
+      final a = makeHighlight(
+        id: 'a1',
+        quote: '原文引用',
+        note: '我的笔记',
+        tags: const ['标签1', '标签2'],
+        color: HighlightColor.blue,
+      );
+      final md = MarkdownExporter.exportSingle(a);
+      expect(md, contains('> 🔵 原文引用'));
+      expect(md, contains('- 💬 我的笔记'));
+      expect(md, contains('- 🏷️ #标签1 #标签2'));
+    });
+
+    test('omits note and tags lines when not present', () {
+      final a = makeHighlight(id: 'a1', quote: 'Q');
+      final md = MarkdownExporter.exportSingle(a);
+      expect(md, '> 🟡 Q');
+      expect(md.contains('💬'), isFalse);
+      expect(md.contains('🏷️'), isFalse);
+    });
+
+    test('chapterTitle renders as 📖 line', () {
+      final a = makeHighlight(id: 'a1', quote: 'Q');
+      final md = MarkdownExporter.exportSingle(a, chapterTitle: '第一章');
+      expect(md, contains('- 📖 第一章'));
+    });
+  });
 }
