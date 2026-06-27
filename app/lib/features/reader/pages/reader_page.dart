@@ -12,6 +12,7 @@ import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
 import '../services/progress_persister.dart';
+import '../services/scroll_to_offset.dart';
 import '../services/toc_title_resolver.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
 import '../widgets/highlight_selection_controls.dart';
@@ -56,8 +57,9 @@ Future<EpubRangeLocator?> resolveSelectionLocator({
 /// 路由：`/book/:id`，由 `core/app.dart` 的 `onGenerateRoute` 派发。
 class ReaderPage extends ConsumerStatefulWidget {
   final String bookId;
+  final Locator? initialLocator;
 
-  const ReaderPage({super.key, required this.bookId});
+  const ReaderPage({super.key, required this.bookId, this.initialLocator});
 
   @override
   ConsumerState<ReaderPage> createState() => _ReaderPageState();
@@ -102,7 +104,10 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                 ),
               ),
             ],
-            child: _ReaderBody(engine: engine),
+            child: _ReaderBody(
+              engine: engine,
+              initialLocator: widget.initialLocator,
+            ),
           );
         },
       ),
@@ -122,8 +127,9 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
 class _ReaderBody extends ConsumerStatefulWidget {
   final ReaderEngine engine;
+  final Locator? initialLocator;
 
-  const _ReaderBody({required this.engine});
+  const _ReaderBody({required this.engine, this.initialLocator});
 
   @override
   ConsumerState<_ReaderBody> createState() => _ReaderBodyState();
@@ -141,6 +147,9 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   // 供高亮 locator 的 chapterTitle 字段使用。
   Map<int, String> _chapterTitlesCache = const {};
 
+  // initialLocator 已处理标志，避免 didChangeDependencies 重复触发。
+  bool _initialLocatorHandled = false;
+
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
   @override
@@ -153,6 +162,35 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     engine.currentLocation$.listen((loc) {
       if (mounted) _currentLocation = loc;
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _maybeHandleInitialLocator();
+  }
+
+  /// 处理来自路由 extra 的 initialLocator：跳转到 locator 后，
+  /// 等待 endOfFrame 让 scrollable 完成布局，再调用
+  /// [ScrollToOffsetService] 滚动到字符 offset。
+  ///
+  /// 仅在引擎已 Ready 时触发；Ready 状态由 build 的 state$.listen 同步。
+  Future<void> _maybeHandleInitialLocator() async {
+    final loc = widget.initialLocator;
+    if (loc == null || _initialLocatorHandled) return;
+    _initialLocatorHandled = true;
+    await engine.gotoLocator(loc);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final scrollable = Scrollable.maybeOf(context);
+    if (scrollable == null) return;
+    if (loc is EpubRangeLocator) {
+      await ScrollToOffsetService.scrollToCharacterOffset(
+        context: context,
+        scrollable: scrollable,
+        targetOffset: loc.startOffset,
+      );
+    }
   }
 
   void _onSelectionChanged(SelectedContent? content) {
@@ -263,8 +301,20 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
         .firstWhere((a) => a?.id == id, orElse: () => null);
     if (ann == null) return;
     await engine.gotoLocator(ann.locator);
+    await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     await Navigator.of(context).maybePop(); // 关闭 endDrawer
+    if (!mounted) return;
+    final scrollable = Scrollable.maybeOf(context);
+    if (scrollable == null) return;
+    final loc = ann.locator;
+    if (loc is EpubRangeLocator) {
+      await ScrollToOffsetService.scrollToCharacterOffset(
+        context: context,
+        scrollable: scrollable,
+        targetOffset: loc.startOffset,
+      );
+    }
   }
 
   Future<void> _onAnnotationLongPress(String id) async {

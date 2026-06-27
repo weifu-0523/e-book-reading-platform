@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../reader/widgets/annotation_tile.dart';
 import '../models/annotation_search_query.dart';
@@ -64,6 +65,10 @@ class _SearchHighlightsPageState extends ConsumerState<SearchHighlightsPage> {
           itemBuilder: (ctx, i) => AnnotationTile(
             annotation: results[i],
             chapterTitle: null,
+            onTap: () => context.push(
+              '/book/${results[i].bookNoteId}',
+              extra: results[i].locator,
+            ),
           ),
         );
       },

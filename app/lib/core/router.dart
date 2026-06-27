@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+import 'package:reader_engine/core/locator.dart';
 
 import '../features/library/pages/book_detail_page.dart';
 import '../features/library/pages/library_page.dart';
@@ -21,7 +22,8 @@ GoRouter createAppRouter() {
         path: '/book/:id',
         builder: (context, state) {
           final id = state.pathParameters['id']!;
-          return ReaderPage(bookId: id);
+          final locator = state.extra as Locator?;
+          return ReaderPage(bookId: id, initialLocator: locator);
         },
       ),
       GoRoute(
