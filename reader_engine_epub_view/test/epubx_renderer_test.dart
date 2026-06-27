@@ -1,11 +1,25 @@
 import 'package:epubx/epubx.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
+
+/// 构造一本只有一章假数据的书（widget 测试辅助）。
+EpubBook _bookWithSingleChapter(String html) {
+  return EpubBook()
+    ..Title = 'Test'
+    ..Chapters = [
+      EpubChapter()
+        ..Title = 'Ch1'
+        ..HtmlContent = html,
+    ];
+}
 
 void main() {
   test('EpubxRenderer implements EpubRenderer', () {
@@ -140,4 +154,101 @@ void main() {
 
     await renderer.dispose();
   });
+
+  test('currentChapterPageBreaks: scroll mode returns empty', () async {
+    final renderer = EpubxRenderer();
+    renderer.bookForTesting = _bookWithSingleChapter('<p>hello world</p>');
+    await renderer.setPaginationMode(PaginationMode.scroll);
+    expect(renderer.currentChapterPageBreaks, isEmpty);
+    await renderer.dispose();
+  });
+
+  test('currentChapterPageBreaks: paged mode returns empty before layout',
+      () async {
+    final renderer = EpubxRenderer();
+    renderer.bookForTesting = _bookWithSingleChapter('<p>hello world</p>');
+    // default mode is paged; but no pump yet → cache still null
+    expect(renderer.currentChapterPageBreaks, isEmpty);
+    await renderer.dispose();
+  });
+
+  testWidgets(
+    'currentChapterPageBreaks: paged mode returns breaks after layout',
+    (tester) async {
+      final renderer = EpubxRenderer();
+      renderer.bookForTesting = _bookWithSingleChapter(
+        List.filled(40, '<p>${'hello world ' * 30}</p>').join(),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 400,
+              height: 600,
+              child: Builder(
+                builder: (context) => renderer.build(context),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final breaks = renderer.currentChapterPageBreaks;
+      expect(breaks.length, greaterThan(1));
+      expect(breaks.first.startOffset, 0);
+      expect(breaks.last.endOffset, greaterThan(0));
+      // Verify it returns an unmodifiable view.
+      expect(
+        () => breaks.add(const PageBreak(startOffset: 0, endOffset: 0)),
+        throwsUnsupportedError,
+      );
+      await renderer.dispose();
+    },
+  );
+
+  testWidgets(
+    'currentChapterPageBreaks: invalidates on chapter change',
+    (tester) async {
+      final renderer = EpubxRenderer();
+      renderer.bookForTesting = EpubBook()
+        ..Chapters = [
+          EpubChapter()
+            ..Title = 'C1'
+            ..HtmlContent = List.filled(40, '<p>${'chapter one ' * 30}</p>').join(),
+          EpubChapter()
+            ..Title = 'C2'
+            ..HtmlContent = List.filled(40, '<p>${'chapter two ' * 30}</p>').join(),
+        ];
+
+      Widget tree() => MaterialApp(
+            home: Scaffold(
+              body: SizedBox(
+                width: 400,
+                height: 600,
+                child: Builder(
+                  builder: (context) => renderer.build(context),
+                ),
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(tree());
+      await tester.pump();
+      final breaksBefore = renderer.currentChapterPageBreaks;
+      expect(breaksBefore, isNotEmpty);
+
+      // Switch chapter → cache should reset (renderer does not self-rebuild;
+      // parent must trigger rebuild). Before rebuild, breaks are null again.
+      renderer.setChapter(1);
+      expect(renderer.currentChapterPageBreaks, isEmpty);
+      // Re-pump the tree (simulates parent setState) → _buildPaged runs again
+      // against the new chapter, populating the cache.
+      await tester.pumpWidget(tree());
+      await tester.pump();
+      final breaksAfter = renderer.currentChapterPageBreaks;
+      expect(breaksAfter, isNotEmpty);
+
+      await renderer.dispose();
+    },
+  );
 }

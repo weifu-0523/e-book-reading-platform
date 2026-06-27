@@ -4,6 +4,7 @@ import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/core/book_ref.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
@@ -21,6 +22,9 @@ class _FakeEngine implements ReaderEngine {
 
   @override
   Future<String> get currentChapterPlainText => Future.value('');
+
+  @override
+  List<PageBreak> get currentChapterPageBreaks => const [];
 
   @override
   TableOfContents? get toc => null;

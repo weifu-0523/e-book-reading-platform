@@ -5,6 +5,7 @@ import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
@@ -45,6 +46,10 @@ class EpubxRenderer implements EpubRenderer {
   /// the previous book shadow the new one at the same index.
   final Map<int, String> _plainTextCache = {};
 
+  /// Cached page breaks for the current chapter in paged mode.
+  /// Reset to null on chapter change / book switch / pagination mode change.
+  List<PageBreak>? _cachedBreaks;
+
   ReaderEngineState _state = const ReaderEngineUnloaded();
 
   ReaderEngineState get state => _state;
@@ -83,10 +88,20 @@ class EpubxRenderer implements EpubRenderer {
     return plain;
   }
 
+  /// Current chapter's page breaks in plainText coordinates.
+  /// Returns `const []` in scroll mode or before first paged layout.
+  List<PageBreak> get currentChapterPageBreaks {
+    if (_paginationMode != PaginationMode.paged) return const [];
+    final cached = _cachedBreaks;
+    if (cached == null) return const [];
+    return List.unmodifiable(cached);
+  }
+
   /// 仅用于测试：直接注入一本书（跳过 openFile 的文件 IO 与解析）。
   @visibleForTesting
   set bookForTesting(EpubBook? book) {
     _plainTextCache.clear();
+    _cachedBreaks = null;
     _book = book;
     _currentChapterIndex = 0;
   }
@@ -113,6 +128,7 @@ class EpubxRenderer implements EpubRenderer {
       final bytes = await File(filePath).readAsBytes().timeout(timeout);
       final book = await EpubReader.readBook(bytes).timeout(timeout);
       _plainTextCache.clear();
+      _cachedBreaks = null;
       _book = book;
       _currentChapterIndex = 0;
       _scrollController.removeListener(_onScroll);  // prevent duplicate on repeated calls
@@ -137,6 +153,7 @@ class EpubxRenderer implements EpubRenderer {
     final chapters = flatChapters;
     if (index < 0 || index >= chapters.length) return;
     _currentChapterIndex = index;
+    _cachedBreaks = null;
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
@@ -262,6 +279,7 @@ class EpubxRenderer implements EpubRenderer {
   @override
   Future<void> setPaginationMode(PaginationMode mode) async {
     _paginationMode = mode;
+    _cachedBreaks = null;
     // Task 12-13 实现：重建 widget tree
   }
 
@@ -366,6 +384,7 @@ class EpubxRenderer implements EpubRenderer {
         );
         final plain = result.plainText;
         final breaks = result.breaks;
+        _cachedBreaks = breaks;
         return PageView.builder(
           controller: _pageController,
           itemCount: breaks.length,

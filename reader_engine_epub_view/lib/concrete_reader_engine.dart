@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:reader_engine/core/book_ref.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
@@ -36,6 +37,10 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   @override
   Future<String> get currentChapterPlainText =>
       _renderer.currentChapterPlainText;
+
+  @override
+  List<PageBreak> get currentChapterPageBreaks =>
+      _renderer.currentChapterPageBreaks;
 
   @override
   TableOfContents? get toc => _toc;

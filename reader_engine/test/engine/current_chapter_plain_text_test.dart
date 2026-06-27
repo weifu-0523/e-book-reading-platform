@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/book_ref.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
@@ -12,6 +13,11 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 class _FakeEngine implements ReaderEngine {
   @override
   Future<String> get currentChapterPlainText => Future.value('hello world');
+
+  @override
+  List<PageBreak> get currentChapterPageBreaks => const [
+        PageBreak(startOffset: 0, endOffset: 11),
+      ];
 
   @override
   ReaderEngineState get state => throw UnimplementedError();
@@ -63,5 +69,14 @@ void main() {
   test('ReaderEngine exposes currentChapterPlainText', () async {
     final engine = _FakeEngine();
     expect(await engine.currentChapterPlainText, 'hello world');
+  });
+
+  test('ReaderEngine exposes currentChapterPageBreaks', () {
+    final engine = _FakeEngine();
+    expect(engine.currentChapterPageBreaks, hasLength(1));
+    expect(
+      engine.currentChapterPageBreaks.first,
+      const PageBreak(startOffset: 0, endOffset: 11),
+    );
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../core/book_ref.dart';
 import '../core/locator.dart';
+import '../core/page_break.dart';
 import '../core/typography_settings.dart';
 import '../navigation/toc.dart';
 import 'reader_engine_state.dart';
@@ -20,6 +21,16 @@ abstract interface class ReaderEngine {
   /// Used by app layer to compute character offsets for `EpubRangeLocator`.
   /// Implementation caches per `chapterIndex` for the engine's lifetime.
   Future<String> get currentChapterPlainText;
+
+  /// Page breaks for the current chapter in plainText coordinates.
+  ///
+  /// Returns `const []` when:
+  /// - Pagination mode is `scroll` (no pagination).
+  /// - Chapter hasn't been laid out yet (paged mode build not run).
+  ///
+  /// In paged mode after first layout, returns the breaks from the
+  /// Paginator. Length matches `PageController.itemCount` of the paged view.
+  List<PageBreak> get currentChapterPageBreaks;
   TableOfContents? get toc;
   TypographySettings get typography;
   PaginationMode get paginationMode;

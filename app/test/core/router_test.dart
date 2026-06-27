@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:reader_engine/core/book_ref.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
@@ -39,6 +40,9 @@ class _FakeReaderEngine implements ReaderEngine {
 
   @override
   Future<String> get currentChapterPlainText => Future.value('');
+
+  @override
+  List<PageBreak> get currentChapterPageBreaks => const [];
 
   @override
   ReaderEngineState get state => const ReaderEngineReady();
