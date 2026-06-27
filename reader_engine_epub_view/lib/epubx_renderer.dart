@@ -67,7 +67,8 @@ class EpubxRenderer implements EpubRenderer {
   /// Future that completes when the current chapter switch has settled.
   ///
   /// Returns an immediately-completed Future when no switch is in progress.
-  @override
+  /// Not part of the [EpubRenderer] interface — exposed for
+  /// [ConcreteEpubReaderEngine] to forward as [ReaderEngine.chapterSwitchSettled].
   Future<void> get chapterSwitchSettled =>
       _chapterSwitchCompleter?.future ?? Future<void>.value();
 
