@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/typography_settings.dart';
@@ -9,6 +9,7 @@ import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
 
 import 'pdf_outline_bridge.dart';
+import 'pdf_selection_bridge.dart';
 import 'pdf_theme.dart';
 
 /// pdfrx 适配层 —— PDF 等价于 [EpubxRenderer]。
@@ -137,13 +138,31 @@ class PdfRenderer {
   ///
   /// T7：根据 [_typography.theme] 用 [PdfTheme.applyTheme] 包装 PdfViewer，
   /// 实现 sepia / night / eInk 主题适配（pdfrx 原生不支持）。
-  /// 后续任务（T8 选区 / T9 扫描 banner）会在此方法内继续插入钩子。
+  ///
+  /// T8：在 [PdfViewerParams] 挂 `buildContextMenu` 钩子；用户拖选文本后
+  /// pdfrx 调起该 builder，里面异步取选中文本 + 从 anchor 拿页码，
+  /// 通过 [_PdfHighlightMenuButton] 渲染「高亮」按钮；点击调
+  /// [emitSelection]，把 [HighlightSelection] 推到 [selection$] 流。
+  /// 后续任务（T9 扫描 banner）会在此方法内继续插入钩子。
   Widget build(BuildContext context) {
     final doc = _doc;
     if (doc == null) return const SizedBox.shrink();
     return PdfTheme.applyTheme(
       theme: _typography.theme,
-      child: PdfViewer.file(doc.sourceName),
+      child: PdfViewer.file(
+        doc.sourceName,
+        params: PdfViewerParams(
+          textSelectionParams: const PdfTextSelectionParams(enabled: true),
+          buildContextMenu: (context, params) {
+            if (!params.isTextSelectionEnabled) return null;
+            return _PdfHighlightMenuButton(
+              params: params,
+              onHighlight: emitSelection,
+              fallbackPage: _currentPage + 1,
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -153,5 +172,84 @@ class PdfRenderer {
     await _stateController.close();
     await _locationController.close();
     await _selectionController.close();
+  }
+}
+
+/// 上下文菜单里的「高亮」按钮包装。
+///
+/// pdfrx 的 `PdfViewerContextMenuBuilderParams.textSelectionDelegate.getSelectedText()`
+/// 是 `Future<String>`，但 `buildContextMenu` 同步返回 `Widget`，
+/// 所以用 [StatefulWidget] + [State.initState] 异步取文本再 setState 渲染按钮。
+///
+/// 页码取自 `params.a?.page.pageNumber`（pdfrx 1-based）；若 anchor 缺失
+/// （如全选清空等边界场景），用 [fallbackPage] 兜底。
+class _PdfHighlightMenuButton extends StatefulWidget {
+  const _PdfHighlightMenuButton({
+    required this.params,
+    required this.onHighlight,
+    required this.fallbackPage,
+  });
+
+  final PdfViewerContextMenuBuilderParams params;
+  final ValueChanged<HighlightSelection> onHighlight;
+  final int fallbackPage;
+
+  @override
+  State<_PdfHighlightMenuButton> createState() =>
+      _PdfHighlightMenuButtonState();
+}
+
+class _PdfHighlightMenuButtonState extends State<_PdfHighlightMenuButton> {
+  String? _selectedText;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSelectedText();
+  }
+
+  Future<void> _loadSelectedText() async {
+    String? text;
+    try {
+      final raw = await widget.params.textSelectionDelegate.getSelectedText();
+      text = raw.isEmpty ? null : raw;
+    } catch (e) {
+      debugPrint('PdfRenderer._PdfHighlightMenuButton getSelectedText: $e');
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectedText = text;
+      _loaded = true;
+    });
+  }
+
+  int get _page =>
+      widget.params.a?.page.pageNumber ?? widget.fallbackPage;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: Padding(
+          padding: EdgeInsets.all(4),
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    return Material(
+      color: Colors.transparent,
+      child: PdfSelectionBridge.buildHighlightButton(
+        selectedText: _selectedText,
+        page: _page,
+        onHighlight: (sel) {
+          widget.onHighlight(sel);
+          // 高亮提交后关掉菜单（与 EPUB 行为对齐：松开手 → 菜单消失）。
+          widget.params.dismissContextMenu();
+        },
+      ),
+    );
   }
 }
