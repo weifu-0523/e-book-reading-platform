@@ -28,16 +28,8 @@ class HtmlTextUtils {
 
   /// Convert [html] to plain text by walking all text nodes in document order.
   /// Strips `<script>` and `<style>` subtrees first.
-  static String htmlToPlainText(String html) {
-    if (html.isEmpty) return '';
-    final doc = HtmlParser(html).parse();
-    for (final e in doc.querySelectorAll('script, style')) {
-      e.remove();
-    }
-    final buf = StringBuffer();
-    _walkText(doc, buf);
-    return buf.toString();
-  }
+  static String htmlToPlainText(String html) =>
+      htmlToParagraphs(html).plainText;
 
   /// Convert [html] to plain text AND identify paragraph spans within it.
   ///
@@ -59,16 +51,6 @@ class HtmlTextUtils {
     final paragraphs = <ParagraphSpan>[];
     _walkForParagraphs(doc, buf, paragraphs, inBlock: false);
     return (plainText: buf.toString(), paragraphs: paragraphs);
-  }
-
-  static void _walkText(Node node, StringBuffer buf) {
-    for (final n in node.nodes) {
-      if (n.nodeType == Node.TEXT_NODE) {
-        buf.write(n.text);
-      } else {
-        _walkText(n, buf);
-      }
-    }
   }
 
   static void _walkForParagraphs(

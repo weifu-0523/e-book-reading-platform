@@ -99,5 +99,27 @@ void main() {
       expect(result.paragraphs.first.start, 0);
       expect(result.paragraphs.first.end, 9);
     });
+
+    test('htmlToParagraphs.plainText is byte-identical to htmlToPlainText', () {
+      // Pin the contract: these two APIs must never diverge. If this test fails,
+      // either htmlToPlainText or _walkForParagraphs has a bug.
+      const inputs = <String>[
+        '',
+        '<p>hello world</p>',
+        '<p>foo</p>\n<p>bar</p>',
+        '<div><p>x</p></div>',
+        '<p>a <b>bold</b> b</p>',
+        '<p>visible</p><script>hidden()</script>'
+            '<style>.x{color:red}</style><p>more</p>',
+        'bare text',
+        '<ul><li>one</li><li>two</li></ul>',
+        '<h1>Title</h1><p>Body</p>',
+      ];
+      for (final html in inputs) {
+        final direct = HtmlTextUtils.htmlToPlainText(html);
+        final viaParagraphs = HtmlTextUtils.htmlToParagraphs(html).plainText;
+        expect(viaParagraphs, direct, reason: 'Divergence on input: "$html"');
+      }
+    });
   });
 }
