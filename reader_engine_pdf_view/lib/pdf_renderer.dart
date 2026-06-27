@@ -9,6 +9,7 @@ import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
 
 import 'pdf_outline_bridge.dart';
+import 'pdf_scanned_detector.dart';
 import 'pdf_selection_bridge.dart';
 import 'pdf_theme.dart';
 
@@ -27,6 +28,10 @@ class PdfRenderer {
   int _currentPage = 0;
   ReaderEngineState _state = const ReaderEngineUnloaded();
   TypographySettings _typography = TypographySettings.defaults();
+
+  /// 缓存的「扫描件判定」Future。每次 [openFile] 切书时清空，重新计算。
+  /// 避免每次 [build] 都跑 3 次 pdfrx loadText（昂贵且异步）。
+  Future<bool>? _scannedFuture;
 
   final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
@@ -77,6 +82,7 @@ class PdfRenderer {
       _doc = await PdfDocument.openFile(path)
           .timeout(const Duration(seconds: 30));
       _currentPage = 0;
+      _scannedFuture = null; // 切书清空缓存，下次 build 重新判定
       _setState(const ReaderEngineReady());
     } on TimeoutException catch (e) {
       _setState(ReaderEngineError(
@@ -143,26 +149,47 @@ class PdfRenderer {
   /// pdfrx 调起该 builder，里面异步取选中文本 + 从 anchor 拿页码，
   /// 通过 [_PdfHighlightMenuButton] 渲染「高亮」按钮；点击调
   /// [emitSelection]，把 [HighlightSelection] 推到 [selection$] 流。
-  /// 后续任务（T9 扫描 banner）会在此方法内继续插入钩子。
+  ///
+  /// T9：在 reader 顶部条件渲染 [PdfScannedBanner]。判定走
+  /// [PdfScannedDetector.isLikelyScanned]（前 3 页累计文本字符数 < 100），
+  /// 结果缓存在 [_scannedFuture]（openFile 时重置），用 [FutureBuilder]
+  /// 异步驱动，避免阻塞首次 build。扫描件场景同时显式禁用文本选区
+  /// （pdfrx 内部本就不工作，显式禁更清晰，避免空选区错误上下文）。
   Widget build(BuildContext context) {
     final doc = _doc;
     if (doc == null) return const SizedBox.shrink();
-    return PdfTheme.applyTheme(
-      theme: _typography.theme,
-      child: PdfViewer.file(
-        doc.sourceName,
-        params: PdfViewerParams(
-          textSelectionParams: const PdfTextSelectionParams(enabled: true),
-          buildContextMenu: (context, params) {
-            if (!params.isTextSelectionEnabled) return null;
-            return _PdfHighlightMenuButton(
-              params: params,
-              onHighlight: emitSelection,
-              fallbackPage: _currentPage + 1,
-            );
-          },
-        ),
-      ),
+    _scannedFuture ??= PdfScannedDetector.isLikelyScanned(doc);
+    return FutureBuilder<bool>(
+      future: _scannedFuture,
+      builder: (context, snap) {
+        final showBanner = snap.data == true;
+        return Column(
+          children: [
+            if (showBanner) const PdfScannedBanner(),
+            Expanded(
+              child: PdfTheme.applyTheme(
+                theme: _typography.theme,
+                child: PdfViewer.file(
+                  doc.sourceName,
+                  params: PdfViewerParams(
+                    textSelectionParams: PdfTextSelectionParams(
+                      enabled: !showBanner,
+                    ),
+                    buildContextMenu: (context, params) {
+                      if (!params.isTextSelectionEnabled) return null;
+                      return _PdfHighlightMenuButton(
+                        params: params,
+                        onHighlight: emitSelection,
+                        fallbackPage: _currentPage + 1,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
