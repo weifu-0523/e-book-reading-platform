@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:reader_engine/core/page_break.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:zhiyue/features/reader/services/scroll_to_offset.dart';
 
 void main() {
@@ -52,6 +54,7 @@ void main() {
       scrollable: scrollable,
       targetOffset: 49,
       duration: const Duration(milliseconds: 50),
+      paginationMode: PaginationMode.scroll,
     );
     await tester.pump();
     await tester.pumpAndSettle();
@@ -89,62 +92,94 @@ void main() {
       scrollable: scrollable,
       targetOffset: 99999,
       duration: const Duration(milliseconds: 50),
+      paginationMode: PaginationMode.scroll,
     );
     await tester.pumpAndSettle();
 
     expect(scrollController.position.pixels, pixelsBefore);
   });
 
-  // Regression guard for M3.3 known limitation: in PaginationMode.paged
-  // (production default), PageView only mounts current page's paragraphs,
-  // so cumulative offset walk can't span chapter. Service must short-circuit.
-  testWidgets('paged mode: silent no-op (M3.3 limitation)', (tester) async {
-    final scrollController = ScrollController();
+  // M3.4 T2: paged mode now jumps to the page whose break range contains
+  // targetOffset, instead of short-circuiting.
+  testWidgets('paged mode: jumps to page containing target offset',
+      (tester) async {
+    final pageController = PageController();
+    // 3 pages: [0..10), [10..20), [20..30)
+    final breaks = [
+      const PageBreak(startOffset: 0, endOffset: 10),
+      const PageBreak(startOffset: 10, endOffset: 20),
+      const PageBreak(startOffset: 20, endOffset: 30),
+    ];
 
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: SizedBox(
-          height: 80,
-          child: SingleChildScrollView(
-            controller: scrollController,
-            child: const Column(
-              children: [
-                Text('aaa bbb'),
-                Text('ccc ddd'),
-                Text('eee fff'),
-                Text('ggg hhh'),
-                Text('iii jjj'),
-                Text('kkk lll'),
-                Text('mmm nnn'),
-                Text('ooo ppp'),
-              ],
-            ),
-          ),
-        ),
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: PageView.builder(
+        controller: pageController,
+        itemCount: breaks.length,
+        itemBuilder: (_, i) => Text('Page $i'),
       ),
     ));
-    await tester.pumpAndSettle();
 
-    final scrollable = tester.state<ScrollableState>(
-        find.byType(Scrollable).first);
-    final pixelsBefore = scrollController.position.pixels;
-
-    // Sanity: scroll-mode call would actually scroll here.
-    expect(scrollController.position.maxScrollExtent, greaterThan(0));
-
-    // Fire-and-forget per T5 lesson (animateTo deadlock in tests).
-    final future = ScrollToOffsetService.scrollToCharacterOffset(
-      context: scrollable.context,
+    final scrollable = tester
+        .state<ScrollableState>(find.byType(Scrollable).first);
+    await ScrollToOffsetService.scrollToCharacterOffset(
+      context: tester.element(find.byType(PageView)),
       scrollable: scrollable,
-      targetOffset: 14,
-      duration: const Duration(milliseconds: 50),
-      isPagedMode: true, // simulate paged mode
+      targetOffset: 15, // in page 1
+      paginationMode: PaginationMode.paged,
+      pageBreaks: breaks,
+      pageController: pageController,
     );
     await tester.pump();
-    await tester.pumpAndSettle();
-    await future;
 
-    // No scroll happened because paged mode short-circuits.
-    expect(scrollController.position.pixels, pixelsBefore);
+    expect(pageController.page, 1);
+  });
+
+  testWidgets('paged mode: empty breaks is silent no-op', (tester) async {
+    final pageController = PageController();
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: PageView(controller: pageController, children: const [Text('x')]),
+    ));
+    final scrollable = tester
+        .state<ScrollableState>(find.byType(Scrollable).first);
+    await ScrollToOffsetService.scrollToCharacterOffset(
+      context: tester.element(find.byType(PageView)),
+      scrollable: scrollable,
+      targetOffset: 5,
+      paginationMode: PaginationMode.paged,
+      pageBreaks: const [],
+      pageController: pageController,
+    );
+    expect(pageController.page, 0); // unchanged
+  });
+
+  testWidgets('paged mode: target beyond last break falls back to last page',
+      (tester) async {
+    final pageController = PageController();
+    final breaks = [
+      const PageBreak(startOffset: 0, endOffset: 10),
+      const PageBreak(startOffset: 10, endOffset: 20),
+    ];
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: PageView.builder(
+        controller: pageController,
+        itemCount: breaks.length,
+        itemBuilder: (_, i) => Text('Page $i'),
+      ),
+    ));
+    final scrollable = tester
+        .state<ScrollableState>(find.byType(Scrollable).first);
+    await ScrollToOffsetService.scrollToCharacterOffset(
+      context: tester.element(find.byType(PageView)),
+      scrollable: scrollable,
+      targetOffset: 999, // out of range
+      paginationMode: PaginationMode.paged,
+      pageBreaks: breaks,
+      pageController: pageController,
+    );
+    await tester.pump();
+    expect(pageController.page, 1); // last page
   });
 }
