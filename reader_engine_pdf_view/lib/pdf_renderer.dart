@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
 
@@ -20,6 +21,7 @@ class PdfRenderer {
   PdfDocument? _doc;
   int _currentPage = 0;
   ReaderEngineState _state = const ReaderEngineUnloaded();
+  TypographySettings _typography = TypographySettings.defaults();
 
   final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
@@ -74,6 +76,21 @@ class PdfRenderer {
     _currentPage = page;
     _emitLocation();
   }
+
+  /// 由 [PdfReaderEngine.gotoLocator] 调用，跳转到 [PdfPageLocator] 指定页。
+  /// 非 PdfPageLocator 静默 no-op（PDF 不支持 CFI/range locator）。
+  Future<void> gotoLocator(Locator locator) async {
+    if (locator is! PdfPageLocator) return;
+    setPage(locator.page - 1);
+  }
+
+  /// 记录排版设置（PDF 实际渲染由 pdfrx 内部决定，此方法仅供 API 兼容）。
+  Future<void> setTypography(TypographySettings settings) async {
+    _typography = settings;
+  }
+
+  /// 当前排版设置（API 兼容；PDF 不实际使用）。
+  TypographySettings get typography => _typography;
 
   void _emitLocation() {
     if (_doc == null) return;
