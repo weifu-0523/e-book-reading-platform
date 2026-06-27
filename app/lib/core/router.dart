@@ -6,6 +6,10 @@ import '../features/library/pages/library_page.dart';
 import '../features/notes/pages/notes_page.dart';
 import '../features/reader/pages/reader_page.dart';
 import '../features/search/pages/search_highlights_page.dart';
+import '../features/settings/pages/about_page.dart';
+import '../features/settings/pages/font_management_page.dart';
+import '../features/settings/pages/settings_page.dart';
+import '../features/settings/pages/typography_profiles_page.dart';
 
 /// 应用路由配置。
 ///
@@ -44,6 +48,23 @@ GoRouter createAppRouter() {
       GoRoute(
         path: '/search/highlights',
         builder: (context, state) => const SearchHighlightsPage(),
+      ),
+      // 注意：go_router 按顺序匹配，更具体的子路径必须放在 /settings 之前
+      GoRoute(
+        path: '/settings/typography',
+        builder: (context, state) => const TypographyProfilesPage(),
+      ),
+      GoRoute(
+        path: '/settings/fonts',
+        builder: (context, state) => const FontManagementPage(),
+      ),
+      GoRoute(
+        path: '/settings/about',
+        builder: (context, state) => const AboutPage(),
+      ),
+      GoRoute(
+        path: '/settings',
+        builder: (context, state) => const SettingsPage(),
       ),
     ],
   );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/sort_by.dart';
 import '../models/view_mode.dart';
@@ -100,6 +101,11 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
           icon: const Icon(Icons.add),
           onPressed: onImportTap,
           tooltip: '导入书籍',
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          tooltip: '设置',
+          onPressed: () => context.push('/settings'),
         ),
       ],
     );
