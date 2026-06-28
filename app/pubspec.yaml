@@ -81,6 +81,9 @@ dev_dependencies:
   # M7: 应用图标 pipeline
   flutter_launcher_icons: ^0.14.3
 
+  # M7: mocktail for BookOpenBridge / MethodChannel tests
+  mocktail: ^1.0.0
+
 flutter:
   uses-material-design: true
   generate: true
