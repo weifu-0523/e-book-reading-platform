@@ -25,6 +25,8 @@
   "syncStatusPulling": "Downloading…",
   "syncStatusSuccess": "Sync succeeded",
   "syncStatusError": "Sync failed",
+  "syncStatusOffline": "Offline",
+  "syncStatusLabel": "Status",
   "syncNow": "Sync now",
   "syncLastRun": "Last sync",
   "syncNever": "Never",

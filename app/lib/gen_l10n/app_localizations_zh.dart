@@ -84,6 +84,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get syncStatusError => '同步失败';
 
   @override
+  String get syncStatusOffline => '离线';
+
+  @override
+  String get syncStatusLabel => '状态';
+
+  @override
   String get syncNow => '立即同步';
 
   @override

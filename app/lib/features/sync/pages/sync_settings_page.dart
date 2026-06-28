@@ -133,7 +133,7 @@ class _StatusSection extends StatelessWidget {
       case SyncStatus.error:
         return l10n.syncStatusError;
       case SyncStatus.offline:
-        return l10n.syncStatusError;
+        return l10n.syncStatusOffline;
     }
   }
 
@@ -147,7 +147,7 @@ class _StatusSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('${l10n.syncStatusSuccess}: ${_statusLabel(state.status)}'),
+        Text('${l10n.syncStatusLabel}: ${_statusLabel(state.status)}'),
         const SizedBox(height: 4),
         Text(lastRunText),
         if (state.lastMessage != null && state.status == SyncStatus.error)

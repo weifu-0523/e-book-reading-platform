@@ -184,6 +184,8 @@ abstract class AppLocalizations {
   String get syncStatusPulling;
   String get syncStatusSuccess;
   String get syncStatusError;
+  String get syncStatusOffline;
+  String get syncStatusLabel;
   String get syncNow;
   String get syncLastRun;
   String get syncNever;

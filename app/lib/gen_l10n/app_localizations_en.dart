@@ -85,6 +85,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get syncStatusError => 'Sync failed';
 
   @override
+  String get syncStatusOffline => 'Offline';
+
+  @override
+  String get syncStatusLabel => 'Status';
+
+  @override
   String get syncNow => 'Sync now';
 
   @override
