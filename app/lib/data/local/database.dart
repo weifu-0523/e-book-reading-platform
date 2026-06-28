@@ -8,6 +8,7 @@ import 'daos/book_tags_dao.dart';
 import 'daos/books_dao.dart';
 import 'daos/reading_progress_dao.dart';
 import 'daos/settings_dao.dart';
+import 'daos/sync_outbox_dao.dart';
 import 'daos/typography_dao.dart';
 import 'daos/user_fonts_dao.dart';
 import 'tables/annotations.dart';
@@ -17,6 +18,7 @@ import 'tables/book_typography_overrides.dart';
 import 'tables/books.dart';
 import 'tables/reading_progress.dart';
 import 'tables/settings.dart';
+import 'tables/sync_outbox.dart';
 import 'tables/typography_profiles.dart';
 import 'tables/user_fonts.dart';
 
@@ -33,6 +35,7 @@ part 'database.g.dart';
     BookTypographyOverrides,
     Settings,
     UserFonts,
+    SyncOutbox,
   ],
   daos: [
     BooksDao,
@@ -43,6 +46,7 @@ part 'database.g.dart';
     TypographyDao,
     SettingsDao,
     UserFontsDao,
+    SyncOutboxDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -51,7 +55,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration {
@@ -69,6 +73,9 @@ class AppDatabase extends _$AppDatabase {
         // schema v4 起带 annotations_fts 全文检索虚表 + 同步触发器。
         // fresh install 表为空，无需回填，触发器立即生效。
         await _createFts5(m);
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_sync_outbox_pushed_at ON sync_outbox(pushed_at)',
+        );
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
@@ -98,6 +105,13 @@ class AppDatabase extends _$AppDatabase {
         if (from < 5) {
           // schema v5：用户自定义字体表
           await m.createTable(userFonts);
+        }
+        if (from < 6) {
+          // schema v6：sync outbox
+          await m.createTable(syncOutbox);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_sync_outbox_pushed_at ON sync_outbox(pushed_at)',
+          );
         }
       },
       beforeOpen: (details) async {

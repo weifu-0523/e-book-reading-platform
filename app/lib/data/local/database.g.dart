@@ -3524,6 +3524,412 @@ class UserFontsCompanion extends UpdateCompanion<UserFont> {
   }
 }
 
+class $SyncOutboxTable extends SyncOutbox
+    with TableInfo<$SyncOutboxTable, SyncOutboxData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncOutboxTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _recordIdMeta = const VerificationMeta(
+    'recordId',
+  );
+  @override
+  late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
+    'record_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _recordTypeMeta = const VerificationMeta(
+    'recordType',
+  );
+  @override
+  late final GeneratedColumn<String> recordType = GeneratedColumn<String>(
+    'record_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _queuedAtMeta = const VerificationMeta(
+    'queuedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> queuedAt = GeneratedColumn<DateTime>(
+    'queued_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _pushedAtMeta = const VerificationMeta(
+    'pushedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> pushedAt = GeneratedColumn<DateTime>(
+    'pushed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    recordId,
+    recordType,
+    payloadJson,
+    queuedAt,
+    pushedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_outbox';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncOutboxData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('record_id')) {
+      context.handle(
+        _recordIdMeta,
+        recordId.isAcceptableOrUnknown(data['record_id']!, _recordIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordIdMeta);
+    }
+    if (data.containsKey('record_type')) {
+      context.handle(
+        _recordTypeMeta,
+        recordType.isAcceptableOrUnknown(data['record_type']!, _recordTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordTypeMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('queued_at')) {
+      context.handle(
+        _queuedAtMeta,
+        queuedAt.isAcceptableOrUnknown(data['queued_at']!, _queuedAtMeta),
+      );
+    }
+    if (data.containsKey('pushed_at')) {
+      context.handle(
+        _pushedAtMeta,
+        pushedAt.isAcceptableOrUnknown(data['pushed_at']!, _pushedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncOutboxData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncOutboxData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      recordId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_id'],
+      )!,
+      recordType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_type'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      queuedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}queued_at'],
+      )!,
+      pushedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}pushed_at'],
+      ),
+    );
+  }
+
+  @override
+  $SyncOutboxTable createAlias(String alias) {
+    return $SyncOutboxTable(attachedDatabase, alias);
+  }
+}
+
+class SyncOutboxData extends DataClass implements Insertable<SyncOutboxData> {
+  final int id;
+  final String recordId;
+  final String recordType;
+  final String payloadJson;
+  final DateTime queuedAt;
+  final DateTime? pushedAt;
+  const SyncOutboxData({
+    required this.id,
+    required this.recordId,
+    required this.recordType,
+    required this.payloadJson,
+    required this.queuedAt,
+    this.pushedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['record_id'] = Variable<String>(recordId);
+    map['record_type'] = Variable<String>(recordType);
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['queued_at'] = Variable<DateTime>(queuedAt);
+    if (!nullToAbsent || pushedAt != null) {
+      map['pushed_at'] = Variable<DateTime>(pushedAt);
+    }
+    return map;
+  }
+
+  SyncOutboxCompanion toCompanion(bool nullToAbsent) {
+    return SyncOutboxCompanion(
+      id: Value(id),
+      recordId: Value(recordId),
+      recordType: Value(recordType),
+      payloadJson: Value(payloadJson),
+      queuedAt: Value(queuedAt),
+      pushedAt: pushedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pushedAt),
+    );
+  }
+
+  factory SyncOutboxData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncOutboxData(
+      id: serializer.fromJson<int>(json['id']),
+      recordId: serializer.fromJson<String>(json['recordId']),
+      recordType: serializer.fromJson<String>(json['recordType']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      queuedAt: serializer.fromJson<DateTime>(json['queuedAt']),
+      pushedAt: serializer.fromJson<DateTime?>(json['pushedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'recordId': serializer.toJson<String>(recordId),
+      'recordType': serializer.toJson<String>(recordType),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'queuedAt': serializer.toJson<DateTime>(queuedAt),
+      'pushedAt': serializer.toJson<DateTime?>(pushedAt),
+    };
+  }
+
+  SyncOutboxData copyWith({
+    int? id,
+    String? recordId,
+    String? recordType,
+    String? payloadJson,
+    DateTime? queuedAt,
+    Value<DateTime?> pushedAt = const Value.absent(),
+  }) => SyncOutboxData(
+    id: id ?? this.id,
+    recordId: recordId ?? this.recordId,
+    recordType: recordType ?? this.recordType,
+    payloadJson: payloadJson ?? this.payloadJson,
+    queuedAt: queuedAt ?? this.queuedAt,
+    pushedAt: pushedAt.present ? pushedAt.value : this.pushedAt,
+  );
+  SyncOutboxData copyWithCompanion(SyncOutboxCompanion data) {
+    return SyncOutboxData(
+      id: data.id.present ? data.id.value : this.id,
+      recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      recordType: data.recordType.present
+          ? data.recordType.value
+          : this.recordType,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      queuedAt: data.queuedAt.present ? data.queuedAt.value : this.queuedAt,
+      pushedAt: data.pushedAt.present ? data.pushedAt.value : this.pushedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncOutboxData(')
+          ..write('id: $id, ')
+          ..write('recordId: $recordId, ')
+          ..write('recordType: $recordType, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('queuedAt: $queuedAt, ')
+          ..write('pushedAt: $pushedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, recordId, recordType, payloadJson, queuedAt, pushedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncOutboxData &&
+          other.id == this.id &&
+          other.recordId == this.recordId &&
+          other.recordType == this.recordType &&
+          other.payloadJson == this.payloadJson &&
+          other.queuedAt == this.queuedAt &&
+          other.pushedAt == this.pushedAt);
+}
+
+class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxData> {
+  final Value<int> id;
+  final Value<String> recordId;
+  final Value<String> recordType;
+  final Value<String> payloadJson;
+  final Value<DateTime> queuedAt;
+  final Value<DateTime?> pushedAt;
+  const SyncOutboxCompanion({
+    this.id = const Value.absent(),
+    this.recordId = const Value.absent(),
+    this.recordType = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.queuedAt = const Value.absent(),
+    this.pushedAt = const Value.absent(),
+  });
+  SyncOutboxCompanion.insert({
+    this.id = const Value.absent(),
+    required String recordId,
+    required String recordType,
+    required String payloadJson,
+    this.queuedAt = const Value.absent(),
+    this.pushedAt = const Value.absent(),
+  }) : recordId = Value(recordId),
+       recordType = Value(recordType),
+       payloadJson = Value(payloadJson);
+  static Insertable<SyncOutboxData> custom({
+    Expression<int>? id,
+    Expression<String>? recordId,
+    Expression<String>? recordType,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? queuedAt,
+    Expression<DateTime>? pushedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (recordId != null) 'record_id': recordId,
+      if (recordType != null) 'record_type': recordType,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (queuedAt != null) 'queued_at': queuedAt,
+      if (pushedAt != null) 'pushed_at': pushedAt,
+    });
+  }
+
+  SyncOutboxCompanion copyWith({
+    Value<int>? id,
+    Value<String>? recordId,
+    Value<String>? recordType,
+    Value<String>? payloadJson,
+    Value<DateTime>? queuedAt,
+    Value<DateTime?>? pushedAt,
+  }) {
+    return SyncOutboxCompanion(
+      id: id ?? this.id,
+      recordId: recordId ?? this.recordId,
+      recordType: recordType ?? this.recordType,
+      payloadJson: payloadJson ?? this.payloadJson,
+      queuedAt: queuedAt ?? this.queuedAt,
+      pushedAt: pushedAt ?? this.pushedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (recordId.present) {
+      map['record_id'] = Variable<String>(recordId.value);
+    }
+    if (recordType.present) {
+      map['record_type'] = Variable<String>(recordType.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (queuedAt.present) {
+      map['queued_at'] = Variable<DateTime>(queuedAt.value);
+    }
+    if (pushedAt.present) {
+      map['pushed_at'] = Variable<DateTime>(pushedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncOutboxCompanion(')
+          ..write('id: $id, ')
+          ..write('recordId: $recordId, ')
+          ..write('recordType: $recordType, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('queuedAt: $queuedAt, ')
+          ..write('pushedAt: $pushedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3539,6 +3945,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $BookTypographyOverridesTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final $UserFontsTable userFonts = $UserFontsTable(this);
+  late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
   late final BooksDao booksDao = BooksDao(this as AppDatabase);
   late final BookTagsDao bookTagsDao = BookTagsDao(this as AppDatabase);
   late final BookNotesDao bookNotesDao = BookNotesDao(this as AppDatabase);
@@ -3551,6 +3958,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final TypographyDao typographyDao = TypographyDao(this as AppDatabase);
   late final SettingsDao settingsDao = SettingsDao(this as AppDatabase);
   late final UserFontsDao userFontsDao = UserFontsDao(this as AppDatabase);
+  late final SyncOutboxDao syncOutboxDao = SyncOutboxDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3565,6 +3973,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     bookTypographyOverrides,
     settings,
     userFonts,
+    syncOutbox,
   ];
 }
 
@@ -6381,6 +6790,223 @@ typedef $$UserFontsTableProcessedTableManager =
       UserFont,
       PrefetchHooks Function()
     >;
+typedef $$SyncOutboxTableCreateCompanionBuilder =
+    SyncOutboxCompanion Function({
+      Value<int> id,
+      required String recordId,
+      required String recordType,
+      required String payloadJson,
+      Value<DateTime> queuedAt,
+      Value<DateTime?> pushedAt,
+    });
+typedef $$SyncOutboxTableUpdateCompanionBuilder =
+    SyncOutboxCompanion Function({
+      Value<int> id,
+      Value<String> recordId,
+      Value<String> recordType,
+      Value<String> payloadJson,
+      Value<DateTime> queuedAt,
+      Value<DateTime?> pushedAt,
+    });
+
+class $$SyncOutboxTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncOutboxTable> {
+  $$SyncOutboxTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get queuedAt => $composableBuilder(
+    column: $table.queuedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get pushedAt => $composableBuilder(
+    column: $table.pushedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncOutboxTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncOutboxTable> {
+  $$SyncOutboxTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get queuedAt => $composableBuilder(
+    column: $table.queuedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get pushedAt => $composableBuilder(
+    column: $table.pushedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncOutboxTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncOutboxTable> {
+  $$SyncOutboxTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get recordId =>
+      $composableBuilder(column: $table.recordId, builder: (column) => column);
+
+  GeneratedColumn<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get queuedAt =>
+      $composableBuilder(column: $table.queuedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get pushedAt =>
+      $composableBuilder(column: $table.pushedAt, builder: (column) => column);
+}
+
+class $$SyncOutboxTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncOutboxTable,
+          SyncOutboxData,
+          $$SyncOutboxTableFilterComposer,
+          $$SyncOutboxTableOrderingComposer,
+          $$SyncOutboxTableAnnotationComposer,
+          $$SyncOutboxTableCreateCompanionBuilder,
+          $$SyncOutboxTableUpdateCompanionBuilder,
+          (
+            SyncOutboxData,
+            BaseReferences<_$AppDatabase, $SyncOutboxTable, SyncOutboxData>,
+          ),
+          SyncOutboxData,
+          PrefetchHooks Function()
+        > {
+  $$SyncOutboxTableTableManager(_$AppDatabase db, $SyncOutboxTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncOutboxTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncOutboxTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncOutboxTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> recordId = const Value.absent(),
+                Value<String> recordType = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime> queuedAt = const Value.absent(),
+                Value<DateTime?> pushedAt = const Value.absent(),
+              }) => SyncOutboxCompanion(
+                id: id,
+                recordId: recordId,
+                recordType: recordType,
+                payloadJson: payloadJson,
+                queuedAt: queuedAt,
+                pushedAt: pushedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String recordId,
+                required String recordType,
+                required String payloadJson,
+                Value<DateTime> queuedAt = const Value.absent(),
+                Value<DateTime?> pushedAt = const Value.absent(),
+              }) => SyncOutboxCompanion.insert(
+                id: id,
+                recordId: recordId,
+                recordType: recordType,
+                payloadJson: payloadJson,
+                queuedAt: queuedAt,
+                pushedAt: pushedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncOutboxTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncOutboxTable,
+      SyncOutboxData,
+      $$SyncOutboxTableFilterComposer,
+      $$SyncOutboxTableOrderingComposer,
+      $$SyncOutboxTableAnnotationComposer,
+      $$SyncOutboxTableCreateCompanionBuilder,
+      $$SyncOutboxTableUpdateCompanionBuilder,
+      (
+        SyncOutboxData,
+        BaseReferences<_$AppDatabase, $SyncOutboxTable, SyncOutboxData>,
+      ),
+      SyncOutboxData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6406,4 +7032,6 @@ class $AppDatabaseManager {
       $$SettingsTableTableManager(_db, _db.settings);
   $$UserFontsTableTableManager get userFonts =>
       $$UserFontsTableTableManager(_db, _db.userFonts);
+  $$SyncOutboxTableTableManager get syncOutbox =>
+      $$SyncOutboxTableTableManager(_db, _db.syncOutbox);
 }
