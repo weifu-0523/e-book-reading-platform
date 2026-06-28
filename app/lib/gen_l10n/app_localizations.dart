@@ -170,6 +170,27 @@ abstract class AppLocalizations {
   /// **'关于智阅'**
   String get settingsAbout;
 
+  // M2.0a Sync
+  String get syncTitle;
+  String get syncSectionData;
+  String get syncUsername;
+  String get syncPassword;
+  String get syncUsernameHint;
+  String get syncPasswordHint;
+  String get syncSaveCredentials;
+  String get syncClearCredentials;
+  String get syncStatusIdle;
+  String get syncStatusPushing;
+  String get syncStatusPulling;
+  String get syncStatusSuccess;
+  String get syncStatusError;
+  String get syncNow;
+  String get syncLastRun;
+  String get syncNever;
+  String get syncRateLimitedWarning;
+  String get syncCredentialsMissing;
+  String syncPushedAndPulled(int pushed, int pulled);
+
   /// No description provided for @settingsSourceCode.
   ///
   /// In zh, this message translates to:

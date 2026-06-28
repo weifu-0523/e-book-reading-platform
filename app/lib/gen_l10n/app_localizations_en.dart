@@ -45,6 +45,66 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAbout => 'About Zhi Yue';
 
   @override
+  String get syncTitle => 'Sync';
+
+  @override
+  String get syncSectionData => 'Data Sync';
+
+  @override
+  String get syncUsername => 'Account';
+
+  @override
+  String get syncPassword => 'App Password';
+
+  @override
+  String get syncUsernameHint => 'Jianguoyun login email';
+
+  @override
+  String get syncPasswordHint =>
+      'Generate at Jianguoyun: Account Info → Security → Third-Party App Management';
+
+  @override
+  String get syncSaveCredentials => 'Save';
+
+  @override
+  String get syncClearCredentials => 'Clear credentials';
+
+  @override
+  String get syncStatusIdle => 'Not synced';
+
+  @override
+  String get syncStatusPushing => 'Uploading…';
+
+  @override
+  String get syncStatusPulling => 'Downloading…';
+
+  @override
+  String get syncStatusSuccess => 'Sync succeeded';
+
+  @override
+  String get syncStatusError => 'Sync failed';
+
+  @override
+  String get syncNow => 'Sync now';
+
+  @override
+  String get syncLastRun => 'Last sync';
+
+  @override
+  String get syncNever => 'Never';
+
+  @override
+  String get syncRateLimitedWarning => 'Jianguoyun rate limit (30/min) — try later';
+
+  @override
+  String get syncCredentialsMissing => 'Please enter account and app password first';
+
+  @override
+  String syncPushedAndPulled(int pushed, int pulled) {
+    return 'Pushed $pushed, pulled $pulled';
+  }
+
+  @override
   String get settingsSourceCode => 'Source Code';
 
   @override

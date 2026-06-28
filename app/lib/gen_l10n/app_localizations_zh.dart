@@ -45,6 +45,65 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAbout => '关于智阅';
 
   @override
+  String get syncTitle => '同步';
+
+  @override
+  String get syncSectionData => '数据同步';
+
+  @override
+  String get syncUsername => '账号';
+
+  @override
+  String get syncPassword => '应用密码';
+
+  @override
+  String get syncUsernameHint => '坚果云登录邮箱';
+
+  @override
+  String get syncPasswordHint => '在坚果云「账户信息 → 安全选项 → 第三方应用管理」生成';
+
+  @override
+  String get syncSaveCredentials => '保存';
+
+  @override
+  String get syncClearCredentials => '清除凭据';
+
+  @override
+  String get syncStatusIdle => '未同步';
+
+  @override
+  String get syncStatusPushing => '上传中…';
+
+  @override
+  String get syncStatusPulling => '下载中…';
+
+  @override
+  String get syncStatusSuccess => '同步成功';
+
+  @override
+  String get syncStatusError => '同步失败';
+
+  @override
+  String get syncNow => '立即同步';
+
+  @override
+  String get syncLastRun => '上次同步';
+
+  @override
+  String get syncNever => '从未';
+
+  @override
+  String get syncRateLimitedWarning => '坚果云限流（30 次/分钟），请稍后再试';
+
+  @override
+  String get syncCredentialsMissing => '请先填写账号和应用密码';
+
+  @override
+  String syncPushedAndPulled(int pushed, int pulled) {
+    return '上传 $pushed 条，下载 $pulled 条';
+  }
+
+  @override
   String get settingsSourceCode => '源代码';
 
   @override
