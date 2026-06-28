@@ -18,7 +18,13 @@ class AiCredentials {
   final String model;
 }
 
-class ApiKeyStore {
+/// Abstraction over [ApiKeyStore] so tests can inject an in-memory stub
+/// when driving [AiGuide] without going through flutter_secure_storage.
+abstract class ApiKeyStoreLike {
+  Future<AiCredentials?> load();
+}
+
+class ApiKeyStore implements ApiKeyStoreLike {
   ApiKeyStore([FlutterSecureStorage? storage])
       : _storage = storage ?? const FlutterSecureStorage();
 
@@ -28,6 +34,7 @@ class ApiKeyStore {
 
   final FlutterSecureStorage _storage;
 
+  @override
   Future<AiCredentials?> load() async {
     final apiKey = await _storage.read(key: _kApiKey);
     if (apiKey == null || apiKey.isEmpty) return null;
