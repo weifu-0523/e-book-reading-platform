@@ -1,7 +1,7 @@
 name: zhiyue
 description: 智阅 - 面向深度阅读/学习者的开源 Flutter 电子书阅读平台
 publish_to: 'none'
-version: 0.6.0-alpha+0
+version: 0.7.0-alpha+0
 
 environment:
   sdk: ^3.10.0

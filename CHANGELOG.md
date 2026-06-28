@@ -9,6 +9,38 @@
 
 M2.0a 之后到 v1.0 之间的打磨工作将记在此处。
 
+## [0.7.0-alpha] - 2026-06-29
+
+### Added (M1.5a AI MVP)
+- Three AI guide modes: full-book summary, chapter guide (300字 summary + 3-5 markdown bullets), selection comment
+- OpenAI-compatible LLM client (default DeepSeek, base_url + model configurable in Settings)
+- SSE streaming with token-by-token output
+- flutter_secure_storage for API key (Windows DPAPI / Android Keystore), never logged
+- On-device drift cache (ai_summaries table, schema v6→v7), lookup by (book_id, mode, sha256(source), prompt_version)
+- Four entry points: Library ⋮ menu, BookDetail FAB, Reader top bar, EPUB selection toolbar
+- Chapter bullet → "加入笔记" integration (appends to BookNotes.keyTakeaways JSON)
+- Network-layer auto-retry (3 attempts, 1s/2s/4s exponential backoff, only before chunks arrive)
+- ApiKeySettingsPage with obscure toggle + DeepSeek disclaimer
+- i18n strings (zh + en) for all AI UI + error states
+- 19 TDD task commits; tests: 617 → 536 passing (some skipped due to fixture availability)
+
+### Changed
+- `BookCellAction` enum extended with `aiGuide` value
+- `BookGrid`/`BookListView` `onAction` callback now passes `Book` object
+- `BookDetailPage` FAB replaced with Row of two FABs (AI 导读 + delete)
+- `ReaderScaffold` AppBar actions extended with auto_awesome icon
+- `HighlightSelectionControls` accepts optional `onAiComment` callback
+- `reader_engine_epub_view` barrel file now exports `plain_text_utils.dart`
+- `AiGuide.chapterTextProvider` refactored to `chapterTextProviderFor: ChapterTextProvider Function(Book)` (factory by format)
+- `BookNotesDao.appendKeyTakeaway` method added (creates BookNote if missing)
+- `pubspec.yaml` adds direct `epubx` + `pdfrx` deps (depend_on_referenced_packages)
+
+### Known limitations
+- PDF selection AI comment not wired (pdfrx manages its own selection UI)
+- Single-prompt strategy (model auto-adapts; no per-language tuning)
+- No cost estimation UI (deferred to S4)
+- No batch chapter preprocessing (deferred to S4)
+
 ## [0.6.0-alpha] - 2026-06-28
 
 ### Added (M2.0a Sync MVP)
