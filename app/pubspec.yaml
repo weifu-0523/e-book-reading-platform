@@ -59,6 +59,10 @@ dependency_overrides:
   intl: ^0.20.0
   url_launcher: ^6.3.2
 
+  # M2.0a: sync
+  http: ^1.2.0
+  flutter_secure_storage: ^9.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
