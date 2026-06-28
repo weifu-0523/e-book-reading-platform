@@ -11,6 +11,7 @@ import 'daos/settings_dao.dart';
 import 'daos/sync_outbox_dao.dart';
 import 'daos/typography_dao.dart';
 import 'daos/user_fonts_dao.dart';
+import 'tables/ai_summaries.dart';
 import 'tables/annotations.dart';
 import 'tables/book_notes.dart';
 import 'tables/book_tags.dart';
@@ -36,6 +37,7 @@ part 'database.g.dart';
     Settings,
     UserFonts,
     SyncOutbox,
+    AiSummaries,
   ],
   daos: [
     BooksDao,
@@ -55,7 +57,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration {
@@ -75,6 +77,11 @@ class AppDatabase extends _$AppDatabase {
         await _createFts5(m);
         await m.database.customStatement(
           'CREATE INDEX IF NOT EXISTS idx_sync_outbox_pushed_at ON sync_outbox(pushed_at)',
+        );
+        // schema v7 起带 ai_summaries 命中索引（缓存查找）
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_ai_summaries_lookup '
+          'ON ai_summaries(book_id, mode, source_hash, prompt_version)',
         );
       },
       onUpgrade: (m, from, to) async {
@@ -111,6 +118,14 @@ class AppDatabase extends _$AppDatabase {
           await m.createTable(syncOutbox);
           await m.database.customStatement(
             'CREATE INDEX IF NOT EXISTS idx_sync_outbox_pushed_at ON sync_outbox(pushed_at)',
+          );
+        }
+        if (from < 7) {
+          // schema v7：AI guide summary cache
+          await m.createTable(aiSummaries);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_ai_summaries_lookup '
+            'ON ai_summaries(book_id, mode, source_hash, prompt_version)',
           );
         }
       },

@@ -3930,6 +3930,570 @@ class SyncOutboxCompanion extends UpdateCompanion<SyncOutboxData> {
   }
 }
 
+class $AiSummariesTable extends AiSummaries
+    with TableInfo<$AiSummariesTable, AiSummary> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AiSummariesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES books (id)',
+    ),
+  );
+  static const VerificationMeta _modeMeta = const VerificationMeta('mode');
+  @override
+  late final GeneratedColumn<String> mode = GeneratedColumn<String>(
+    'mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceHashMeta = const VerificationMeta(
+    'sourceHash',
+  );
+  @override
+  late final GeneratedColumn<String> sourceHash = GeneratedColumn<String>(
+    'source_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _summaryTextMeta = const VerificationMeta(
+    'summaryText',
+  );
+  @override
+  late final GeneratedColumn<String> summaryText = GeneratedColumn<String>(
+    'summary_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _modelNameMeta = const VerificationMeta(
+    'modelName',
+  );
+  @override
+  late final GeneratedColumn<String> modelName = GeneratedColumn<String>(
+    'model_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _baseUrlMeta = const VerificationMeta(
+    'baseUrl',
+  );
+  @override
+  late final GeneratedColumn<String> baseUrl = GeneratedColumn<String>(
+    'base_url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _generatedAtMeta = const VerificationMeta(
+    'generatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> generatedAt = GeneratedColumn<DateTime>(
+    'generated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _promptVersionMeta = const VerificationMeta(
+    'promptVersion',
+  );
+  @override
+  late final GeneratedColumn<int> promptVersion = GeneratedColumn<int>(
+    'prompt_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    bookId,
+    mode,
+    sourceHash,
+    summaryText,
+    modelName,
+    baseUrl,
+    generatedAt,
+    promptVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'ai_summaries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AiSummary> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bookIdMeta);
+    }
+    if (data.containsKey('mode')) {
+      context.handle(
+        _modeMeta,
+        mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modeMeta);
+    }
+    if (data.containsKey('source_hash')) {
+      context.handle(
+        _sourceHashMeta,
+        sourceHash.isAcceptableOrUnknown(data['source_hash']!, _sourceHashMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceHashMeta);
+    }
+    if (data.containsKey('summary_text')) {
+      context.handle(
+        _summaryTextMeta,
+        summaryText.isAcceptableOrUnknown(
+          data['summary_text']!,
+          _summaryTextMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_summaryTextMeta);
+    }
+    if (data.containsKey('model_name')) {
+      context.handle(
+        _modelNameMeta,
+        modelName.isAcceptableOrUnknown(data['model_name']!, _modelNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_modelNameMeta);
+    }
+    if (data.containsKey('base_url')) {
+      context.handle(
+        _baseUrlMeta,
+        baseUrl.isAcceptableOrUnknown(data['base_url']!, _baseUrlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_baseUrlMeta);
+    }
+    if (data.containsKey('generated_at')) {
+      context.handle(
+        _generatedAtMeta,
+        generatedAt.isAcceptableOrUnknown(
+          data['generated_at']!,
+          _generatedAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('prompt_version')) {
+      context.handle(
+        _promptVersionMeta,
+        promptVersion.isAcceptableOrUnknown(
+          data['prompt_version']!,
+          _promptVersionMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_promptVersionMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AiSummary map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AiSummary(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      )!,
+      mode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mode'],
+      )!,
+      sourceHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_hash'],
+      )!,
+      summaryText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}summary_text'],
+      )!,
+      modelName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}model_name'],
+      )!,
+      baseUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}base_url'],
+      )!,
+      generatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}generated_at'],
+      )!,
+      promptVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}prompt_version'],
+      )!,
+    );
+  }
+
+  @override
+  $AiSummariesTable createAlias(String alias) {
+    return $AiSummariesTable(attachedDatabase, alias);
+  }
+}
+
+class AiSummary extends DataClass implements Insertable<AiSummary> {
+  final int id;
+  final String bookId;
+  final String mode;
+  final String sourceHash;
+  final String summaryText;
+  final String modelName;
+  final String baseUrl;
+  final DateTime generatedAt;
+  final int promptVersion;
+  const AiSummary({
+    required this.id,
+    required this.bookId,
+    required this.mode,
+    required this.sourceHash,
+    required this.summaryText,
+    required this.modelName,
+    required this.baseUrl,
+    required this.generatedAt,
+    required this.promptVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['book_id'] = Variable<String>(bookId);
+    map['mode'] = Variable<String>(mode);
+    map['source_hash'] = Variable<String>(sourceHash);
+    map['summary_text'] = Variable<String>(summaryText);
+    map['model_name'] = Variable<String>(modelName);
+    map['base_url'] = Variable<String>(baseUrl);
+    map['generated_at'] = Variable<DateTime>(generatedAt);
+    map['prompt_version'] = Variable<int>(promptVersion);
+    return map;
+  }
+
+  AiSummariesCompanion toCompanion(bool nullToAbsent) {
+    return AiSummariesCompanion(
+      id: Value(id),
+      bookId: Value(bookId),
+      mode: Value(mode),
+      sourceHash: Value(sourceHash),
+      summaryText: Value(summaryText),
+      modelName: Value(modelName),
+      baseUrl: Value(baseUrl),
+      generatedAt: Value(generatedAt),
+      promptVersion: Value(promptVersion),
+    );
+  }
+
+  factory AiSummary.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AiSummary(
+      id: serializer.fromJson<int>(json['id']),
+      bookId: serializer.fromJson<String>(json['bookId']),
+      mode: serializer.fromJson<String>(json['mode']),
+      sourceHash: serializer.fromJson<String>(json['sourceHash']),
+      summaryText: serializer.fromJson<String>(json['summaryText']),
+      modelName: serializer.fromJson<String>(json['modelName']),
+      baseUrl: serializer.fromJson<String>(json['baseUrl']),
+      generatedAt: serializer.fromJson<DateTime>(json['generatedAt']),
+      promptVersion: serializer.fromJson<int>(json['promptVersion']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'bookId': serializer.toJson<String>(bookId),
+      'mode': serializer.toJson<String>(mode),
+      'sourceHash': serializer.toJson<String>(sourceHash),
+      'summaryText': serializer.toJson<String>(summaryText),
+      'modelName': serializer.toJson<String>(modelName),
+      'baseUrl': serializer.toJson<String>(baseUrl),
+      'generatedAt': serializer.toJson<DateTime>(generatedAt),
+      'promptVersion': serializer.toJson<int>(promptVersion),
+    };
+  }
+
+  AiSummary copyWith({
+    int? id,
+    String? bookId,
+    String? mode,
+    String? sourceHash,
+    String? summaryText,
+    String? modelName,
+    String? baseUrl,
+    DateTime? generatedAt,
+    int? promptVersion,
+  }) => AiSummary(
+    id: id ?? this.id,
+    bookId: bookId ?? this.bookId,
+    mode: mode ?? this.mode,
+    sourceHash: sourceHash ?? this.sourceHash,
+    summaryText: summaryText ?? this.summaryText,
+    modelName: modelName ?? this.modelName,
+    baseUrl: baseUrl ?? this.baseUrl,
+    generatedAt: generatedAt ?? this.generatedAt,
+    promptVersion: promptVersion ?? this.promptVersion,
+  );
+  AiSummary copyWithCompanion(AiSummariesCompanion data) {
+    return AiSummary(
+      id: data.id.present ? data.id.value : this.id,
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      mode: data.mode.present ? data.mode.value : this.mode,
+      sourceHash: data.sourceHash.present
+          ? data.sourceHash.value
+          : this.sourceHash,
+      summaryText: data.summaryText.present
+          ? data.summaryText.value
+          : this.summaryText,
+      modelName: data.modelName.present ? data.modelName.value : this.modelName,
+      baseUrl: data.baseUrl.present ? data.baseUrl.value : this.baseUrl,
+      generatedAt: data.generatedAt.present
+          ? data.generatedAt.value
+          : this.generatedAt,
+      promptVersion: data.promptVersion.present
+          ? data.promptVersion.value
+          : this.promptVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AiSummary(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('mode: $mode, ')
+          ..write('sourceHash: $sourceHash, ')
+          ..write('summaryText: $summaryText, ')
+          ..write('modelName: $modelName, ')
+          ..write('baseUrl: $baseUrl, ')
+          ..write('generatedAt: $generatedAt, ')
+          ..write('promptVersion: $promptVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    bookId,
+    mode,
+    sourceHash,
+    summaryText,
+    modelName,
+    baseUrl,
+    generatedAt,
+    promptVersion,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AiSummary &&
+          other.id == this.id &&
+          other.bookId == this.bookId &&
+          other.mode == this.mode &&
+          other.sourceHash == this.sourceHash &&
+          other.summaryText == this.summaryText &&
+          other.modelName == this.modelName &&
+          other.baseUrl == this.baseUrl &&
+          other.generatedAt == this.generatedAt &&
+          other.promptVersion == this.promptVersion);
+}
+
+class AiSummariesCompanion extends UpdateCompanion<AiSummary> {
+  final Value<int> id;
+  final Value<String> bookId;
+  final Value<String> mode;
+  final Value<String> sourceHash;
+  final Value<String> summaryText;
+  final Value<String> modelName;
+  final Value<String> baseUrl;
+  final Value<DateTime> generatedAt;
+  final Value<int> promptVersion;
+  const AiSummariesCompanion({
+    this.id = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.mode = const Value.absent(),
+    this.sourceHash = const Value.absent(),
+    this.summaryText = const Value.absent(),
+    this.modelName = const Value.absent(),
+    this.baseUrl = const Value.absent(),
+    this.generatedAt = const Value.absent(),
+    this.promptVersion = const Value.absent(),
+  });
+  AiSummariesCompanion.insert({
+    this.id = const Value.absent(),
+    required String bookId,
+    required String mode,
+    required String sourceHash,
+    required String summaryText,
+    required String modelName,
+    required String baseUrl,
+    this.generatedAt = const Value.absent(),
+    required int promptVersion,
+  }) : bookId = Value(bookId),
+       mode = Value(mode),
+       sourceHash = Value(sourceHash),
+       summaryText = Value(summaryText),
+       modelName = Value(modelName),
+       baseUrl = Value(baseUrl),
+       promptVersion = Value(promptVersion);
+  static Insertable<AiSummary> custom({
+    Expression<int>? id,
+    Expression<String>? bookId,
+    Expression<String>? mode,
+    Expression<String>? sourceHash,
+    Expression<String>? summaryText,
+    Expression<String>? modelName,
+    Expression<String>? baseUrl,
+    Expression<DateTime>? generatedAt,
+    Expression<int>? promptVersion,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bookId != null) 'book_id': bookId,
+      if (mode != null) 'mode': mode,
+      if (sourceHash != null) 'source_hash': sourceHash,
+      if (summaryText != null) 'summary_text': summaryText,
+      if (modelName != null) 'model_name': modelName,
+      if (baseUrl != null) 'base_url': baseUrl,
+      if (generatedAt != null) 'generated_at': generatedAt,
+      if (promptVersion != null) 'prompt_version': promptVersion,
+    });
+  }
+
+  AiSummariesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? bookId,
+    Value<String>? mode,
+    Value<String>? sourceHash,
+    Value<String>? summaryText,
+    Value<String>? modelName,
+    Value<String>? baseUrl,
+    Value<DateTime>? generatedAt,
+    Value<int>? promptVersion,
+  }) {
+    return AiSummariesCompanion(
+      id: id ?? this.id,
+      bookId: bookId ?? this.bookId,
+      mode: mode ?? this.mode,
+      sourceHash: sourceHash ?? this.sourceHash,
+      summaryText: summaryText ?? this.summaryText,
+      modelName: modelName ?? this.modelName,
+      baseUrl: baseUrl ?? this.baseUrl,
+      generatedAt: generatedAt ?? this.generatedAt,
+      promptVersion: promptVersion ?? this.promptVersion,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (mode.present) {
+      map['mode'] = Variable<String>(mode.value);
+    }
+    if (sourceHash.present) {
+      map['source_hash'] = Variable<String>(sourceHash.value);
+    }
+    if (summaryText.present) {
+      map['summary_text'] = Variable<String>(summaryText.value);
+    }
+    if (modelName.present) {
+      map['model_name'] = Variable<String>(modelName.value);
+    }
+    if (baseUrl.present) {
+      map['base_url'] = Variable<String>(baseUrl.value);
+    }
+    if (generatedAt.present) {
+      map['generated_at'] = Variable<DateTime>(generatedAt.value);
+    }
+    if (promptVersion.present) {
+      map['prompt_version'] = Variable<int>(promptVersion.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AiSummariesCompanion(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('mode: $mode, ')
+          ..write('sourceHash: $sourceHash, ')
+          ..write('summaryText: $summaryText, ')
+          ..write('modelName: $modelName, ')
+          ..write('baseUrl: $baseUrl, ')
+          ..write('generatedAt: $generatedAt, ')
+          ..write('promptVersion: $promptVersion')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3946,6 +4510,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SettingsTable settings = $SettingsTable(this);
   late final $UserFontsTable userFonts = $UserFontsTable(this);
   late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
+  late final $AiSummariesTable aiSummaries = $AiSummariesTable(this);
   late final BooksDao booksDao = BooksDao(this as AppDatabase);
   late final BookTagsDao bookTagsDao = BookTagsDao(this as AppDatabase);
   late final BookNotesDao bookNotesDao = BookNotesDao(this as AppDatabase);
@@ -3974,6 +4539,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     settings,
     userFonts,
     syncOutbox,
+    aiSummaries,
   ];
 }
 
@@ -4081,6 +4647,24 @@ final class $$BooksTableReferences
     final cache = $_typedResult.readTableOrNull(
       _bookTypographyOverridesRefsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$AiSummariesTable, List<AiSummary>>
+  _aiSummariesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.aiSummaries,
+    aliasName: $_aliasNameGenerator(db.books.id, db.aiSummaries.bookId),
+  );
+
+  $$AiSummariesTableProcessedTableManager get aiSummariesRefs {
+    final manager = $$AiSummariesTableTableManager(
+      $_db,
+      $_db.aiSummaries,
+    ).filter((f) => f.bookId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_aiSummariesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -4223,6 +4807,31 @@ class $$BooksTableFilterComposer extends Composer<_$AppDatabase, $BooksTable> {
                     $removeJoinBuilderFromRootComposer,
               ),
         );
+    return f(composer);
+  }
+
+  Expression<bool> aiSummariesRefs(
+    Expression<bool> Function($$AiSummariesTableFilterComposer f) f,
+  ) {
+    final $$AiSummariesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.aiSummaries,
+      getReferencedColumn: (t) => t.bookId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AiSummariesTableFilterComposer(
+            $db: $db,
+            $table: $db.aiSummaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
     return f(composer);
   }
 }
@@ -4415,6 +5024,31 @@ class $$BooksTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> aiSummariesRefs<T extends Object>(
+    Expression<T> Function($$AiSummariesTableAnnotationComposer a) f,
+  ) {
+    final $$AiSummariesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.aiSummaries,
+      getReferencedColumn: (t) => t.bookId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AiSummariesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.aiSummaries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$BooksTableTableManager
@@ -4434,6 +5068,7 @@ class $$BooksTableTableManager
             bool bookNotesRefs,
             bool readingProgressTableRefs,
             bool bookTypographyOverridesRefs,
+            bool aiSummariesRefs,
           })
         > {
   $$BooksTableTableManager(_$AppDatabase db, $BooksTable table)
@@ -4514,6 +5149,7 @@ class $$BooksTableTableManager
                 bookNotesRefs = false,
                 readingProgressTableRefs = false,
                 bookTypographyOverridesRefs = false,
+                aiSummariesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -4521,6 +5157,7 @@ class $$BooksTableTableManager
                     if (bookNotesRefs) db.bookNotes,
                     if (readingProgressTableRefs) db.readingProgressTable,
                     if (bookTypographyOverridesRefs) db.bookTypographyOverrides,
+                    if (aiSummariesRefs) db.aiSummaries,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -4584,6 +5221,23 @@ class $$BooksTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (aiSummariesRefs)
+                        await $_getPrefetchedData<Book, $BooksTable, AiSummary>(
+                          currentTable: table,
+                          referencedTable: $$BooksTableReferences
+                              ._aiSummariesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$BooksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).aiSummariesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.bookId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4608,6 +5262,7 @@ typedef $$BooksTableProcessedTableManager =
         bool bookNotesRefs,
         bool readingProgressTableRefs,
         bool bookTypographyOverridesRefs,
+        bool aiSummariesRefs,
       })
     >;
 typedef $$BookTagsTableCreateCompanionBuilder =
@@ -7007,6 +7662,402 @@ typedef $$SyncOutboxTableProcessedTableManager =
       SyncOutboxData,
       PrefetchHooks Function()
     >;
+typedef $$AiSummariesTableCreateCompanionBuilder =
+    AiSummariesCompanion Function({
+      Value<int> id,
+      required String bookId,
+      required String mode,
+      required String sourceHash,
+      required String summaryText,
+      required String modelName,
+      required String baseUrl,
+      Value<DateTime> generatedAt,
+      required int promptVersion,
+    });
+typedef $$AiSummariesTableUpdateCompanionBuilder =
+    AiSummariesCompanion Function({
+      Value<int> id,
+      Value<String> bookId,
+      Value<String> mode,
+      Value<String> sourceHash,
+      Value<String> summaryText,
+      Value<String> modelName,
+      Value<String> baseUrl,
+      Value<DateTime> generatedAt,
+      Value<int> promptVersion,
+    });
+
+final class $$AiSummariesTableReferences
+    extends BaseReferences<_$AppDatabase, $AiSummariesTable, AiSummary> {
+  $$AiSummariesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $BooksTable _bookIdTable(_$AppDatabase db) => db.books.createAlias(
+    $_aliasNameGenerator(db.aiSummaries.bookId, db.books.id),
+  );
+
+  $$BooksTableProcessedTableManager get bookId {
+    final $_column = $_itemColumn<String>('book_id')!;
+
+    final manager = $$BooksTableTableManager(
+      $_db,
+      $_db.books,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_bookIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$AiSummariesTableFilterComposer
+    extends Composer<_$AppDatabase, $AiSummariesTable> {
+  $$AiSummariesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceHash => $composableBuilder(
+    column: $table.sourceHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get summaryText => $composableBuilder(
+    column: $table.summaryText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get modelName => $composableBuilder(
+    column: $table.modelName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baseUrl => $composableBuilder(
+    column: $table.baseUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get generatedAt => $composableBuilder(
+    column: $table.generatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get promptVersion => $composableBuilder(
+    column: $table.promptVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$BooksTableFilterComposer get bookId {
+    final $$BooksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bookId,
+      referencedTable: $db.books,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BooksTableFilterComposer(
+            $db: $db,
+            $table: $db.books,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AiSummariesTableOrderingComposer
+    extends Composer<_$AppDatabase, $AiSummariesTable> {
+  $$AiSummariesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mode => $composableBuilder(
+    column: $table.mode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceHash => $composableBuilder(
+    column: $table.sourceHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get summaryText => $composableBuilder(
+    column: $table.summaryText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get modelName => $composableBuilder(
+    column: $table.modelName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baseUrl => $composableBuilder(
+    column: $table.baseUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get generatedAt => $composableBuilder(
+    column: $table.generatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get promptVersion => $composableBuilder(
+    column: $table.promptVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$BooksTableOrderingComposer get bookId {
+    final $$BooksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bookId,
+      referencedTable: $db.books,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BooksTableOrderingComposer(
+            $db: $db,
+            $table: $db.books,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AiSummariesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AiSummariesTable> {
+  $$AiSummariesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get mode =>
+      $composableBuilder(column: $table.mode, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceHash => $composableBuilder(
+    column: $table.sourceHash,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get summaryText => $composableBuilder(
+    column: $table.summaryText,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get modelName =>
+      $composableBuilder(column: $table.modelName, builder: (column) => column);
+
+  GeneratedColumn<String> get baseUrl =>
+      $composableBuilder(column: $table.baseUrl, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get generatedAt => $composableBuilder(
+    column: $table.generatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get promptVersion => $composableBuilder(
+    column: $table.promptVersion,
+    builder: (column) => column,
+  );
+
+  $$BooksTableAnnotationComposer get bookId {
+    final $$BooksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.bookId,
+      referencedTable: $db.books,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$BooksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.books,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AiSummariesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AiSummariesTable,
+          AiSummary,
+          $$AiSummariesTableFilterComposer,
+          $$AiSummariesTableOrderingComposer,
+          $$AiSummariesTableAnnotationComposer,
+          $$AiSummariesTableCreateCompanionBuilder,
+          $$AiSummariesTableUpdateCompanionBuilder,
+          (AiSummary, $$AiSummariesTableReferences),
+          AiSummary,
+          PrefetchHooks Function({bool bookId})
+        > {
+  $$AiSummariesTableTableManager(_$AppDatabase db, $AiSummariesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AiSummariesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AiSummariesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AiSummariesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> bookId = const Value.absent(),
+                Value<String> mode = const Value.absent(),
+                Value<String> sourceHash = const Value.absent(),
+                Value<String> summaryText = const Value.absent(),
+                Value<String> modelName = const Value.absent(),
+                Value<String> baseUrl = const Value.absent(),
+                Value<DateTime> generatedAt = const Value.absent(),
+                Value<int> promptVersion = const Value.absent(),
+              }) => AiSummariesCompanion(
+                id: id,
+                bookId: bookId,
+                mode: mode,
+                sourceHash: sourceHash,
+                summaryText: summaryText,
+                modelName: modelName,
+                baseUrl: baseUrl,
+                generatedAt: generatedAt,
+                promptVersion: promptVersion,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String bookId,
+                required String mode,
+                required String sourceHash,
+                required String summaryText,
+                required String modelName,
+                required String baseUrl,
+                Value<DateTime> generatedAt = const Value.absent(),
+                required int promptVersion,
+              }) => AiSummariesCompanion.insert(
+                id: id,
+                bookId: bookId,
+                mode: mode,
+                sourceHash: sourceHash,
+                summaryText: summaryText,
+                modelName: modelName,
+                baseUrl: baseUrl,
+                generatedAt: generatedAt,
+                promptVersion: promptVersion,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$AiSummariesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({bookId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (bookId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.bookId,
+                                referencedTable: $$AiSummariesTableReferences
+                                    ._bookIdTable(db),
+                                referencedColumn: $$AiSummariesTableReferences
+                                    ._bookIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$AiSummariesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AiSummariesTable,
+      AiSummary,
+      $$AiSummariesTableFilterComposer,
+      $$AiSummariesTableOrderingComposer,
+      $$AiSummariesTableAnnotationComposer,
+      $$AiSummariesTableCreateCompanionBuilder,
+      $$AiSummariesTableUpdateCompanionBuilder,
+      (AiSummary, $$AiSummariesTableReferences),
+      AiSummary,
+      PrefetchHooks Function({bool bookId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7034,4 +8085,6 @@ class $AppDatabaseManager {
       $$UserFontsTableTableManager(_db, _db.userFonts);
   $$SyncOutboxTableTableManager get syncOutbox =>
       $$SyncOutboxTableTableManager(_db, _db.syncOutbox);
+  $$AiSummariesTableTableManager get aiSummaries =>
+      $$AiSummariesTableTableManager(_db, _db.aiSummaries);
 }
