@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/daos/book_notes_dao.dart';
 import 'package:zhiyue/data/local/daos/books_dao.dart';
@@ -82,5 +84,40 @@ void main() {
     );
     final note = await dao.getByBookId('b1');
     expect(note?.updatedAt, newUpdated);
+  });
+
+  test('appendKeyTakeaway creates BookNote if missing then appends', () async {
+    await dao.appendKeyTakeaway(
+      bookId: 'b1',
+      bookTitle: 'T',
+      takeaway: 'first bullet',
+      sourceChapter: 'Ch 1',
+    );
+    final note = await dao.getByBookId('b1');
+    expect(note, isNotNull);
+    final arr = jsonDecode(note!.keyTakeaways) as List;
+    expect(arr, hasLength(1));
+    expect(arr.first['text'], 'first bullet');
+    expect(arr.first['chapter'], 'Ch 1');
+  });
+
+  test('appendKeyTakeaway on existing note appends without losing data',
+      () async {
+    await dao.appendKeyTakeaway(bookId: 'b1', bookTitle: 'T', takeaway: 'one');
+    await dao.appendKeyTakeaway(
+      bookId: 'b1', bookTitle: 'T', takeaway: 'two', sourceChapter: 'Ch 2');
+    final note = await dao.getByBookId('b1');
+    final arr = jsonDecode(note!.keyTakeaways) as List;
+    expect(arr, hasLength(2));
+    expect(arr[0]['text'], 'one');
+    expect(arr[1]['text'], 'two');
+    expect(arr[1]['chapter'], 'Ch 2');
+  });
+
+  test('appendKeyTakeaway timestamps each entry', () async {
+    await dao.appendKeyTakeaway(bookId: 'b1', bookTitle: 'T', takeaway: 'x');
+    final note = await dao.getByBookId('b1');
+    final arr = jsonDecode(note!.keyTakeaways) as List;
+    expect(arr.first['addedAt'], isA<int>());
   });
 }
