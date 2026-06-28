@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:go_router/go_router.dart';
 import 'package:reader_engine/core/locator.dart';
 
@@ -69,3 +70,12 @@ GoRouter createAppRouter() {
     ],
   );
 }
+
+/// 应用级 [GoRouter] 实例 provider。
+///
+/// M7 重构：原来 [createAppRouter] 在 ZhiYueApp.build 里每次重建都新建 router
+/// （Flutter 反模式）；改为 Riverpod 单例后，BookOpenBridge 和 ZhiYueApp
+/// 共用同一 router 实例。
+final routerProvider = Provider<GoRouter>((ref) {
+  return createAppRouter();
+});

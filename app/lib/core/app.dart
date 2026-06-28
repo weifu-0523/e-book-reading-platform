@@ -23,7 +23,7 @@ class ZhiYueApp extends ConsumerWidget {
       locale: localeSetting.toLocale(),
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
-      routerConfig: createAppRouter(),
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }
