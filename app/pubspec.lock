@@ -440,7 +440,7 @@ packages:
     source: hosted
     version: "2.6.1"
   flutter_secure_storage:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       name: flutter_secure_storage
       sha256: "9cad52d75ebc511adfae3d447d5d13da15a55a92c9410e50f67335b6d21d16ea"
@@ -647,7 +647,7 @@ packages:
     source: hosted
     version: "0.15.6"
   http:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       name: http
       sha256: "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412"
