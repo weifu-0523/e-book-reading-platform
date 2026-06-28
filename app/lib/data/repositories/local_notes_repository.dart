@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../core/locator.dart';
+import '../../services/sync/sync_recorder.dart';
 import '../local/database.dart' as db;
 import '../local/daos/annotations_dao.dart';
 import '../local/daos/book_notes_dao.dart';
@@ -11,10 +12,14 @@ import 'notes_repository.dart';
 class LocalNotesRepository implements NotesRepository {
   final BookNotesDao _notesDao;
   final AnnotationsDao _annotationsDao;
+  final SyncRecorder? _syncRecorder;
 
-  LocalNotesRepository(db.AppDatabase database)
-      : _notesDao = BookNotesDao(database),
-        _annotationsDao = AnnotationsDao(database);
+  LocalNotesRepository(
+    db.AppDatabase database, {
+    SyncRecorder? syncRecorder,
+  })  : _notesDao = BookNotesDao(database),
+        _annotationsDao = AnnotationsDao(database),
+        _syncRecorder = syncRecorder;
 
   @override
   Future<BookNote?> getNoteByBook(String bookId) async {
@@ -66,8 +71,8 @@ class LocalNotesRepository implements NotesRepository {
   }
 
   @override
-  Future<void> addAnnotation(Annotation a) {
-    return _annotationsDao.insertOne(
+  Future<void> addAnnotation(Annotation a) async {
+    await _annotationsDao.insertOne(
       id: a.id,
       bookNoteId: a.bookNoteId,
       locatorJson: jsonEncode(a.locator.toJson()),
@@ -79,12 +84,23 @@ class LocalNotesRepository implements NotesRepository {
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
     );
+    await _syncRecorder?.recordAnnotation(
+      id: a.id,
+      bookNoteId: a.bookNoteId,
+      locatorJson: jsonEncode(a.locator.toJson()),
+      quote: a.quote,
+      note: a.note,
+      color: _colorToString(a.color),
+      tagsJson: jsonEncode(a.tags.toList()),
+      source: a.source == AnnotationSource.manual ? 'manual' : 'aiAssisted',
+      mtime: a.updatedAt,
+    );
   }
 
   @override
-  Future<void> updateAnnotation(Annotation a) {
+  Future<void> updateAnnotation(Annotation a) async {
     // 用真正的 UPDATE，保留原 createdAt；单条 SQL 不需要事务。
-    return _annotationsDao.updateAll(
+    await _annotationsDao.updateAll(
       id: a.id,
       locatorJson: jsonEncode(a.locator.toJson()),
       quote: a.quote,
@@ -94,11 +110,27 @@ class LocalNotesRepository implements NotesRepository {
       source: a.source == AnnotationSource.manual ? 'manual' : 'aiAssisted',
       updatedAt: a.updatedAt,
     );
+    await _syncRecorder?.recordAnnotation(
+      id: a.id,
+      bookNoteId: a.bookNoteId,
+      locatorJson: jsonEncode(a.locator.toJson()),
+      quote: a.quote,
+      note: a.note,
+      color: _colorToString(a.color),
+      tagsJson: jsonEncode(a.tags.toList()),
+      source: a.source == AnnotationSource.manual ? 'manual' : 'aiAssisted',
+      mtime: a.updatedAt,
+    );
   }
 
   @override
-  Future<void> deleteAnnotation(String id) =>
-      _annotationsDao.deleteAnnotation(id);
+  Future<void> deleteAnnotation(String id) async {
+    await _annotationsDao.deleteAnnotation(id);
+    await _syncRecorder?.recordAnnotationDeletion(
+      id: id,
+      mtime: DateTime.now(),
+    );
+  }
 
   @override
   Future<List<Annotation>> searchAnnotations(

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../core/locator.dart';
+import '../../services/sync/sync_recorder.dart';
 import '../local/database.dart' as db;
 import '../local/daos/reading_progress_dao.dart';
 import '../models/reading_progress.dart';
@@ -8,9 +9,13 @@ import 'reading_progress_repository.dart';
 
 class LocalReadingProgressRepository implements ReadingProgressRepository {
   final ReadingProgressDao _dao;
+  final SyncRecorder? _syncRecorder;
 
-  LocalReadingProgressRepository(db.AppDatabase database)
-      : _dao = ReadingProgressDao(database);
+  LocalReadingProgressRepository(
+    db.AppDatabase database, {
+    SyncRecorder? syncRecorder,
+  })  : _dao = ReadingProgressDao(database),
+        _syncRecorder = syncRecorder;
 
   @override
   Future<ReadingProgress?> get(String bookId) async {
@@ -27,11 +32,17 @@ class LocalReadingProgressRepository implements ReadingProgressRepository {
   }
 
   @override
-  Future<void> save(ReadingProgress progress) {
-    return _dao.upsert(
+  Future<void> save(ReadingProgress progress) async {
+    await _dao.upsert(
       bookId: progress.bookId,
       locatorJson: jsonEncode(progress.locator.toJson()),
       percent: progress.percent,
+    );
+    await _syncRecorder?.recordReadingProgress(
+      bookId: progress.bookId,
+      locatorJson: jsonEncode(progress.locator.toJson()),
+      percent: progress.percent,
+      mtime: DateTime.now(),
     );
   }
 }

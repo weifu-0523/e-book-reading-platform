@@ -1,4 +1,5 @@
 import '../../features/library/models/sort_by.dart';
+import '../../services/sync/sync_recorder.dart';
 import '../local/database.dart' as db;
 import '../local/daos/book_tags_dao.dart';
 import '../local/daos/books_dao.dart';
@@ -8,10 +9,14 @@ import 'book_repository.dart';
 class LocalBookRepository implements BookRepository {
   final BooksDao _dao;
   final BookTagsDao _tagsDao;
+  final SyncRecorder? _syncRecorder;
 
-  LocalBookRepository(db.AppDatabase database)
-      : _dao = BooksDao(database),
-        _tagsDao = BookTagsDao(database);
+  LocalBookRepository(
+    db.AppDatabase database, {
+    SyncRecorder? syncRecorder,
+  })  : _dao = BooksDao(database),
+        _tagsDao = BookTagsDao(database),
+        _syncRecorder = syncRecorder;
 
   @override
   Future<List<Book>> getAll({
@@ -58,8 +63,8 @@ class LocalBookRepository implements BookRepository {
   }
 
   @override
-  Future<void> save(Book book) {
-    return _dao.upsert(
+  Future<void> save(Book book) async {
+    await _dao.upsert(
       id: book.id,
       title: book.title,
       author: book.author,
@@ -69,6 +74,16 @@ class LocalBookRepository implements BookRepository {
       fileSizeBytes: book.fileSizeBytes,
       coverPath: book.coverPath,
       sortOrder: book.sortOrder,
+    );
+    await _syncRecorder?.recordBook(
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      format: book.format == BookFormat.epub ? 'epub' : 'pdf',
+      fileHash: book.fileHash,
+      fileSizeBytes: book.fileSizeBytes,
+      coverPath: book.coverPath,
+      mtime: DateTime.now(),
     );
   }
 

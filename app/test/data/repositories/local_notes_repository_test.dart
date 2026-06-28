@@ -2,8 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/data/local/database.dart' as db;
 import 'package:zhiyue/data/local/daos/books_dao.dart';
+import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/repositories/local_notes_repository.dart';
+import 'package:zhiyue/services/sync/sync_recorder.dart';
 
 import '../../helpers/drift_test_helper.dart';
 
@@ -97,5 +99,78 @@ void main() {
       () async {
     // 空 query 走 short-circuit 返回空（无 color/tags 兜底）
     expect(await repo.searchAnnotations(''), isEmpty);
+  });
+
+  test('addAnnotation enqueues to outbox when SyncRecorder is set', () async {
+    final outbox = SyncOutboxDao(database);
+    final recorder = SyncRecorder(outbox);
+    final repoWithRecorder = LocalNotesRepository(
+      database,
+      syncRecorder: recorder,
+    );
+
+    await repoWithRecorder.addAnnotation(Annotation(
+      id: 'a-rec',
+      bookNoteId: 'n1',
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6/12)', chapterIndex: 0),
+      quote: '记录到 outbox',
+      note: '同步路径',
+      color: HighlightColor.green,
+      tags: const ['同步'],
+      source: AnnotationSource.manual,
+      createdAt: DateTime(2026, 6, 28),
+      updatedAt: DateTime(2026, 6, 28),
+    ));
+
+    final pending = await outbox.getPending();
+    expect(pending, hasLength(1));
+    expect(pending.first.recordType, 'annotation');
+    expect(pending.first.recordId, 'a-rec');
+    expect(pending.first.pushedAt, isNull);
+  });
+
+  test('updateAnnotation enqueues to outbox when SyncRecorder is set',
+      () async {
+    final outbox = SyncOutboxDao(database);
+    final recorder = SyncRecorder(outbox);
+    final repoWithRecorder = LocalNotesRepository(
+      database,
+      syncRecorder: recorder,
+    );
+
+    await repoWithRecorder.updateAnnotation(Annotation(
+      id: 'a1',
+      bookNoteId: 'n1',
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6/4)', chapterIndex: 0),
+      quote: '更新过的文本',
+      note: '更新笔记',
+      color: HighlightColor.red,
+      tags: const ['更新'],
+      source: AnnotationSource.manual,
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 6, 28),
+    ));
+
+    final pending = await outbox.getPending();
+    expect(pending, hasLength(1));
+    expect(pending.first.recordType, 'annotation');
+    expect(pending.first.recordId, 'a1');
+  });
+
+  test('deleteAnnotation enqueues tombstone to outbox when SyncRecorder is set',
+      () async {
+    final outbox = SyncOutboxDao(database);
+    final recorder = SyncRecorder(outbox);
+    final repoWithRecorder = LocalNotesRepository(
+      database,
+      syncRecorder: recorder,
+    );
+
+    await repoWithRecorder.deleteAnnotation('a2');
+
+    final pending = await outbox.getPending();
+    expect(pending, hasLength(1));
+    expect(pending.first.recordType, 'annotation');
+    expect(pending.first.recordId, 'a2');
   });
 }
