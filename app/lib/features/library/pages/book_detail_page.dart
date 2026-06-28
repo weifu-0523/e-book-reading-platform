@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/book.dart';
+import '../../../features/ai/widgets/ai_guide_sheet.dart';
+import '../../../services/ai/ai_guide.dart';
 
 /// 书籍详情页。
 /// 由路由 `/book/:id/details` 进入。展示元数据 + 删除入口。
@@ -65,12 +67,37 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         ],
       ),
       body: _buildBody(context),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _confirmDelete,
-        backgroundColor: Colors.red,
-        icon: const Icon(Icons.delete),
-        label: const Text('删除'),
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'ai_guide',
+            onPressed: _openAiGuide,
+            icon: const Icon(Icons.auto_awesome_outlined),
+            label: const Text('AI 导读'),
+          ),
+          const SizedBox(width: 12),
+          FloatingActionButton.extended(
+            heroTag: 'delete',
+            onPressed: _confirmDelete,
+            backgroundColor: Colors.red,
+            icon: const Icon(Icons.delete),
+            label: const Text('删除'),
+          ),
+        ],
       ),
+    );
+  }
+
+  Future<void> _openAiGuide() async {
+    final b = _book;
+    if (b == null || !mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      builder: (_) =>
+          AiGuideSheet(book: b, initialMode: AiGuideMode.full),
     );
   }
 

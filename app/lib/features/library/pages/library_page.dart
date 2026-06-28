@@ -6,10 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
+import '../../../data/models/book.dart';
+import '../../../features/ai/widgets/ai_guide_sheet.dart';
+import '../../../services/ai/ai_guide.dart';
 import '../models/library_mode.dart';
 import '../models/library_state.dart';
 import '../models/sort_by.dart';
 import '../models/view_mode.dart';
+import '../models/book_cell_action.dart';
 import '../providers/cover_loader_provider.dart';
 import '../providers/library_controller.dart';
 import '../widgets/batch_selection_bar.dart';
@@ -133,6 +137,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         selectedIds: state.selectedIds,
         manualSortEnabled: manualSortEnabled,
         onReorder: controller.setManualSortOrder,
+        onAction: _handleBookAction,
       );
     }
     return BookListView(
@@ -144,7 +149,37 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       selectedIds: state.selectedIds,
       manualSortEnabled: manualSortEnabled,
       onReorder: controller.setManualSortOrder,
+      onAction: _handleBookAction,
     );
+  }
+
+  /// ⋮ 菜单分发：read / details / notes 走路由，aiGuide 弹 AiGuideSheet，
+  /// delete 跳详情页（删除 FAB 在那里）。
+  Future<void> _handleBookAction(BookCellAction action, Book book) async {
+    switch (action) {
+      case BookCellAction.read:
+        if (!mounted) return;
+        context.push('/book/${book.id}');
+      case BookCellAction.details:
+        if (!mounted) return;
+        context.push('/book/${book.id}/details');
+      case BookCellAction.notes:
+        if (!mounted) return;
+        context.push('/book/${book.id}/notes');
+      case BookCellAction.aiGuide:
+        if (!mounted) return;
+        await showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          useRootNavigator: true,
+          builder: (_) =>
+              AiGuideSheet(book: book, initialMode: AiGuideMode.full),
+        );
+      case BookCellAction.delete:
+        // 删除入口在详情页 FAB（避免重复实现删除流程）。
+        if (!mounted) return;
+        context.push('/book/${book.id}/details');
+    }
   }
 
   Future<void> _importBook() async {

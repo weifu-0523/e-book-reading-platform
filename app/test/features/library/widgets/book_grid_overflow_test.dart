@@ -31,7 +31,7 @@ void main() {
           selectedIds: const {},
           manualSortEnabled: false,
           onReorder: (_) {},
-          onAction: (_) {},
+          onAction: (_, __) {},
         ),
       ),
     ));
@@ -50,7 +50,7 @@ void main() {
           selectedIds: const {},
           manualSortEnabled: false,
           onReorder: (_) {},
-          onAction: (_) {},
+          onAction: (_, __) {},
         ),
       ),
     ));
@@ -78,6 +78,7 @@ void main() {
   testWidgets('tap notes action fires callback with notes enum',
       (tester) async {
     BookCellAction? fired;
+    Book? firedBook;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: BookGrid(
@@ -89,7 +90,10 @@ void main() {
           selectedIds: const {},
           manualSortEnabled: false,
           onReorder: (_) {},
-          onAction: (a) => fired = a,
+          onAction: (a, b) {
+            fired = a;
+            firedBook = b;
+          },
         ),
       ),
     ));
@@ -98,5 +102,6 @@ void main() {
     await tester.tap(find.text('笔记').last);
     await tester.pumpAndSettle();
     expect(fired, BookCellAction.notes);
+    expect(firedBook?.id, 'b1');
   });
 }

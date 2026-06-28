@@ -18,7 +18,10 @@ class BookListView extends StatelessWidget {
   final Set<String> selectedIds;
   final bool manualSortEnabled;
   final ValueChanged<List<String>> onReorder;
-  final ValueChanged<BookCellAction>? onAction;
+
+  /// 收到 (action, book) 的回调。父级（LibraryPage）据此路由到详情页/笔记页/
+  /// 弹出 AiGuideSheet。Book 在此层注入。
+  final void Function(BookCellAction, Book)? onAction;
 
   const BookListView({
     super.key,
@@ -35,6 +38,7 @@ class BookListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final action = onAction;
     final tiles = books
         .map((b) => BookListTile(
               book: b,
@@ -43,7 +47,7 @@ class BookListView extends StatelessWidget {
               isSelectionMode: isSelectionMode,
               onTap: () => onTap(b.id),
               onLongPress: () => onLongPress(b.id),
-              onAction: onAction,
+              onAction: action == null ? null : (a) => action(a, b),
             ))
         .toList();
 

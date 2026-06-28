@@ -11,6 +11,7 @@ import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/annotation.dart';
+import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/settings/providers/font_library_provider.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
@@ -27,6 +28,7 @@ import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
 import '../widgets/toc_drawer.dart';
 import '../widgets/typography_panel.dart';
+import '../../../services/ai/ai_guide.dart';
 
 /// Resolve user-selected plain text to an [EpubRangeLocator] carrying
 /// real character offsets within the chapter plain text.
@@ -137,6 +139,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
             ],
             child: _ReaderBody(
               engine: engine,
+              bookId: widget.bookId,
               initialLocator: widget.initialLocator,
             ),
           );
@@ -158,9 +161,14 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
 class _ReaderBody extends ConsumerStatefulWidget {
   final ReaderEngine engine;
+  final String bookId;
   final Locator? initialLocator;
 
-  const _ReaderBody({required this.engine, this.initialLocator});
+  const _ReaderBody({
+    required this.engine,
+    required this.bookId,
+    this.initialLocator,
+  });
 
   @override
   ConsumerState<_ReaderBody> createState() => _ReaderBodyState();
@@ -308,6 +316,7 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
                 onOpenTypography: () => ref
                     .read(readerUiControllerProvider.notifier)
                     .openTypographyPanel(),
+                onOpenAiGuide: _onOpenAiGuide,
               ),
             ),
             // 选区 toolbar overlay。仅在有非空 selection 时显示。
@@ -321,6 +330,7 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
                     onHighlight: _onToolbarHighlight,
                     onNote: _onToolbarNote,
                     onCopy: _onCopySelection,
+                    onAiComment: _onAiComment,
                   ),
                 ),
               ),
@@ -481,6 +491,56 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     final sel = _selection;
     if (sel == null) return;
     Clipboard.setData(ClipboardData(text: sel.plainText));
+    if (mounted) setState(() => _selection = null);
+  }
+
+  /// AppBar「AI 导读」按钮：以当前章节为上下文弹出 AiGuideSheet（章节模式）。
+  /// 取 book = repository.getById(widget.bookId)；取不到（书被删）则静默退出。
+  Future<void> _onOpenAiGuide() async {
+    final book = await ref
+        .read(bookRepositoryProvider)
+        .getById(widget.bookId);
+    if (book == null || !mounted) return;
+    final chapterIdx = _currentChapterIndex();
+    final chapterTitle = _chapterTitlesCache[chapterIdx];
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      builder: (_) => AiGuideSheet(
+        book: book,
+        initialMode: AiGuideMode.chapter,
+        chapterIndex: chapterIdx,
+        chapterTitle: chapterTitle,
+      ),
+    );
+  }
+
+  /// 选区 toolbar「AI 点评」按钮：以选中文本为 source 弹出 AiGuideSheet
+  /// （selection 模式 + modeLocked，禁止切到其它模式以避免上下文缺失）。
+  /// 关闭后清空 selection，与 copy 行为一致。
+  Future<void> _onAiComment() async {
+    final sel = _selection;
+    if (sel == null) return;
+    final book = await ref
+        .read(bookRepositoryProvider)
+        .getById(widget.bookId);
+    if (book == null || !mounted) return;
+    final chapterIdx = _currentChapterIndex();
+    final chapterTitle = _chapterTitlesCache[chapterIdx];
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      builder: (_) => AiGuideSheet(
+        book: book,
+        initialMode: AiGuideMode.selection,
+        selection: sel.plainText,
+        chapterIndex: chapterIdx,
+        chapterTitle: chapterTitle,
+        modeLocked: true,
+      ),
+    );
     if (mounted) setState(() => _selection = null);
   }
 

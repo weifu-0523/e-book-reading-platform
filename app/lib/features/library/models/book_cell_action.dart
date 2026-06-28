@@ -3,4 +3,4 @@
 /// 与 [BookContextMenuAction] 区别：
 /// - 本枚举对应内联 PopupMenu（单元格角落的"⋮"按钮）。
 /// - [BookContextMenuAction] 对应长按弹出的底部 ActionSheet。
-enum BookCellAction { read, details, notes, delete }
+enum BookCellAction { read, details, notes, aiGuide, delete }

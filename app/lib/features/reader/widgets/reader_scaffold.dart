@@ -29,6 +29,9 @@ class ReaderScaffold extends ConsumerWidget {
   /// 点击笔记图标回调（由父组件触发 endDrawer 打开）。
   final VoidCallback? onOpenNotes;
 
+  /// 点击 AI 导读图标回调（由父组件触发 AiGuideSheet 弹出，章节模式）。
+  final VoidCallback? onOpenAiGuide;
+
   const ReaderScaffold({
     super.key,
     required this.content,
@@ -40,6 +43,7 @@ class ReaderScaffold extends ConsumerWidget {
     this.onOpenToc,
     this.onOpenTypography,
     this.onOpenNotes,
+    this.onOpenAiGuide,
   });
 
   @override
@@ -84,6 +88,11 @@ class ReaderScaffold extends ConsumerWidget {
                         icon: const Icon(Icons.menu_book),
                         tooltip: '笔记',
                         onPressed: onOpenNotes,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.auto_awesome),
+                        tooltip: 'AI 导读',
+                        onPressed: onOpenAiGuide,
                       ),
                     ],
                   ),

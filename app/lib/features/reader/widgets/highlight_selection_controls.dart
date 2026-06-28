@@ -5,11 +5,15 @@ class HighlightSelectionControls extends StatelessWidget {
   final VoidCallback onNote;
   final VoidCallback onCopy;
 
+  /// 可选「AI 点评」按钮。仅当父组件传入回调时渲染（避免 EPUB/PDF 路径都强依赖）。
+  final VoidCallback? onAiComment;
+
   const HighlightSelectionControls({
     super.key,
     required this.onHighlight,
     required this.onNote,
     required this.onCopy,
+    this.onAiComment,
   });
 
   @override
@@ -26,6 +30,7 @@ class HighlightSelectionControls extends StatelessWidget {
           _btn('高亮', onHighlight),
           _btn('笔记', onNote),
           _btn('复制', onCopy),
+          if (onAiComment != null) _btn('AI 点评', onAiComment!),
         ],
       ),
     );
