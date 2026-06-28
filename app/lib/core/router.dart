@@ -11,6 +11,7 @@ import '../features/settings/pages/about_page.dart';
 import '../features/settings/pages/font_management_page.dart';
 import '../features/settings/pages/settings_page.dart';
 import '../features/settings/pages/typography_profiles_page.dart';
+import '../features/sync/pages/sync_settings_page.dart';
 
 /// 应用路由配置。
 ///
@@ -62,6 +63,10 @@ GoRouter createAppRouter() {
       GoRoute(
         path: '/settings/about',
         builder: (context, state) => const AboutPage(),
+      ),
+      GoRoute(
+        path: '/settings/sync',
+        builder: (context, state) => const SyncSettingsPage(),
       ),
       GoRoute(
         path: '/settings',

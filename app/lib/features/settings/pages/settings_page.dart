@@ -30,6 +30,13 @@ class SettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/settings/fonts'),
           ),
+          _SectionHeader(label: l10n.syncSectionData),
+          ListTile(
+            leading: const Icon(Icons.cloud_outlined),
+            title: Text(l10n.syncTitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/sync'),
+          ),
           _SectionHeader(label: l10n.settingsSectionAppearance),
           const ThemeSection(),
           _SectionHeader(label: l10n.settingsSectionLanguage),
