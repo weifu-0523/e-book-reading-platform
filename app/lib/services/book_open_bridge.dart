@@ -8,6 +8,16 @@ import 'package:path/path.dart' as p;
 
 import 'book_import_service.dart';
 
+/// BookOpenBridge 行为选项。
+///
+/// M8：可选错误回调，由调用方注入 UX（如 SnackBar）。
+/// 不传 [onError] 时与 M7 行为完全一致（静默忽略）。
+class BookOpenBridgeOptions {
+  final void Function(Object error, StackTrace stackTrace)? onError;
+
+  const BookOpenBridgeOptions({this.onError});
+}
+
 /// 统一 Android MethodChannel + Windows argv 的文件打开 bridge。
 ///
 /// M7：从 native 层（Android MethodChannel `dev.zhiyue.bookopen` 或
@@ -35,15 +45,15 @@ class BookOpenBridge {
     required String path,
     required BookImportService importer,
     required GoRouter router,
+    BookOpenBridgeOptions options = const BookOpenBridgeOptions(),
   }) async {
     if (!isSupportedBookPath(path)) return;
 
     try {
       final result = await importer.importFile(File(path));
       unawaited(router.push('/book/${result.book.id}'));
-    } catch (_) {
-      // 静默忽略：损坏的文件、读权限失败等
-      // （SnackBar 报错由 import service 在内部已处理；这里防止 native bridge 异常）
+    } catch (e, st) {
+      options.onError?.call(e, st);
     }
   }
 
@@ -55,11 +65,17 @@ class BookOpenBridge {
     required List<String> argv,
     required BookImportService importer,
     required GoRouter router,
+    BookOpenBridgeOptions options = const BookOpenBridgeOptions(),
   }) async {
     // 1. Windows argv：找第一个支持的扩展
     for (final arg in argv) {
       if (isSupportedBookPath(arg)) {
-        await handlePath(path: arg, importer: importer, router: router);
+        await handlePath(
+          path: arg,
+          importer: importer,
+          router: router,
+          options: options,
+        );
         break; // 只处理第一个
       }
     }
@@ -73,6 +89,7 @@ class BookOpenBridge {
           path: pending,
           importer: importer,
           router: router,
+          options: options,
         );
       }
     } catch (_) {
@@ -86,6 +103,7 @@ class BookOpenBridge {
           path: call.arguments as String,
           importer: importer,
           router: router,
+          options: options,
         );
       }
       return null;

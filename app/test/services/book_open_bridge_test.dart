@@ -169,4 +169,94 @@ void main() {
           format: any(named: 'format')));
     });
   });
+
+  group('BookOpenBridge.handlePath error callback', () {
+    late _FakeBookImportService importer;
+    late _MockGoRouter router;
+    late Directory tempDir;
+    late File epubFile;
+    late List<Object> capturedErrors;
+
+    setUp(() async {
+      importer = _FakeBookImportService();
+      router = _MockGoRouter();
+      capturedErrors = [];
+      tempDir = await Directory.systemTemp.createTemp('bridge_err_');
+      epubFile = File('${tempDir.path}/bad.epub')
+        ..writeAsBytesSync([0x50, 0x4B, 0x03, 0x04, 0x00]);
+      registerFallbackValue(Uri.parse('/'));
+      registerFallbackValue(File('${tempDir.path}/fallback.epub'));
+    });
+
+    tearDown(() async {
+      if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+    });
+
+    test('onError fires when import throws', () async {
+      when(() => importer.importFile(any(),
+              format: any(named: 'format')))
+          .thenThrow(Exception('corrupt epub'));
+
+      await BookOpenBridge.handlePath(
+        path: epubFile.path,
+        importer: importer,
+        router: router,
+        options: BookOpenBridgeOptions(
+          onError: (e, _) => capturedErrors.add(e),
+        ),
+      );
+
+      expect(capturedErrors, hasLength(1));
+      expect(capturedErrors.single, isA<Exception>());
+      verifyNever(() => router.push(any()));
+    });
+
+    test('onError omitted (default) keeps old silent behavior', () async {
+      when(() => importer.importFile(any(),
+              format: any(named: 'format')))
+          .thenThrow(Exception('corrupt epub'));
+
+      // 不传 options：与 M7 行为完全一致（静默忽略）
+      await BookOpenBridge.handlePath(
+        path: epubFile.path,
+        importer: importer,
+        router: router,
+      );
+
+      verifyNever(() => router.push(any()));
+    });
+
+    test('onError does not fire on unsupported extension', () async {
+      await BookOpenBridge.handlePath(
+        path: '/tmp/image.png',
+        importer: importer,
+        router: router,
+        options: BookOpenBridgeOptions(
+          onError: (e, _) => capturedErrors.add(e),
+        ),
+      );
+
+      expect(capturedErrors, isEmpty);
+      verifyNever(() => importer.importFile(any(),
+          format: any(named: 'format')));
+    });
+
+    test('init propagates options.onError to cold-start path', () async {
+      when(() => importer.importFile(any(),
+              format: any(named: 'format')))
+          .thenThrow(Exception('corrupt'));
+
+      // argv 中带支持路径 → handlePath 调用，options 应透传
+      await BookOpenBridge.init(
+        argv: ['/tmp/init_book.epub'],
+        importer: importer,
+        router: router,
+        options: BookOpenBridgeOptions(
+          onError: (e, _) => capturedErrors.add(e),
+        ),
+      );
+
+      expect(capturedErrors, hasLength(1));
+    });
+  });
 }
