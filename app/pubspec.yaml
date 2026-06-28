@@ -42,6 +42,11 @@ dependencies:
   reader_engine_pdf_view:
     path: ../reader_engine_pdf_view
 
+  # M2 阅读引擎底层依赖（M1.5a：BookTextExtractor 直接使用 epubx + pdfrx）
+  epubx:
+    path: ../epubx_patched
+  pdfrx: ^2.3.0
+
   # M2.0a: sync
   http: ^1.2.0
   flutter_secure_storage: ^9.2.2

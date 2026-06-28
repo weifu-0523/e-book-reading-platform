@@ -25,7 +25,7 @@
 |---|---|---|
 | `pdfs/sample-text.pdf` | 含文本的标准 PDF 基线 | pdfrx 官方 hello.pdf：`curl -sL https://raw.githubusercontent.com/espresso3389/pdfrx/master/packages/pdfrx/example/viewer/assets/hello.pdf -o pdfs/sample-text.pdf`（CN 环境需走 ghproxy 镜像） |
 | `pdfs/sample-corrupted.pdf` | 截断字节流，测错误处理 | `head -c 1024 pdfs/sample-text.pdf > pdfs/sample-corrupted.pdf` |
-| `pdfs/sample-scanned.pdf` | 无文本层扫描 PDF（可选） | 当前 **未提供**：手头无现成扫描 PDF，scanned_detector 的端到端集成测试因此跳过；组件级单测仍走自身 mock。 |
+| `pdfs/sample-scanned.pdf` | 无文本层扫描 PDF（image-only） | `python -c "from reportlab.pdfgen import canvas; from reportlab.lib.pagesizes import A4; from PIL import Image; img=Image.new('RGB',(10,10),'white'); img.save('/tmp/w.png'); c=canvas.Canvas('pdfs/sample-scanned.pdf',pagesize=A4); c.drawImage('/tmp/w.png',0,0,width=A4[0],height=A4[1]); c.showPage(); c.save()"`（M1.5a/T7 BookTextExtractor 测试也用此 fixture 验证 EmptyTextException） |
 
 新机器准备 PDF 环境时：
 1. 创建 `pdfs/` 目录
