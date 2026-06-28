@@ -5,6 +5,7 @@ import '../features/settings/providers/locale_provider.dart';
 import '../features/settings/providers/theme_mode_provider.dart';
 import '../gen_l10n/app_localizations.dart';
 import 'router.dart';
+import 'scaffold_messenger_key.dart';
 import 'theme.dart';
 
 class ZhiYueApp extends ConsumerWidget {
@@ -15,6 +16,7 @@ class ZhiYueApp extends ConsumerWidget {
     final localeSetting = ref.watch(localeProvider);
     final themeModeSetting = ref.watch(themeModeProvider);
     return MaterialApp.router(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       onGenerateTitle: (ctx) => AppLocalizations.of(ctx)!.appTitle,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),

@@ -8,6 +8,7 @@ import 'core/app.dart';
 import 'core/app_providers.dart';
 import 'core/providers.dart';
 import 'core/router.dart';
+import 'core/scaffold_messenger_key.dart';
 import 'services/book_open_bridge.dart';
 
 void main(List<String> args) async {
@@ -16,17 +17,24 @@ void main(List<String> args) async {
 
   final container = ProviderContainer(overrides: providers);
 
-  // M7: 启动后处理文件 deep-link（Windows argv + Android MethodChannel）。
-  // 用 post-frame callback 确保 router 已 mount 后再 push，避免冷启动时
-  // navigator 状态未就绪。
+  // M7+M8：启动后处理文件 deep-link（Windows argv + Android MethodChannel）。
+  // M8：注入 onError → SnackBar 反馈。
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     final router = container.read(routerProvider);
-    // bookImportServiceProvider 是 FutureProvider，需 await 解包
     final importer = await container.read(bookImportServiceProvider.future);
     await BookOpenBridge.init(
       argv: args,
       importer: importer,
       router: router,
+      options: BookOpenBridgeOptions(
+        onError: (e, _) {
+          final messenger = scaffoldMessengerKey.currentState;
+          if (messenger == null) return; // UI 还没 mount（理论不应到这）
+          messenger.showSnackBar(
+            SnackBar(content: Text('打开书籍失败：$e')),
+          );
+        },
+      ),
     );
   });
 
