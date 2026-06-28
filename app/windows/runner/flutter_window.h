@@ -3,8 +3,11 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
 
 #include <memory>
+#include <string>
 
 #include "win32_window.h"
 
@@ -28,6 +31,10 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // M8: MethodChannel bridge to Dart BookOpenBridge. Used for warm-start
+  // argv forwarding from second instance (received via WM_COPYDATA).
+  std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

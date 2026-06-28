@@ -1,8 +1,31 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <string>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+
+// Same constant as in main.cpp. Duplicated to keep modules decoupled.
+constexpr const wchar_t* kZhiYueWindowProp = L"ZhiYueWindowProp";
+constexpr ULONG_PTR kCopyDataArgvTag = 1;
+
+// Check whether a file path is one we should forward to Dart BookOpenBridge.
+// Mirrors BookOpenBridge.isSupportedBookPath on Dart side.
+bool IsSupportedBookPath(const std::string& path) {
+  if (path.size() < 5) return false;  // shortest: ".epub" / ".pdf"
+  auto pos = path.find_last_of('.');
+  if (pos == std::string::npos) return false;
+  std::string ext = path.substr(pos);
+  // lowercase
+  for (auto& c : ext) {
+    if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
+  }
+  return ext == ".epub" || ext == ".pdf";
+}
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -26,6 +49,19 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  // M8: Mark this window so the second instance can find it via EnumWindows.
+  // Use the HWND from the underlying Win32Window; GetHandle() returns it.
+  SetPropW(GetHandle(), kZhiYueWindowProp,
+           reinterpret_cast<HANDLE>(reinterpret_cast<uintptr_t>(1)));
+
+  // M8: Open the MethodChannel that forwards argv to Dart BookOpenBridge
+  // when the second instance sends WM_COPYDATA. Mirrors Android side
+  // (dev.zhiyue.bookopen / "openBook").
+  channel_ = std::make_shared<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "dev.zhiyue.bookopen",
+      &flutter::StandardMethodCodec::GetInstance());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -51,6 +87,24 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // M8: Receive argv forwarded by second instance via WM_COPYDATA.
+  // Forward to Dart BookOpenBridge via the same MethodChannel pattern
+  // as Android (BookOpenBridge.init sets up the openBook handler).
+  if (message == WM_COPYDATA) {
+    auto* cds = reinterpret_cast<COPYDATASTRUCT*>(lparam);
+    if (cds != nullptr && cds->dwData == kCopyDataArgvTag && channel_) {
+      // cbData includes trailing null; size the string without it.
+      std::string arg(reinterpret_cast<const char*>(cds->lpData),
+                      cds->cbData > 0 ? cds->cbData - 1 : 0);
+      if (IsSupportedBookPath(arg)) {
+        channel_->InvokeMethod(
+            "openBook",
+            std::make_unique<flutter::EncodableValue>(arg));
+      }
+    }
+    return 0;  // we handled it
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
