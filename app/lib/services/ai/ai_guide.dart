@@ -121,40 +121,56 @@ class AiGuide {
       httpClient: _httpClient,
     );
 
-    try {
-      final accumulated = StringBuffer();
-      // Materialize the upstream into a list so we can wrap connection-level
-      // network errors with retry. Chunk-level parse errors still propagate.
-      // True single-chunk-at-a-time streaming is sacrificed for retry support;
-      // T11 (controller) can revisit if true streaming is needed for UX.
-      final chunks = await _streamWithRetryToChunkList(client, prompt);
-      for (final chunk in chunks) {
-        if (_cancelled) {
-          if (accumulated.isNotEmpty) {
-            await _persist(book.id, modeKey, sourceHash, accumulated.toString(),
-                creds.model, creds.baseUrl);
-            yield AiCompleteEvent(accumulated.toString(), fromCache: false);
-          } else {
-            yield AiErrorEvent(AiGuideError.cancelled);
+    final accumulated = StringBuffer();
+    var anyChunk = false;
+    var attempt = 0;
+    while (true) {
+      try {
+        await for (final chunk in client.streamChat(prompt: prompt)) {
+          anyChunk = true;
+          if (_cancelled) {
+            if (accumulated.isNotEmpty) {
+              await _persist(book.id, modeKey, sourceHash, accumulated.toString(),
+                  creds.model, creds.baseUrl);
+              yield AiCompleteEvent(accumulated.toString(), fromCache: false);
+            } else {
+              yield AiErrorEvent(AiGuideError.cancelled);
+            }
+            return;
           }
+          accumulated.write(chunk);
+          yield AiChunkEvent(chunk);
+        }
+        // Stream completed normally.
+        await _persist(book.id, modeKey, sourceHash, accumulated.toString(),
+            creds.model, creds.baseUrl);
+        yield AiCompleteEvent(accumulated.toString(), fromCache: false);
+        return;
+      } on AiNetworkException {
+        // Retry only if no chunks received yet AND attempts remain.
+        // Partial-response protection: once we've streamed anything to the
+        // caller, a network blip becomes terminal (no replaying partial text).
+        if (anyChunk || attempt >= retryDelays.length - 1) {
+          yield AiErrorEvent(AiGuideError.network);
           return;
         }
-        accumulated.write(chunk);
-        yield AiChunkEvent(chunk);
+        await Future.delayed(retryDelays[attempt]);
+        attempt += 1;
+        // Loop and try again. accumulated stays empty (anyChunk is false).
+        continue;
+      } on AiAuthException {
+        yield AiErrorEvent(AiGuideError.authFailed);
+        return;
+      } on AiRateLimitException {
+        yield AiErrorEvent(AiGuideError.rateLimited);
+        return;
+      } on AiServerException {
+        yield AiErrorEvent(AiGuideError.serverError);
+        return;
+      } on AiParseException {
+        yield AiErrorEvent(AiGuideError.parseError);
+        return;
       }
-      await _persist(book.id, modeKey, sourceHash, accumulated.toString(),
-          creds.model, creds.baseUrl);
-      yield AiCompleteEvent(accumulated.toString(), fromCache: false);
-    } on AiAuthException {
-      yield AiErrorEvent(AiGuideError.authFailed);
-    } on AiRateLimitException {
-      yield AiErrorEvent(AiGuideError.rateLimited);
-    } on AiServerException {
-      yield AiErrorEvent(AiGuideError.serverError);
-    } on AiParseException {
-      yield AiErrorEvent(AiGuideError.parseError);
-    } on AiNetworkException {
-      yield AiErrorEvent(AiGuideError.network);
     }
   }
 
@@ -183,25 +199,6 @@ class AiGuide {
       case AiGuideMode.selection:
         return PromptBuilder.selection(source, chapterTitle: chapterTitle);
     }
-  }
-
-  /// Materializes chunks; on [AiNetworkException] retries with the configured
-  /// backoff up to `retryDelays.length` total attempts. Other exceptions
-  /// propagate immediately to the caller's try/catch.
-  Future<List<String>> _streamWithRetryToChunkList(
-      OpenAiCompatibleClient client, String prompt) async {
-    final maxAttempts = retryDelays.length;
-    for (var attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        return await client.streamChat(prompt: prompt).toList();
-      } on AiNetworkException {
-        // Last attempt: rethrow to surface the network error.
-        if (attempt == maxAttempts - 1) rethrow;
-        await Future.delayed(retryDelays[attempt]);
-      }
-    }
-    // Unreachable: loop either returns or rethrows.
-    return const [];
   }
 
   Future<void> _persist(String bookId, String mode, String hash, String text,
