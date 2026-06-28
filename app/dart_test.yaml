@@ -1,0 +1,4 @@
+tags:
+  golden:
+    # golden_toolkit 包要求：声明 tag 以消除 "tag golden not declared" warning。
+    # 默认行为是不 skip（项目内所有 golden 测试默认就跑）。
