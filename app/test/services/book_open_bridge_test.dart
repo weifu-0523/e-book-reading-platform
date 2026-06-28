@@ -120,4 +120,53 @@ void main() {
       verifyNever(() => router.push(any()));
     });
   });
+
+  group('BookOpenBridge.init', () {
+    late _FakeBookImportService importer;
+    late _MockGoRouter router;
+
+    setUp(() {
+      importer = _FakeBookImportService();
+      router = _MockGoRouter();
+    });
+
+    test('handles Windows argv directly when path present', () async {
+      const epubPath = '/tmp/win_arg_book.epub';
+      // 模拟 import 成功
+      final book = Book(
+        id: 'b1',
+        title: 'T',
+        author: null,
+        format: BookFormat.epub,
+        filePath: epubPath,
+        fileHash: 'h',
+        fileSizeBytes: 1,
+        coverPath: null,
+        addedAt: DateTime.now(),
+        lastReadAt: null,
+      );
+      when(() => importer.importFile(any(),
+              format: any(named: 'format')))
+          .thenAnswer((_) async => ImportResult(book: book, isNew: true));
+
+      // argv = ['--some-flag', '/tmp/win_arg_book.epub']，应过滤非白名单
+      await BookOpenBridge.init(
+        argv: ['--some-flag', epubPath],
+        importer: importer,
+        router: router,
+      );
+
+      verify(() => router.push('/book/b1')).called(1);
+    });
+
+    test('ignores argv with no supported path', () async {
+      await BookOpenBridge.init(
+        argv: ['--debug', '--enable-logging'],
+        importer: importer,
+        router: router,
+      );
+      verifyNever(() => importer.importFile(any(),
+          format: any(named: 'format')));
+    });
+  });
 }

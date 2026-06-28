@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
@@ -14,6 +15,8 @@ import 'book_import_service.dart';
 /// 调用 [BookImportService] 导入，路由到 reader 页面。
 class BookOpenBridge {
   const BookOpenBridge._();
+
+  static const _channel = MethodChannel('dev.zhiyue.bookopen');
 
   /// 是否是支持的电子书路径（按扩展名白名单）。
   ///
@@ -42,5 +45,50 @@ class BookOpenBridge {
       // 静默忽略：损坏的文件、读权限失败等
       // （SnackBar 报错由 import service 在内部已处理；这里防止 native bridge 异常）
     }
+  }
+
+  /// 启动时调用：处理 Windows argv（桌面端）+ Android MethodChannel
+  /// （cold start popPendingBookPath + warm start openBook listener）。
+  ///
+  /// [argv] 在桌面端来自 main(List<String> args)；Android 端可传空 list。
+  static Future<void> init({
+    required List<String> argv,
+    required BookImportService importer,
+    required GoRouter router,
+  }) async {
+    // 1. Windows argv：找第一个支持的扩展
+    for (final arg in argv) {
+      if (isSupportedBookPath(arg)) {
+        await handlePath(path: arg, importer: importer, router: router);
+        break; // 只处理第一个
+      }
+    }
+
+    // 2. Android MethodChannel
+    // 2a. Cold start：popPendingBookPath
+    try {
+      final pending = await _channel.invokeMethod<String>('popPendingBookPath');
+      if (pending != null && pending.isNotEmpty) {
+        await handlePath(
+          path: pending,
+          importer: importer,
+          router: router,
+        );
+      }
+    } catch (_) {
+      // 非 Android 平台 / channel 未注册 → 忽略
+    }
+
+    // 2b. Warm start：监听后续推送
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'openBook' && call.arguments is String) {
+        await handlePath(
+          path: call.arguments as String,
+          importer: importer,
+          router: router,
+        );
+      }
+      return null;
+    });
   }
 }
