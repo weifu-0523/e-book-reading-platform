@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:mocktail/mocktail.dart';
@@ -91,5 +92,98 @@ void main() {
     final written = captured[1] as String;
     expect(written, contains('"id":"old"'));
     expect(written, contains('"id":"new"'));
+  });
+
+  group('pull', () {
+    test('fetches all device files and applies with last-write-wins', () async {
+      // Setup: device-A has nothing remote, device-B has 1 annotation.
+      when(() => webdav.listFiles('/zhiyue/snapshots/'))
+          .thenAnswer((_) async => ['device-B.jsonl']);
+      when(() => webdav.getString('/zhiyue/snapshots/device-A.jsonl'))
+          .thenAnswer((_) async => '');
+      when(() => webdav.getString('/zhiyue/snapshots/device-B.jsonl'))
+          .thenAnswer((_) async =>
+              '{"id":"a2","type":"annotation","mtime":"2026-06-28T10:00:00.000Z","deleted":false,"payload":{"id":"a2","bookNoteId":"bn1","locator":"{}","quote":"remote","note":null,"color":"yellow","tags":"[]","source":"manual"}}\n');
+
+      // Ensure target BookNote exists for FK.
+      await db.customInsert(
+        'INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes) VALUES(?, ?, ?, ?, ?, ?)',
+        variables: [
+          Variable.withString('b1'),
+          Variable.withString('t'),
+          Variable.withString('epub'),
+          Variable.withString('p'),
+          Variable.withString('h'),
+          Variable.withInt(0),
+        ],
+      );
+      await db.customInsert(
+        'INSERT INTO book_notes(id, book_id, title) VALUES(?, ?, ?)',
+        variables: [
+          Variable.withString('bn1'),
+          Variable.withString('b1'),
+          Variable.withString('t'),
+        ],
+      );
+
+      final result = await engine.pullOnly();
+
+      expect(result.pulledCount, 1);
+      // Verify annotation was applied to local DB.
+      final annotations = await db.customSelect(
+        'SELECT * FROM annotations WHERE id = ?',
+        variables: [Variable.withString('a2')],
+      ).get();
+      expect(annotations, hasLength(1));
+    });
+
+    test('does not apply records older than local mtime', () async {
+      // Setup: local has a2 with updatedAt 2026-06-29; remote has a2 with
+      // mtime 2026-06-28 (older). Local should win.
+      when(() => webdav.listFiles('/zhiyue/snapshots/'))
+          .thenAnswer((_) async => ['device-B.jsonl']);
+      when(() => webdav.getString('/zhiyue/snapshots/device-A.jsonl'))
+          .thenAnswer((_) async => '');
+      when(() => webdav.getString('/zhiyue/snapshots/device-B.jsonl'))
+          .thenAnswer((_) async =>
+              '{"id":"a2","type":"annotation","mtime":"2026-06-28T10:00:00.000Z","deleted":false,"payload":{"id":"a2","bookNoteId":"bn1","locator":"{}","quote":"remote-old","note":null,"color":"yellow","tags":"[]","source":"manual"}}\n');
+
+      // Insert local a2 with newer mtime.
+      await db.customInsert(
+        'INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes) VALUES(?, ?, ?, ?, ?, ?)',
+        variables: [
+          Variable.withString('b1'), Variable.withString('t'),
+          Variable.withString('epub'), Variable.withString('p'),
+          Variable.withString('h'), Variable.withInt(0),
+        ],
+      );
+      await db.customInsert(
+        'INSERT INTO book_notes(id, book_id, title) VALUES(?, ?, ?)',
+        variables: [
+          Variable.withString('bn1'), Variable.withString('b1'),
+          Variable.withString('t'),
+        ],
+      );
+      await db.customInsert(
+        'INSERT INTO annotations(id, book_note_id, locator, quote, color, tags, source, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)',
+        variables: [
+          Variable.withString('a2'), Variable.withString('bn1'),
+          Variable.withString('{}'), Variable.withString('local-newer'),
+          Variable.withString('blue'), Variable.withString('[]'),
+          Variable.withString('manual'),
+          Variable.withDateTime(DateTime.utc(2026, 6, 29)),
+        ],
+      );
+
+      final result = await engine.pullOnly();
+
+      expect(result.pulledCount, 0); // remote was older, skipped
+      // Local quote stays "local-newer".
+      final annotations = await db.customSelect(
+        'SELECT quote FROM annotations WHERE id = ?',
+        variables: [Variable.withString('a2')],
+      ).get();
+      expect(annotations.first.data['quote'], 'local-newer');
+    });
   });
 }

@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/services/sync/rate_limiter.dart';
+import 'package:zhiyue/services/sync/remote_record_applier.dart';
 import 'package:zhiyue/services/sync/sync_engine.dart';
+import 'package:zhiyue/services/sync/sync_record.dart';
 import 'package:zhiyue/services/sync/web_dav_client.dart';
 
 /// WebDAV-backed implementation of [SyncEngine].
@@ -10,7 +14,9 @@ import 'package:zhiyue/services/sync/web_dav_client.dart';
 /// snapshot file (JSON Lines), append the new records, write it back.
 /// Each appended line is the JSON envelope of a SyncRecord.
 ///
-/// Pull: implemented in Task 11.
+/// Pull: PROPFIND all `*.jsonl` files in `/zhiyue/snapshots/` (skipping the
+/// local device's own file), parse each line as a SyncRecord, and apply with
+/// last-write-wins (see [RemoteRecordApplier]).
 class WebDavSyncEngine implements SyncEngine {
   WebDavSyncEngine({
     required this.database,
@@ -65,9 +71,51 @@ class WebDavSyncEngine implements SyncEngine {
     return SyncResult.success(pushedCount: pending.length, pulledCount: 0);
   }
 
+  /// Pull-only entry point. Fetches all device snapshots and applies them.
+  Future<SyncResult> pullOnly() async {
+    final applier = RemoteRecordApplier(database);
+    final List<String> files;
+    try {
+      files = await _rateLimiter.run(
+          () => webdav.listFiles('/zhiyue/snapshots/'));
+    } on WebDavException catch (e) {
+      if (e.statusCode == 404) {
+        // Directory doesn't exist yet — no remote data.
+        return const SyncResult.success(pushedCount: 0, pulledCount: 0);
+      }
+      rethrow;
+    }
+
+    var applied = 0;
+    for (final file in files) {
+      if (file == '$deviceId.jsonl') continue; // skip own file
+      final body = await _rateLimiter.run(
+          () => webdav.getString('/zhiyue/snapshots/$file'));
+      final lines = body.split('\n').where((l) => l.trim().isNotEmpty);
+      for (final line in lines) {
+        try {
+          final json = jsonDecode(line) as Map<String, dynamic>;
+          final record = SyncRecord.fromJson(json);
+          final didApply = await applier.apply(record);
+          if (didApply) applied++;
+        } catch (_) {
+          // Skip malformed line — don't fail entire sync.
+        }
+      }
+    }
+    return SyncResult.success(pushedCount: 0, pulledCount: applied);
+  }
+
   @override
   Future<SyncResult> sync() async {
-    // Full implementation in Task 11 (push + pull).
-    return pushOnly();
+    final pushResult = await pushOnly();
+    if (!pushResult.success) return pushResult;
+    final pullResult = await pullOnly();
+    return SyncResult(
+      success: pullResult.success,
+      pushedCount: pushResult.pushedCount,
+      pulledCount: pullResult.pulledCount,
+      error: pullResult.error,
+    );
   }
 }
