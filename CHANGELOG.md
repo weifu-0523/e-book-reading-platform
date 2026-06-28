@@ -7,7 +7,28 @@
 
 ## [Unreleased]
 
-M8 之后到 v1.0 之间的打磨工作将记在此处。
+M2.0a 之后到 v1.0 之间的打磨工作将记在此处。
+
+## [0.6.0-alpha] - 2026-06-28
+
+### Added (M2.0a Sync MVP)
+- SyncSettingsPage (Settings → Sync): 坚果云 credentials form + manual sync trigger
+- SyncOutbox drift table (schema v6): pending writes queue
+- SyncRecord JSON envelope with last-write-wins semantics
+- WebDavClient (PROPFIND/GET/PUT) with rate limiter (≥2s, R1 mitigation)
+- WebDavSyncEngine push + pull paths
+- RemoteRecordApplier: applies pulled records with LWW per mtime
+- Repository hooks: Notes/Book/ReadingProgress writes automatically enqueue
+- Per-device JSON Lines snapshot at `/zhiyue/snapshots/{deviceId}.jsonl`
+- Tombstones for deletions (no physical record loss)
+- i18n: zh + en strings for sync UI
+
+### Known limitations
+- Single-direction sync per record (last-write-wins, no merge)
+- Manual sync only (no background timer — that's M2.0b)
+- No conflict UI (just silent LWW — that's M2.0b)
+- Android APK build not verified in this milestone
+- Books' metadata updates from remote are silently dropped (no `updated_at` column)
 
 ## [0.5.0] - 2026-06-28
 
