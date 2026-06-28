@@ -182,3 +182,38 @@ git push origin master --tags
 - [ ] tag 在 `git tag --list` 中存在，已 push 到 Gitee
 
 完成。
+
+## v0.5.0 Windows Smoke Test Results (T13, 2026-06-28)
+
+- OS: Windows 11 家庭版 中文版 25H2
+- Build host: Visual Studio 2022 Build Tools 17.14.21 + Windows 10 SDK 10.0.26100
+- Flutter: 3.44.2 (channel stable)
+- Version: 0.5.0+2
+
+### Pass
+
+- ✅ `flutter build windows --release` succeeds (after C++ compile fix in 747136f)
+- ✅ Build output: `build/windows/x64/runner/Release/zhiyue.exe` (137 KB exe + flutter_windows.dll + data/)
+- ✅ Process launches and stays running (GUI window appears)
+- ✅ Single-instance mutex: second instance with argv exits within ~2s while first instance keeps running (mutex + WM_COPYDATA forward confirmed)
+- ✅ Portable zip: `build/installer/zhiyue-portable-0.5.0.zip` (18.1 MB)
+
+### Deferred
+
+- ❌ Inno Setup installer compile: dev machine network restricted, `winget install JRSoftware.InnoSetup` and direct download from jrsoftware.org both failed. User must install Inno Setup 6+ manually from https://jrsoftware.org/isdl.php to produce `zhiyue-setup-0.5.0.exe`.
+- ❌ File association smoke test (.epub / .pdf): requires installer to register HKA registry entries.
+- ❌ Warm-start deep-link (open book in running window via file double-click): requires file association.
+
+### Known issue: Chinese path encoding
+
+`flutter build windows` fails when project path contains non-ASCII characters (e.g., the dev machine's `H:\projiect\电子书阅读平台`). MSBuild subprocess receives the path with UTF-8 → GBK mojibake (`锟斤拷` artifacts), causing it to fail reading `.dart_tool/flutter_build/*/app.dill`.
+
+**Workaround:** copy project to an ASCII path before building:
+
+```bash
+cp -r "H:/projiect/电子书阅读平台" /c/dev/zhiyue
+cd /c/dev/zhiyue/app && flutter clean && flutter pub get && flutter build windows --release
+```
+
+This is a Flutter engine bug, not project-specific. Tracked for upstream report.
+
