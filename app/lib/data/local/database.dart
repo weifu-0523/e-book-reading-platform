@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
 import 'connections/database_connection.dart';
+import 'daos/ai_summaries_dao.dart';
 import 'daos/annotations_dao.dart';
 import 'daos/book_notes_dao.dart';
 import 'daos/book_tags_dao.dart';
@@ -49,6 +50,7 @@ part 'database.g.dart';
     SettingsDao,
     UserFontsDao,
     SyncOutboxDao,
+    AiSummariesDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
