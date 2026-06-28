@@ -78,6 +78,9 @@ dev_dependencies:
   # Golden 测试
   golden_toolkit: ^0.15.0
 
+  # M7: 应用图标 pipeline
+  flutter_launcher_icons: ^0.14.3
+
 flutter:
   uses-material-design: true
   generate: true

@@ -1,0 +1,17 @@
+# flutter_launcher_icons 配置：从单一 1024x1024 PNG 生成 Android + Windows 各分辨率图标。
+# 运行命令：cd app && dart run flutter_launcher_icons
+# 注意：iOS 暂跳（M7 不含 iOS）。
+
+flutter_launcher_icons:
+  image_path: "assets/icon.png"
+  # Android
+  android: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#F5F0E8"
+  adaptive_icon_foreground: "assets/icon.png"
+  # iOS（暂跳）
+  ios: false
+  # Windows desktop
+  windows:
+    generate: true
+    icon_size: 256

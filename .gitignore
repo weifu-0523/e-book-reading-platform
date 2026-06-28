@@ -63,3 +63,8 @@ release/
 *.bak
 *.swp
 *~
+
+# M7: Android release signing
+app/keys/*.jks
+app/keys/*.keystore
+app/keys/keystore.properties
