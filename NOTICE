@@ -1,0 +1,31 @@
+智阅 (ZhiYue)
+Copyright 2026 ZhiYue Open Source contributors
+
+本项目使用以下开源软件（按字母序），版权属于各自作者：
+
+- collection (BSD-3-Clause) - https://pub.dev/packages/collection
+- crypto (BSD-3-Clause) - https://pub.dev/packages/crypto
+- drift (Apache License 2.0) - https://drift.simonbinder.eu/
+- epubx (MIT License) - https://github.com/rbcprolabs/epubx.dart
+  （本项目通过本地 fork `epubx_patched/` 引入，详见 `app/pubspec.yaml` dependency_overrides）
+- file_picker (MIT License) - https://pub.dev/packages/file_picker
+- flutter (BSD-3-Clause) - https://flutter.dev
+- flutter_launcher_icons (MIT License) - https://pub.dev/packages/flutter_launcher_icons
+- flutter_riverpod (MIT License) - https://riverpod.dev
+- go_router (BSD-3-Clause) - https://pub.dev/packages/go_router
+- golden_toolkit (Apache License 2.0) - https://pub.dev/packages/golden_toolkit
+- intl (BSD-3-Clause) - https://pub.dev/packages/intl
+- mocktail (MIT License) - https://pub.dev/packages/mocktail
+- path (BSD-3-Clause) - https://pub.dev/packages/path
+- path_provider (BSD-3-Clause) - https://pub.dev/packages/path_provider
+- pdfrx (MIT License) - https://github.com/espresso33893/pdfrx
+- reorderables (MIT License) - https://pub.dev/packages/reorderables
+- riverpod_annotation (MIT License) - https://pub.dev/packages/riverpod_annotation
+- sqlite3_flutter_libs (MIT License) - https://pub.dev/packages/sqlite3_flutter_libs
+- url_launcher (BSD-3-Clause) - https://pub.dev/packages/url_launcher
+- uuid (MIT License) - https://pub.dev/packages/uuid
+
+各包的具体 LICENSE 文件可在 pub cache 中查阅
+（`%LOCALAPPDATA%\Pub\Cache\hosted\pub.dev\<package>-<version>\LICENSE`）。
+
+本项目源码以 AGPLv3 协议发布，详见 LICENSE。
