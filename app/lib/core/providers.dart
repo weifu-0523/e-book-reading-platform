@@ -20,6 +20,7 @@ import '../features/library/models/library_state.dart';
 import '../features/library/providers/library_controller.dart';
 import '../features/settings/services/font_import_service.dart';
 import '../services/book_import_service.dart';
+import '../services/sync/sync_recorder.dart';
 
 /// 全局单例 AppDatabase。M1 阶段无同步包装。
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -33,7 +34,8 @@ final fileStorageProvider = FutureProvider<FileStorage>((ref) async {
 });
 
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
-  return LocalBookRepository(ref.watch(appDatabaseProvider));
+  final db = ref.watch(appDatabaseProvider);
+  return LocalBookRepository(db, syncRecorder: SyncRecorder(db.syncOutboxDao));
 });
 
 /// 单本书的 [Book] 元数据。用于 NotesPage 等场景以查询单本书的真实信息。
@@ -44,11 +46,19 @@ final bookProvider = FutureProvider.family<Book?, String>((ref, id) async {
 
 final readingProgressRepositoryProvider =
     Provider<ReadingProgressRepository>((ref) {
-  return LocalReadingProgressRepository(ref.watch(appDatabaseProvider));
+  final db = ref.watch(appDatabaseProvider);
+  return LocalReadingProgressRepository(
+    db,
+    syncRecorder: SyncRecorder(db.syncOutboxDao),
+  );
 });
 
 final notesRepositoryProvider = Provider<NotesRepository>((ref) {
-  return LocalNotesRepository(ref.watch(appDatabaseProvider));
+  final db = ref.watch(appDatabaseProvider);
+  return LocalNotesRepository(
+    db,
+    syncRecorder: SyncRecorder(db.syncOutboxDao),
+  );
 });
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
