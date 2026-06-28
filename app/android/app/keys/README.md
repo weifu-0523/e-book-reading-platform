@@ -1,0 +1,38 @@
+# Android Release Signing
+
+本目录被 `.gitignore` 保护。本地构建 release APK 前，需要先生成 keystore。
+
+keystore 目录遵循 Flutter Android 约定：`app/android/app/keys/`。
+这与 `app/android/app/build.gradle.kts` 中 `rootProject.file("app/keys/keystore.properties")` 的解析路径一致（`rootProject` = `app/android/`，故最终路径为 `app/android/app/keys/keystore.properties`）。
+
+## 1. 生成 keystore
+
+```bash
+keytool -genkey -v \
+  -keystore app/android/app/keys/zhiyue-release.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -alias zhiyue
+```
+
+按提示输入 keystore 密码、姓名/组织等（个人项目可填任意）。
+
+## 2. 创建 keystore.properties
+
+新建 `app/android/app/keys/keystore.properties`（不要提交）：
+
+```properties
+storePassword=<你刚才输入的 keystore 密码>
+keyPassword=<你刚才输入的 key 密码（通常与 storePassword 相同）>
+keyAlias=zhiyue
+# 相对于 app/android/app/ 解析（build.gradle.kts 中使用模块作用域的 file(...)）
+storeFile=keys/zhiyue-release.jks
+```
+
+## 3. 验证
+
+```bash
+cd app && flutter build apk --release
+apksigner verify --verbose build/app/outputs/flutter-apk/app-release.apk
+```
+
+应输出 `Verified using v1 scheme` / `Verified using v2 scheme`。

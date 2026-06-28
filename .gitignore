@@ -64,7 +64,7 @@ release/
 *.swp
 *~
 
-# M7: Android release signing
-app/keys/*.jks
-app/keys/*.keystore
-app/keys/keystore.properties
+# M7: Android release signing (local keystore, never commit)
+app/android/app/keys/*.jks
+app/android/app/keys/*.keystore
+app/android/app/keys/keystore.properties
