@@ -37,6 +37,13 @@ class SettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/settings/sync'),
           ),
+          _SectionHeader(label: l10n.aiSettingsTitle),
+          ListTile(
+            leading: const Icon(Icons.smart_toy),
+            title: Text(l10n.aiSettingsTitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/settings/ai'),
+          ),
           _SectionHeader(label: l10n.settingsSectionAppearance),
           const ThemeSection(),
           _SectionHeader(label: l10n.settingsSectionLanguage),

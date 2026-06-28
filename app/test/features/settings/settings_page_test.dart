@@ -17,11 +17,17 @@ Widget _wrapped(Widget child) {
 }
 
 void main() {
-  testWidgets('renders all 5 section headers', (tester) async {
+  // M1.5a/T14: SettingsPage gained a 6th section header (AI Settings).
+  // Use a tall surface so the lazy ListView materializes all sections.
+  testWidgets('renders all 6 section headers', (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(_wrapped(const SettingsPage()));
     await tester.pumpAndSettle();
-    // English locale is fallback; section header keys are settingsSectionReading/Fonts/Appearance/Language/About
-    // In en.arb: 'Reading', 'Fonts', 'Appearance', 'Language', 'About'
+    // English locale is fallback; section header keys are
+    // settingsSectionReading/Fonts + syncSectionData + aiSettingsTitle +
+    // settingsSectionAppearance/Language/About.
     // Note: en.arb has both settingsSectionLanguage = "Language" (section header)
     // and settingsLanguage = "Language" (LanguageSection ListTile title).
     // So "Language" appears twice; all other section headers appear once.
@@ -30,6 +36,7 @@ void main() {
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Language'), findsNWidgets(2));
     expect(find.text('About'), findsOneWidget);
+    expect(find.text('AI Settings'), findsNWidgets(2));
   });
 
   testWidgets('tap typography entry pushes /settings/typography', (tester) async {

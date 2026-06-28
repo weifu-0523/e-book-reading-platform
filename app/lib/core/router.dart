@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:go_router/go_router.dart';
 import 'package:reader_engine/core/locator.dart';
 
+import '../features/ai/pages/api_key_settings_page.dart';
 import '../features/library/pages/book_detail_page.dart';
 import '../features/library/pages/library_page.dart';
 import '../features/notes/pages/notes_page.dart';
@@ -12,6 +13,7 @@ import '../features/settings/pages/font_management_page.dart';
 import '../features/settings/pages/settings_page.dart';
 import '../features/settings/pages/typography_profiles_page.dart';
 import '../features/sync/pages/sync_settings_page.dart';
+import 'app_providers.dart';
 
 /// 应用路由配置。
 ///
@@ -67,6 +69,13 @@ GoRouter createAppRouter() {
       GoRoute(
         path: '/settings/sync',
         builder: (context, state) => const SyncSettingsPage(),
+      ),
+      GoRoute(
+        path: '/settings/ai',
+        builder: (context, state) => Consumer(
+          builder: (ctx, ref, _) =>
+              ApiKeySettingsPage(store: ref.watch(apiKeyStoreProvider)),
+        ),
       ),
       GoRoute(
         path: '/settings',
