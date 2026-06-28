@@ -53,7 +53,7 @@ bool FlutterWindow::OnCreate() {
   // M8: Mark this window so the second instance can find it via EnumWindows.
   // Use the HWND from the underlying Win32Window; GetHandle() returns it.
   SetPropW(GetHandle(), kZhiYueWindowProp,
-           reinterpret_cast<HANDLE>(reinterpret_cast<uintptr_t>(1)));
+           reinterpret_cast<HANDLE>(static_cast<uintptr_t>(1)));
 
   // M8: Open the MethodChannel that forwards argv to Dart BookOpenBridge
   // when the second instance sends WM_COPYDATA. Mirrors Android side

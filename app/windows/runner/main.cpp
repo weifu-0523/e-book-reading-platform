@@ -45,9 +45,9 @@ BOOL CALLBACK FindZhiYueWindow(HWND hwnd, LPARAM lparam) {
   if (marker != nullptr) {
     COPYDATASTRUCT cds = {};
     cds.dwData = kCopyDataArgvTag;
-    cds.cbData = ctx->argv.size() + 1;  // include trailing null
+    cds.cbData = static_cast<DWORD>(ctx->argv.size() + 1);  // include trailing null
     cds.lpData = const_cast<char*>(ctx->argv.c_str());
-    SendMessageW(hwnd, WM_COPYDATA, nullptr,
+    SendMessageW(hwnd, WM_COPYDATA, 0,
                  reinterpret_cast<LPARAM>(&cds));
     return FALSE;  // stop enumeration
   }
