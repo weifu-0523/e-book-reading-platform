@@ -170,27 +170,130 @@ abstract class AppLocalizations {
   /// **'关于智阅'**
   String get settingsAbout;
 
-  // M2.0a Sync
+  /// No description provided for @syncTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'同步'**
   String get syncTitle;
+
+  /// No description provided for @syncSectionData.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据同步'**
   String get syncSectionData;
+
+  /// No description provided for @syncUsername.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号'**
   String get syncUsername;
+
+  /// No description provided for @syncPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用密码'**
   String get syncPassword;
+
+  /// No description provided for @syncUsernameHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'坚果云登录邮箱'**
   String get syncUsernameHint;
+
+  /// No description provided for @syncPasswordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'在坚果云「账户信息 → 安全选项 → 第三方应用管理」生成'**
   String get syncPasswordHint;
+
+  /// No description provided for @syncSaveCredentials.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
   String get syncSaveCredentials;
+
+  /// No description provided for @syncClearCredentials.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除凭据'**
   String get syncClearCredentials;
+
+  /// No description provided for @syncStatusIdle.
+  ///
+  /// In zh, this message translates to:
+  /// **'未同步'**
   String get syncStatusIdle;
+
+  /// No description provided for @syncStatusPushing.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传中…'**
   String get syncStatusPushing;
+
+  /// No description provided for @syncStatusPulling.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载中…'**
   String get syncStatusPulling;
+
+  /// No description provided for @syncStatusSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'同步成功'**
   String get syncStatusSuccess;
+
+  /// No description provided for @syncStatusError.
+  ///
+  /// In zh, this message translates to:
+  /// **'同步失败'**
   String get syncStatusError;
+
+  /// No description provided for @syncStatusOffline.
+  ///
+  /// In zh, this message translates to:
+  /// **'离线'**
   String get syncStatusOffline;
+
+  /// No description provided for @syncStatusLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态'**
   String get syncStatusLabel;
+
+  /// No description provided for @syncNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即同步'**
   String get syncNow;
+
+  /// No description provided for @syncLastRun.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次同步'**
   String get syncLastRun;
+
+  /// No description provided for @syncNever.
+  ///
+  /// In zh, this message translates to:
+  /// **'从未'**
   String get syncNever;
+
+  /// No description provided for @syncRateLimitedWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'坚果云限流（30 次/分钟），请稍后再试'**
   String get syncRateLimitedWarning;
+
+  /// No description provided for @syncCredentialsMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先填写账号和应用密码'**
   String get syncCredentialsMissing;
+
+  /// No description provided for @syncPushedAndPulled.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传 {pushed} 条，下载 {pulled} 条'**
   String syncPushedAndPulled(int pushed, int pulled);
 
   /// No description provided for @settingsSourceCode.
@@ -336,6 +439,216 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'确认'**
   String get fontManagementConfirm;
+
+  /// No description provided for @aiSettingsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 设置'**
+  String get aiSettingsTitle;
+
+  /// No description provided for @aiSettingsApiKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'API Key'**
+  String get aiSettingsApiKey;
+
+  /// No description provided for @aiSettingsApiKeyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'sk-开头的密钥'**
+  String get aiSettingsApiKeyHint;
+
+  /// No description provided for @aiSettingsBaseUrl.
+  ///
+  /// In zh, this message translates to:
+  /// **'Base URL'**
+  String get aiSettingsBaseUrl;
+
+  /// No description provided for @aiSettingsModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型'**
+  String get aiSettingsModel;
+
+  /// No description provided for @aiSettingsSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
+  String get aiSettingsSave;
+
+  /// No description provided for @aiSettingsClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get aiSettingsClear;
+
+  /// No description provided for @aiSettingsShow.
+  ///
+  /// In zh, this message translates to:
+  /// **'显示'**
+  String get aiSettingsShow;
+
+  /// No description provided for @aiSettingsHide.
+  ///
+  /// In zh, this message translates to:
+  /// **'隐藏'**
+  String get aiSettingsHide;
+
+  /// No description provided for @aiSettingsHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'API key 仅本地存储，不上传任何服务器。本应用与 DeepSeek 官方无关。'**
+  String get aiSettingsHelp;
+
+  /// No description provided for @aiGuideTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 导读'**
+  String get aiGuideTitle;
+
+  /// No description provided for @aiGuideModeFull.
+  ///
+  /// In zh, this message translates to:
+  /// **'全书'**
+  String get aiGuideModeFull;
+
+  /// No description provided for @aiGuideModeChapter.
+  ///
+  /// In zh, this message translates to:
+  /// **'本章'**
+  String get aiGuideModeChapter;
+
+  /// No description provided for @aiGuideModeSelection.
+  ///
+  /// In zh, this message translates to:
+  /// **'选区'**
+  String get aiGuideModeSelection;
+
+  /// No description provided for @aiGuideStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始'**
+  String get aiGuideStart;
+
+  /// No description provided for @aiGuideRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get aiGuideRetry;
+
+  /// No description provided for @aiGuideRegenerate.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新生成'**
+  String get aiGuideRegenerate;
+
+  /// No description provided for @aiGuideCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制'**
+  String get aiGuideCopy;
+
+  /// No description provided for @aiGuideExportMarkdown.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出 Markdown'**
+  String get aiGuideExportMarkdown;
+
+  /// No description provided for @aiGuideAddToNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'加入笔记'**
+  String get aiGuideAddToNotes;
+
+  /// No description provided for @aiGuideLoadingExtract.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在提取文本…'**
+  String get aiGuideLoadingExtract;
+
+  /// No description provided for @aiGuideLoadingGenerate.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在生成…'**
+  String get aiGuideLoadingGenerate;
+
+  /// No description provided for @aiGuideCacheHit.
+  ///
+  /// In zh, this message translates to:
+  /// **'(缓存)'**
+  String get aiGuideCacheHit;
+
+  /// No description provided for @aiGuideChapterPrefix.
+  ///
+  /// In zh, this message translates to:
+  /// **'第'**
+  String get aiGuideChapterPrefix;
+
+  /// No description provided for @aiErrorNoKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置 API key，请到设置页填入。'**
+  String get aiErrorNoKey;
+
+  /// No description provided for @aiErrorAuthFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'API key 无效或已过期。'**
+  String get aiErrorAuthFailed;
+
+  /// No description provided for @aiErrorRateLimited.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求过于频繁，请稍后重试。'**
+  String get aiErrorRateLimited;
+
+  /// No description provided for @aiErrorServer.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务端异常，请重试。'**
+  String get aiErrorServer;
+
+  /// No description provided for @aiErrorNetwork.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络连接失败，已重试 3 次。'**
+  String get aiErrorNetwork;
+
+  /// No description provided for @aiErrorEmptySource.
+  ///
+  /// In zh, this message translates to:
+  /// **'该书无可提取的文本（可能是扫描件）。'**
+  String get aiErrorEmptySource;
+
+  /// No description provided for @aiErrorParse.
+  ///
+  /// In zh, this message translates to:
+  /// **'回复解析失败。'**
+  String get aiErrorParse;
+
+  /// No description provided for @aiErrorCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取消。'**
+  String get aiErrorCancelled;
+
+  /// No description provided for @aiActionGoSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'去设置'**
+  String get aiActionGoSettings;
+
+  /// No description provided for @aiActionClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get aiActionClose;
+
+  /// No description provided for @aiCommentLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 点评'**
+  String get aiCommentLabel;
 }
 
 class _AppLocalizationsDelegate

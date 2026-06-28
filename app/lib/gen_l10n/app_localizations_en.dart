@@ -100,10 +100,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get syncNever => 'Never';
 
   @override
-  String get syncRateLimitedWarning => 'Jianguoyun rate limit (30/min) — try later';
+  String get syncRateLimitedWarning =>
+      'Jianguoyun rate limit (30/min) — try later';
 
   @override
-  String get syncCredentialsMissing => 'Please enter account and app password first';
+  String get syncCredentialsMissing =>
+      'Please enter account and app password first';
 
   @override
   String syncPushedAndPulled(int pushed, int pulled) {
@@ -192,4 +194,112 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fontManagementConfirm => 'Confirm';
+
+  @override
+  String get aiSettingsTitle => 'AI Settings';
+
+  @override
+  String get aiSettingsApiKey => 'API Key';
+
+  @override
+  String get aiSettingsApiKeyHint => 'sk-prefixed key';
+
+  @override
+  String get aiSettingsBaseUrl => 'Base URL';
+
+  @override
+  String get aiSettingsModel => 'Model';
+
+  @override
+  String get aiSettingsSave => 'Save';
+
+  @override
+  String get aiSettingsClear => 'Clear';
+
+  @override
+  String get aiSettingsShow => 'Show';
+
+  @override
+  String get aiSettingsHide => 'Hide';
+
+  @override
+  String get aiSettingsHelp =>
+      'API key is stored locally only, never uploaded. This app is not affiliated with DeepSeek.';
+
+  @override
+  String get aiGuideTitle => 'AI Guide';
+
+  @override
+  String get aiGuideModeFull => 'Full';
+
+  @override
+  String get aiGuideModeChapter => 'Chapter';
+
+  @override
+  String get aiGuideModeSelection => 'Selection';
+
+  @override
+  String get aiGuideStart => 'Start';
+
+  @override
+  String get aiGuideRetry => 'Retry';
+
+  @override
+  String get aiGuideRegenerate => 'Regenerate';
+
+  @override
+  String get aiGuideCopy => 'Copy';
+
+  @override
+  String get aiGuideExportMarkdown => 'Export Markdown';
+
+  @override
+  String get aiGuideAddToNotes => 'Add to Notes';
+
+  @override
+  String get aiGuideLoadingExtract => 'Extracting text...';
+
+  @override
+  String get aiGuideLoadingGenerate => 'Generating...';
+
+  @override
+  String get aiGuideCacheHit => '(cached)';
+
+  @override
+  String get aiGuideChapterPrefix => 'Chapter';
+
+  @override
+  String get aiErrorNoKey =>
+      'No API key configured. Please add one in Settings.';
+
+  @override
+  String get aiErrorAuthFailed => 'API key invalid or expired.';
+
+  @override
+  String get aiErrorRateLimited => 'Too many requests. Please retry shortly.';
+
+  @override
+  String get aiErrorServer => 'Server error. Please retry.';
+
+  @override
+  String get aiErrorNetwork => 'Network failed after 3 retries.';
+
+  @override
+  String get aiErrorEmptySource =>
+      'No extractable text (likely a scanned book).';
+
+  @override
+  String get aiErrorParse => 'Failed to parse response.';
+
+  @override
+  String get aiErrorCancelled => 'Cancelled.';
+
+  @override
+  String get aiActionGoSettings => 'Go to Settings';
+
+  @override
+  String get aiActionClose => 'Close';
+
+  @override
+  String get aiCommentLabel => 'AI Comment';
 }

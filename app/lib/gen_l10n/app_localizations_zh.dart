@@ -190,4 +190,109 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get fontManagementConfirm => '确认';
+
+  @override
+  String get aiSettingsTitle => 'AI 设置';
+
+  @override
+  String get aiSettingsApiKey => 'API Key';
+
+  @override
+  String get aiSettingsApiKeyHint => 'sk-开头的密钥';
+
+  @override
+  String get aiSettingsBaseUrl => 'Base URL';
+
+  @override
+  String get aiSettingsModel => '模型';
+
+  @override
+  String get aiSettingsSave => '保存';
+
+  @override
+  String get aiSettingsClear => '清空';
+
+  @override
+  String get aiSettingsShow => '显示';
+
+  @override
+  String get aiSettingsHide => '隐藏';
+
+  @override
+  String get aiSettingsHelp => 'API key 仅本地存储，不上传任何服务器。本应用与 DeepSeek 官方无关。';
+
+  @override
+  String get aiGuideTitle => 'AI 导读';
+
+  @override
+  String get aiGuideModeFull => '全书';
+
+  @override
+  String get aiGuideModeChapter => '本章';
+
+  @override
+  String get aiGuideModeSelection => '选区';
+
+  @override
+  String get aiGuideStart => '开始';
+
+  @override
+  String get aiGuideRetry => '重试';
+
+  @override
+  String get aiGuideRegenerate => '重新生成';
+
+  @override
+  String get aiGuideCopy => '复制';
+
+  @override
+  String get aiGuideExportMarkdown => '导出 Markdown';
+
+  @override
+  String get aiGuideAddToNotes => '加入笔记';
+
+  @override
+  String get aiGuideLoadingExtract => '正在提取文本…';
+
+  @override
+  String get aiGuideLoadingGenerate => '正在生成…';
+
+  @override
+  String get aiGuideCacheHit => '(缓存)';
+
+  @override
+  String get aiGuideChapterPrefix => '第';
+
+  @override
+  String get aiErrorNoKey => '未配置 API key，请到设置页填入。';
+
+  @override
+  String get aiErrorAuthFailed => 'API key 无效或已过期。';
+
+  @override
+  String get aiErrorRateLimited => '请求过于频繁，请稍后重试。';
+
+  @override
+  String get aiErrorServer => '服务端异常，请重试。';
+
+  @override
+  String get aiErrorNetwork => '网络连接失败，已重试 3 次。';
+
+  @override
+  String get aiErrorEmptySource => '该书无可提取的文本（可能是扫描件）。';
+
+  @override
+  String get aiErrorParse => '回复解析失败。';
+
+  @override
+  String get aiErrorCancelled => '已取消。';
+
+  @override
+  String get aiActionGoSettings => '去设置';
+
+  @override
+  String get aiActionClose => '关闭';
+
+  @override
+  String get aiCommentLabel => 'AI 点评';
 }
