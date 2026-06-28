@@ -96,7 +96,7 @@ void main() {
         apiKeys: _Keys(const AiCredentials(
             apiKey: 'k', baseUrl: 'https://api.deepseek.com', model: 'm')),
         extractorFor: (_) => _StubX('src'),
-        chapterTextProvider: _StubChap({0: 'ch0'}),
+        chapterTextProviderFor: (_) => _StubChap({0: 'ch0'}),
         cache: db.aiSummariesDao,
         httpClient: client,
         retryDelays: const [Duration(milliseconds: 1)],
@@ -115,7 +115,7 @@ void main() {
     final guide = AiGuide(
       apiKeys: _Keys(null),
       extractorFor: (_) => _StubX(''),
-      chapterTextProvider: _StubChap({}),
+      chapterTextProviderFor: (_) => _StubChap({}),
       cache: db.aiSummariesDao,
     );
     final controller = AiGuideController(guide);

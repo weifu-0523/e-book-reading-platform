@@ -54,7 +54,7 @@ class AiGuide {
   AiGuide({
     required this.apiKeys,
     required this.extractorFor,
-    required this.chapterTextProvider,
+    required this.chapterTextProviderFor,
     required this.cache,
     http.Client? httpClient,
     this.retryDelays = const [
@@ -66,7 +66,7 @@ class AiGuide {
 
   final ApiKeyStoreLike apiKeys;
   final BookTextExtractor Function(Book) extractorFor;
-  final ChapterTextProvider chapterTextProvider;
+  final ChapterTextProvider Function(Book) chapterTextProviderFor;
   final AiSummariesDao cache;
   final http.Client? _httpClient;
   final List<Duration> retryDelays;
@@ -184,7 +184,8 @@ class AiGuide {
           return null;
         }
       case AiGuideMode.chapter:
-        return await chapterTextProvider.get(book.filePath, chapterIndex ?? 0);
+        final provider = chapterTextProviderFor(book);
+        return await provider.get(book.filePath, chapterIndex ?? 0);
       case AiGuideMode.selection:
         return selection;
     }
