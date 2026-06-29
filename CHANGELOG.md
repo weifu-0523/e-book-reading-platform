@@ -9,6 +9,34 @@
 
 M2.0a 之后到 v1.0 之间的打磨工作将记在此处。
 
+## [0.8.0-alpha] - 2026-06-29
+
+M2.0b — Sync Conflict Visibility + Background Timer.
+
+### Added
+- **Conflict log**: LWW decisions are now visible. When a remote record
+  loses to local, a row is written to the new `sync_conflicts` table
+  with winner/loser device IDs, timestamps, and a 200-char payload preview.
+- **Sync Status page** (`/settings/sync/status`): three sections showing
+  current status, background interval picker (1/5/15/30 min or off), and
+  a rolling 30-day conflict log.
+- **Background scheduler**: `BackgroundSyncScheduler` runs Timer.periodic
+  (default 5 min) with skipIfRunning guard, 5-min cooldown after errors,
+  and lifecycle awareness (pause on background, immediate sync on resume).
+- **Connectivity check**: `connectivity_plus` integration for fast offline
+  detection (non-blocking — fails open if Windows virtual NIC reports odd).
+- **Rolling cleanup**: outbox purged at 7 days; conflicts at 30 days,
+  automatically after each successful `syncNow()`.
+
+### Migration
+- Drift schema version 7 → 8. Existing users get `sync_conflicts` table +
+  `idx_sync_conflicts_detected_at` index on next app launch.
+
+### Compatibility
+- All M2.0a sync tests remain green. `NullConflictSink` is the default
+  injection, so any code constructing `RemoteRecordApplier` without a sink
+  continues to work unchanged.
+
 ## [0.7.0-alpha] - 2026-06-29
 
 ### Added (M1.5a AI MVP)
