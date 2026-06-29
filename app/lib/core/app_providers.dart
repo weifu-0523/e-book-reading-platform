@@ -3,12 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/models/book.dart';
 import '../features/ai/providers/ai_guide_controller.dart';
 import '../features/ai/providers/book_preprocess_controller.dart';
+import '../features/ai/providers/qa_controller.dart';
 import '../features/sync/providers/sync_controller.dart';
 import '../services/ai/ai_guide.dart';
 import '../services/ai/api_key_store.dart';
 import '../services/ai/book_preprocessor.dart';
+import '../services/ai/book_qa_service.dart';
 import '../services/ai/book_text_extractor.dart';
 import '../services/ai/chapter_text_provider.dart';
+import '../services/ai/open_ai_compatible_client.dart';
 import '../services/sync/connectivity_service.dart';
 import '../services/sync/sync_credentials.dart';
 import '../services/sync/sync_interval_pref.dart';
@@ -62,6 +65,33 @@ final bookPreprocessorProvider = Provider<BookPreprocessorLike>((ref) {
   );
 });
 
+/// BookQaService wired to drift + ApiKeyStore. The clientFactory wraps
+/// [OpenAiCompatibleClient] for production; tests inject a fake.
+final bookQaServiceProvider = Provider<BookQaServiceLike>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final keys = ref.watch(apiKeyStoreProvider);
+  return BookQaService(
+    apiKeys: keys,
+    passagesDao: db.bookPassagesDao,
+    qaHistoryDao: db.qaHistoryDao,
+    clientFactory: (creds) => _QaClientAdapter(creds),
+  );
+});
+
+class _QaClientAdapter implements QaClientLike {
+  _QaClientAdapter(this._creds);
+  final AiCredentials _creds;
+
+  @override
+  Stream<String> streamChat({required String prompt}) {
+    return OpenAiCompatibleClient(
+      baseUrl: _creds.baseUrl,
+      apiKey: _creds.apiKey,
+      model: _creds.model,
+    ).streamChat(prompt: prompt);
+  }
+}
+
 /// 全局 ProviderScope override 列表。
 ///
 /// M2.0a：注入 [SyncController]（依赖 [appDatabaseProvider] + [SyncCredentials]）。
@@ -82,5 +112,8 @@ final providers = <Override>[
   bookPreprocessControllerProvider.overrideWith(
     (ref, bookId) =>
         BookPreprocessController(ref.watch(bookPreprocessorProvider)),
+  ),
+  qaControllerProvider.overrideWith(
+    (ref, bookId) => QaController(ref.watch(bookQaServiceProvider)),
   ),
 ];

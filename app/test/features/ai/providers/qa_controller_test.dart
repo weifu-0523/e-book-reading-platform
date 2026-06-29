@@ -1,0 +1,83 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/data/models/book.dart';
+import 'package:zhiyue/features/ai/providers/qa_controller.dart';
+import 'package:zhiyue/services/ai/book_qa_service.dart';
+
+class _FakeQaService implements BookQaServiceLike {
+  _FakeQaService(this._events);
+  final List<QaEvent> _events;
+  @override
+  Stream<QaEvent> ask({required Book book, required String question}) async* {
+    for (final e in _events) {
+      yield e;
+    }
+  }
+}
+
+Book _book() => Book(
+      id: 'b1',
+      title: 't',
+      author: null,
+      format: BookFormat.epub,
+      filePath: 'p',
+      fileHash: 'h',
+      fileSizeBytes: 1,
+      addedAt: DateTime(2026, 1, 1),
+      lastReadAt: null,
+      coverPath: null,
+      sortOrder: 0,
+    );
+
+void main() {
+  test('initial state is idle', () {
+    final controller = QaController(_FakeQaService(const []));
+    expect(controller.state.status, QaStatus.idle);
+    controller.dispose();
+  });
+
+  test('ChunkEvent appends to answer and transitions to streaming', () async {
+    final controller = QaController(_FakeQaService([
+      QaChunkEvent('Hello '),
+      QaChunkEvent('World'),
+    ]));
+    controller.ask(book: _book(), question: 'Q');
+    await Future.delayed(Duration.zero);
+    expect(controller.state.status, QaStatus.streaming);
+    expect(controller.state.answer, 'Hello World');
+    controller.dispose();
+  });
+
+  test('CompleteEvent transitions to done with parsed citations', () async {
+    final controller = QaController(_FakeQaService([
+      QaCompleteEvent(
+          answer: 'Done [ch=3]', citations: const [3], fromHistory: false),
+    ]));
+    controller.ask(book: _book(), question: 'Q');
+    await Future.delayed(Duration.zero);
+    expect(controller.state.status, QaStatus.done);
+    expect(controller.state.answer, 'Done [ch=3]');
+    expect(controller.state.citations, [3]);
+    expect(controller.state.fromHistory, isFalse);
+    controller.dispose();
+  });
+
+  test('ErrorEvent transitions to error with reason', () async {
+    final controller = QaController(_FakeQaService([
+      QaErrorEvent(QaError.emptyIndex),
+    ]));
+    controller.ask(book: _book(), question: 'Q');
+    await Future.delayed(Duration.zero);
+    expect(controller.state.status, QaStatus.error);
+    expect(controller.state.error, QaError.emptyIndex);
+    controller.dispose();
+  });
+
+  test('reset returns state to idle and clears answer', () {
+    final controller = QaController(_FakeQaService(const []));
+    controller.ask(book: _book(), question: 'Q');
+    controller.reset();
+    expect(controller.state.status, QaStatus.idle);
+    expect(controller.state.answer, isEmpty);
+    controller.dispose();
+  });
+}

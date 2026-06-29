@@ -53,6 +53,14 @@ abstract class QaClientLike {
   Stream<String> streamChat({required String prompt});
 }
 
+/// Test-friendly interface for [BookQaService] so [QaController] (and tests)
+/// can be constructed against a fake without depending on drift / ApiKeyStore.
+/// Kept here next to the concrete service to avoid circular imports
+/// (qa_controller.dart imports this file for [QaEvent]).
+abstract class BookQaServiceLike {
+  Stream<QaEvent> ask({required Book book, required String question});
+}
+
 /// Same-book orchestrator for Q&A: history short-circuit -> retrieval ->
 /// prompt -> stream -> parse -> persist.
 ///
@@ -63,7 +71,7 @@ abstract class QaClientLike {
 ///    noApiKey hint even on a book with passages.
 /// 3. Empty retrieval short-circuits before the LLM call — nothing useful
 ///    to ask anyway.
-class BookQaService {
+class BookQaService implements BookQaServiceLike {
   BookQaService({
     required this.apiKeys,
     required this.passagesDao,
@@ -84,6 +92,7 @@ class BookQaService {
   final List<Duration> retryDelays;
   final int limit;
 
+  @override
   Stream<QaEvent> ask({
     required Book book,
     required String question,
