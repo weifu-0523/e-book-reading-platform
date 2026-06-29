@@ -5070,6 +5070,932 @@ class SyncConflictsCompanion extends UpdateCompanion<SyncConflict> {
   }
 }
 
+class $BookPassagesTable extends BookPassages
+    with TableInfo<$BookPassagesTable, BookPassage> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BookPassagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _chapterIndexMeta = const VerificationMeta(
+    'chapterIndex',
+  );
+  @override
+  late final GeneratedColumn<int> chapterIndex = GeneratedColumn<int>(
+    'chapter_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _charOffsetMeta = const VerificationMeta(
+    'charOffset',
+  );
+  @override
+  late final GeneratedColumn<int> charOffset = GeneratedColumn<int>(
+    'char_offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _charLengthMeta = const VerificationMeta(
+    'charLength',
+  );
+  @override
+  late final GeneratedColumn<int> charLength = GeneratedColumn<int>(
+    'char_length',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentTextMeta = const VerificationMeta(
+    'contentText',
+  );
+  @override
+  late final GeneratedColumn<String> contentText = GeneratedColumn<String>(
+    'content_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tokenEstimateMeta = const VerificationMeta(
+    'tokenEstimate',
+  );
+  @override
+  late final GeneratedColumn<int> tokenEstimate = GeneratedColumn<int>(
+    'token_estimate',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    bookId,
+    chapterIndex,
+    charOffset,
+    charLength,
+    contentText,
+    tokenEstimate,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'book_passages';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BookPassage> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bookIdMeta);
+    }
+    if (data.containsKey('chapter_index')) {
+      context.handle(
+        _chapterIndexMeta,
+        chapterIndex.isAcceptableOrUnknown(
+          data['chapter_index']!,
+          _chapterIndexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_chapterIndexMeta);
+    }
+    if (data.containsKey('char_offset')) {
+      context.handle(
+        _charOffsetMeta,
+        charOffset.isAcceptableOrUnknown(data['char_offset']!, _charOffsetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_charOffsetMeta);
+    }
+    if (data.containsKey('char_length')) {
+      context.handle(
+        _charLengthMeta,
+        charLength.isAcceptableOrUnknown(data['char_length']!, _charLengthMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_charLengthMeta);
+    }
+    if (data.containsKey('content_text')) {
+      context.handle(
+        _contentTextMeta,
+        contentText.isAcceptableOrUnknown(
+          data['content_text']!,
+          _contentTextMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentTextMeta);
+    }
+    if (data.containsKey('token_estimate')) {
+      context.handle(
+        _tokenEstimateMeta,
+        tokenEstimate.isAcceptableOrUnknown(
+          data['token_estimate']!,
+          _tokenEstimateMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_tokenEstimateMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BookPassage map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BookPassage(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      )!,
+      chapterIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}chapter_index'],
+      )!,
+      charOffset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}char_offset'],
+      )!,
+      charLength: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}char_length'],
+      )!,
+      contentText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_text'],
+      )!,
+      tokenEstimate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}token_estimate'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $BookPassagesTable createAlias(String alias) {
+    return $BookPassagesTable(attachedDatabase, alias);
+  }
+}
+
+class BookPassage extends DataClass implements Insertable<BookPassage> {
+  final int id;
+  final String bookId;
+  final int chapterIndex;
+  final int charOffset;
+  final int charLength;
+  final String contentText;
+  final int tokenEstimate;
+  final DateTime createdAt;
+  const BookPassage({
+    required this.id,
+    required this.bookId,
+    required this.chapterIndex,
+    required this.charOffset,
+    required this.charLength,
+    required this.contentText,
+    required this.tokenEstimate,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['book_id'] = Variable<String>(bookId);
+    map['chapter_index'] = Variable<int>(chapterIndex);
+    map['char_offset'] = Variable<int>(charOffset);
+    map['char_length'] = Variable<int>(charLength);
+    map['content_text'] = Variable<String>(contentText);
+    map['token_estimate'] = Variable<int>(tokenEstimate);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  BookPassagesCompanion toCompanion(bool nullToAbsent) {
+    return BookPassagesCompanion(
+      id: Value(id),
+      bookId: Value(bookId),
+      chapterIndex: Value(chapterIndex),
+      charOffset: Value(charOffset),
+      charLength: Value(charLength),
+      contentText: Value(contentText),
+      tokenEstimate: Value(tokenEstimate),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory BookPassage.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BookPassage(
+      id: serializer.fromJson<int>(json['id']),
+      bookId: serializer.fromJson<String>(json['bookId']),
+      chapterIndex: serializer.fromJson<int>(json['chapterIndex']),
+      charOffset: serializer.fromJson<int>(json['charOffset']),
+      charLength: serializer.fromJson<int>(json['charLength']),
+      contentText: serializer.fromJson<String>(json['contentText']),
+      tokenEstimate: serializer.fromJson<int>(json['tokenEstimate']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'bookId': serializer.toJson<String>(bookId),
+      'chapterIndex': serializer.toJson<int>(chapterIndex),
+      'charOffset': serializer.toJson<int>(charOffset),
+      'charLength': serializer.toJson<int>(charLength),
+      'contentText': serializer.toJson<String>(contentText),
+      'tokenEstimate': serializer.toJson<int>(tokenEstimate),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  BookPassage copyWith({
+    int? id,
+    String? bookId,
+    int? chapterIndex,
+    int? charOffset,
+    int? charLength,
+    String? contentText,
+    int? tokenEstimate,
+    DateTime? createdAt,
+  }) => BookPassage(
+    id: id ?? this.id,
+    bookId: bookId ?? this.bookId,
+    chapterIndex: chapterIndex ?? this.chapterIndex,
+    charOffset: charOffset ?? this.charOffset,
+    charLength: charLength ?? this.charLength,
+    contentText: contentText ?? this.contentText,
+    tokenEstimate: tokenEstimate ?? this.tokenEstimate,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  BookPassage copyWithCompanion(BookPassagesCompanion data) {
+    return BookPassage(
+      id: data.id.present ? data.id.value : this.id,
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      chapterIndex: data.chapterIndex.present
+          ? data.chapterIndex.value
+          : this.chapterIndex,
+      charOffset: data.charOffset.present
+          ? data.charOffset.value
+          : this.charOffset,
+      charLength: data.charLength.present
+          ? data.charLength.value
+          : this.charLength,
+      contentText: data.contentText.present
+          ? data.contentText.value
+          : this.contentText,
+      tokenEstimate: data.tokenEstimate.present
+          ? data.tokenEstimate.value
+          : this.tokenEstimate,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BookPassage(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('chapterIndex: $chapterIndex, ')
+          ..write('charOffset: $charOffset, ')
+          ..write('charLength: $charLength, ')
+          ..write('contentText: $contentText, ')
+          ..write('tokenEstimate: $tokenEstimate, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    bookId,
+    chapterIndex,
+    charOffset,
+    charLength,
+    contentText,
+    tokenEstimate,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BookPassage &&
+          other.id == this.id &&
+          other.bookId == this.bookId &&
+          other.chapterIndex == this.chapterIndex &&
+          other.charOffset == this.charOffset &&
+          other.charLength == this.charLength &&
+          other.contentText == this.contentText &&
+          other.tokenEstimate == this.tokenEstimate &&
+          other.createdAt == this.createdAt);
+}
+
+class BookPassagesCompanion extends UpdateCompanion<BookPassage> {
+  final Value<int> id;
+  final Value<String> bookId;
+  final Value<int> chapterIndex;
+  final Value<int> charOffset;
+  final Value<int> charLength;
+  final Value<String> contentText;
+  final Value<int> tokenEstimate;
+  final Value<DateTime> createdAt;
+  const BookPassagesCompanion({
+    this.id = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.chapterIndex = const Value.absent(),
+    this.charOffset = const Value.absent(),
+    this.charLength = const Value.absent(),
+    this.contentText = const Value.absent(),
+    this.tokenEstimate = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  BookPassagesCompanion.insert({
+    this.id = const Value.absent(),
+    required String bookId,
+    required int chapterIndex,
+    required int charOffset,
+    required int charLength,
+    required String contentText,
+    required int tokenEstimate,
+    this.createdAt = const Value.absent(),
+  }) : bookId = Value(bookId),
+       chapterIndex = Value(chapterIndex),
+       charOffset = Value(charOffset),
+       charLength = Value(charLength),
+       contentText = Value(contentText),
+       tokenEstimate = Value(tokenEstimate);
+  static Insertable<BookPassage> custom({
+    Expression<int>? id,
+    Expression<String>? bookId,
+    Expression<int>? chapterIndex,
+    Expression<int>? charOffset,
+    Expression<int>? charLength,
+    Expression<String>? contentText,
+    Expression<int>? tokenEstimate,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bookId != null) 'book_id': bookId,
+      if (chapterIndex != null) 'chapter_index': chapterIndex,
+      if (charOffset != null) 'char_offset': charOffset,
+      if (charLength != null) 'char_length': charLength,
+      if (contentText != null) 'content_text': contentText,
+      if (tokenEstimate != null) 'token_estimate': tokenEstimate,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  BookPassagesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? bookId,
+    Value<int>? chapterIndex,
+    Value<int>? charOffset,
+    Value<int>? charLength,
+    Value<String>? contentText,
+    Value<int>? tokenEstimate,
+    Value<DateTime>? createdAt,
+  }) {
+    return BookPassagesCompanion(
+      id: id ?? this.id,
+      bookId: bookId ?? this.bookId,
+      chapterIndex: chapterIndex ?? this.chapterIndex,
+      charOffset: charOffset ?? this.charOffset,
+      charLength: charLength ?? this.charLength,
+      contentText: contentText ?? this.contentText,
+      tokenEstimate: tokenEstimate ?? this.tokenEstimate,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (chapterIndex.present) {
+      map['chapter_index'] = Variable<int>(chapterIndex.value);
+    }
+    if (charOffset.present) {
+      map['char_offset'] = Variable<int>(charOffset.value);
+    }
+    if (charLength.present) {
+      map['char_length'] = Variable<int>(charLength.value);
+    }
+    if (contentText.present) {
+      map['content_text'] = Variable<String>(contentText.value);
+    }
+    if (tokenEstimate.present) {
+      map['token_estimate'] = Variable<int>(tokenEstimate.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BookPassagesCompanion(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('chapterIndex: $chapterIndex, ')
+          ..write('charOffset: $charOffset, ')
+          ..write('charLength: $charLength, ')
+          ..write('contentText: $contentText, ')
+          ..write('tokenEstimate: $tokenEstimate, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $QaHistoryTable extends QaHistory
+    with TableInfo<$QaHistoryTable, QaHistoryData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $QaHistoryTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bookIdMeta = const VerificationMeta('bookId');
+  @override
+  late final GeneratedColumn<String> bookId = GeneratedColumn<String>(
+    'book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _questionMeta = const VerificationMeta(
+    'question',
+  );
+  @override
+  late final GeneratedColumn<String> question = GeneratedColumn<String>(
+    'question',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _answerMeta = const VerificationMeta('answer');
+  @override
+  late final GeneratedColumn<String> answer = GeneratedColumn<String>(
+    'answer',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _citationsJsonMeta = const VerificationMeta(
+    'citationsJson',
+  );
+  @override
+  late final GeneratedColumn<String> citationsJson = GeneratedColumn<String>(
+    'citations_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    bookId,
+    question,
+    answer,
+    citationsJson,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'qa_history';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<QaHistoryData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('book_id')) {
+      context.handle(
+        _bookIdMeta,
+        bookId.isAcceptableOrUnknown(data['book_id']!, _bookIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bookIdMeta);
+    }
+    if (data.containsKey('question')) {
+      context.handle(
+        _questionMeta,
+        question.isAcceptableOrUnknown(data['question']!, _questionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_questionMeta);
+    }
+    if (data.containsKey('answer')) {
+      context.handle(
+        _answerMeta,
+        answer.isAcceptableOrUnknown(data['answer']!, _answerMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_answerMeta);
+    }
+    if (data.containsKey('citations_json')) {
+      context.handle(
+        _citationsJsonMeta,
+        citationsJson.isAcceptableOrUnknown(
+          data['citations_json']!,
+          _citationsJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_citationsJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  QaHistoryData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return QaHistoryData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      bookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}book_id'],
+      )!,
+      question: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}question'],
+      )!,
+      answer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}answer'],
+      )!,
+      citationsJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}citations_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $QaHistoryTable createAlias(String alias) {
+    return $QaHistoryTable(attachedDatabase, alias);
+  }
+}
+
+class QaHistoryData extends DataClass implements Insertable<QaHistoryData> {
+  final String id;
+  final String bookId;
+  final String question;
+  final String answer;
+  final String citationsJson;
+  final DateTime createdAt;
+  const QaHistoryData({
+    required this.id,
+    required this.bookId,
+    required this.question,
+    required this.answer,
+    required this.citationsJson,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['book_id'] = Variable<String>(bookId);
+    map['question'] = Variable<String>(question);
+    map['answer'] = Variable<String>(answer);
+    map['citations_json'] = Variable<String>(citationsJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  QaHistoryCompanion toCompanion(bool nullToAbsent) {
+    return QaHistoryCompanion(
+      id: Value(id),
+      bookId: Value(bookId),
+      question: Value(question),
+      answer: Value(answer),
+      citationsJson: Value(citationsJson),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory QaHistoryData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return QaHistoryData(
+      id: serializer.fromJson<String>(json['id']),
+      bookId: serializer.fromJson<String>(json['bookId']),
+      question: serializer.fromJson<String>(json['question']),
+      answer: serializer.fromJson<String>(json['answer']),
+      citationsJson: serializer.fromJson<String>(json['citationsJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'bookId': serializer.toJson<String>(bookId),
+      'question': serializer.toJson<String>(question),
+      'answer': serializer.toJson<String>(answer),
+      'citationsJson': serializer.toJson<String>(citationsJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  QaHistoryData copyWith({
+    String? id,
+    String? bookId,
+    String? question,
+    String? answer,
+    String? citationsJson,
+    DateTime? createdAt,
+  }) => QaHistoryData(
+    id: id ?? this.id,
+    bookId: bookId ?? this.bookId,
+    question: question ?? this.question,
+    answer: answer ?? this.answer,
+    citationsJson: citationsJson ?? this.citationsJson,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  QaHistoryData copyWithCompanion(QaHistoryCompanion data) {
+    return QaHistoryData(
+      id: data.id.present ? data.id.value : this.id,
+      bookId: data.bookId.present ? data.bookId.value : this.bookId,
+      question: data.question.present ? data.question.value : this.question,
+      answer: data.answer.present ? data.answer.value : this.answer,
+      citationsJson: data.citationsJson.present
+          ? data.citationsJson.value
+          : this.citationsJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QaHistoryData(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('question: $question, ')
+          ..write('answer: $answer, ')
+          ..write('citationsJson: $citationsJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, bookId, question, answer, citationsJson, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is QaHistoryData &&
+          other.id == this.id &&
+          other.bookId == this.bookId &&
+          other.question == this.question &&
+          other.answer == this.answer &&
+          other.citationsJson == this.citationsJson &&
+          other.createdAt == this.createdAt);
+}
+
+class QaHistoryCompanion extends UpdateCompanion<QaHistoryData> {
+  final Value<String> id;
+  final Value<String> bookId;
+  final Value<String> question;
+  final Value<String> answer;
+  final Value<String> citationsJson;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const QaHistoryCompanion({
+    this.id = const Value.absent(),
+    this.bookId = const Value.absent(),
+    this.question = const Value.absent(),
+    this.answer = const Value.absent(),
+    this.citationsJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  QaHistoryCompanion.insert({
+    required String id,
+    required String bookId,
+    required String question,
+    required String answer,
+    required String citationsJson,
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       bookId = Value(bookId),
+       question = Value(question),
+       answer = Value(answer),
+       citationsJson = Value(citationsJson);
+  static Insertable<QaHistoryData> custom({
+    Expression<String>? id,
+    Expression<String>? bookId,
+    Expression<String>? question,
+    Expression<String>? answer,
+    Expression<String>? citationsJson,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bookId != null) 'book_id': bookId,
+      if (question != null) 'question': question,
+      if (answer != null) 'answer': answer,
+      if (citationsJson != null) 'citations_json': citationsJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  QaHistoryCompanion copyWith({
+    Value<String>? id,
+    Value<String>? bookId,
+    Value<String>? question,
+    Value<String>? answer,
+    Value<String>? citationsJson,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return QaHistoryCompanion(
+      id: id ?? this.id,
+      bookId: bookId ?? this.bookId,
+      question: question ?? this.question,
+      answer: answer ?? this.answer,
+      citationsJson: citationsJson ?? this.citationsJson,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (bookId.present) {
+      map['book_id'] = Variable<String>(bookId.value);
+    }
+    if (question.present) {
+      map['question'] = Variable<String>(question.value);
+    }
+    if (answer.present) {
+      map['answer'] = Variable<String>(answer.value);
+    }
+    if (citationsJson.present) {
+      map['citations_json'] = Variable<String>(citationsJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('QaHistoryCompanion(')
+          ..write('id: $id, ')
+          ..write('bookId: $bookId, ')
+          ..write('question: $question, ')
+          ..write('answer: $answer, ')
+          ..write('citationsJson: $citationsJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -5088,6 +6014,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
   late final $AiSummariesTable aiSummaries = $AiSummariesTable(this);
   late final $SyncConflictsTable syncConflicts = $SyncConflictsTable(this);
+  late final $BookPassagesTable bookPassages = $BookPassagesTable(this);
+  late final $QaHistoryTable qaHistory = $QaHistoryTable(this);
   late final BooksDao booksDao = BooksDao(this as AppDatabase);
   late final BookTagsDao bookTagsDao = BookTagsDao(this as AppDatabase);
   late final BookNotesDao bookNotesDao = BookNotesDao(this as AppDatabase);
@@ -5107,6 +6035,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final SyncConflictsDao syncConflictsDao = SyncConflictsDao(
     this as AppDatabase,
   );
+  late final BookPassagesDao bookPassagesDao = BookPassagesDao(
+    this as AppDatabase,
+  );
+  late final QaHistoryDao qaHistoryDao = QaHistoryDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5124,6 +6056,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     syncOutbox,
     aiSummaries,
     syncConflicts,
+    bookPassages,
+    qaHistory,
   ];
 }
 
@@ -8926,6 +9860,488 @@ typedef $$SyncConflictsTableProcessedTableManager =
       SyncConflict,
       PrefetchHooks Function()
     >;
+typedef $$BookPassagesTableCreateCompanionBuilder =
+    BookPassagesCompanion Function({
+      Value<int> id,
+      required String bookId,
+      required int chapterIndex,
+      required int charOffset,
+      required int charLength,
+      required String contentText,
+      required int tokenEstimate,
+      Value<DateTime> createdAt,
+    });
+typedef $$BookPassagesTableUpdateCompanionBuilder =
+    BookPassagesCompanion Function({
+      Value<int> id,
+      Value<String> bookId,
+      Value<int> chapterIndex,
+      Value<int> charOffset,
+      Value<int> charLength,
+      Value<String> contentText,
+      Value<int> tokenEstimate,
+      Value<DateTime> createdAt,
+    });
+
+class $$BookPassagesTableFilterComposer
+    extends Composer<_$AppDatabase, $BookPassagesTable> {
+  $$BookPassagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get charOffset => $composableBuilder(
+    column: $table.charOffset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get charLength => $composableBuilder(
+    column: $table.charLength,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentText => $composableBuilder(
+    column: $table.contentText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get tokenEstimate => $composableBuilder(
+    column: $table.tokenEstimate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BookPassagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $BookPassagesTable> {
+  $$BookPassagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get charOffset => $composableBuilder(
+    column: $table.charOffset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get charLength => $composableBuilder(
+    column: $table.charLength,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentText => $composableBuilder(
+    column: $table.contentText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get tokenEstimate => $composableBuilder(
+    column: $table.tokenEstimate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BookPassagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $BookPassagesTable> {
+  $$BookPassagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get bookId =>
+      $composableBuilder(column: $table.bookId, builder: (column) => column);
+
+  GeneratedColumn<int> get chapterIndex => $composableBuilder(
+    column: $table.chapterIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get charOffset => $composableBuilder(
+    column: $table.charOffset,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get charLength => $composableBuilder(
+    column: $table.charLength,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get contentText => $composableBuilder(
+    column: $table.contentText,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get tokenEstimate => $composableBuilder(
+    column: $table.tokenEstimate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$BookPassagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $BookPassagesTable,
+          BookPassage,
+          $$BookPassagesTableFilterComposer,
+          $$BookPassagesTableOrderingComposer,
+          $$BookPassagesTableAnnotationComposer,
+          $$BookPassagesTableCreateCompanionBuilder,
+          $$BookPassagesTableUpdateCompanionBuilder,
+          (
+            BookPassage,
+            BaseReferences<_$AppDatabase, $BookPassagesTable, BookPassage>,
+          ),
+          BookPassage,
+          PrefetchHooks Function()
+        > {
+  $$BookPassagesTableTableManager(_$AppDatabase db, $BookPassagesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BookPassagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BookPassagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$BookPassagesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> bookId = const Value.absent(),
+                Value<int> chapterIndex = const Value.absent(),
+                Value<int> charOffset = const Value.absent(),
+                Value<int> charLength = const Value.absent(),
+                Value<String> contentText = const Value.absent(),
+                Value<int> tokenEstimate = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => BookPassagesCompanion(
+                id: id,
+                bookId: bookId,
+                chapterIndex: chapterIndex,
+                charOffset: charOffset,
+                charLength: charLength,
+                contentText: contentText,
+                tokenEstimate: tokenEstimate,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String bookId,
+                required int chapterIndex,
+                required int charOffset,
+                required int charLength,
+                required String contentText,
+                required int tokenEstimate,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => BookPassagesCompanion.insert(
+                id: id,
+                bookId: bookId,
+                chapterIndex: chapterIndex,
+                charOffset: charOffset,
+                charLength: charLength,
+                contentText: contentText,
+                tokenEstimate: tokenEstimate,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BookPassagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $BookPassagesTable,
+      BookPassage,
+      $$BookPassagesTableFilterComposer,
+      $$BookPassagesTableOrderingComposer,
+      $$BookPassagesTableAnnotationComposer,
+      $$BookPassagesTableCreateCompanionBuilder,
+      $$BookPassagesTableUpdateCompanionBuilder,
+      (
+        BookPassage,
+        BaseReferences<_$AppDatabase, $BookPassagesTable, BookPassage>,
+      ),
+      BookPassage,
+      PrefetchHooks Function()
+    >;
+typedef $$QaHistoryTableCreateCompanionBuilder =
+    QaHistoryCompanion Function({
+      required String id,
+      required String bookId,
+      required String question,
+      required String answer,
+      required String citationsJson,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$QaHistoryTableUpdateCompanionBuilder =
+    QaHistoryCompanion Function({
+      Value<String> id,
+      Value<String> bookId,
+      Value<String> question,
+      Value<String> answer,
+      Value<String> citationsJson,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$QaHistoryTableFilterComposer
+    extends Composer<_$AppDatabase, $QaHistoryTable> {
+  $$QaHistoryTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get question => $composableBuilder(
+    column: $table.question,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get citationsJson => $composableBuilder(
+    column: $table.citationsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$QaHistoryTableOrderingComposer
+    extends Composer<_$AppDatabase, $QaHistoryTable> {
+  $$QaHistoryTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bookId => $composableBuilder(
+    column: $table.bookId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get question => $composableBuilder(
+    column: $table.question,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get citationsJson => $composableBuilder(
+    column: $table.citationsJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$QaHistoryTableAnnotationComposer
+    extends Composer<_$AppDatabase, $QaHistoryTable> {
+  $$QaHistoryTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get bookId =>
+      $composableBuilder(column: $table.bookId, builder: (column) => column);
+
+  GeneratedColumn<String> get question =>
+      $composableBuilder(column: $table.question, builder: (column) => column);
+
+  GeneratedColumn<String> get answer =>
+      $composableBuilder(column: $table.answer, builder: (column) => column);
+
+  GeneratedColumn<String> get citationsJson => $composableBuilder(
+    column: $table.citationsJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$QaHistoryTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $QaHistoryTable,
+          QaHistoryData,
+          $$QaHistoryTableFilterComposer,
+          $$QaHistoryTableOrderingComposer,
+          $$QaHistoryTableAnnotationComposer,
+          $$QaHistoryTableCreateCompanionBuilder,
+          $$QaHistoryTableUpdateCompanionBuilder,
+          (
+            QaHistoryData,
+            BaseReferences<_$AppDatabase, $QaHistoryTable, QaHistoryData>,
+          ),
+          QaHistoryData,
+          PrefetchHooks Function()
+        > {
+  $$QaHistoryTableTableManager(_$AppDatabase db, $QaHistoryTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$QaHistoryTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$QaHistoryTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$QaHistoryTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> bookId = const Value.absent(),
+                Value<String> question = const Value.absent(),
+                Value<String> answer = const Value.absent(),
+                Value<String> citationsJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => QaHistoryCompanion(
+                id: id,
+                bookId: bookId,
+                question: question,
+                answer: answer,
+                citationsJson: citationsJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String bookId,
+                required String question,
+                required String answer,
+                required String citationsJson,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => QaHistoryCompanion.insert(
+                id: id,
+                bookId: bookId,
+                question: question,
+                answer: answer,
+                citationsJson: citationsJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$QaHistoryTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $QaHistoryTable,
+      QaHistoryData,
+      $$QaHistoryTableFilterComposer,
+      $$QaHistoryTableOrderingComposer,
+      $$QaHistoryTableAnnotationComposer,
+      $$QaHistoryTableCreateCompanionBuilder,
+      $$QaHistoryTableUpdateCompanionBuilder,
+      (
+        QaHistoryData,
+        BaseReferences<_$AppDatabase, $QaHistoryTable, QaHistoryData>,
+      ),
+      QaHistoryData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8957,4 +10373,8 @@ class $AppDatabaseManager {
       $$AiSummariesTableTableManager(_db, _db.aiSummaries);
   $$SyncConflictsTableTableManager get syncConflicts =>
       $$SyncConflictsTableTableManager(_db, _db.syncConflicts);
+  $$BookPassagesTableTableManager get bookPassages =>
+      $$BookPassagesTableTableManager(_db, _db.bookPassages);
+  $$QaHistoryTableTableManager get qaHistory =>
+      $$QaHistoryTableTableManager(_db, _db.qaHistory);
 }

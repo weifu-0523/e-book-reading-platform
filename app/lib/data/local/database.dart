@@ -5,8 +5,10 @@ import 'connections/database_connection.dart';
 import 'daos/ai_summaries_dao.dart';
 import 'daos/annotations_dao.dart';
 import 'daos/book_notes_dao.dart';
+import 'daos/book_passages_dao.dart';
 import 'daos/book_tags_dao.dart';
 import 'daos/books_dao.dart';
+import 'daos/qa_history_dao.dart';
 import 'daos/reading_progress_dao.dart';
 import 'daos/settings_dao.dart';
 import 'daos/sync_conflicts_dao.dart';
@@ -16,9 +18,11 @@ import 'daos/user_fonts_dao.dart';
 import 'tables/ai_summaries.dart';
 import 'tables/annotations.dart';
 import 'tables/book_notes.dart';
+import 'tables/book_passages.dart';
 import 'tables/book_tags.dart';
 import 'tables/book_typography_overrides.dart';
 import 'tables/books.dart';
+import 'tables/qa_history.dart';
 import 'tables/reading_progress.dart';
 import 'tables/settings.dart';
 import 'tables/sync_conflicts.dart';
@@ -42,6 +46,8 @@ part 'database.g.dart';
     SyncOutbox,
     AiSummaries,
     SyncConflicts,
+    BookPassages,
+    QaHistory,
   ],
   daos: [
     BooksDao,
@@ -55,6 +61,8 @@ part 'database.g.dart';
     SyncOutboxDao,
     AiSummariesDao,
     SyncConflictsDao,
+    BookPassagesDao,
+    QaHistoryDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -63,7 +71,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration {
@@ -93,6 +101,16 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
           'CREATE INDEX IF NOT EXISTS idx_sync_conflicts_detected_at '
           'ON sync_conflicts(detected_at DESC)',
+        );
+        // schema v9: book_passages + qa_history + FTS5
+        await _createBookPassagesFts5(m);
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_book_passages_lookup '
+          'ON book_passages(book_id, chapter_index)',
+        );
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_qa_history_book '
+          'ON qa_history(book_id, created_at DESC)',
         );
       },
       onUpgrade: (m, from, to) async {
@@ -147,6 +165,20 @@ class AppDatabase extends _$AppDatabase {
             'ON sync_conflicts(detected_at DESC)',
           );
         }
+        if (from < 9) {
+          // schema v9: AI batch preprocess + Q&A history
+          await m.createTable(bookPassages);
+          await m.createTable(qaHistory);
+          await _createBookPassagesFts5(m);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_book_passages_lookup '
+            'ON book_passages(book_id, chapter_index)',
+          );
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_qa_history_book '
+            'ON qa_history(book_id, created_at DESC)',
+          );
+        }
       },
       beforeOpen: (details) async {
         await customStatement('PRAGMA foreign_keys = ON;');
@@ -183,6 +215,38 @@ class AppDatabase extends _$AppDatabase {
         VALUES ('delete', old.rowid, old.quote, old.note, old.tags);
         INSERT INTO annotations_fts(rowid, quote, note, tags)
         VALUES (new.rowid, new.quote, new.note, new.tags);
+      END
+    ''');
+  }
+
+  /// Create book_passages FTS5 external-content virtual table + 3 sync
+  /// triggers. Same pattern as annotations_fts. Default retrieval path
+  /// uses substring LIKE (CJK-friendly); FTS5 table reserved for future
+  /// relevance-ranked retrieval.
+  Future<void> _createBookPassagesFts5(Migrator m) async {
+    await m.database.customStatement('''
+      CREATE VIRTUAL TABLE IF NOT EXISTS book_passages_fts USING fts5(
+        content_text, content='book_passages', content_rowid='rowid'
+      )
+    ''');
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS book_passages_ai AFTER INSERT ON book_passages BEGIN
+        INSERT INTO book_passages_fts(rowid, content_text)
+        VALUES (new.rowid, new.content_text);
+      END
+    ''');
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS book_passages_ad AFTER DELETE ON book_passages BEGIN
+        INSERT INTO book_passages_fts(book_passages_fts, rowid, content_text)
+        VALUES ('delete', old.rowid, old.content_text);
+      END
+    ''');
+    await m.database.customStatement('''
+      CREATE TRIGGER IF NOT EXISTS book_passages_au AFTER UPDATE ON book_passages BEGIN
+        INSERT INTO book_passages_fts(book_passages_fts, rowid, content_text)
+        VALUES ('delete', old.rowid, old.content_text);
+        INSERT INTO book_passages_fts(rowid, content_text)
+        VALUES (new.rowid, new.content_text);
       END
     ''');
   }
