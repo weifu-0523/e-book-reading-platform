@@ -302,4 +302,67 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiCommentLabel => 'AI Comment';
+
+  @override
+  String get syncStatusTitle => 'Sync Status';
+
+  @override
+  String get syncStatusSubtitle => 'View sync status and conflict log';
+
+  @override
+  String get syncConflictsSection => 'Conflicts (last 30 days)';
+
+  @override
+  String get syncConflictsEmpty => 'No conflicts recorded';
+
+  @override
+  String get syncConflictsClear => 'Clear';
+
+  @override
+  String get syncConflictsClearedOk => 'All conflict records cleared';
+
+  @override
+  String syncConflictItemTitle(String type, String id) {
+    return '$type · $id';
+  }
+
+  @override
+  String get syncConflictItemWinnerLocal => 'Local won';
+
+  @override
+  String syncConflictItemWinnerRemote(String device) {
+    return 'Remote won ($device)';
+  }
+
+  @override
+  String get syncConflictItemPreview => 'Remote payload preview';
+
+  @override
+  String get syncConflictItemTypeAnnotation => 'Highlight';
+
+  @override
+  String get syncConflictItemTypeBookNote => 'Note';
+
+  @override
+  String get syncConflictItemTypeProgress => 'Progress';
+
+  @override
+  String get syncConflictItemTypeBook => 'Book';
+
+  @override
+  String get syncIntervalTitle => 'Background Sync Interval';
+
+  @override
+  String syncIntervalMinutes(int count) {
+    return 'Every $count minutes';
+  }
+
+  @override
+  String get syncIntervalOff => 'Off (manual only)';
+
+  @override
+  String get syncIntervalChanged => 'Interval updated';
+
+  @override
+  String get syncBackgroundSection => 'Background';
 }

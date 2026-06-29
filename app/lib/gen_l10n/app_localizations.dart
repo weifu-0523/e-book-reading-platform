@@ -649,6 +649,120 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'AI 点评'**
   String get aiCommentLabel;
+
+  /// No description provided for @syncStatusTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'同步状态'**
+  String get syncStatusTitle;
+
+  /// No description provided for @syncStatusSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看同步状态与冲突日志'**
+  String get syncStatusSubtitle;
+
+  /// No description provided for @syncConflictsSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'冲突日志（30 天）'**
+  String get syncConflictsSection;
+
+  /// No description provided for @syncConflictsEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无冲突记录'**
+  String get syncConflictsEmpty;
+
+  /// No description provided for @syncConflictsClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get syncConflictsClear;
+
+  /// No description provided for @syncConflictsClearedOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'已清空全部冲突记录'**
+  String get syncConflictsClearedOk;
+
+  /// No description provided for @syncConflictItemTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'{type} · {id}'**
+  String syncConflictItemTitle(String type, String id);
+
+  /// No description provided for @syncConflictItemWinnerLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地胜出'**
+  String get syncConflictItemWinnerLocal;
+
+  /// No description provided for @syncConflictItemWinnerRemote.
+  ///
+  /// In zh, this message translates to:
+  /// **'远端胜出（{device}）'**
+  String syncConflictItemWinnerRemote(String device);
+
+  /// No description provided for @syncConflictItemPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'远端负载预览'**
+  String get syncConflictItemPreview;
+
+  /// No description provided for @syncConflictItemTypeAnnotation.
+  ///
+  /// In zh, this message translates to:
+  /// **'高亮'**
+  String get syncConflictItemTypeAnnotation;
+
+  /// No description provided for @syncConflictItemTypeBookNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'笔记'**
+  String get syncConflictItemTypeBookNote;
+
+  /// No description provided for @syncConflictItemTypeProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'进度'**
+  String get syncConflictItemTypeProgress;
+
+  /// No description provided for @syncConflictItemTypeBook.
+  ///
+  /// In zh, this message translates to:
+  /// **'图书'**
+  String get syncConflictItemTypeBook;
+
+  /// No description provided for @syncIntervalTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'后台同步节奏'**
+  String get syncIntervalTitle;
+
+  /// No description provided for @syncIntervalMinutes.
+  ///
+  /// In zh, this message translates to:
+  /// **'每 {count} 分钟'**
+  String syncIntervalMinutes(int count);
+
+  /// No description provided for @syncIntervalOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭（仅手动）'**
+  String get syncIntervalOff;
+
+  /// No description provided for @syncIntervalChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'节奏已更新'**
+  String get syncIntervalChanged;
+
+  /// No description provided for @syncBackgroundSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'后台定时'**
+  String get syncBackgroundSection;
 }
 
 class _AppLocalizationsDelegate

@@ -126,5 +126,56 @@
   "aiActionClose": "Close",
   "@aiActionClose": {},
   "aiCommentLabel": "AI Comment",
-  "@aiCommentLabel": {}
+  "@aiCommentLabel": {},
+  "syncStatusTitle": "Sync Status",
+  "@syncStatusTitle": {},
+  "syncStatusSubtitle": "View sync status and conflict log",
+  "@syncStatusSubtitle": {},
+  "syncConflictsSection": "Conflicts (last 30 days)",
+  "@syncConflictsSection": {},
+  "syncConflictsEmpty": "No conflicts recorded",
+  "@syncConflictsEmpty": {},
+  "syncConflictsClear": "Clear",
+  "@syncConflictsClear": {},
+  "syncConflictsClearedOk": "All conflict records cleared",
+  "@syncConflictsClearedOk": {},
+  "syncConflictItemTitle": "{type} · {id}",
+  "@syncConflictItemTitle": {
+    "placeholders": {
+      "type": {"type": "String"},
+      "id": {"type": "String"}
+    }
+  },
+  "syncConflictItemWinnerLocal": "Local won",
+  "@syncConflictItemWinnerLocal": {},
+  "syncConflictItemWinnerRemote": "Remote won ({device})",
+  "@syncConflictItemWinnerRemote": {
+    "placeholders": {
+      "device": {"type": "String"}
+    }
+  },
+  "syncConflictItemPreview": "Remote payload preview",
+  "@syncConflictItemPreview": {},
+  "syncConflictItemTypeAnnotation": "Highlight",
+  "@syncConflictItemTypeAnnotation": {},
+  "syncConflictItemTypeBookNote": "Note",
+  "@syncConflictItemTypeBookNote": {},
+  "syncConflictItemTypeProgress": "Progress",
+  "@syncConflictItemTypeProgress": {},
+  "syncConflictItemTypeBook": "Book",
+  "@syncConflictItemTypeBook": {},
+  "syncIntervalTitle": "Background Sync Interval",
+  "@syncIntervalTitle": {},
+  "syncIntervalMinutes": "Every {count} minutes",
+  "@syncIntervalMinutes": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "syncIntervalOff": "Off (manual only)",
+  "@syncIntervalOff": {},
+  "syncIntervalChanged": "Interval updated",
+  "@syncIntervalChanged": {},
+  "syncBackgroundSection": "Background",
+  "@syncBackgroundSection": {}
 }

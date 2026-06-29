@@ -295,4 +295,67 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiCommentLabel => 'AI 点评';
+
+  @override
+  String get syncStatusTitle => '同步状态';
+
+  @override
+  String get syncStatusSubtitle => '查看同步状态与冲突日志';
+
+  @override
+  String get syncConflictsSection => '冲突日志（30 天）';
+
+  @override
+  String get syncConflictsEmpty => '暂无冲突记录';
+
+  @override
+  String get syncConflictsClear => '清空';
+
+  @override
+  String get syncConflictsClearedOk => '已清空全部冲突记录';
+
+  @override
+  String syncConflictItemTitle(String type, String id) {
+    return '$type · $id';
+  }
+
+  @override
+  String get syncConflictItemWinnerLocal => '本地胜出';
+
+  @override
+  String syncConflictItemWinnerRemote(String device) {
+    return '远端胜出（$device）';
+  }
+
+  @override
+  String get syncConflictItemPreview => '远端负载预览';
+
+  @override
+  String get syncConflictItemTypeAnnotation => '高亮';
+
+  @override
+  String get syncConflictItemTypeBookNote => '笔记';
+
+  @override
+  String get syncConflictItemTypeProgress => '进度';
+
+  @override
+  String get syncConflictItemTypeBook => '图书';
+
+  @override
+  String get syncIntervalTitle => '后台同步节奏';
+
+  @override
+  String syncIntervalMinutes(int count) {
+    return '每 $count 分钟';
+  }
+
+  @override
+  String get syncIntervalOff => '关闭（仅手动）';
+
+  @override
+  String get syncIntervalChanged => '节奏已更新';
+
+  @override
+  String get syncBackgroundSection => '后台定时';
 }

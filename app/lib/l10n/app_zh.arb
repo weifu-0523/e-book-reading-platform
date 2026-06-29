@@ -222,5 +222,56 @@
   "aiActionClose": "关闭",
   "@aiActionClose": {},
   "aiCommentLabel": "AI 点评",
-  "@aiCommentLabel": {}
+  "@aiCommentLabel": {},
+  "syncStatusTitle": "同步状态",
+  "@syncStatusTitle": {},
+  "syncStatusSubtitle": "查看同步状态与冲突日志",
+  "@syncStatusSubtitle": {},
+  "syncConflictsSection": "冲突日志（30 天）",
+  "@syncConflictsSection": {},
+  "syncConflictsEmpty": "暂无冲突记录",
+  "@syncConflictsEmpty": {},
+  "syncConflictsClear": "清空",
+  "@syncConflictsClear": {},
+  "syncConflictsClearedOk": "已清空全部冲突记录",
+  "@syncConflictsClearedOk": {},
+  "syncConflictItemTitle": "{type} · {id}",
+  "@syncConflictItemTitle": {
+    "placeholders": {
+      "type": {"type": "String"},
+      "id": {"type": "String"}
+    }
+  },
+  "syncConflictItemWinnerLocal": "本地胜出",
+  "@syncConflictItemWinnerLocal": {},
+  "syncConflictItemWinnerRemote": "远端胜出（{device}）",
+  "@syncConflictItemWinnerRemote": {
+    "placeholders": {
+      "device": {"type": "String"}
+    }
+  },
+  "syncConflictItemPreview": "远端负载预览",
+  "@syncConflictItemPreview": {},
+  "syncConflictItemTypeAnnotation": "高亮",
+  "@syncConflictItemTypeAnnotation": {},
+  "syncConflictItemTypeBookNote": "笔记",
+  "@syncConflictItemTypeBookNote": {},
+  "syncConflictItemTypeProgress": "进度",
+  "@syncConflictItemTypeProgress": {},
+  "syncConflictItemTypeBook": "图书",
+  "@syncConflictItemTypeBook": {},
+  "syncIntervalTitle": "后台同步节奏",
+  "@syncIntervalTitle": {},
+  "syncIntervalMinutes": "每 {count} 分钟",
+  "@syncIntervalMinutes": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "syncIntervalOff": "关闭（仅手动）",
+  "@syncIntervalOff": {},
+  "syncIntervalChanged": "节奏已更新",
+  "@syncIntervalChanged": {},
+  "syncBackgroundSection": "后台定时",
+  "@syncBackgroundSection": {}
 }
