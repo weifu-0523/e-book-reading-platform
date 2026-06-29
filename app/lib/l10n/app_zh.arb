@@ -295,5 +295,15 @@
   "qaErrorServer": "服务端错误，稍后重试",
   "@qaErrorServer": {},
   "qaErrorParse": "AI 响应解析失败",
-  "@qaErrorParse": {}
+  "@qaErrorParse": {},
+  "preprocessStatusChunking": "切片中 {current}/{total}",
+  "@preprocessStatusChunking": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}},
+  "preprocessStatusSummarizing": "AI 处理中 {current}/{total}",
+  "@preprocessStatusSummarizing": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}},
+  "preprocessCancelLabel": "取消",
+  "@preprocessCancelLabel": {},
+  "preprocessRetryLabel": "重新预处理",
+  "@preprocessRetryLabel": {},
+  "preprocessFailedChapters": "{count} 章预处理失败",
+  "@preprocessFailedChapters": {"placeholders": {"count": {"type": "String"}}}
 }

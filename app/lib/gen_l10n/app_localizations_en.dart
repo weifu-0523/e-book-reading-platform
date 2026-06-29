@@ -400,4 +400,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get qaErrorParse => 'Failed to parse AI response.';
+
+  @override
+  String preprocessStatusChunking(String current, String total) {
+    return 'Chunking $current/$total';
+  }
+
+  @override
+  String preprocessStatusSummarizing(String current, String total) {
+    return 'AI processing $current/$total';
+  }
+
+  @override
+  String get preprocessCancelLabel => 'Cancel';
+
+  @override
+  String get preprocessRetryLabel => 'Reprocess';
+
+  @override
+  String preprocessFailedChapters(String count) {
+    return '$count chapter(s) failed preprocessing';
+  }
 }

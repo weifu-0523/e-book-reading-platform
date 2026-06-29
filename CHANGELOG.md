@@ -9,6 +9,66 @@
 
 M2.0a 之后到 v1.0 之间的打磨工作将记在此处。
 
+## [0.9.0-alpha] - 2026-06-30
+
+M1.5b+c — AI Batch Preprocess + Same-Book Q&A.
+
+### Added
+- **Schema v9**: 2 new drift tables (`book_passages`, `qa_history`) +
+  `book_passages_fts` virtual table with 3 sync triggers. Substring LIKE
+  remains the default retrieval path (CJK-friendly); FTS5 reserved for
+  future relevance-ranked retrieval.
+- **Batch preprocess**: On book import with `isNew=true`, LibraryPage
+  triggers `BookPreprocessor` which runs a 2-phase state machine:
+  - Phase 1 (chunking): synchronous, fast — chapter text → BookChunker →
+    `book_passages` rows
+  - Phase 2 (summarizing): per-chapter AiGuide.run(chapter) with 2s
+    throttle, 3-failure circuit breaker, skipIfRunning, cooperative cancel
+- **BookQaService**: same-book Q&A with history short-circuit, FTS top-K
+  retrieval, `[ch=N]` citation markers in the answer, parsed and made
+  tappable.
+- **Reader "问答" icon**: tap to open QaAskDialog; tap a `[ch=N]` citation
+  to close the dialog and `engine.gotoTocEntry + chapterSwitchSettled`
+  to the cited chapter.
+- **Preprocess UI**: BookDetailPage LinearProgressIndicator + cancel button +
+  reprocess action; BookCell status chip during processing; Reader chapter
+  drawer ✓/⚠ markers.
+
+### Changed
+- `database.schemaVersion` 8 → 9. Existing users get empty book_passages on
+  upgrade; manual preprocess trigger via BookDetailPage.
+- `app_providers.dart` adds `bookPreprocessorProvider`, `bookPreprocessControllerProvider`,
+  `bookQaServiceProvider`, `qaControllerProvider` overrides.
+- `ReaderScaffold` adds `onOpenQa` callback parameter (nullable, default
+  null — readers without a Q&A binding render unchanged).
+- `pubspec.yaml` version `0.8.0-alpha+0` → `0.9.0-alpha+0`.
+- 16 new i18n keys (zh + en) for Q&A dialog states + preprocess status.
+
+### Known limitations
+- New tables (`book_passages`, `qa_history`) not yet wired to sync_outbox —
+  deferred to M2.0x.
+- Q&A is single-turn (each ask independent, no context accumulation).
+- Cost/token estimation UI intentionally omitted per user feedback memory
+  `feedback_no_cost_estimation` — reading focus preservation.
+- PDF per-page title not surfaced in Q&A context (PdfChapterTextProvider
+  returns null title).
+- `chapterCountFor` uses linear probe (re-reads EPUB file N times). Acceptable
+  for T7; optimization deferred.
+
+### Plan corrections applied by implementers (transparency)
+- `qa_history.dart` `id` column uses plain `text()()` (cascade `..withLength` drift syntax dropped silently).
+- `QaHistoryDao.delete` renamed `deleteEntry` to avoid clash with drift's `DatabaseConnectionUser.delete`.
+- `QaHistoryDao._generateId` switched from timestamp to uuid v4 to avoid UNIQUE collisions in tight loops.
+- `Book` constructor uses `addedAt`/`coverPath`, not `createdAt`.
+- Credentials class is `AiCredentials` (not `ApiKeyCredentials`).
+- `TocEntry.children` is non-nullable (`List<TocEntry>` with default `const []`).
+- `BookQaService` and `BookPreprocessor` declare `implements` their `*Like` interfaces (in their own files) to avoid circular imports.
+- `QaAskDialog` accepts optional `Book?` for tests; production passes the active book.
+
+### Test counts
+- ~60 new tests added across 13 new test files.
+- Total: 659 tests passing, 2 skipped (verify with `flutter test` before tagging).
+
 ## [0.8.0-alpha] - 2026-06-29
 
 M2.0b — Sync Conflict Visibility + Background Timer.

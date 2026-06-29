@@ -829,6 +829,36 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'AI 响应解析失败'**
   String get qaErrorParse;
+
+  /// No description provided for @preprocessStatusChunking.
+  ///
+  /// In zh, this message translates to:
+  /// **'切片中 {current}/{total}'**
+  String preprocessStatusChunking(String current, String total);
+
+  /// No description provided for @preprocessStatusSummarizing.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 处理中 {current}/{total}'**
+  String preprocessStatusSummarizing(String current, String total);
+
+  /// No description provided for @preprocessCancelLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get preprocessCancelLabel;
+
+  /// No description provided for @preprocessRetryLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新预处理'**
+  String get preprocessRetryLabel;
+
+  /// No description provided for @preprocessFailedChapters.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 章预处理失败'**
+  String preprocessFailedChapters(String count);
 }
 
 class _AppLocalizationsDelegate
