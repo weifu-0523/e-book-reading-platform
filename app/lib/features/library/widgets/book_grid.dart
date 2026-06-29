@@ -4,11 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:reorderables/reorderables.dart';
 
 import '../../../data/models/book.dart';
+import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../models/book_cell_action.dart';
 import 'book_card.dart';
 
 /// 封面文件解析器：按 bookId 返回封面 File（可能为 null）。
 typedef CoverResolver = File? Function(String bookId);
+
+/// 预处理状态解析器：按 bookId 返回 [PreprocessState]（可能为 null）。
+typedef PreprocessStateResolver = PreprocessState? Function(String bookId);
 
 /// Library 网格视图。
 /// [manualSortEnabled] 为 true 时使用 [ReorderableWrap] 支持拖拽排序；
@@ -32,6 +36,10 @@ class BookGrid extends StatelessWidget {
   /// 弹出 AiGuideSheet。Book 在此层注入，使调用方无需自己再次按 id 查书。
   final void Function(BookCellAction, Book)? onAction;
 
+  /// 可选：按 bookId 返回预处理状态。父级（LibraryPage）通过 Provider 监听；
+  /// 当返回非 idle/error 的状态时，会在封面左上角叠加状态 chip。
+  final PreprocessStateResolver? preprocessStateResolver;
+
   const BookGrid({
     super.key,
     required this.books,
@@ -43,6 +51,7 @@ class BookGrid extends StatelessWidget {
     required this.manualSortEnabled,
     required this.onReorder,
     this.onAction,
+    this.preprocessStateResolver,
   });
 
   @override
@@ -94,6 +103,8 @@ class BookGrid extends StatelessWidget {
       onTap: () => onTap(b.id),
       onLongPress: () => onLongPress(b.id),
       onAction: action == null ? null : (a) => action(a, b),
+      preprocessState:
+          preprocessStateResolver == null ? null : preprocessStateResolver!(b.id),
     );
   }
 }

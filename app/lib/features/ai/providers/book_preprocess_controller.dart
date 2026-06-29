@@ -5,6 +5,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/book.dart';
 import '../../../services/ai/book_preprocessor.dart';
 
+/// Inert [BookPreprocessorLike] used as the default for
+/// [bookPreprocessControllerProvider] when no production override is wired.
+/// Emits no events and never resolves past the initial state. This keeps
+/// widget tests (which don't override the family) functional without
+/// requiring each test to supply a fake.
+class _NoOpBookPreprocessor implements BookPreprocessorLike {
+  const _NoOpBookPreprocessor();
+
+  @override
+  Stream<PreprocessEvent> start(Book book) => const Stream.empty();
+
+  @override
+  void cancel() {}
+}
+
 /// Coarse state of a book preprocessing run, surfaced to the UI.
 ///
 /// - [idle]: never started.
@@ -128,8 +143,11 @@ class BookPreprocessController extends StateNotifier<PreprocessState> {
 
 /// Per-book preprocess state. autoDispose so the controller is reclaimed
 /// when the user navigates away; family keys state by bookId.
-/// Override in ProviderScope via app_providers.dart.
+///
+/// Production wires this via [app_providers.dart]'s `providers` list. Tests
+/// that don't care about preprocessing get an inert default controller that
+/// never emits events (state stays at [PreprocessStatus.idle]).
 final bookPreprocessControllerProvider = StateNotifierProvider.autoDispose
     .family<BookPreprocessController, PreprocessState, String>((ref, bookId) {
-  throw UnimplementedError('Override in ProviderScope');
+  return BookPreprocessController(const _NoOpBookPreprocessor());
 });

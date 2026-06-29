@@ -3,7 +3,7 @@ import 'package:reorderables/reorderables.dart';
 
 import '../../../data/models/book.dart';
 import '../models/book_cell_action.dart';
-import 'book_grid.dart' show CoverResolver;
+import 'book_grid.dart' show CoverResolver, PreprocessStateResolver;
 import 'book_list_tile.dart';
 
 /// Library 列表视图。
@@ -23,6 +23,9 @@ class BookListView extends StatelessWidget {
   /// 弹出 AiGuideSheet。Book 在此层注入。
   final void Function(BookCellAction, Book)? onAction;
 
+  /// 可选：按 bookId 返回预处理状态。父级（LibraryPage）通过 Provider 监听。
+  final PreprocessStateResolver? preprocessStateResolver;
+
   const BookListView({
     super.key,
     required this.books,
@@ -34,6 +37,7 @@ class BookListView extends StatelessWidget {
     required this.manualSortEnabled,
     required this.onReorder,
     this.onAction,
+    this.preprocessStateResolver,
   });
 
   @override
@@ -48,6 +52,9 @@ class BookListView extends StatelessWidget {
               onTap: () => onTap(b.id),
               onLongPress: () => onLongPress(b.id),
               onAction: action == null ? null : (a) => action(a, b),
+              preprocessState: preprocessStateResolver == null
+                  ? null
+                  : preprocessStateResolver!(b.id),
             ))
         .toList();
 

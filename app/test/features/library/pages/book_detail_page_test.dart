@@ -3,9 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/models/book.dart';
+import 'package:zhiyue/features/ai/providers/book_preprocess_controller.dart';
 import 'package:zhiyue/features/library/pages/book_detail_page.dart';
+import 'package:zhiyue/services/ai/book_preprocessor.dart';
 
 import '../../../fakes/fake_book_repository.dart';
+
+/// Inert preprocessor used to satisfy [bookPreprocessControllerProvider] in
+/// widget tests that don't care about preprocessing behavior.
+class _NoOpPreprocessor implements BookPreprocessorLike {
+  @override
+  Stream<PreprocessEvent> start(Book book) => const Stream.empty();
+
+  @override
+  void cancel() {}
+}
 
 void main() {
   late FakeBookRepository fakeRepo;
@@ -30,6 +42,15 @@ void main() {
     container = ProviderContainer(
       overrides: [
         bookRepositoryProvider.overrideWith((ref) => fakeRepo),
+        bookPreprocessControllerProvider('b1').overrideWith(
+          (ref) => BookPreprocessController(_NoOpPreprocessor()),
+        ),
+        bookPreprocessControllerProvider('b2').overrideWith(
+          (ref) => BookPreprocessController(_NoOpPreprocessor()),
+        ),
+        bookPreprocessControllerProvider('missing').overrideWith(
+          (ref) => BookPreprocessController(_NoOpPreprocessor()),
+        ),
       ],
     );
   });

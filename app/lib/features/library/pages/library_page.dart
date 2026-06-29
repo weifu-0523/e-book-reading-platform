@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/book.dart';
+import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../services/ai/ai_guide.dart';
 import '../models/library_mode.dart';
@@ -32,6 +33,46 @@ import '../widgets/library_app_bar.dart';
 /// - 导入：[FilePicker] → [BookImportService] → snackbar 反馈
 class LibraryPage extends ConsumerStatefulWidget {
   const LibraryPage({super.key});
+
+  /// Called by the import flow after [BookImportService.importFile] completes.
+  ///
+  /// When [isNew] is true, kicks off background AI preprocessing for [bookId].
+  /// Reads the [Book] row back from the database so the preprocessor sees the
+  /// canonical record (including any fields the import service normalized).
+  /// Static + [ProviderContainer]-based so unit tests can verify the trigger
+  /// without pumping the full LibraryPage widget tree.
+  ///
+  /// No-op when:
+  /// - [isNew] is false (dedup hit — book already exists in the library).
+  /// - the row for [bookId] cannot be found (race with delete).
+  static Future<void> handleImportResult(
+    ProviderContainer container, {
+    required String bookId,
+    required bool isNew,
+  }) async {
+    if (!isNew) return;
+    final db = container.read(appDatabaseProvider);
+    final row = await (db.select(db.books)
+          ..where((t) => t.id.equals(bookId)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final book = Book(
+      id: row.id,
+      title: row.title,
+      author: row.author,
+      format: row.format == 'epub' ? BookFormat.epub : BookFormat.pdf,
+      filePath: row.filePath,
+      fileHash: row.fileHash,
+      fileSizeBytes: row.fileSizeBytes,
+      coverPath: row.coverPath,
+      addedAt: row.addedAt,
+      lastReadAt: row.lastReadAt,
+      sortOrder: row.sortOrder,
+    );
+    container
+        .read(bookPreprocessControllerProvider(bookId).notifier)
+        .start(book);
+  }
 
   @override
   ConsumerState<LibraryPage> createState() => _LibraryPageState();
@@ -110,6 +151,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       return async.maybeWhen(data: (f) => f, orElse: () => null);
     }
 
+    PreprocessState? preprocessStateResolver(String id) {
+      final s = ref.watch(bookPreprocessControllerProvider(id));
+      return s.status == PreprocessStatus.idle ? null : s;
+    }
+
     void onTap(String id) {
       if (isSelecting) {
         controller.toggleSelection(id);
@@ -138,6 +184,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         manualSortEnabled: manualSortEnabled,
         onReorder: controller.setManualSortOrder,
         onAction: _handleBookAction,
+        preprocessStateResolver: preprocessStateResolver,
       );
     }
     return BookListView(
@@ -150,6 +197,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       manualSortEnabled: manualSortEnabled,
       onReorder: controller.setManualSortOrder,
       onAction: _handleBookAction,
+      preprocessStateResolver: preprocessStateResolver,
     );
   }
 
@@ -193,6 +241,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     if (!mounted) return;
     try {
       final importResult = await importService.importFile(File(path));
+      if (!mounted) return;
+      // Kick off background AI preprocessing for new books. Existing
+      // duplicates are skipped so we don't redo completed work.
+      await LibraryPage.handleImportResult(
+        ProviderScope.containerOf(context),
+        bookId: importResult.book.id,
+        isNew: importResult.isNew,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

@@ -3,14 +3,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/book.dart';
+import '../../ai/providers/book_preprocess_controller.dart';
 import '../models/book_cell_action.dart';
 import 'book_cell_action_menu.dart';
 import 'book_cover.dart';
+import 'preprocess_chip.dart';
 
 /// 书架列表视图的列表项。
 /// 由 [BookListView]（T17）渲染；trailing 在选择模式下显示 Checkbox，
 /// 否则按以下优先级显示：[onAction]（更多操作菜单）→ [onReorderHandle]
 /// （手动排序的 drag handle）→ null。
+///
+/// 当 [preprocessState] 处于 chunking/summarizing/error 时，在 leading 缩略图
+/// 左上角叠加状态 chip。
 class BookListTile extends StatelessWidget {
   final Book book;
   final File? coverFile;
@@ -20,6 +25,7 @@ class BookListTile extends StatelessWidget {
   final VoidCallback onLongPress;
   final VoidCallback? onReorderHandle;
   final ValueChanged<BookCellAction>? onAction;
+  final PreprocessState? preprocessState;
 
   const BookListTile({
     super.key,
@@ -31,10 +37,12 @@ class BookListTile extends StatelessWidget {
     required this.onLongPress,
     this.onReorderHandle,
     this.onAction,
+    this.preprocessState,
   });
 
   @override
   Widget build(BuildContext context) {
+    final preprocess = preprocessState;
     return ListTile(
       leading: SizedBox(
         width: 48,
@@ -50,6 +58,21 @@ class BookListTile extends StatelessWidget {
                 right: 0,
                 bottom: 0,
                 child: _PdfChip(),
+              ),
+            if (preprocess != null &&
+                (preprocess.status == PreprocessStatus.chunking ||
+                    preprocess.status == PreprocessStatus.summarizing))
+              const Positioned(
+                left: 0,
+                top: 0,
+                child: _ListChip(label: 'AI'),
+              )
+            else if (preprocess != null &&
+                preprocess.status == PreprocessStatus.error)
+              const Positioned(
+                left: 0,
+                top: 0,
+                child: PreprocessFailedChip(),
               ),
           ],
         ),
@@ -83,6 +106,27 @@ class BookListTile extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [handle, menu],
+    );
+  }
+}
+
+/// Compact chip variant for the small (48-px wide) list-tile cover.
+class _ListChip extends StatelessWidget {
+  const _ListChip({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(color: Colors.white, fontSize: 9),
+      ),
     );
   }
 }

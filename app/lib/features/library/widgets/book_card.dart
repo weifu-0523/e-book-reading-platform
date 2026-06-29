@@ -3,15 +3,20 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/book.dart';
+import '../../ai/providers/book_preprocess_controller.dart';
 import '../models/book_cell_action.dart';
 import 'book_cell_action_menu.dart';
 import 'book_cover.dart';
+import 'preprocess_chip.dart';
 
 /// 书架网格视图的书卡。
 /// 由 [BookGrid]（T17）渲染；通过 [onTap]/[onLongPress] 与父级交互。
 ///
 /// 当 [onAction] 不为 null 且非选择模式时，右上角渲染"更多操作"菜单
 /// （[BookCellActionMenu]），用于 阅读/详情/笔记/删除 等快捷入口。
+///
+/// 当 [preprocessState] 非空且处于 chunking/summarizing/error 阶段时，
+/// 在封面左上角叠加预处理状态 chip（[PreprocessChip] / [PreprocessFailedChip]）。
 class BookCard extends StatelessWidget {
   final Book book;
   final File? coverFile;
@@ -20,6 +25,7 @@ class BookCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final ValueChanged<BookCellAction>? onAction;
+  final PreprocessState? preprocessState;
 
   const BookCard({
     super.key,
@@ -30,10 +36,12 @@ class BookCard extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     this.onAction,
+    this.preprocessState,
   });
 
   @override
   Widget build(BuildContext context) {
+    final preprocess = preprocessState;
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -55,6 +63,22 @@ class BookCard extends StatelessWidget {
                         right: 4,
                         bottom: 4,
                         child: _PdfChip(),
+                      ),
+                    if (preprocess != null &&
+                        (preprocess.status == PreprocessStatus.chunking ||
+                            preprocess.status ==
+                                PreprocessStatus.summarizing))
+                      Positioned(
+                        left: 4,
+                        top: 4,
+                        child: PreprocessChip(state: preprocess),
+                      )
+                    else if (preprocess != null &&
+                        preprocess.status == PreprocessStatus.error)
+                      const Positioned(
+                        left: 4,
+                        top: 4,
+                        child: PreprocessFailedChip(),
                       ),
                   ],
                 ),

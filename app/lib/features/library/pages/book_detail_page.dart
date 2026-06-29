@@ -5,9 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
+import '../../../data/local/database.dart' hide Book;
 import '../../../data/models/book.dart';
+import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../services/ai/ai_guide.dart';
+import '../../../services/ai/book_preprocessor.dart';
 
 /// 书籍详情页。
 /// 由路由 `/book/:id/details` 进入。展示元数据 + 删除入口。
@@ -55,6 +58,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final preprocess = ref.watch(bookPreprocessControllerProvider(widget.bookId));
     return Scaffold(
       appBar: AppBar(
         title: const Text('书籍详情'),
@@ -66,10 +70,17 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
           ),
         ],
       ),
-      body: _buildBody(context),
+      body: _buildBody(context, preprocess),
       floatingActionButton: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          FloatingActionButton.extended(
+            heroTag: 'reprocess',
+            onPressed: _book == null ? null : _reprocess,
+            icon: const Icon(Icons.refresh),
+            label: const Text('重新预处理'),
+          ),
+          const SizedBox(width: 12),
           FloatingActionButton.extended(
             heroTag: 'ai_guide',
             onPressed: _openAiGuide,
@@ -89,6 +100,16 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     );
   }
 
+  /// Restart preprocessing from scratch. No-op if the book hasn't been
+  /// loaded yet (the FAB is disabled in that case).
+  void _reprocess() {
+    final book = _book;
+    if (book == null) return;
+    ref
+        .read(bookPreprocessControllerProvider(widget.bookId).notifier)
+        .start(book);
+  }
+
   Future<void> _openAiGuide() async {
     final b = _book;
     if (b == null || !mounted) return;
@@ -101,7 +122,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody(BuildContext context, PreprocessState preprocess) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -126,6 +147,11 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         Text('添加时间：${book.addedAt.toLocal()}'),
         if (book.lastReadAt != null)
           Text('最近阅读：${book.lastReadAt!.toLocal()}'),
+        const Divider(),
+        _PreprocessPanel(
+          state: preprocess,
+          bookId: widget.bookId,
+        ),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.article_outlined),
@@ -181,5 +207,149 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         }
       }
     }
+  }
+}
+
+/// Panel that surfaces the [PreprocessState] for a book: a progress bar while
+/// chunking/summarizing, an auth-failed banner, a partial-failure banner with
+/// retry, and a done status. Cancel/retry are wired to the controller via
+/// [bookPreprocessControllerProvider].
+class _PreprocessPanel extends ConsumerWidget {
+  const _PreprocessPanel({required this.state, required this.bookId});
+
+  final PreprocessState state;
+  final String bookId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    switch (state.status) {
+      case PreprocessStatus.idle:
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text('AI 预处理：未开始'),
+        );
+      case PreprocessStatus.chunking:
+      case PreprocessStatus.summarizing:
+        final total = state.totalChapters > 0 ? state.totalChapters : 1;
+        final current = state.currentChapter.clamp(0, total);
+        final phase = state.status == PreprocessStatus.chunking
+            ? '切分章节中'
+            : '生成摘要中';
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('AI 预处理：$phase ($current/$total)'),
+              const SizedBox(height: 4),
+              LinearProgressIndicator(
+                value: current / total,
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () => ref
+                      .read(bookPreprocessControllerProvider(bookId).notifier)
+                      .cancel(),
+                  icon: const Icon(Icons.stop_circle_outlined),
+                  label: const Text('取消'),
+                ),
+              ),
+            ],
+          ),
+        );
+      case PreprocessStatus.error:
+        if (state.error == PreprocessError.authFailed) {
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('API key 无效')),
+                TextButton(
+                  onPressed: () => context.push('/settings/ai'),
+                  child: const Text('去设置'),
+                ),
+              ],
+            ),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            'AI 预处理：失败（${state.error == null ? "未知" : state.error!.name}）',
+            style: const TextStyle(color: Colors.red),
+          ),
+        );
+      case PreprocessStatus.done:
+        if (state.failedChapters.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('AI 预处理：完成'),
+          );
+        }
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.amber.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${state.failedChapters.length} 章预处理失败',
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  final container = ProviderScope.containerOf(context);
+                  final db = container.read(appDatabaseProvider);
+                  _retryWithBookLookup(container, db);
+                },
+                child: const Text('重试'),
+              ),
+            ],
+          ),
+        );
+    }
+  }
+
+  /// Re-reads the [Book] row from the database and kicks off a fresh
+  /// preprocessing run. Extracted as a helper so the retry button can re-fire
+  /// without needing parent state plumbing.
+  Future<void> _retryWithBookLookup(
+    ProviderContainer container,
+    AppDatabase db,
+  ) async {
+    final row = await (db.select(db.books)
+          ..where((t) => t.id.equals(bookId)))
+        .getSingleOrNull();
+    if (row == null) return;
+    final book = Book(
+      id: row.id,
+      title: row.title,
+      author: row.author,
+      format: row.format == 'epub' ? BookFormat.epub : BookFormat.pdf,
+      filePath: row.filePath,
+      fileHash: row.fileHash,
+      fileSizeBytes: row.fileSizeBytes,
+      coverPath: row.coverPath,
+      addedAt: row.addedAt,
+      lastReadAt: row.lastReadAt,
+      sortOrder: row.sortOrder,
+    );
+    container
+        .read(bookPreprocessControllerProvider(bookId).notifier)
+        .start(book);
   }
 }

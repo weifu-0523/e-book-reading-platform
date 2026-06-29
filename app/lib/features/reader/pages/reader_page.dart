@@ -11,6 +11,7 @@ import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/annotation.dart';
+import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/settings/providers/font_library_provider.dart';
 import '../controllers/reader_ui_controller.dart';
@@ -549,9 +550,12 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     if (toc == null) {
       return const Drawer(child: Center(child: Text('目录加载中…')));
     }
+    final preprocess = ref.watch(bookPreprocessControllerProvider(widget.bookId));
     return Drawer(
       child: TocDrawer(
         toc: toc,
+        preprocessState: preprocess,
+        chapterIndexResolver: defaultTocChapterIndex,
         onSelect: (entry) async {
           await engine.gotoTocEntry(entry);
           // 跳转后关闭抽屉。
