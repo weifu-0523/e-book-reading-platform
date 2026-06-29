@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/daos/sync_conflicts_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
 
-import '../../helpers/drift_test_helper.dart';
+import '../../../helpers/drift_test_helper.dart';
 
 void main() {
   late AppDatabase db;

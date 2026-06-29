@@ -35,7 +35,7 @@ class SyncConflictsDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Most recent N conflicts, newest first.
-  Future<List<SyncConflictsData>> recent(int limit) {
+  Future<List<SyncConflict>> recent(int limit) {
     return (select(syncConflicts)
           ..orderBy([(t) => OrderingTerm.desc(t.detectedAt)])
           ..limit(limit))

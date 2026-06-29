@@ -4494,6 +4494,582 @@ class AiSummariesCompanion extends UpdateCompanion<AiSummary> {
   }
 }
 
+class $SyncConflictsTable extends SyncConflicts
+    with TableInfo<$SyncConflictsTable, SyncConflict> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncConflictsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _recordIdMeta = const VerificationMeta(
+    'recordId',
+  );
+  @override
+  late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
+    'record_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _recordTypeMeta = const VerificationMeta(
+    'recordType',
+  );
+  @override
+  late final GeneratedColumn<String> recordType = GeneratedColumn<String>(
+    'record_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localMtimeMeta = const VerificationMeta(
+    'localMtime',
+  );
+  @override
+  late final GeneratedColumn<DateTime> localMtime = GeneratedColumn<DateTime>(
+    'local_mtime',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _remoteMtimeMeta = const VerificationMeta(
+    'remoteMtime',
+  );
+  @override
+  late final GeneratedColumn<DateTime> remoteMtime = GeneratedColumn<DateTime>(
+    'remote_mtime',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _winnerDeviceMeta = const VerificationMeta(
+    'winnerDevice',
+  );
+  @override
+  late final GeneratedColumn<String> winnerDevice = GeneratedColumn<String>(
+    'winner_device',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _loserDeviceMeta = const VerificationMeta(
+    'loserDevice',
+  );
+  @override
+  late final GeneratedColumn<String> loserDevice = GeneratedColumn<String>(
+    'loser_device',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _detectedAtMeta = const VerificationMeta(
+    'detectedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> detectedAt = GeneratedColumn<DateTime>(
+    'detected_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadPreviewMeta = const VerificationMeta(
+    'payloadPreview',
+  );
+  @override
+  late final GeneratedColumn<String> payloadPreview = GeneratedColumn<String>(
+    'payload_preview',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    recordId,
+    recordType,
+    localMtime,
+    remoteMtime,
+    winnerDevice,
+    loserDevice,
+    detectedAt,
+    payloadPreview,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_conflicts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncConflict> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('record_id')) {
+      context.handle(
+        _recordIdMeta,
+        recordId.isAcceptableOrUnknown(data['record_id']!, _recordIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordIdMeta);
+    }
+    if (data.containsKey('record_type')) {
+      context.handle(
+        _recordTypeMeta,
+        recordType.isAcceptableOrUnknown(data['record_type']!, _recordTypeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordTypeMeta);
+    }
+    if (data.containsKey('local_mtime')) {
+      context.handle(
+        _localMtimeMeta,
+        localMtime.isAcceptableOrUnknown(data['local_mtime']!, _localMtimeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localMtimeMeta);
+    }
+    if (data.containsKey('remote_mtime')) {
+      context.handle(
+        _remoteMtimeMeta,
+        remoteMtime.isAcceptableOrUnknown(
+          data['remote_mtime']!,
+          _remoteMtimeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_remoteMtimeMeta);
+    }
+    if (data.containsKey('winner_device')) {
+      context.handle(
+        _winnerDeviceMeta,
+        winnerDevice.isAcceptableOrUnknown(
+          data['winner_device']!,
+          _winnerDeviceMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_winnerDeviceMeta);
+    }
+    if (data.containsKey('loser_device')) {
+      context.handle(
+        _loserDeviceMeta,
+        loserDevice.isAcceptableOrUnknown(
+          data['loser_device']!,
+          _loserDeviceMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_loserDeviceMeta);
+    }
+    if (data.containsKey('detected_at')) {
+      context.handle(
+        _detectedAtMeta,
+        detectedAt.isAcceptableOrUnknown(data['detected_at']!, _detectedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_detectedAtMeta);
+    }
+    if (data.containsKey('payload_preview')) {
+      context.handle(
+        _payloadPreviewMeta,
+        payloadPreview.isAcceptableOrUnknown(
+          data['payload_preview']!,
+          _payloadPreviewMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadPreviewMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncConflict map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncConflict(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      recordId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_id'],
+      )!,
+      recordType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_type'],
+      )!,
+      localMtime: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}local_mtime'],
+      )!,
+      remoteMtime: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}remote_mtime'],
+      )!,
+      winnerDevice: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}winner_device'],
+      )!,
+      loserDevice: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}loser_device'],
+      )!,
+      detectedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}detected_at'],
+      )!,
+      payloadPreview: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_preview'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncConflictsTable createAlias(String alias) {
+    return $SyncConflictsTable(attachedDatabase, alias);
+  }
+}
+
+class SyncConflict extends DataClass implements Insertable<SyncConflict> {
+  final int id;
+  final String recordId;
+  final String recordType;
+  final DateTime localMtime;
+  final DateTime remoteMtime;
+  final String winnerDevice;
+  final String loserDevice;
+  final DateTime detectedAt;
+  final String payloadPreview;
+  const SyncConflict({
+    required this.id,
+    required this.recordId,
+    required this.recordType,
+    required this.localMtime,
+    required this.remoteMtime,
+    required this.winnerDevice,
+    required this.loserDevice,
+    required this.detectedAt,
+    required this.payloadPreview,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['record_id'] = Variable<String>(recordId);
+    map['record_type'] = Variable<String>(recordType);
+    map['local_mtime'] = Variable<DateTime>(localMtime);
+    map['remote_mtime'] = Variable<DateTime>(remoteMtime);
+    map['winner_device'] = Variable<String>(winnerDevice);
+    map['loser_device'] = Variable<String>(loserDevice);
+    map['detected_at'] = Variable<DateTime>(detectedAt);
+    map['payload_preview'] = Variable<String>(payloadPreview);
+    return map;
+  }
+
+  SyncConflictsCompanion toCompanion(bool nullToAbsent) {
+    return SyncConflictsCompanion(
+      id: Value(id),
+      recordId: Value(recordId),
+      recordType: Value(recordType),
+      localMtime: Value(localMtime),
+      remoteMtime: Value(remoteMtime),
+      winnerDevice: Value(winnerDevice),
+      loserDevice: Value(loserDevice),
+      detectedAt: Value(detectedAt),
+      payloadPreview: Value(payloadPreview),
+    );
+  }
+
+  factory SyncConflict.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncConflict(
+      id: serializer.fromJson<int>(json['id']),
+      recordId: serializer.fromJson<String>(json['recordId']),
+      recordType: serializer.fromJson<String>(json['recordType']),
+      localMtime: serializer.fromJson<DateTime>(json['localMtime']),
+      remoteMtime: serializer.fromJson<DateTime>(json['remoteMtime']),
+      winnerDevice: serializer.fromJson<String>(json['winnerDevice']),
+      loserDevice: serializer.fromJson<String>(json['loserDevice']),
+      detectedAt: serializer.fromJson<DateTime>(json['detectedAt']),
+      payloadPreview: serializer.fromJson<String>(json['payloadPreview']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'recordId': serializer.toJson<String>(recordId),
+      'recordType': serializer.toJson<String>(recordType),
+      'localMtime': serializer.toJson<DateTime>(localMtime),
+      'remoteMtime': serializer.toJson<DateTime>(remoteMtime),
+      'winnerDevice': serializer.toJson<String>(winnerDevice),
+      'loserDevice': serializer.toJson<String>(loserDevice),
+      'detectedAt': serializer.toJson<DateTime>(detectedAt),
+      'payloadPreview': serializer.toJson<String>(payloadPreview),
+    };
+  }
+
+  SyncConflict copyWith({
+    int? id,
+    String? recordId,
+    String? recordType,
+    DateTime? localMtime,
+    DateTime? remoteMtime,
+    String? winnerDevice,
+    String? loserDevice,
+    DateTime? detectedAt,
+    String? payloadPreview,
+  }) => SyncConflict(
+    id: id ?? this.id,
+    recordId: recordId ?? this.recordId,
+    recordType: recordType ?? this.recordType,
+    localMtime: localMtime ?? this.localMtime,
+    remoteMtime: remoteMtime ?? this.remoteMtime,
+    winnerDevice: winnerDevice ?? this.winnerDevice,
+    loserDevice: loserDevice ?? this.loserDevice,
+    detectedAt: detectedAt ?? this.detectedAt,
+    payloadPreview: payloadPreview ?? this.payloadPreview,
+  );
+  SyncConflict copyWithCompanion(SyncConflictsCompanion data) {
+    return SyncConflict(
+      id: data.id.present ? data.id.value : this.id,
+      recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      recordType: data.recordType.present
+          ? data.recordType.value
+          : this.recordType,
+      localMtime: data.localMtime.present
+          ? data.localMtime.value
+          : this.localMtime,
+      remoteMtime: data.remoteMtime.present
+          ? data.remoteMtime.value
+          : this.remoteMtime,
+      winnerDevice: data.winnerDevice.present
+          ? data.winnerDevice.value
+          : this.winnerDevice,
+      loserDevice: data.loserDevice.present
+          ? data.loserDevice.value
+          : this.loserDevice,
+      detectedAt: data.detectedAt.present
+          ? data.detectedAt.value
+          : this.detectedAt,
+      payloadPreview: data.payloadPreview.present
+          ? data.payloadPreview.value
+          : this.payloadPreview,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncConflict(')
+          ..write('id: $id, ')
+          ..write('recordId: $recordId, ')
+          ..write('recordType: $recordType, ')
+          ..write('localMtime: $localMtime, ')
+          ..write('remoteMtime: $remoteMtime, ')
+          ..write('winnerDevice: $winnerDevice, ')
+          ..write('loserDevice: $loserDevice, ')
+          ..write('detectedAt: $detectedAt, ')
+          ..write('payloadPreview: $payloadPreview')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    recordId,
+    recordType,
+    localMtime,
+    remoteMtime,
+    winnerDevice,
+    loserDevice,
+    detectedAt,
+    payloadPreview,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncConflict &&
+          other.id == this.id &&
+          other.recordId == this.recordId &&
+          other.recordType == this.recordType &&
+          other.localMtime == this.localMtime &&
+          other.remoteMtime == this.remoteMtime &&
+          other.winnerDevice == this.winnerDevice &&
+          other.loserDevice == this.loserDevice &&
+          other.detectedAt == this.detectedAt &&
+          other.payloadPreview == this.payloadPreview);
+}
+
+class SyncConflictsCompanion extends UpdateCompanion<SyncConflict> {
+  final Value<int> id;
+  final Value<String> recordId;
+  final Value<String> recordType;
+  final Value<DateTime> localMtime;
+  final Value<DateTime> remoteMtime;
+  final Value<String> winnerDevice;
+  final Value<String> loserDevice;
+  final Value<DateTime> detectedAt;
+  final Value<String> payloadPreview;
+  const SyncConflictsCompanion({
+    this.id = const Value.absent(),
+    this.recordId = const Value.absent(),
+    this.recordType = const Value.absent(),
+    this.localMtime = const Value.absent(),
+    this.remoteMtime = const Value.absent(),
+    this.winnerDevice = const Value.absent(),
+    this.loserDevice = const Value.absent(),
+    this.detectedAt = const Value.absent(),
+    this.payloadPreview = const Value.absent(),
+  });
+  SyncConflictsCompanion.insert({
+    this.id = const Value.absent(),
+    required String recordId,
+    required String recordType,
+    required DateTime localMtime,
+    required DateTime remoteMtime,
+    required String winnerDevice,
+    required String loserDevice,
+    required DateTime detectedAt,
+    required String payloadPreview,
+  }) : recordId = Value(recordId),
+       recordType = Value(recordType),
+       localMtime = Value(localMtime),
+       remoteMtime = Value(remoteMtime),
+       winnerDevice = Value(winnerDevice),
+       loserDevice = Value(loserDevice),
+       detectedAt = Value(detectedAt),
+       payloadPreview = Value(payloadPreview);
+  static Insertable<SyncConflict> custom({
+    Expression<int>? id,
+    Expression<String>? recordId,
+    Expression<String>? recordType,
+    Expression<DateTime>? localMtime,
+    Expression<DateTime>? remoteMtime,
+    Expression<String>? winnerDevice,
+    Expression<String>? loserDevice,
+    Expression<DateTime>? detectedAt,
+    Expression<String>? payloadPreview,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (recordId != null) 'record_id': recordId,
+      if (recordType != null) 'record_type': recordType,
+      if (localMtime != null) 'local_mtime': localMtime,
+      if (remoteMtime != null) 'remote_mtime': remoteMtime,
+      if (winnerDevice != null) 'winner_device': winnerDevice,
+      if (loserDevice != null) 'loser_device': loserDevice,
+      if (detectedAt != null) 'detected_at': detectedAt,
+      if (payloadPreview != null) 'payload_preview': payloadPreview,
+    });
+  }
+
+  SyncConflictsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? recordId,
+    Value<String>? recordType,
+    Value<DateTime>? localMtime,
+    Value<DateTime>? remoteMtime,
+    Value<String>? winnerDevice,
+    Value<String>? loserDevice,
+    Value<DateTime>? detectedAt,
+    Value<String>? payloadPreview,
+  }) {
+    return SyncConflictsCompanion(
+      id: id ?? this.id,
+      recordId: recordId ?? this.recordId,
+      recordType: recordType ?? this.recordType,
+      localMtime: localMtime ?? this.localMtime,
+      remoteMtime: remoteMtime ?? this.remoteMtime,
+      winnerDevice: winnerDevice ?? this.winnerDevice,
+      loserDevice: loserDevice ?? this.loserDevice,
+      detectedAt: detectedAt ?? this.detectedAt,
+      payloadPreview: payloadPreview ?? this.payloadPreview,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (recordId.present) {
+      map['record_id'] = Variable<String>(recordId.value);
+    }
+    if (recordType.present) {
+      map['record_type'] = Variable<String>(recordType.value);
+    }
+    if (localMtime.present) {
+      map['local_mtime'] = Variable<DateTime>(localMtime.value);
+    }
+    if (remoteMtime.present) {
+      map['remote_mtime'] = Variable<DateTime>(remoteMtime.value);
+    }
+    if (winnerDevice.present) {
+      map['winner_device'] = Variable<String>(winnerDevice.value);
+    }
+    if (loserDevice.present) {
+      map['loser_device'] = Variable<String>(loserDevice.value);
+    }
+    if (detectedAt.present) {
+      map['detected_at'] = Variable<DateTime>(detectedAt.value);
+    }
+    if (payloadPreview.present) {
+      map['payload_preview'] = Variable<String>(payloadPreview.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncConflictsCompanion(')
+          ..write('id: $id, ')
+          ..write('recordId: $recordId, ')
+          ..write('recordType: $recordType, ')
+          ..write('localMtime: $localMtime, ')
+          ..write('remoteMtime: $remoteMtime, ')
+          ..write('winnerDevice: $winnerDevice, ')
+          ..write('loserDevice: $loserDevice, ')
+          ..write('detectedAt: $detectedAt, ')
+          ..write('payloadPreview: $payloadPreview')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4511,6 +5087,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $UserFontsTable userFonts = $UserFontsTable(this);
   late final $SyncOutboxTable syncOutbox = $SyncOutboxTable(this);
   late final $AiSummariesTable aiSummaries = $AiSummariesTable(this);
+  late final $SyncConflictsTable syncConflicts = $SyncConflictsTable(this);
   late final BooksDao booksDao = BooksDao(this as AppDatabase);
   late final BookTagsDao bookTagsDao = BookTagsDao(this as AppDatabase);
   late final BookNotesDao bookNotesDao = BookNotesDao(this as AppDatabase);
@@ -4525,6 +5102,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final UserFontsDao userFontsDao = UserFontsDao(this as AppDatabase);
   late final SyncOutboxDao syncOutboxDao = SyncOutboxDao(this as AppDatabase);
   late final AiSummariesDao aiSummariesDao = AiSummariesDao(
+    this as AppDatabase,
+  );
+  late final SyncConflictsDao syncConflictsDao = SyncConflictsDao(
     this as AppDatabase,
   );
   @override
@@ -4543,6 +5123,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     userFonts,
     syncOutbox,
     aiSummaries,
+    syncConflicts,
   ];
 }
 
@@ -8061,6 +8642,290 @@ typedef $$AiSummariesTableProcessedTableManager =
       AiSummary,
       PrefetchHooks Function({bool bookId})
     >;
+typedef $$SyncConflictsTableCreateCompanionBuilder =
+    SyncConflictsCompanion Function({
+      Value<int> id,
+      required String recordId,
+      required String recordType,
+      required DateTime localMtime,
+      required DateTime remoteMtime,
+      required String winnerDevice,
+      required String loserDevice,
+      required DateTime detectedAt,
+      required String payloadPreview,
+    });
+typedef $$SyncConflictsTableUpdateCompanionBuilder =
+    SyncConflictsCompanion Function({
+      Value<int> id,
+      Value<String> recordId,
+      Value<String> recordType,
+      Value<DateTime> localMtime,
+      Value<DateTime> remoteMtime,
+      Value<String> winnerDevice,
+      Value<String> loserDevice,
+      Value<DateTime> detectedAt,
+      Value<String> payloadPreview,
+    });
+
+class $$SyncConflictsTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncConflictsTable> {
+  $$SyncConflictsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get localMtime => $composableBuilder(
+    column: $table.localMtime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get remoteMtime => $composableBuilder(
+    column: $table.remoteMtime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get winnerDevice => $composableBuilder(
+    column: $table.winnerDevice,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get loserDevice => $composableBuilder(
+    column: $table.loserDevice,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get detectedAt => $composableBuilder(
+    column: $table.detectedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadPreview => $composableBuilder(
+    column: $table.payloadPreview,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncConflictsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncConflictsTable> {
+  $$SyncConflictsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get localMtime => $composableBuilder(
+    column: $table.localMtime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get remoteMtime => $composableBuilder(
+    column: $table.remoteMtime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get winnerDevice => $composableBuilder(
+    column: $table.winnerDevice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get loserDevice => $composableBuilder(
+    column: $table.loserDevice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get detectedAt => $composableBuilder(
+    column: $table.detectedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadPreview => $composableBuilder(
+    column: $table.payloadPreview,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncConflictsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncConflictsTable> {
+  $$SyncConflictsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get recordId =>
+      $composableBuilder(column: $table.recordId, builder: (column) => column);
+
+  GeneratedColumn<String> get recordType => $composableBuilder(
+    column: $table.recordType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get localMtime => $composableBuilder(
+    column: $table.localMtime,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get remoteMtime => $composableBuilder(
+    column: $table.remoteMtime,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get winnerDevice => $composableBuilder(
+    column: $table.winnerDevice,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get loserDevice => $composableBuilder(
+    column: $table.loserDevice,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get detectedAt => $composableBuilder(
+    column: $table.detectedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get payloadPreview => $composableBuilder(
+    column: $table.payloadPreview,
+    builder: (column) => column,
+  );
+}
+
+class $$SyncConflictsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncConflictsTable,
+          SyncConflict,
+          $$SyncConflictsTableFilterComposer,
+          $$SyncConflictsTableOrderingComposer,
+          $$SyncConflictsTableAnnotationComposer,
+          $$SyncConflictsTableCreateCompanionBuilder,
+          $$SyncConflictsTableUpdateCompanionBuilder,
+          (
+            SyncConflict,
+            BaseReferences<_$AppDatabase, $SyncConflictsTable, SyncConflict>,
+          ),
+          SyncConflict,
+          PrefetchHooks Function()
+        > {
+  $$SyncConflictsTableTableManager(_$AppDatabase db, $SyncConflictsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncConflictsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncConflictsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncConflictsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> recordId = const Value.absent(),
+                Value<String> recordType = const Value.absent(),
+                Value<DateTime> localMtime = const Value.absent(),
+                Value<DateTime> remoteMtime = const Value.absent(),
+                Value<String> winnerDevice = const Value.absent(),
+                Value<String> loserDevice = const Value.absent(),
+                Value<DateTime> detectedAt = const Value.absent(),
+                Value<String> payloadPreview = const Value.absent(),
+              }) => SyncConflictsCompanion(
+                id: id,
+                recordId: recordId,
+                recordType: recordType,
+                localMtime: localMtime,
+                remoteMtime: remoteMtime,
+                winnerDevice: winnerDevice,
+                loserDevice: loserDevice,
+                detectedAt: detectedAt,
+                payloadPreview: payloadPreview,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String recordId,
+                required String recordType,
+                required DateTime localMtime,
+                required DateTime remoteMtime,
+                required String winnerDevice,
+                required String loserDevice,
+                required DateTime detectedAt,
+                required String payloadPreview,
+              }) => SyncConflictsCompanion.insert(
+                id: id,
+                recordId: recordId,
+                recordType: recordType,
+                localMtime: localMtime,
+                remoteMtime: remoteMtime,
+                winnerDevice: winnerDevice,
+                loserDevice: loserDevice,
+                detectedAt: detectedAt,
+                payloadPreview: payloadPreview,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncConflictsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncConflictsTable,
+      SyncConflict,
+      $$SyncConflictsTableFilterComposer,
+      $$SyncConflictsTableOrderingComposer,
+      $$SyncConflictsTableAnnotationComposer,
+      $$SyncConflictsTableCreateCompanionBuilder,
+      $$SyncConflictsTableUpdateCompanionBuilder,
+      (
+        SyncConflict,
+        BaseReferences<_$AppDatabase, $SyncConflictsTable, SyncConflict>,
+      ),
+      SyncConflict,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8090,4 +8955,6 @@ class $AppDatabaseManager {
       $$SyncOutboxTableTableManager(_db, _db.syncOutbox);
   $$AiSummariesTableTableManager get aiSummaries =>
       $$AiSummariesTableTableManager(_db, _db.aiSummaries);
+  $$SyncConflictsTableTableManager get syncConflicts =>
+      $$SyncConflictsTableTableManager(_db, _db.syncConflicts);
 }

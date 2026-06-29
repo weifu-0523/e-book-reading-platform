@@ -9,6 +9,7 @@ import 'daos/book_tags_dao.dart';
 import 'daos/books_dao.dart';
 import 'daos/reading_progress_dao.dart';
 import 'daos/settings_dao.dart';
+import 'daos/sync_conflicts_dao.dart';
 import 'daos/sync_outbox_dao.dart';
 import 'daos/typography_dao.dart';
 import 'daos/user_fonts_dao.dart';
@@ -20,6 +21,7 @@ import 'tables/book_typography_overrides.dart';
 import 'tables/books.dart';
 import 'tables/reading_progress.dart';
 import 'tables/settings.dart';
+import 'tables/sync_conflicts.dart';
 import 'tables/sync_outbox.dart';
 import 'tables/typography_profiles.dart';
 import 'tables/user_fonts.dart';
@@ -39,6 +41,7 @@ part 'database.g.dart';
     UserFonts,
     SyncOutbox,
     AiSummaries,
+    SyncConflicts,
   ],
   daos: [
     BooksDao,
@@ -51,6 +54,7 @@ part 'database.g.dart';
     UserFontsDao,
     SyncOutboxDao,
     AiSummariesDao,
+    SyncConflictsDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -59,7 +63,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration {
@@ -84,6 +88,11 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
           'CREATE INDEX IF NOT EXISTS idx_ai_summaries_lookup '
           'ON ai_summaries(book_id, mode, source_hash, prompt_version)',
+        );
+        // schema v8 起带 sync_conflicts 索引（按 detected_at DESC 滚动查询）
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_sync_conflicts_detected_at '
+          'ON sync_conflicts(detected_at DESC)',
         );
       },
       onUpgrade: (m, from, to) async {
@@ -128,6 +137,14 @@ class AppDatabase extends _$AppDatabase {
           await m.database.customStatement(
             'CREATE INDEX IF NOT EXISTS idx_ai_summaries_lookup '
             'ON ai_summaries(book_id, mode, source_hash, prompt_version)',
+          );
+        }
+        if (from < 8) {
+          // schema v8：sync conflicts log
+          await m.createTable(syncConflicts);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_sync_conflicts_detected_at '
+            'ON sync_conflicts(detected_at DESC)',
           );
         }
       },
