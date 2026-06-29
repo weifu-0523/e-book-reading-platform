@@ -251,4 +251,48 @@ void main() {
     await sub.asFuture<void>();
     await sub.cancel();
   });
+
+  test(
+      'PreprocessDoneEvent.failedChapters lists chapters with transient errors',
+      () async {
+    // Stub: chapters 1 and 3 return a transient serverError; others succeed.
+    when(() => guide.run(
+          book: any(named: 'book'),
+          mode: any(named: 'mode'),
+          chapterIndex: any(named: 'chapterIndex'),
+          selection: any(named: 'selection'),
+          chapterTitle: any(named: 'chapterTitle'),
+        )).thenAnswer((inv) {
+      final ci = inv.namedArguments[#chapterIndex] as int?;
+      if (ci == 1 || ci == 3) {
+        return Stream.fromIterable([AiErrorEvent(AiGuideError.serverError)]);
+      }
+      return Stream.fromIterable(
+          [AiCompleteEvent('summary', fromCache: false)]);
+    });
+
+    // Provider with 5 chapters of text.
+    final provider5 = _FakeChapterProvider(
+      {for (var i = 0; i < 5; i++) i: 'chapter $i'},
+      {},
+    );
+
+    final preprocessor = BookPreprocessor(
+      passagesDao: db.bookPassagesDao,
+      chapterTextProviderFor: (_) => provider5,
+      aiGuide: guide,
+      apiKeys: keys,
+      chapterCountFor: (_) async => 5,
+      throttleDelay: Duration.zero,
+    );
+
+    final events = await preprocessor.start(_book()).toList();
+    final done = events.whereType<PreprocessDoneEvent>().single;
+    expect(done.failedChapters, [1, 3]);
+
+    // Per-chapter failed events fire for each transient failure.
+    final chapterFailed =
+        events.whereType<PreprocessChapterFailedEvent>().toList();
+    expect(chapterFailed.map((e) => e.chapterIndex).toList(), [1, 3]);
+  });
 }

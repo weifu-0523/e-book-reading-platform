@@ -122,9 +122,9 @@ class BookPreprocessor implements BookPreprocessorLike {
         await _close();
         return;
       }
-      await _phase2Summarize(book, total);
+      final failed = await _phase2Summarize(book, total);
       if (!_cancelled && !_controller!.isClosed) {
-        _controller!.add(PreprocessDoneEvent(const []));
+        _controller!.add(PreprocessDoneEvent(failed));
       }
     } finally {
       _running = false;
@@ -155,14 +155,15 @@ class BookPreprocessor implements BookPreprocessorLike {
     }
   }
 
-  Future<void> _phase2Summarize(Book book, int total) async {
+  Future<List<int>> _phase2Summarize(Book book, int total) async {
     final creds = await apiKeys.load();
-    if (creds == null) return;
+    if (creds == null) return const [];
     final provider = chapterTextProviderFor(book);
     var consecutiveFailures = 0;
+    final failed = <int>[];
 
     for (var i = 0; i < total; i++) {
-      if (_cancelled) return;
+      if (_cancelled) return failed;
 
       _controller!.add(PreprocessProgressEvent(
         currentChapter: i + 1,
@@ -187,18 +188,23 @@ class BookPreprocessor implements BookPreprocessorLike {
                   ? PreprocessError.authFailed
                   : PreprocessError.rateLimited));
           await _close();
-          return;
+          return failed;
         }
         if (termErr == AiGuideError.noApiKey) {
-          return;
+          return failed;
         }
-        // Transient error: increment counter, possibly break circuit.
+        // Transient error: record, emit per-chapter event, then increment
+        // counter and possibly break circuit.
+        failed.add(i);
+        if (!_controller!.isClosed) {
+          _controller!.add(PreprocessChapterFailedEvent(i, termErr));
+        }
         consecutiveFailures += 1;
         if (consecutiveFailures >= 3) {
           _controller!
               .add(PreprocessErrorEvent(PreprocessError.circuitBroken));
           await _close();
-          return;
+          return failed;
         }
       }
 
@@ -206,6 +212,7 @@ class BookPreprocessor implements BookPreprocessorLike {
         await Future.delayed(throttleDelay);
       }
     }
+    return failed;
   }
 
   /// Drives one AiGuide.run to completion and returns the terminal
