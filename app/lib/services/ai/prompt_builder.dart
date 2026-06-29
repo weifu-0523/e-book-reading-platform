@@ -1,3 +1,5 @@
+import 'book_chunker.dart';
+
 /// Prompt templates for the 3 AI guide modes.
 ///
 /// `promptVersion` is part of the cache lookup key — bump it whenever wording
@@ -33,5 +35,31 @@ class PromptBuilder {
         '--- 选中文字 ---\n'
         '$selectedText\n'
         '--- 选中文字结束 ---';
+  }
+
+  /// Bump independently from [promptVersion] so Q&A cache misses don't
+  /// invalidate full/chapter/selection caches (and vice versa).
+  static const int qaPromptVersion = 1;
+
+  /// Prompt for same-book Q&A. Each context chunk is prefixed with its
+  /// chapter index in [ch=N] form; the LLM is instructed to embed the
+  /// same markers in its answer so QaCitationParser (T9) can recover them.
+  ///
+  /// Chunk content is truncated to 800 chars to keep the prompt within
+  /// typical 8K-token context budgets when 5 chunks are passed.
+  static String qa(String question, List<PassageChunk> contextChunks) {
+    final contextBlock = contextChunks.map((c) {
+      final preview = c.contentText.length > 800
+          ? c.contentText.substring(0, 800)
+          : c.contentText;
+      return '[ch=${c.chapterIndex}]\n$preview';
+    }).join('\n\n---\n\n');
+
+    return '请用与原文相同的语言，基于下方书内节选回答问题。'
+        '在引用具体段落处插入 [ch=N] 标记（N 是节选开头的章节号）。'
+        '若上下文不足以回答，请明说。\n\n'
+        '--- 问题 ---\n$question\n'
+        '--- 书内节选 ---\n$contextBlock\n'
+        '--- 节选结束 ---';
   }
 }
