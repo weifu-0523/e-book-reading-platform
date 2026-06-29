@@ -9,9 +9,9 @@ import '../../../services/ai/qa_citation_parser.dart';
 /// TapGestureRecognizer that calls [onCitationTap] with the cited chapter
 /// index.
 ///
-/// Callers must dispose gesture recognizers when the widget is unmounted
-/// — wrap RichText in a StatefulWidget and dispose in dispose, or use
-/// Text.rich inside a builder that recreates the spans each build.
+/// The returned recognizers are NOT auto-disposed by the framework. Callers
+/// must hold references and dispose them — [QaAnswerView] does this via its
+/// State.dispose. Direct callers must do the same.
 List<InlineSpan> buildQaCitationSpans(
   List<TextSegment> segments, {
   required void Function(int chapterIndex) onCitationTap,
