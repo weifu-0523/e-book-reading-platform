@@ -51,6 +51,9 @@ dependencies:
   http: ^1.2.0
   flutter_secure_storage: ^9.2.2
 
+  # M2.0b: connectivity_plus for offline detection
+  connectivity_plus: ^6.0.5
+
 dependency_overrides:
   # M4: epubx 4.0.0 pins image ^3.0.8 AND passes List<int> to
   # decodeImage (incompatible with image 4.x). pdfrx_engine 0.4.3
