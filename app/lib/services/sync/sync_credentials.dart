@@ -1,12 +1,23 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+/// Test-facing interface. SyncCredentials implements this implicitly.
+abstract class SyncCredentialsLike {
+  Future<void> save({
+    required String username,
+    required String password,
+    required String deviceId,
+  });
+  Future<({String? username, String? password, String? deviceId})> load();
+  Future<void> clear();
+}
+
 /// Encrypted storage for sync credentials + deviceId.
 ///
 /// Keys are namespaced under `zhiyue.sync.*`. Storage backend:
 /// - Windows: DPAPI under user account
 /// - Android: Keystore
 /// - iOS: Keychain
-class SyncCredentials {
+class SyncCredentials implements SyncCredentialsLike {
   SyncCredentials([FlutterSecureStorage? storage])
       : _storage = storage ?? const FlutterSecureStorage();
 
@@ -16,6 +27,7 @@ class SyncCredentials {
 
   final FlutterSecureStorage _storage;
 
+  @override
   Future<void> save({
     required String username,
     required String password,
@@ -26,6 +38,7 @@ class SyncCredentials {
     await _storage.write(key: _kDeviceId, value: deviceId);
   }
 
+  @override
   Future<({String? username, String? password, String? deviceId})> load() async {
     return (
       username: await _storage.read(key: _kUsername),
@@ -34,6 +47,7 @@ class SyncCredentials {
     );
   }
 
+  @override
   Future<void> clear() async {
     await _storage.delete(key: _kUsername);
     await _storage.delete(key: _kPassword);

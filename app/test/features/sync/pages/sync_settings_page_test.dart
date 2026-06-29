@@ -22,7 +22,7 @@ class _StubSyncController extends StateNotifier<SyncState>
   AppDatabase get database => throw UnimplementedError();
 
   @override
-  SyncCredentials get credentials => throw UnimplementedError();
+  SyncCredentialsLike get credentials => throw UnimplementedError();
 
   @override
   Future<void> saveCredentials({
@@ -38,6 +38,24 @@ class _StubSyncController extends StateNotifier<SyncState>
 
   @override
   Future<void> syncNow() async {}
+
+  @override
+  Future<void> setInterval(Duration interval) async {}
+
+  @override
+  Future<void> clearConflicts() async {}
+
+  @override
+  Future<void> refreshConflictCount() async {}
+
+  @override
+  Future<List<SyncConflict>> recentConflicts({int limit = 100}) async => [];
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
