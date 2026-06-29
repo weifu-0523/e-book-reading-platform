@@ -1,15 +1,25 @@
 import 'package:drift/drift.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/services/sync/conflict_sink.dart';
 import 'package:zhiyue/services/sync/sync_record.dart';
 
 /// Applies remote [SyncRecord]s to the local DB with last-write-wins
 /// semantics. Idempotent — safe to call on records already applied.
+///
+/// When a remote record is skipped because local is newer-or-equal, the
+/// applier emits a conflict event via [conflictSink] (default
+/// [NullConflictSink] = silent). Books are excluded (no updated_at column).
 class RemoteRecordApplier {
-  RemoteRecordApplier(this._db);
+  RemoteRecordApplier(this._db, {ConflictSink? conflictSink})
+      : _conflictSink = conflictSink ?? const NullConflictSink();
 
   final AppDatabase _db;
+  final ConflictSink _conflictSink;
 
-  /// Returns true if applied, false if skipped (older than local).
+  /// Set by WebDavSyncEngine per snapshot file before applying its lines.
+  /// Falls back to 'unknown' if never set (defensive).
+  String currentRemoteDeviceId = 'unknown';
+
   Future<bool> apply(SyncRecord record) async {
     switch (record.type) {
       case SyncRecordType.annotation:
@@ -30,7 +40,10 @@ class RemoteRecordApplier {
     ).getSingleOrNull();
     if (existing != null) {
       final localMtime = existing.read<DateTime>('updated_at');
-      if (!record.mtime.isAfter(localMtime)) return false;
+      if (!record.mtime.isAfter(localMtime)) {
+        await _recordConflict(record, localMtime);
+        return false;
+      }
     }
 
     if (record.deleted) {
@@ -75,7 +88,10 @@ class RemoteRecordApplier {
     ).getSingleOrNull();
     if (existing != null) {
       final localMtime = existing.read<DateTime>('updated_at');
-      if (!record.mtime.isAfter(localMtime)) return false;
+      if (!record.mtime.isAfter(localMtime)) {
+        await _recordConflict(record, localMtime);
+        return false;
+      }
     }
 
     if (record.deleted) {
@@ -109,7 +125,10 @@ class RemoteRecordApplier {
     ).getSingleOrNull();
     if (existing != null) {
       final localMtime = existing.read<DateTime>('updated_at');
-      if (!record.mtime.isAfter(localMtime)) return false;
+      if (!record.mtime.isAfter(localMtime)) {
+        await _recordConflict(record, localMtime);
+        return false;
+      }
     }
 
     if (record.deleted) {
@@ -139,7 +158,17 @@ class RemoteRecordApplier {
       variables: [Variable.withString(record.id)],
     ).getSingleOrNull();
     // Books don't have updated_at; treat any existing as newer and skip.
-    if (existing != null) return false;
+    // Books excluded from conflict log — would be pure noise.
+    if (existing != null) {
+      if (record.deleted) {
+        await _db.customStatement(
+          'DELETE FROM books WHERE id = ?',
+          [record.id],
+        );
+        return true;
+      }
+      return false;
+    }
 
     if (record.deleted) {
       await _db.customStatement(
@@ -164,5 +193,22 @@ class RemoteRecordApplier {
       ],
     );
     return true;
+  }
+
+  /// Emits one conflict event. Swallows errors — diagnostic logging must
+  /// never break the main sync flow.
+  Future<void> _recordConflict(SyncRecord record, DateTime localMtime) async {
+    try {
+      await _conflictSink.record(
+        recordId: record.id,
+        recordType: record.type,
+        localMtime: localMtime,
+        remoteMtime: record.mtime,
+        remoteDeviceId: currentRemoteDeviceId,
+        remotePayload: record.payload,
+      );
+    } catch (_) {
+      // Silent — diagnostic sink failure must not fail sync.
+    }
   }
 }
