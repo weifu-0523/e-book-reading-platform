@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
 import '../models/sync_status.dart';
@@ -22,6 +23,16 @@ class SyncSettingsPage extends ConsumerWidget {
           _CredentialsSection(controller: controller),
           const SizedBox(height: 24),
           _StatusSection(state: state, l10n: l10n, controller: controller),
+          const SizedBox(height: 16),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.history),
+              title: Text(l10n.syncStatusTitle),
+              subtitle: Text(l10n.syncStatusSubtitle),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/settings/sync/status'),
+            ),
+          ),
         ],
       ),
     );
