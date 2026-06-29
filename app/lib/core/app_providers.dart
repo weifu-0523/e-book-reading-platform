@@ -7,7 +7,9 @@ import '../services/ai/ai_guide.dart';
 import '../services/ai/api_key_store.dart';
 import '../services/ai/book_text_extractor.dart';
 import '../services/ai/chapter_text_provider.dart';
+import '../services/sync/connectivity_service.dart';
 import '../services/sync/sync_credentials.dart';
+import '../services/sync/sync_interval_pref.dart';
 import 'providers.dart';
 
 /// AI API Key 存储（flutter_secure_storage 持久化）。
@@ -36,6 +38,8 @@ final providers = <Override>[
     (ref) => SyncController(
       database: ref.watch(appDatabaseProvider),
       credentials: SyncCredentials(),
+      connectivity: ConnectivityPlusService(),
+      intervalPref: SyncIntervalPref(),
     ),
   ),
   aiGuideControllerProvider.overrideWith(
