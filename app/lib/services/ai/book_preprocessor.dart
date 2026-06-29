@@ -45,6 +45,14 @@ class PreprocessErrorEvent extends PreprocessEvent {
   final PreprocessError error;
 }
 
+/// Test-friendly interface so [BookPreprocessController] can be constructed
+/// in tests with a fake stream. Production wires this to [BookPreprocessor]
+/// (which `implements BookPreprocessorLike`).
+abstract class BookPreprocessorLike {
+  Stream<PreprocessEvent> start(Book book);
+  void cancel();
+}
+
 /// Orchestrates the 2-phase batch preprocessing for a Book.
 ///
 /// Phase 1 (chunking): fast, awaits chapter text but does no LLM work. For
@@ -63,7 +71,7 @@ class PreprocessErrorEvent extends PreprocessEvent {
 ///
 /// skipIfRunning: a second [start] for the same preprocessor instance
 /// returns the in-flight stream rather than starting a duplicate run.
-class BookPreprocessor {
+class BookPreprocessor implements BookPreprocessorLike {
   BookPreprocessor({
     required this.passagesDao,
     required this.chapterTextProviderFor,
@@ -87,6 +95,7 @@ class BookPreprocessor {
 
   /// Start preprocessing [book]. If a run is already active on this
   /// preprocessor instance, returns the in-flight stream (skipIfRunning).
+  @override
   Stream<PreprocessEvent> start(Book book) {
     if (_running) return _stream!;
     _controller = StreamController<PreprocessEvent>.broadcast();
@@ -100,6 +109,7 @@ class BookPreprocessor {
   /// Cooperative cancel. Phase 1 always finishes (it is fast and synchronous
   /// modulo a couple of awaits). Phase 2 stops at the next chapter boundary.
   /// Already-persisted chunks/summaries remain.
+  @override
   void cancel() {
     _cancelled = true;
   }
