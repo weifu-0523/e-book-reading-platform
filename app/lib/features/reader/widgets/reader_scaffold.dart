@@ -32,6 +32,9 @@ class ReaderScaffold extends ConsumerWidget {
   /// 点击 AI 导读图标回调（由父组件触发 AiGuideSheet 弹出，章节模式）。
   final VoidCallback? onOpenAiGuide;
 
+  /// 点击「问答」图标回调（由父组件触发 QaAskDialog 弹出）。
+  final VoidCallback? onOpenQa;
+
   const ReaderScaffold({
     super.key,
     required this.content,
@@ -44,6 +47,7 @@ class ReaderScaffold extends ConsumerWidget {
     this.onOpenTypography,
     this.onOpenNotes,
     this.onOpenAiGuide,
+    this.onOpenQa,
   });
 
   @override
@@ -93,6 +97,11 @@ class ReaderScaffold extends ConsumerWidget {
                         icon: const Icon(Icons.auto_awesome),
                         tooltip: 'AI 导读',
                         onPressed: onOpenAiGuide,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.quiz_outlined),
+                        tooltip: '问答',
+                        onPressed: onOpenQa,
                       ),
                     ],
                   ),

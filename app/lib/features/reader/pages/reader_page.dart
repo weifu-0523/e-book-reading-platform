@@ -6,13 +6,16 @@ import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
+import 'package:reader_engine/reader_engine.dart' show TocEntry;
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/annotation.dart';
+import '../../../data/models/book.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
+import '../../../features/ai/widgets/qa_ask_dialog.dart';
 import '../../../features/settings/providers/font_library_provider.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
@@ -192,6 +195,11 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
   // 供高亮 locator 的 chapterTitle 字段使用。
   Map<int, String> _chapterTitlesCache = const {};
 
+  // Book 对象缓存。QaAskDialog.submit 需要 Book；这里同步从 repository
+  // 拉取后缓存，避免每次点「问答」都 await。书被删时为 null（dialog submit
+  // 静默 no-op）。
+  Book? _cachedBook;
+
   // initialLocator 已处理标志，避免 didChangeDependencies 重复触发。
   bool _initialLocatorHandled = false;
 
@@ -285,6 +293,10 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
     if (toc != null) {
       _chapterTitlesCache = TocTitleResolver.resolve(toc);
     }
+    // 同步刷新 Book 缓存（QaAskDialog 需要 Book 才能提交）。Repository 的
+    // getById 返回 Future，所以走 fire-and-forget：第一次 build 后再 tap
+    // 时值已就绪。书被删则 _cachedBook 维持 null。
+    _refreshBookCache();
 
     // typographyPanelOpen 由 _TypographyPanelTrigger 监听并弹出/收起 bottom sheet。
     return Scaffold(
@@ -318,6 +330,7 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
                     .read(readerUiControllerProvider.notifier)
                     .openTypographyPanel(),
                 onOpenAiGuide: _onOpenAiGuide,
+                onOpenQa: _onOpenQa,
               ),
             ),
             // 选区 toolbar overlay。仅在有非空 selection 时显示。
@@ -515,6 +528,73 @@ class _ReaderBodyState extends ConsumerState<_ReaderBody> {
         chapterTitle: chapterTitle,
       ),
     );
+  }
+
+  /// AppBar「问答」按钮：弹出 QaAskDialog。citation 点击回调接到章节号后，
+  /// 在扁平化 TOC 中找到对应 [EpubCfiLocator]（与 [defaultTocChapterIndex]
+  /// 的解析口径一致），调用 [engine.gotoTocEntry] 并等待
+  /// [engine.chapterSwitchSettled]，让 paged-mode LayoutBuilder 重跑、
+  /// 重新计算 `_cachedBreaks`。
+  /// 引用对应章节号在扁平化 TOC 中找不到时（例如 toc 为 null、PDF 书、
+  /// 或索引越界）弹 SnackBar 提示。
+  void _onOpenQa() {
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      builder: (_) => QaAskDialog(
+        bookId: widget.bookId,
+        book: _cachedBook,
+        onCitationTap: _jumpToChapter,
+      ),
+    );
+  }
+
+  Future<void> _jumpToChapter(int chapterIndex) async {
+    final toc = engine.toc;
+    if (toc == null || !mounted) {
+      _showInvalidChapterSnackBar();
+      return;
+    }
+    final flat = _flattenToc(toc.entries);
+    // citation chapterIndex 来自 [ch=N] 标记，对应书的章节序号；
+    // 与 defaultTocChapterIndex 同口径（EpubCfiLocator.chapterIndex）。
+    final target = flat
+        .where((e) => defaultTocChapterIndex(e) == chapterIndex)
+        .firstOrNull;
+    if (target == null) {
+      _showInvalidChapterSnackBar();
+      return;
+    }
+    await engine.gotoTocEntry(target);
+    await engine.chapterSwitchSettled;
+  }
+
+  void _showInvalidChapterSnackBar() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('无效章节号')),
+    );
+  }
+
+  /// 扁平化 TOC（保留嵌套顺序）。citation chapterIndex 解析依赖
+  /// [defaultTocChapterIndex]，与顺序无关，但扁平化便于 first-where 查找。
+  List<TocEntry> _flattenToc(List<TocEntry> entries) {
+    final result = <TocEntry>[];
+    for (final e in entries) {
+      result
+        ..add(e)
+        ..addAll(_flattenToc(e.children));
+    }
+    return result;
+  }
+
+  /// 异步刷新 [_cachedBook]。每次 build 触发一次 fire-and-forget 拉取，
+  /// 拿到值后赋给 _cachedBook。QaAskDialog.submit 直接读 _cachedBook，
+  /// 避免在 showDialog 内 await（让 dialog 立刻显示）。
+  void _refreshBookCache() {
+    ref.read(bookRepositoryProvider).getById(widget.bookId).then((b) {
+      if (mounted && b != null) _cachedBook = b;
+    });
   }
 
   /// 选区 toolbar「AI 点评」按钮：以选中文本为 source 弹出 AiGuideSheet
