@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/services/sync/conflict_sink.dart';
 import 'package:zhiyue/services/sync/rate_limiter.dart';
 import 'package:zhiyue/services/sync/remote_record_applier.dart';
 import 'package:zhiyue/services/sync/sync_engine.dart';
@@ -16,15 +17,18 @@ import 'package:zhiyue/services/sync/web_dav_client.dart';
 ///
 /// Pull: PROPFIND all `*.jsonl` files in `/zhiyue/snapshots/` (skipping the
 /// local device's own file), parse each line as a SyncRecord, and apply with
-/// last-write-wins (see [RemoteRecordApplier]).
+/// last-write-wins (see [RemoteRecordApplier]). Conflicts emitted via
+/// [conflictSink] (default [NullConflictSink]).
 class WebDavSyncEngine implements SyncEngine {
   WebDavSyncEngine({
     required this.database,
     required this.outbox,
     required this.webdav,
     required this.deviceId,
+    ConflictSink? conflictSink,
     Duration? rateLimiterInterval,
-  }) : _rateLimiter = RateLimiter(
+  })  : _conflictSink = conflictSink ?? const NullConflictSink(),
+        _rateLimiter = RateLimiter(
           minInterval: rateLimiterInterval ?? const Duration(seconds: 2),
         );
 
@@ -32,6 +36,7 @@ class WebDavSyncEngine implements SyncEngine {
   final SyncOutboxDao outbox;
   final WebDavClient webdav;
   final String deviceId;
+  final ConflictSink _conflictSink;
   final RateLimiter _rateLimiter;
 
   String get _snapshotPath => '/zhiyue/snapshots/$deviceId.jsonl';
@@ -73,7 +78,8 @@ class WebDavSyncEngine implements SyncEngine {
 
   /// Pull-only entry point. Fetches all device snapshots and applies them.
   Future<SyncResult> pullOnly() async {
-    final applier = RemoteRecordApplier(database);
+    final applier =
+        RemoteRecordApplier(database, conflictSink: _conflictSink);
     final List<String> files;
     try {
       files = await _rateLimiter.run(
@@ -89,6 +95,8 @@ class WebDavSyncEngine implements SyncEngine {
     var applied = 0;
     for (final file in files) {
       if (file == '$deviceId.jsonl') continue; // skip own file
+      final fileDeviceId = file.replaceAll('.jsonl', '');
+      applier.currentRemoteDeviceId = fileDeviceId; // per-file context
       final body = await _rateLimiter.run(
           () => webdav.getString('/zhiyue/snapshots/$file'));
       final lines = body.split('\n').where((l) => l.trim().isNotEmpty);

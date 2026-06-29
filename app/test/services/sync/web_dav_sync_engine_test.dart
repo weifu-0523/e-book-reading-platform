@@ -5,6 +5,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:http/http.dart' as http;
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/services/sync/conflict_recorder.dart';
 import 'package:zhiyue/services/sync/sync_credentials.dart';
 import 'package:zhiyue/services/sync/sync_record.dart';
 import 'package:zhiyue/services/sync/web_dav_client.dart';
@@ -184,6 +185,63 @@ void main() {
         variables: [Variable.withString('a2')],
       ).get();
       expect(annotations.first.data['quote'], 'local-newer');
+    });
+  });
+
+  group('conflict logging', () {
+    test('records conflict when remote mtime is older than local', () async {
+      when(() => webdav.listFiles('/zhiyue/snapshots/'))
+          .thenAnswer((_) async => ['device-B.jsonl']);
+      when(() => webdav.getString('/zhiyue/snapshots/device-B.jsonl'))
+          .thenAnswer((_) async =>
+              '{"id":"a2","type":"annotation","mtime":"2026-06-28T10:00:00.000Z","deleted":false,"payload":{"id":"a2","bookNoteId":"bn1","locator":"{}","quote":"remote-old","note":null,"color":"yellow","tags":"[]","source":"manual"}}\n');
+
+      // Insert local a2 with newer mtime.
+      await db.customInsert(
+        'INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes) VALUES(?, ?, ?, ?, ?, ?)',
+        variables: [
+          Variable.withString('b1'), Variable.withString('t'),
+          Variable.withString('epub'), Variable.withString('p'),
+          Variable.withString('h'), Variable.withInt(0),
+        ],
+      );
+      await db.customInsert(
+        'INSERT INTO book_notes(id, book_id, title) VALUES(?, ?, ?)',
+        variables: [
+          Variable.withString('bn1'), Variable.withString('b1'),
+          Variable.withString('t'),
+        ],
+      );
+      await db.customInsert(
+        'INSERT INTO annotations(id, book_note_id, locator, quote, color, tags, source, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)',
+        variables: [
+          Variable.withString('a2'), Variable.withString('bn1'),
+          Variable.withString('{}'), Variable.withString('local-newer'),
+          Variable.withString('blue'), Variable.withString('[]'),
+          Variable.withString('manual'),
+          Variable.withDateTime(DateTime.utc(2026, 6, 29)),
+        ],
+      );
+
+      // Use an engine wired with a DaoConflictSink + the conflicts DAO.
+      final conflictsDao = db.syncConflictsDao;
+      final sinkEngine = WebDavSyncEngine(
+        database: db,
+        outbox: outbox,
+        webdav: webdav,
+        deviceId: 'device-A',
+        conflictSink: DaoConflictSink(conflictsDao, 'device-A'),
+        rateLimiterInterval: Duration.zero,
+      );
+
+      final result = await sinkEngine.pullOnly();
+
+      expect(result.pulledCount, 0); // remote older, skipped
+      final conflicts = await conflictsDao.recent(10);
+      expect(conflicts, hasLength(1));
+      expect(conflicts.first.recordId, 'a2');
+      expect(conflicts.first.winnerDevice, 'device-A');
+      expect(conflicts.first.loserDevice, 'device-B');
     });
   });
 }
