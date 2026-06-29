@@ -28,6 +28,8 @@ class _StubChap implements ChapterTextProvider {
   Future<String?> get(String p, int i) async => texts[i];
   @override
   Future<String?> title(String p, int i) async => titles[i];
+  @override
+  Future<int> count(String filePath) async => 0;
 }
 
 class _Keys implements ApiKeyStoreLike {

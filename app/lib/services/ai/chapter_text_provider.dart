@@ -15,6 +15,10 @@ abstract class ChapterTextProvider {
 
   /// Chapter title for prompt context, or null if unknown.
   Future<String?> title(String filePath, int chapterIndex);
+
+  /// Total chapter count for the book at [filePath]. O(1) for EPUB (spine
+  /// length) and PDF (page count). Replaces the O(N) linear probe.
+  Future<int> count(String filePath);
 }
 
 class EpubChapterTextProvider implements ChapterTextProvider {
@@ -33,6 +37,12 @@ class EpubChapterTextProvider implements ChapterTextProvider {
         ..addAll(_flatten(c.SubChapters ?? const []));
     }
     return result;
+  }
+
+  @override
+  Future<int> count(String filePath) async {
+    final book = await _read(filePath);
+    return _flatten(book.Chapters ?? const []).length;
   }
 
   @override
@@ -56,6 +66,16 @@ class EpubChapterTextProvider implements ChapterTextProvider {
 
 class PdfChapterTextProvider implements ChapterTextProvider {
   PdfChapterTextProvider();
+
+  @override
+  Future<int> count(String filePath) async {
+    final doc = await PdfDocument.openFile(filePath);
+    try {
+      return doc.pages.length;
+    } finally {
+      await doc.dispose();
+    }
+  }
 
   @override
   Future<String?> get(String filePath, int chapterIndex) async {

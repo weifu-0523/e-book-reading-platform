@@ -23,6 +23,9 @@ class _FakeChapterProvider implements ChapterTextProvider {
   @override
   Future<String?> title(String filePath, int chapterIndex) async =>
       _titles[chapterIndex];
+
+  @override
+  Future<int> count(String filePath) async => _texts.length;
 }
 
 class _MockAiGuide extends Mock implements AiGuide {}

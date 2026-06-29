@@ -20,6 +20,8 @@ class _StubChapterProvider implements ChapterTextProvider {
   Future<String?> get(String p, int i) async => texts[i];
   @override
   Future<String?> title(String p, int i) async => titles[i];
+  @override
+  Future<int> count(String filePath) async => 0;
 }
 
 class _StubExtractor implements BookTextExtractor {

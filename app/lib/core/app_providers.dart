@@ -35,8 +35,8 @@ final aiGuideProvider = Provider<AiGuide>((ref) {
 
 /// BookPreprocessor：根据 [Book.format] 选择 EPUB / PDF 章节文本提供者，
 /// 持久化到 [BookPassagesDao]，并通过 [AiGuide] 在 chapter 模式下做摘要。
-/// chapterCountFor 通过线性 probe 章节文本提供者计算真实章节数
-/// （EPUB spine 长度 / PDF 页数），10K 章上限作为安全阀。
+/// chapterCountFor 通过 [ChapterTextProvider.count] 一次性读取 EPUB spine
+/// 长度或 PDF 页数（O(1) 文件读取）。
 final bookPreprocessorProvider = Provider<BookPreprocessorLike>((ref) {
   final db = ref.watch(appDatabaseProvider);
   final guide = ref.watch(aiGuideProvider);
@@ -52,15 +52,7 @@ final bookPreprocessorProvider = Provider<BookPreprocessorLike>((ref) {
       final provider = book.format == BookFormat.epub
           ? EpubChapterTextProvider()
           : PdfChapterTextProvider();
-      // 线性 probe：get 在 index 越界时返回 null。EPUB 因为每次都重读文件，
-      // 这会比较慢（O(N) 文件读取），但 T7 阶段可接受；M2 可升级为缓存版
-      // （在 EpubChapterTextProvider 上暴露 count(filePath)）。
-      var count = 0;
-      while (await provider.get(book.filePath, count) != null) {
-        count++;
-        if (count > 10000) break; // safety valve
-      }
-      return count;
+      return provider.count(book.filePath);
     },
   );
 });

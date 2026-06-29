@@ -220,6 +220,8 @@ class _NoopChapter implements ChapterTextProvider {
   Future<String?> get(String p, int i) async => null;
   @override
   Future<String?> title(String p, int i) async => null;
+  @override
+  Future<int> count(String filePath) async => 0;
 }
 
 class _NoopCache implements AiSummariesDao {
