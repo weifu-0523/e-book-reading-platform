@@ -365,4 +365,39 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get syncBackgroundSection => 'Background';
+
+  @override
+  String get qaDialogTitle => 'Ask the book';
+
+  @override
+  String get qaInputHint => 'Ask a question about this book…';
+
+  @override
+  String get qaSubmitLabel => 'Ask';
+
+  @override
+  String get qaEmptyHint =>
+      'Type a question — AI answers from this book\'s content';
+
+  @override
+  String get qaErrorNoKey => 'No API key set. Add one in Settings.';
+
+  @override
+  String get qaErrorEmptyIndex =>
+      'This book hasn\'t been preprocessed yet. Open book details to trigger preprocessing first.';
+
+  @override
+  String get qaErrorAuth => 'API key invalid';
+
+  @override
+  String get qaErrorRateLimit => 'Rate limited. Try again shortly.';
+
+  @override
+  String get qaErrorNetwork => 'Network error. Check your connection.';
+
+  @override
+  String get qaErrorServer => 'Server error. Try again later.';
+
+  @override
+  String get qaErrorParse => 'Failed to parse AI response.';
 }

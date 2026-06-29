@@ -763,6 +763,72 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'后台定时'**
   String get syncBackgroundSection;
+
+  /// No description provided for @qaDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'同书问答'**
+  String get qaDialogTitle;
+
+  /// No description provided for @qaInputHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'向这本书提问…'**
+  String get qaInputHint;
+
+  /// No description provided for @qaSubmitLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'提问'**
+  String get qaSubmitLabel;
+
+  /// No description provided for @qaEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入问题，AI 基于本书内容回答'**
+  String get qaEmptyHint;
+
+  /// No description provided for @qaErrorNoKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未填写 API key，请在设置中添加'**
+  String get qaErrorNoKey;
+
+  /// No description provided for @qaErrorEmptyIndex.
+  ///
+  /// In zh, this message translates to:
+  /// **'本书尚未完成预处理。打开书详情页触发预处理后再提问。'**
+  String get qaErrorEmptyIndex;
+
+  /// No description provided for @qaErrorAuth.
+  ///
+  /// In zh, this message translates to:
+  /// **'API key 无效'**
+  String get qaErrorAuth;
+
+  /// No description provided for @qaErrorRateLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求过快，请稍后再试'**
+  String get qaErrorRateLimit;
+
+  /// No description provided for @qaErrorNetwork.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络异常，请检查连接'**
+  String get qaErrorNetwork;
+
+  /// No description provided for @qaErrorServer.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务端错误，稍后重试'**
+  String get qaErrorServer;
+
+  /// No description provided for @qaErrorParse.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 响应解析失败'**
+  String get qaErrorParse;
 }
 
 class _AppLocalizationsDelegate

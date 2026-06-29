@@ -358,4 +358,37 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get syncBackgroundSection => '后台定时';
+
+  @override
+  String get qaDialogTitle => '同书问答';
+
+  @override
+  String get qaInputHint => '向这本书提问…';
+
+  @override
+  String get qaSubmitLabel => '提问';
+
+  @override
+  String get qaEmptyHint => '输入问题，AI 基于本书内容回答';
+
+  @override
+  String get qaErrorNoKey => '尚未填写 API key，请在设置中添加';
+
+  @override
+  String get qaErrorEmptyIndex => '本书尚未完成预处理。打开书详情页触发预处理后再提问。';
+
+  @override
+  String get qaErrorAuth => 'API key 无效';
+
+  @override
+  String get qaErrorRateLimit => '请求过快，请稍后再试';
+
+  @override
+  String get qaErrorNetwork => '网络异常，请检查连接';
+
+  @override
+  String get qaErrorServer => '服务端错误，稍后重试';
+
+  @override
+  String get qaErrorParse => 'AI 响应解析失败';
 }
