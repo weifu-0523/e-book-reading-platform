@@ -211,5 +211,7 @@
   "preprocessFailedChapters": "{count} chapter(s) failed preprocessing",
   "@preprocessFailedChapters": {"placeholders": {"count": {"type": "String"}}},
   "qaStopLabel": "Stop",
-  "@qaStopLabel": {}
+  "@qaStopLabel": {},
+  "qaPreprocessInProgress": "Preprocessing ({current}/{total}) — answers may be incomplete",
+  "@qaPreprocessInProgress": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}}
 }

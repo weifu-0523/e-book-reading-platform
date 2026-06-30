@@ -865,6 +865,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'停止'**
   String get qaStopLabel;
+
+  /// No description provided for @qaPreprocessInProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'预处理进行中（{current}/{total}），回答可能不全'**
+  String qaPreprocessInProgress(String current, String total);
 }
 
 class _AppLocalizationsDelegate

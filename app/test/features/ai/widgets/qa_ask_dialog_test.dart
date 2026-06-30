@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhiyue/data/models/book.dart';
+import 'package:zhiyue/features/ai/providers/book_preprocess_controller.dart';
 import 'package:zhiyue/features/ai/providers/qa_controller.dart';
 import 'package:zhiyue/features/ai/widgets/qa_ask_dialog.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
+import 'package:zhiyue/services/ai/book_preprocessor.dart';
 import 'package:zhiyue/services/ai/book_qa_service.dart';
 
 class _NoOpService implements BookQaServiceLike {
@@ -42,6 +44,21 @@ Book _book() => Book(
       coverPath: null,
       sortOrder: 0,
     );
+
+class _NoOpPreprocessor implements BookPreprocessorLike {
+  const _NoOpPreprocessor();
+  @override
+  Stream<PreprocessEvent> start(Book book) => const Stream.empty();
+  @override
+  void cancel() {}
+}
+
+class _FakePreprocessController extends BookPreprocessController {
+  _FakePreprocessController(PreprocessState initial)
+      : super(const _NoOpPreprocessor()) {
+    state = initial;
+  }
+}
 
 void main() {
   testWidgets('QaAskDialog displays question input + submit button',
@@ -190,5 +207,40 @@ void main() {
     await tester.pump();
     // _FakeQaController inherits QaController.reset(); state returns to idle.
     expect(find.text('停止'), findsNothing);
+  });
+
+  testWidgets(
+      'preprocess-in-progress caption renders when preprocess controller is active',
+      (tester) async {
+    final qaFake = _FakeQaController()
+      ..state = const QaState(status: QaStatus.idle);
+    final preprocessFake = _FakePreprocessController(
+      const PreprocessState(
+        status: PreprocessStatus.summarizing,
+        currentChapter: 7,
+        totalChapters: 12,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          qaControllerProvider('b1').overrideWith((ref) => qaFake),
+          bookPreprocessControllerProvider('b1')
+              .overrideWith((ref) => preprocessFake),
+        ],
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: QaAskDialog(bookId: 'b1', book: _book()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Caption visible.
+    expect(find.textContaining('预处理进行中'), findsOneWidget);
+    expect(find.textContaining('7/12'), findsOneWidget);
   });
 }

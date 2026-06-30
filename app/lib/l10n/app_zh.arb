@@ -307,5 +307,7 @@
   "preprocessFailedChapters": "{count} 章预处理失败",
   "@preprocessFailedChapters": {"placeholders": {"count": {"type": "String"}}},
   "qaStopLabel": "停止",
-  "@qaStopLabel": {}
+  "@qaStopLabel": {},
+  "qaPreprocessInProgress": "预处理进行中（{current}/{total}），回答可能不全",
+  "@qaPreprocessInProgress": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}}
 }

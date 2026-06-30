@@ -424,4 +424,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get qaStopLabel => 'Stop';
+
+  @override
+  String qaPreprocessInProgress(String current, String total) {
+    return 'Preprocessing ($current/$total) — answers may be incomplete';
+  }
 }

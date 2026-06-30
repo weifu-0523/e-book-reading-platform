@@ -415,4 +415,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get qaStopLabel => '停止';
+
+  @override
+  String qaPreprocessInProgress(String current, String total) {
+    return '预处理进行中（$current/$total），回答可能不全';
+  }
 }

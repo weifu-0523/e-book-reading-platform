@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/book.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/ai/book_qa_service.dart';
+import '../providers/book_preprocess_controller.dart';
 import '../providers/qa_controller.dart';
 import 'qa_answer_view.dart';
 
@@ -55,6 +56,8 @@ class _QaAskDialogState extends ConsumerState<QaAskDialog> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context)!;
     final state = ref.watch(qaControllerProvider(widget.bookId));
+    final preprocess =
+        ref.watch(bookPreprocessControllerProvider(widget.bookId));
 
     return Scaffold(
       appBar: AppBar(
@@ -98,11 +101,31 @@ class _QaAskDialogState extends ConsumerState<QaAskDialog> {
               ],
             ),
           ),
+          if (_isPreprocessing(preprocess))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  l.qaPreprocessInProgress(
+                    '${preprocess.currentChapter}',
+                    '${preprocess.totalChapters}',
+                  ),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+              ),
+            ),
           Expanded(child: _buildBody(context, state, l)),
         ],
       ),
     );
   }
+
+  bool _isPreprocessing(PreprocessState preprocess) =>
+      preprocess.status == PreprocessStatus.chunking ||
+      preprocess.status == PreprocessStatus.summarizing;
 
   Widget _buildBody(BuildContext context, QaState state, AppLocalizations l) {
     switch (state.status) {
