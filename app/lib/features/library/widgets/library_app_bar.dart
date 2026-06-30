@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../gen_l10n/app_localizations.dart';
 import '../models/sort_by.dart';
 import '../models/view_mode.dart';
 
 /// Library 主 AppBar。
-/// 集成搜索、排序、视图切换、标签筛选、导入入口。
+/// 集成搜索、排序、视图切换、标签筛选、导入入口、批量 Markdown 导出。
 /// [searching] 为 true 时 title 区显示搜索框，否则显示应用名。
 class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
   final ViewMode viewMode;
@@ -19,6 +20,7 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onImportTap;
   final VoidCallback onEnterSearch;
   final VoidCallback onExitSearch;
+  final VoidCallback onBatchExport;
   final bool searching;
   final TextEditingController? searchController;
 
@@ -35,6 +37,7 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onImportTap,
     required this.onEnterSearch,
     required this.onExitSearch,
+    required this.onBatchExport,
     this.searching = false,
     this.searchController,
   });
@@ -101,6 +104,11 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
           icon: const Icon(Icons.add),
           onPressed: onImportTap,
           tooltip: '导入书籍',
+        ),
+        IconButton(
+          icon: const Icon(Icons.folder_zip_outlined),
+          onPressed: onBatchExport,
+          tooltip: AppLocalizations.of(context)!.batchExportMenuLabel,
         ),
         IconButton(
           icon: const Icon(Icons.settings_outlined),

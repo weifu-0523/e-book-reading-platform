@@ -8,9 +8,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/book.dart';
+import '../../../data/models/book_note.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
+import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/ai/ai_guide.dart';
+import '../../notes/services/vault_exporter.dart';
 import '../models/library_mode.dart';
 import '../models/library_state.dart';
 import '../models/sort_by.dart';
@@ -18,6 +21,7 @@ import '../models/view_mode.dart';
 import '../models/book_cell_action.dart';
 import '../providers/cover_loader_provider.dart';
 import '../providers/library_controller.dart';
+import '../widgets/batch_export_dialog.dart';
 import '../widgets/batch_selection_bar.dart';
 import '../widgets/book_grid.dart';
 import '../widgets/book_list_view.dart';
@@ -107,6 +111,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         onImportTap: _importBook,
         onEnterSearch: _enterSearch,
         onExitSearch: _exitSearch,
+        onBatchExport: _startBatchExport,
       ),
       body: _buildBody(context, state),
       bottomNavigationBar: state.mode == LibraryMode.selecting
@@ -279,5 +284,125 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       ),
     );
     if (confirmed == true) await controller.batchDelete();
+  }
+
+  /// 批量导出整个书架的读书笔记为 Markdown 文件夹。
+  ///
+  /// 流程：
+  /// 1. 拉取所有书 + 各书的 [BookNote]；若没有任何含内容的 note，弹「暂无
+  ///    可导出内容」对话框并中止（避开 file_picker）。
+  /// 2. 弹确认对话框（数量 + 取消/选择文件夹）。
+  /// 3. [FilePicker.platform.getDirectoryPath] 选目标文件夹；用户取消即中止。
+  /// 4. 弹 [BatchExportDialog] 跑 VaultExporter，完成后自动 pop。
+  /// 5. SnackBar 反馈 + 「打开文件夹」action。
+  Future<void> _startBatchExport() async {
+    final books = await ref.read(bookRepositoryProvider).getAll();
+    final notesByBookId = <String, BookNote>{};
+    for (final book in books) {
+      final note =
+          await ref.read(notesRepositoryProvider).getNoteByBook(book.id);
+      if (note != null) notesByBookId[book.id] = note;
+    }
+    if (!mounted) return;
+
+    final l10n = AppLocalizations.of(context)!;
+
+    if (notesByBookId.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(l10n.batchExportNoNotesTitle),
+          content: Text(l10n.batchExportNoNotesMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(l10n.reviewCancelButton),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.batchExportConfirmTitle),
+        content: Text(l10n.batchExportConfirmMessage(notesByBookId.length)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.reviewCancelButton),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.batchExportOpenFolder),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    final dirPath = await FilePicker.platform.getDirectoryPath();
+    if (dirPath == null) return;
+    if (!mounted) return;
+
+    VaultExportResult? result;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => BatchExportDialog(
+        targetDirPath: dirPath,
+        books: books,
+        notesByBookId: notesByBookId,
+        onCompleted: (r) {
+          result = r;
+          Navigator.of(ctx).pop();
+        },
+      ),
+    );
+    if (!mounted) return;
+    final res = result;
+    if (res == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_summarizeBatchResult(l10n, res, dirPath)),
+        action: SnackBarAction(
+          label: l10n.batchExportOpenFolder,
+          onPressed: () => _openFolder(dirPath),
+        ),
+      ),
+    );
+  }
+
+  String _summarizeBatchResult(
+    AppLocalizations l10n,
+    VaultExportResult result,
+    String path,
+  ) {
+    if (result.failures.isEmpty) {
+      return l10n.batchExportSuccess(result.booksExported, path);
+    }
+    return l10n.batchExportPartialFailure(
+      result.booksExported,
+      result.booksExported + result.failures.length,
+      result.failures.length,
+    );
+  }
+
+  Future<void> _openFolder(String path) async {
+    try {
+      if (Platform.isWindows) {
+        await Process.run('explorer', [path]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [path]);
+      }
+    } catch (_) {
+      // 平台差异或路径缺失：失败静默，主流程已完成。
+    }
   }
 }
