@@ -1,11 +1,34 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+
+import '../../data/local/daos/ai_summaries_dao.dart';
 import '../../data/local/daos/book_passages_dao.dart';
 import '../../data/models/book.dart';
 import 'ai_guide.dart';
 import 'api_key_store.dart';
 import 'book_chunker.dart';
 import 'chapter_text_provider.dart';
+import 'prompt_builder.dart';
+import 'token_truncator.dart';
+
+/// Computes the same sourceHash [AiGuide] computes internally for chapter
+/// mode. Used by [BookPreprocessor] to defensively skip chapters whose
+/// summary is already cached before calling [AiGuide.run]. Extracted here
+/// so both call sites share one implementation and stay in sync.
+///
+/// Input MUST be the *truncated* source text — i.e. the result of
+/// `TokenTruncator.truncateToTokens(text, TokenTruncator.defaultBudget)`,
+/// mirroring AiGuide's own pipeline. Hashing raw (untruncated) text would
+/// diverge from AiGuide and never hit cache.
+class PreprocessorCacheHash {
+  const PreprocessorCacheHash._();
+
+  static String compute(String truncatedSourceText) {
+    return sha256.convert(utf8.encode(truncatedSourceText)).toString();
+  }
+}
 
 /// Terminal errors that abort the whole preprocessing run.
 enum PreprocessError {
@@ -78,6 +101,7 @@ class BookPreprocessor implements BookPreprocessorLike {
     required this.aiGuide,
     required this.apiKeys,
     required this.chapterCountFor,
+    required this.aiSummariesDao,
     this.throttleDelay = const Duration(seconds: 2),
   });
 
@@ -86,6 +110,7 @@ class BookPreprocessor implements BookPreprocessorLike {
   final AiGuide aiGuide;
   final ApiKeyStoreLike apiKeys;
   final Future<int> Function(Book) chapterCountFor;
+  final AiSummariesDao aiSummariesDao;
   final Duration throttleDelay;
 
   StreamController<PreprocessEvent>? _controller;
@@ -173,6 +198,22 @@ class BookPreprocessor implements BookPreprocessorLike {
 
       final text = await provider.get(book.filePath, i);
       if (text == null || text.trim().isEmpty) continue;
+
+      // Defensive cache check: skip chapters whose summary is already
+      // cached. This mirrors AiGuide's own cache lookup but lives here so
+      // a contract drift in AiGuide can't silently re-bill the LLM. The
+      // hash must match AiGuide's pipeline exactly (truncate then sha256),
+      // which is why both call sites use [PreprocessorCacheHash].
+      final truncated = TokenTruncator.truncateToTokens(
+          text, TokenTruncator.defaultBudget);
+      final sourceHash = PreprocessorCacheHash.compute(truncated);
+      final cached = await aiSummariesDao.find(
+        bookId: book.id,
+        mode: AiGuideMode.chapter.name,
+        sourceHash: sourceHash,
+        promptVersion: PromptBuilder.promptVersion,
+      );
+      if (cached != null) continue;
 
       final title = await provider.title(book.filePath, i);
 

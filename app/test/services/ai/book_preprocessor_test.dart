@@ -89,6 +89,7 @@ void main() {
       chapterTextProviderFor: (_) => provider,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 2,
       throttleDelay: Duration.zero,
     );
@@ -113,6 +114,7 @@ void main() {
       chapterTextProviderFor: (_) => provider,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 2,
       throttleDelay: Duration.zero,
     );
@@ -141,6 +143,7 @@ void main() {
       chapterTextProviderFor: (_) => provider,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 2,
       throttleDelay: Duration.zero,
     );
@@ -170,6 +173,7 @@ void main() {
       chapterTextProviderFor: (_) => provider,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 2,
       throttleDelay: Duration.zero,
     );
@@ -205,6 +209,7 @@ void main() {
       chapterTextProviderFor: (_) => alwaysTextProvider,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 6,
       throttleDelay: Duration.zero,
     );
@@ -222,6 +227,7 @@ void main() {
       chapterTextProviderFor: (_) => provider,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 2,
       throttleDelay: Duration.zero,
     );
@@ -239,6 +245,7 @@ void main() {
       chapterTextProviderFor: (_) => provider,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 2,
       throttleDelay: const Duration(milliseconds: 50),
     );
@@ -282,6 +289,7 @@ void main() {
       chapterTextProviderFor: (_) => provider5,
       aiGuide: guide,
       apiKeys: keys,
+      aiSummariesDao: db.aiSummariesDao,
       chapterCountFor: (_) async => 5,
       throttleDelay: Duration.zero,
     );

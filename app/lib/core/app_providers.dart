@@ -59,6 +59,7 @@ final bookPreprocessorProvider = Provider<BookPreprocessorLike>((ref) {
           : PdfChapterTextProvider();
       return provider.count(book.filePath);
     },
+    aiSummariesDao: db.aiSummariesDao,
   );
 });
 
