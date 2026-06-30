@@ -81,6 +81,16 @@ class _QaAskDialogState extends ConsumerState<QaAskDialog> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (state.status == QaStatus.streaming)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: TextButton(
+                      onPressed: () => ref
+                          .read(qaControllerProvider(widget.bookId).notifier)
+                          .reset(),
+                      child: Text(l.qaStopLabel),
+                    ),
+                  ),
                 FilledButton(
                   onPressed: _submit,
                   child: Text(l.qaSubmitLabel),

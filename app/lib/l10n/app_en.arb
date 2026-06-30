@@ -209,5 +209,7 @@
   "preprocessRetryLabel": "Reprocess",
   "@preprocessRetryLabel": {},
   "preprocessFailedChapters": "{count} chapter(s) failed preprocessing",
-  "@preprocessFailedChapters": {"placeholders": {"count": {"type": "String"}}}
+  "@preprocessFailedChapters": {"placeholders": {"count": {"type": "String"}}},
+  "qaStopLabel": "Stop",
+  "@qaStopLabel": {}
 }

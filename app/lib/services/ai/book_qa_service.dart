@@ -83,6 +83,8 @@ class BookQaService implements BookQaServiceLike {
       Duration(seconds: 4),
     ],
     this.limit = 5,
+    this.stallTimeout = const Duration(seconds: 30),
+    this.totalTimeout = const Duration(seconds: 90),
   });
 
   final ApiKeyStoreLike apiKeys;
@@ -91,6 +93,8 @@ class BookQaService implements BookQaServiceLike {
   final QaClientLike Function(AiCredentials creds) clientFactory;
   final List<Duration> retryDelays;
   final int limit;
+  final Duration stallTimeout;
+  final Duration totalTimeout;
 
   @override
   Stream<QaEvent> ask({
@@ -137,15 +141,38 @@ class BookQaService implements BookQaServiceLike {
 
     // 5. Stream with retry on network errors only. Auth/rate/server/parse
     //    errors fail fast — retrying won't help.
+    //
+    // Stall protection: we cannot use `Stream.timeout` because that pauses
+    // its timer when the source subscription is paused (which happens
+    // whenever an `async*` source yields one event then awaits — the
+    // listener's pending-request count drops to zero and the source is
+    // reported as paused). Instead we drive a `StreamIterator` and call
+    // `Future.timeout` on each `moveNext()`, which has no pause coupling
+    // and fires reliably on wall-clock elapsed time.
     final accumulated = StringBuffer();
+    final started = DateTime.now();
     var attempt = 0;
     while (true) {
+      final iterator =
+          StreamIterator(clientFactory(creds).streamChat(prompt: prompt));
       try {
-        await for (final chunk
-            in clientFactory(creds).streamChat(prompt: prompt)) {
+        while (true) {
+          final moved = await iterator
+              .moveNext()
+              .timeout(stallTimeout, onTimeout: () {
+            throw const AiNetworkException('stream stalled');
+          });
+          if (!moved) break;
+          final chunk = iterator.current;
           accumulated.write(chunk);
           yield QaChunkEvent(chunk);
+          if (DateTime.now().difference(started) > totalTimeout) {
+            yield QaErrorEvent(QaError.network);
+            await iterator.cancel();
+            return;
+          }
         }
+        await iterator.cancel();
         final answer = accumulated.toString();
         final citations = QaCitationParser.extractCitations(answer);
         // Persist best-effort: a DB hiccup shouldn't cost the user the
@@ -167,6 +194,10 @@ class BookQaService implements BookQaServiceLike {
         );
         return;
       } on AiNetworkException {
+        // Best-effort cleanup; don't await — a hung async* source may never
+        // let cancel() return (the generator is blocked on a future that
+        // never completes). Real HTTP clients respond to cancel promptly.
+        unawaited(iterator.cancel());
         if (attempt >= retryDelays.length - 1) {
           yield QaErrorEvent(QaError.network);
           return;
@@ -175,15 +206,19 @@ class BookQaService implements BookQaServiceLike {
         attempt += 1;
         continue;
       } on AiAuthException {
+        unawaited(iterator.cancel());
         yield QaErrorEvent(QaError.authFailed);
         return;
       } on AiRateLimitException {
+        unawaited(iterator.cancel());
         yield QaErrorEvent(QaError.rateLimited);
         return;
       } on AiServerException {
+        unawaited(iterator.cancel());
         yield QaErrorEvent(QaError.serverError);
         return;
       } on AiParseException {
+        unawaited(iterator.cancel());
         yield QaErrorEvent(QaError.parseError);
         return;
       }

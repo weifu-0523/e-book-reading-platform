@@ -412,4 +412,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String preprocessFailedChapters(String count) {
     return '$count 章预处理失败';
   }
+
+  @override
+  String get qaStopLabel => '停止';
 }

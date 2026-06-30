@@ -161,4 +161,34 @@ void main() {
     await tester.pump();
     expect(find.textContaining('预处理'), findsWidgets);
   });
+
+  testWidgets('Stop button renders while streaming and cancels via reset',
+      (tester) async {
+    final fake = _FakeQaController()
+      ..state = const QaState(
+        status: QaStatus.streaming,
+        answer: 'partial answer',
+      );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          qaControllerProvider('b1').overrideWith((ref) => fake),
+        ],
+        child: MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: QaAskDialog(bookId: 'b1', book: _book()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('停止'), findsOneWidget);
+    await tester.tap(find.text('停止'));
+    await tester.pump();
+    // _FakeQaController inherits QaController.reset(); state returns to idle.
+    expect(find.text('停止'), findsNothing);
+  });
 }

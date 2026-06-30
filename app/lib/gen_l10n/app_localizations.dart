@@ -859,6 +859,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{count} 章预处理失败'**
   String preprocessFailedChapters(String count);
+
+  /// No description provided for @qaStopLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止'**
+  String get qaStopLabel;
 }
 
 class _AppLocalizationsDelegate

@@ -421,4 +421,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String preprocessFailedChapters(String count) {
     return '$count chapter(s) failed preprocessing';
   }
+
+  @override
+  String get qaStopLabel => 'Stop';
 }

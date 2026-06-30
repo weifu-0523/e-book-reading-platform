@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/database.dart';
+
 import 'package:zhiyue/data/models/book.dart' as model;
 import 'package:zhiyue/services/ai/api_key_store.dart';
 import 'package:zhiyue/services/ai/book_chunker.dart';
@@ -30,6 +33,18 @@ class _ThrowingQaClient implements QaClientLike {
   @override
   Stream<String> streamChat({required String prompt}) async* {
     throw _error;
+  }
+}
+
+class _StallClient implements QaClientLike {
+  @override
+  Stream<String> streamChat({required String prompt}) {
+    // Mirror a real HTTP stream: controller-backed, emits one chunk, then
+    // sits idle (never closes). Cancel propagates cleanly so the service's
+    // iterator.cancel() returns promptly. (An async* fake with
+    // `await Completer<>().future` would block cancel() forever.)
+    final controller = StreamController<String>()..add('first chunk');
+    return controller.stream;
   }
 }
 
@@ -186,5 +201,24 @@ void main() {
         events,
         anyElement(predicate(
             (e) => e is QaErrorEvent && e.error == QaError.authFailed)));
+  });
+
+  test('stream stall > stallTimeout yields QaError.network', () async {
+    await seedBook();
+    await seedPassages();
+    final service = BookQaService(
+      apiKeys: _FakeApiKeyStore(_creds()),
+      passagesDao: db.bookPassagesDao,
+      qaHistoryDao: db.qaHistoryDao,
+      clientFactory: (_) => _StallClient(),
+      stallTimeout: const Duration(milliseconds: 100),
+      totalTimeout: const Duration(seconds: 30),
+      retryDelays: const [], // disable retry: fail fast on stall
+    );
+
+    final events = await service.ask(book: _book(), question: 'Q').toList();
+    expect(events, contains(isA<QaErrorEvent>()));
+    final err = events.whereType<QaErrorEvent>().single;
+    expect(err.error, QaError.network);
   });
 }

@@ -305,5 +305,7 @@
   "preprocessRetryLabel": "重新预处理",
   "@preprocessRetryLabel": {},
   "preprocessFailedChapters": "{count} 章预处理失败",
-  "@preprocessFailedChapters": {"placeholders": {"count": {"type": "String"}}}
+  "@preprocessFailedChapters": {"placeholders": {"count": {"type": "String"}}},
+  "qaStopLabel": "停止",
+  "@qaStopLabel": {}
 }
