@@ -561,4 +561,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get searchFailed => 'Search failed';
+
+  @override
+  String get fontLoadFailed => 'Failed to load fonts';
 }

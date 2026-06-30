@@ -1105,6 +1105,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'搜索失败'**
   String get searchFailed;
+
+  /// No description provided for @fontLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'字体列表加载失败'**
+  String get fontLoadFailed;
 }
 
 class _AppLocalizationsDelegate

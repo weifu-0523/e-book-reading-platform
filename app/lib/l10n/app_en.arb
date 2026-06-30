@@ -265,5 +265,7 @@
   "searchEmptyResultTitle": "No matching results",
   "@searchEmptyResultTitle": {},
   "searchFailed": "Search failed",
-  "@searchFailed": {}
+  "@searchFailed": {},
+  "fontLoadFailed": "Failed to load fonts",
+  "@fontLoadFailed": {}
 }

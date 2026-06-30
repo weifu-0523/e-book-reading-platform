@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/book.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/ai/ai_guide.dart';
@@ -250,16 +251,7 @@ class _AiGuideSheetState extends ConsumerState<AiGuideSheet> {
           ),
         );
       case AiGuideStatus.loading:
-        return Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 12),
-              Text(l10n.aiGuideLoadingExtract),
-            ],
-          ),
-        );
+        return LoadingView(message: l10n.aiGuideLoadingExtract);
       case AiGuideStatus.streaming:
         return ListView(
           controller: sc,

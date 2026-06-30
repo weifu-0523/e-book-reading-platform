@@ -387,5 +387,7 @@
   "searchEmptyResultTitle": "无匹配结果",
   "@searchEmptyResultTitle": {},
   "searchFailed": "搜索失败",
-  "@searchFailed": {}
+  "@searchFailed": {},
+  "fontLoadFailed": "字体列表加载失败",
+  "@fontLoadFailed": {}
 }

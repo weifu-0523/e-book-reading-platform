@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/providers.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../../../data/local/database.dart' hide Book;
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
@@ -125,7 +126,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   Widget _buildBody(BuildContext context, PreprocessState preprocess) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const LoadingView();
     }
     final book = _book;
     if (book == null) {

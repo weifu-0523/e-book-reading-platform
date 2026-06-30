@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
+import '../../../core/widgets/error_view.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/user_font.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../models/font_import_result.dart';
@@ -46,8 +48,11 @@ class FontManagementPage extends ConsumerWidget {
         ],
       ),
       body: fontsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        loading: () => const LoadingView(),
+        error: (e, _) {
+          debugPrint('font_management_page load error: $e');
+          return ErrorView(message: l10n.fontLoadFailed);
+        },
         data: (fonts) => ListView(
           children: [
             // 系统字体（只读）

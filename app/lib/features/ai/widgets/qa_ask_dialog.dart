@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_providers.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/book.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/ai/book_qa_service.dart';
@@ -204,7 +205,7 @@ class _QaAskDialogState extends ConsumerState<QaAskDialog> {
           ),
         );
       case QaStatus.loading:
-        return const Center(child: CircularProgressIndicator());
+        return const LoadingView();
       case QaStatus.streaming:
       case QaStatus.done:
         if (state.answer.isEmpty) {

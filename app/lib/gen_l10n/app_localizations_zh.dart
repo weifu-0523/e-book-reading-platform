@@ -551,4 +551,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get searchFailed => '搜索失败';
+
+  @override
+  String get fontLoadFailed => '字体列表加载失败';
 }
