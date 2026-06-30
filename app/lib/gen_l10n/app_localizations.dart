@@ -1123,6 +1123,156 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'暂无字体预设'**
   String get typographyProfilesEmpty;
+
+  /// No description provided for @reviewButtonLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'回顾本章'**
+  String get reviewButtonLabel;
+
+  /// No description provided for @reviewCurrentChapterMenuLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'回顾本章'**
+  String get reviewCurrentChapterMenuLabel;
+
+  /// No description provided for @reviewDisabledNotPreprocessedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'需先预处理本书'**
+  String get reviewDisabledNotPreprocessedHint;
+
+  /// No description provided for @reviewSheetTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'回顾：第 {n} 章 · {title}'**
+  String reviewSheetTitle(int n, String title);
+
+  /// No description provided for @reviewSummarySection.
+  ///
+  /// In zh, this message translates to:
+  /// **'核心摘要'**
+  String get reviewSummarySection;
+
+  /// No description provided for @reviewTakeawaysSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'核心要点'**
+  String get reviewTakeawaysSection;
+
+  /// No description provided for @reviewSaveButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存到读书笔记'**
+  String get reviewSaveButton;
+
+  /// No description provided for @reviewCancelButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get reviewCancelButton;
+
+  /// No description provided for @reviewRetryButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get reviewRetryButton;
+
+  /// No description provided for @reviewStatusLoading.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 思考中…'**
+  String get reviewStatusLoading;
+
+  /// No description provided for @reviewStatusStreaming.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 正在生成…'**
+  String get reviewStatusStreaming;
+
+  /// No description provided for @reviewEmptyHighlightsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'（本章无高亮，AI 将基于正文做通用回顾）'**
+  String get reviewEmptyHighlightsHint;
+
+  /// No description provided for @reviewErrorAuthFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'API 密钥无效或未配置，请检查设置'**
+  String get reviewErrorAuthFailed;
+
+  /// No description provided for @reviewErrorParseFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 输出格式异常，请重试'**
+  String get reviewErrorParseFailed;
+
+  /// No description provided for @reviewErrorServer.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络或服务异常，请重试'**
+  String get reviewErrorServer;
+
+  /// No description provided for @batchExportMenuLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出为 Markdown'**
+  String get batchExportMenuLabel;
+
+  /// No description provided for @batchExportConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出读书笔记'**
+  String get batchExportConfirmTitle;
+
+  /// No description provided for @batchExportConfirmMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'将导出 {count} 本书的读书笔记到指定文件夹。'**
+  String batchExportConfirmMessage(int count);
+
+  /// No description provided for @batchExportNoNotesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可导出内容'**
+  String get batchExportNoNotesTitle;
+
+  /// No description provided for @batchExportNoNotesMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有任何读书笔记。先做一些高亮或笔记再导出。'**
+  String get batchExportNoNotesMessage;
+
+  /// No description provided for @batchExportProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在导出 {current}/{total}：{title}'**
+  String batchExportProgress(int current, int total, String title);
+
+  /// No description provided for @batchExportSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导出 {count} 本书到 {path}'**
+  String batchExportSuccess(int count, String path);
+
+  /// No description provided for @batchExportPartialFailure.
+  ///
+  /// In zh, this message translates to:
+  /// **'已导出 {success}/{total}，{failed} 本失败'**
+  String batchExportPartialFailure(int success, int total, int failed);
+
+  /// No description provided for @batchExportCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取消，导出 {success}/{total}'**
+  String batchExportCancelled(int success, int total);
+
+  /// No description provided for @batchExportOpenFolder.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开文件夹'**
+  String get batchExportOpenFolder;
 }
 
 class _AppLocalizationsDelegate

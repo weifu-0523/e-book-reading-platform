@@ -560,4 +560,91 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get typographyProfilesEmpty => '暂无字体预设';
+
+  @override
+  String get reviewButtonLabel => '回顾本章';
+
+  @override
+  String get reviewCurrentChapterMenuLabel => '回顾本章';
+
+  @override
+  String get reviewDisabledNotPreprocessedHint => '需先预处理本书';
+
+  @override
+  String reviewSheetTitle(int n, String title) {
+    return '回顾：第 $n 章 · $title';
+  }
+
+  @override
+  String get reviewSummarySection => '核心摘要';
+
+  @override
+  String get reviewTakeawaysSection => '核心要点';
+
+  @override
+  String get reviewSaveButton => '保存到读书笔记';
+
+  @override
+  String get reviewCancelButton => '取消';
+
+  @override
+  String get reviewRetryButton => '重试';
+
+  @override
+  String get reviewStatusLoading => 'AI 思考中…';
+
+  @override
+  String get reviewStatusStreaming => 'AI 正在生成…';
+
+  @override
+  String get reviewEmptyHighlightsHint => '（本章无高亮，AI 将基于正文做通用回顾）';
+
+  @override
+  String get reviewErrorAuthFailed => 'API 密钥无效或未配置，请检查设置';
+
+  @override
+  String get reviewErrorParseFailed => 'AI 输出格式异常，请重试';
+
+  @override
+  String get reviewErrorServer => '网络或服务异常，请重试';
+
+  @override
+  String get batchExportMenuLabel => '导出为 Markdown';
+
+  @override
+  String get batchExportConfirmTitle => '导出读书笔记';
+
+  @override
+  String batchExportConfirmMessage(int count) {
+    return '将导出 $count 本书的读书笔记到指定文件夹。';
+  }
+
+  @override
+  String get batchExportNoNotesTitle => '暂无可导出内容';
+
+  @override
+  String get batchExportNoNotesMessage => '还没有任何读书笔记。先做一些高亮或笔记再导出。';
+
+  @override
+  String batchExportProgress(int current, int total, String title) {
+    return '正在导出 $current/$total：$title';
+  }
+
+  @override
+  String batchExportSuccess(int count, String path) {
+    return '已导出 $count 本书到 $path';
+  }
+
+  @override
+  String batchExportPartialFailure(int success, int total, int failed) {
+    return '已导出 $success/$total，$failed 本失败';
+  }
+
+  @override
+  String batchExportCancelled(int success, int total) {
+    return '已取消，导出 $success/$total';
+  }
+
+  @override
+  String get batchExportOpenFolder => '打开文件夹';
 }

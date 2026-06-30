@@ -271,5 +271,86 @@
   "typographyProfilesLoadFailed": "Failed to load font profiles",
   "@typographyProfilesLoadFailed": {},
   "typographyProfilesEmpty": "No font profiles yet",
-  "@typographyProfilesEmpty": {}
+  "@typographyProfilesEmpty": {},
+  "reviewButtonLabel": "Review chapter",
+  "@reviewButtonLabel": {},
+  "reviewCurrentChapterMenuLabel": "Review this chapter",
+  "@reviewCurrentChapterMenuLabel": {},
+  "reviewDisabledNotPreprocessedHint": "Preprocess the book first",
+  "@reviewDisabledNotPreprocessedHint": {},
+  "reviewSheetTitle": "Review: ch {n} · {title}",
+  "@reviewSheetTitle": {
+    "placeholders": {
+      "n": { "type": "int" },
+      "title": { "type": "String" }
+    }
+  },
+  "reviewSummarySection": "Summary",
+  "@reviewSummarySection": {},
+  "reviewTakeawaysSection": "Key takeaways",
+  "@reviewTakeawaysSection": {},
+  "reviewSaveButton": "Save to notes",
+  "@reviewSaveButton": {},
+  "reviewCancelButton": "Cancel",
+  "@reviewCancelButton": {},
+  "reviewRetryButton": "Retry",
+  "@reviewRetryButton": {},
+  "reviewStatusLoading": "AI thinking…",
+  "@reviewStatusLoading": {},
+  "reviewStatusStreaming": "AI generating…",
+  "@reviewStatusStreaming": {},
+  "reviewEmptyHighlightsHint": "(No highlights in this chapter; AI will produce a generic review.)",
+  "@reviewEmptyHighlightsHint": {},
+  "reviewErrorAuthFailed": "API key invalid or missing. Check settings.",
+  "@reviewErrorAuthFailed": {},
+  "reviewErrorParseFailed": "AI output malformed. Please retry.",
+  "@reviewErrorParseFailed": {},
+  "reviewErrorServer": "Network or server error. Please retry.",
+  "@reviewErrorServer": {},
+  "batchExportMenuLabel": "Export as Markdown",
+  "@batchExportMenuLabel": {},
+  "batchExportConfirmTitle": "Export notes",
+  "@batchExportConfirmTitle": {},
+  "batchExportConfirmMessage": "Will export {count} books' notes to a folder of your choice.",
+  "@batchExportConfirmMessage": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "batchExportNoNotesTitle": "Nothing to export",
+  "@batchExportNoNotesTitle": {},
+  "batchExportNoNotesMessage": "No notes yet. Add highlights or annotations first.",
+  "@batchExportNoNotesMessage": {},
+  "batchExportProgress": "Exporting {current}/{total}: {title}",
+  "@batchExportProgress": {
+    "placeholders": {
+      "current": { "type": "int" },
+      "total": { "type": "int" },
+      "title": { "type": "String" }
+    }
+  },
+  "batchExportSuccess": "Exported {count} books to {path}",
+  "@batchExportSuccess": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "path": { "type": "String" }
+    }
+  },
+  "batchExportPartialFailure": "Exported {success}/{total}, {failed} failed",
+  "@batchExportPartialFailure": {
+    "placeholders": {
+      "success": { "type": "int" },
+      "total": { "type": "int" },
+      "failed": { "type": "int" }
+    }
+  },
+  "batchExportCancelled": "Cancelled, exported {success}/{total}",
+  "@batchExportCancelled": {
+    "placeholders": {
+      "success": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "batchExportOpenFolder": "Open folder",
+  "@batchExportOpenFolder": {}
 }

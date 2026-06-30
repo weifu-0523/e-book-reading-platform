@@ -393,5 +393,86 @@
   "typographyProfilesLoadFailed": "字体预设加载失败",
   "@typographyProfilesLoadFailed": {},
   "typographyProfilesEmpty": "暂无字体预设",
-  "@typographyProfilesEmpty": {}
+  "@typographyProfilesEmpty": {},
+  "reviewButtonLabel": "回顾本章",
+  "@reviewButtonLabel": {},
+  "reviewCurrentChapterMenuLabel": "回顾本章",
+  "@reviewCurrentChapterMenuLabel": {},
+  "reviewDisabledNotPreprocessedHint": "需先预处理本书",
+  "@reviewDisabledNotPreprocessedHint": {},
+  "reviewSheetTitle": "回顾：第 {n} 章 · {title}",
+  "@reviewSheetTitle": {
+    "placeholders": {
+      "n": { "type": "int" },
+      "title": { "type": "String" }
+    }
+  },
+  "reviewSummarySection": "核心摘要",
+  "@reviewSummarySection": {},
+  "reviewTakeawaysSection": "核心要点",
+  "@reviewTakeawaysSection": {},
+  "reviewSaveButton": "保存到读书笔记",
+  "@reviewSaveButton": {},
+  "reviewCancelButton": "取消",
+  "@reviewCancelButton": {},
+  "reviewRetryButton": "重试",
+  "@reviewRetryButton": {},
+  "reviewStatusLoading": "AI 思考中…",
+  "@reviewStatusLoading": {},
+  "reviewStatusStreaming": "AI 正在生成…",
+  "@reviewStatusStreaming": {},
+  "reviewEmptyHighlightsHint": "（本章无高亮，AI 将基于正文做通用回顾）",
+  "@reviewEmptyHighlightsHint": {},
+  "reviewErrorAuthFailed": "API 密钥无效或未配置，请检查设置",
+  "@reviewErrorAuthFailed": {},
+  "reviewErrorParseFailed": "AI 输出格式异常，请重试",
+  "@reviewErrorParseFailed": {},
+  "reviewErrorServer": "网络或服务异常，请重试",
+  "@reviewErrorServer": {},
+  "batchExportMenuLabel": "导出为 Markdown",
+  "@batchExportMenuLabel": {},
+  "batchExportConfirmTitle": "导出读书笔记",
+  "@batchExportConfirmTitle": {},
+  "batchExportConfirmMessage": "将导出 {count} 本书的读书笔记到指定文件夹。",
+  "@batchExportConfirmMessage": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "batchExportNoNotesTitle": "暂无可导出内容",
+  "@batchExportNoNotesTitle": {},
+  "batchExportNoNotesMessage": "还没有任何读书笔记。先做一些高亮或笔记再导出。",
+  "@batchExportNoNotesMessage": {},
+  "batchExportProgress": "正在导出 {current}/{total}：{title}",
+  "@batchExportProgress": {
+    "placeholders": {
+      "current": { "type": "int" },
+      "total": { "type": "int" },
+      "title": { "type": "String" }
+    }
+  },
+  "batchExportSuccess": "已导出 {count} 本书到 {path}",
+  "@batchExportSuccess": {
+    "placeholders": {
+      "count": { "type": "int" },
+      "path": { "type": "String" }
+    }
+  },
+  "batchExportPartialFailure": "已导出 {success}/{total}，{failed} 本失败",
+  "@batchExportPartialFailure": {
+    "placeholders": {
+      "success": { "type": "int" },
+      "total": { "type": "int" },
+      "failed": { "type": "int" }
+    }
+  },
+  "batchExportCancelled": "已取消，导出 {success}/{total}",
+  "@batchExportCancelled": {
+    "placeholders": {
+      "success": { "type": "int" },
+      "total": { "type": "int" }
+    }
+  },
+  "batchExportOpenFolder": "打开文件夹",
+  "@batchExportOpenFolder": {}
 }

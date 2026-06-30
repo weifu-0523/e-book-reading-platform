@@ -570,4 +570,94 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get typographyProfilesEmpty => 'No font profiles yet';
+
+  @override
+  String get reviewButtonLabel => 'Review chapter';
+
+  @override
+  String get reviewCurrentChapterMenuLabel => 'Review this chapter';
+
+  @override
+  String get reviewDisabledNotPreprocessedHint => 'Preprocess the book first';
+
+  @override
+  String reviewSheetTitle(int n, String title) {
+    return 'Review: ch $n · $title';
+  }
+
+  @override
+  String get reviewSummarySection => 'Summary';
+
+  @override
+  String get reviewTakeawaysSection => 'Key takeaways';
+
+  @override
+  String get reviewSaveButton => 'Save to notes';
+
+  @override
+  String get reviewCancelButton => 'Cancel';
+
+  @override
+  String get reviewRetryButton => 'Retry';
+
+  @override
+  String get reviewStatusLoading => 'AI thinking…';
+
+  @override
+  String get reviewStatusStreaming => 'AI generating…';
+
+  @override
+  String get reviewEmptyHighlightsHint =>
+      '(No highlights in this chapter; AI will produce a generic review.)';
+
+  @override
+  String get reviewErrorAuthFailed =>
+      'API key invalid or missing. Check settings.';
+
+  @override
+  String get reviewErrorParseFailed => 'AI output malformed. Please retry.';
+
+  @override
+  String get reviewErrorServer => 'Network or server error. Please retry.';
+
+  @override
+  String get batchExportMenuLabel => 'Export as Markdown';
+
+  @override
+  String get batchExportConfirmTitle => 'Export notes';
+
+  @override
+  String batchExportConfirmMessage(int count) {
+    return 'Will export $count books\' notes to a folder of your choice.';
+  }
+
+  @override
+  String get batchExportNoNotesTitle => 'Nothing to export';
+
+  @override
+  String get batchExportNoNotesMessage =>
+      'No notes yet. Add highlights or annotations first.';
+
+  @override
+  String batchExportProgress(int current, int total, String title) {
+    return 'Exporting $current/$total: $title';
+  }
+
+  @override
+  String batchExportSuccess(int count, String path) {
+    return 'Exported $count books to $path';
+  }
+
+  @override
+  String batchExportPartialFailure(int success, int total, int failed) {
+    return 'Exported $success/$total, $failed failed';
+  }
+
+  @override
+  String batchExportCancelled(int success, int total) {
+    return 'Cancelled, exported $success/$total';
+  }
+
+  @override
+  String get batchExportOpenFolder => 'Open folder';
 }
