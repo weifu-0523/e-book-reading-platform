@@ -5,6 +5,7 @@ import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/ai/providers/book_preprocess_controller.dart';
 import 'package:zhiyue/features/library/pages/book_detail_page.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 import 'package:zhiyue/services/ai/book_preprocessor.dart';
 
 import '../../../fakes/fake_book_repository.dart';
@@ -56,11 +57,18 @@ void main() {
   });
   tearDown(() => container.dispose());
 
+  Widget buildHarness(Widget home) => UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+          home: home,
+        ),
+      );
+
   testWidgets('renders title + author + size + delete button', (tester) async {
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: BookDetailPage(bookId: 'b1')),
-    ));
+    await tester.pumpWidget(buildHarness(const BookDetailPage(bookId: 'b1')));
     await tester.pumpAndSettle();
 
     expect(find.text('人类简史'), findsOneWidget);
@@ -70,10 +78,7 @@ void main() {
   });
 
   testWidgets('renders loading when book not found', (tester) async {
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: BookDetailPage(bookId: 'missing')),
-    ));
+    await tester.pumpWidget(buildHarness(const BookDetailPage(bookId: 'missing')));
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
@@ -93,10 +98,7 @@ void main() {
     );
     await fakeRepo.save(noAuthorBook);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: BookDetailPage(bookId: 'b2')),
-    ));
+    await tester.pumpWidget(buildHarness(const BookDetailPage(bookId: 'b2')));
     await tester.pumpAndSettle();
 
     expect(find.text('无作者'), findsOneWidget);
@@ -104,10 +106,7 @@ void main() {
   });
 
   testWidgets('delete button triggers confirmation dialog', (tester) async {
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: BookDetailPage(bookId: 'b1')),
-    ));
+    await tester.pumpWidget(buildHarness(const BookDetailPage(bookId: 'b1')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('删除'));
@@ -118,10 +117,7 @@ void main() {
   });
 
   testWidgets('confirm delete removes book from repo', (tester) async {
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: BookDetailPage(bookId: 'b1')),
-    ));
+    await tester.pumpWidget(buildHarness(const BookDetailPage(bookId: 'b1')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('删除'));

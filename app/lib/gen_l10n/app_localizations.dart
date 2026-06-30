@@ -883,6 +883,168 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已删除该条历史'**
   String get qaHistoryDeleted;
+
+  /// No description provided for @bookDetailTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'书籍详情'**
+  String get bookDetailTitle;
+
+  /// No description provided for @bookDetailActionViewNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看笔记'**
+  String get bookDetailActionViewNotes;
+
+  /// No description provided for @bookDetailActionReprocess.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新预处理'**
+  String get bookDetailActionReprocess;
+
+  /// No description provided for @bookDetailActionAiGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 导读'**
+  String get bookDetailActionAiGuide;
+
+  /// No description provided for @bookDetailActionDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get bookDetailActionDelete;
+
+  /// No description provided for @bookDetailNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'未找到书籍'**
+  String get bookDetailNotFound;
+
+  /// No description provided for @bookDetailFieldAuthor.
+  ///
+  /// In zh, this message translates to:
+  /// **'作者：{author}'**
+  String bookDetailFieldAuthor(String author);
+
+  /// No description provided for @bookDetailFieldFormat.
+  ///
+  /// In zh, this message translates to:
+  /// **'格式：{format}'**
+  String bookDetailFieldFormat(String format);
+
+  /// No description provided for @bookDetailFieldFileSize.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件大小：{size}'**
+  String bookDetailFieldFileSize(String size);
+
+  /// No description provided for @bookDetailFieldAddedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加时间：{datetime}'**
+  String bookDetailFieldAddedAt(String datetime);
+
+  /// No description provided for @bookDetailFieldLastReadAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近阅读：{datetime}'**
+  String bookDetailFieldLastReadAt(String datetime);
+
+  /// No description provided for @bookDetailPreprocessIdle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 预处理：未开始'**
+  String get bookDetailPreprocessIdle;
+
+  /// No description provided for @bookDetailPreprocessChunking.
+  ///
+  /// In zh, this message translates to:
+  /// **'切分章节中'**
+  String get bookDetailPreprocessChunking;
+
+  /// No description provided for @bookDetailPreprocessSummarizing.
+  ///
+  /// In zh, this message translates to:
+  /// **'生成摘要中'**
+  String get bookDetailPreprocessSummarizing;
+
+  /// No description provided for @bookDetailPreprocessStatusLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 预处理：{phase} ({current}/{total})'**
+  String bookDetailPreprocessStatusLabel(String phase, int current, int total);
+
+  /// No description provided for @bookDetailPreprocessCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get bookDetailPreprocessCancel;
+
+  /// No description provided for @bookDetailPreprocessAuthFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'API key 无效'**
+  String get bookDetailPreprocessAuthFailed;
+
+  /// No description provided for @bookDetailPreprocessGoSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'去设置'**
+  String get bookDetailPreprocessGoSettings;
+
+  /// No description provided for @bookDetailPreprocessFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 预处理：失败（{reason}）'**
+  String bookDetailPreprocessFailed(String reason);
+
+  /// No description provided for @bookDetailPreprocessDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 预处理：完成'**
+  String get bookDetailPreprocessDone;
+
+  /// No description provided for @bookDetailPreprocessFailedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 章预处理失败'**
+  String bookDetailPreprocessFailedCount(int count);
+
+  /// No description provided for @bookDetailPreprocessRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get bookDetailPreprocessRetry;
+
+  /// No description provided for @bookDetailDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除书籍？'**
+  String get bookDetailDeleteTitle;
+
+  /// No description provided for @bookDetailDeleteBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'《{title}》及其阅读进度和高亮笔记都会被删除，无法恢复。'**
+  String bookDetailDeleteBody(String title);
+
+  /// No description provided for @bookDetailDeleteCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get bookDetailDeleteCancel;
+
+  /// No description provided for @bookDetailDeleteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get bookDetailDeleteConfirm;
+
+  /// No description provided for @bookDetailPreprocessUnknownError.
+  ///
+  /// In zh, this message translates to:
+  /// **'未知'**
+  String get bookDetailPreprocessUnknownError;
 }
 
 class _AppLocalizationsDelegate

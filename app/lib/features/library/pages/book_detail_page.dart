@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -61,11 +62,11 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     final preprocess = ref.watch(bookPreprocessControllerProvider(widget.bookId));
     return Scaffold(
       appBar: AppBar(
-        title: const Text('书籍详情'),
+        title: Text(AppLocalizations.of(context)!.bookDetailTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.article_outlined),
-            tooltip: '查看笔记',
+            tooltip: AppLocalizations.of(context)!.bookDetailActionViewNotes,
             onPressed: () => context.push('/book/${widget.bookId}/notes'),
           ),
         ],
@@ -78,14 +79,14 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
             heroTag: 'reprocess',
             onPressed: _book == null ? null : _reprocess,
             icon: const Icon(Icons.refresh),
-            label: const Text('重新预处理'),
+            label: Text(AppLocalizations.of(context)!.bookDetailActionReprocess),
           ),
           const SizedBox(width: 12),
           FloatingActionButton.extended(
             heroTag: 'ai_guide',
             onPressed: _openAiGuide,
             icon: const Icon(Icons.auto_awesome_outlined),
-            label: const Text('AI 导读'),
+            label: Text(AppLocalizations.of(context)!.bookDetailActionAiGuide),
           ),
           const SizedBox(width: 12),
           FloatingActionButton.extended(
@@ -93,7 +94,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
             onPressed: _confirmDelete,
             backgroundColor: Colors.red,
             icon: const Icon(Icons.delete),
-            label: const Text('删除'),
+            label: Text(AppLocalizations.of(context)!.bookDetailActionDelete),
           ),
         ],
       ),
@@ -128,7 +129,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     }
     final book = _book;
     if (book == null) {
-      return const Center(child: Text('未找到书籍'));
+      return Center(child: Text(AppLocalizations.of(context)!.bookDetailNotFound));
     }
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -139,14 +140,14 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         ),
         if (book.author != null) ...[
           const SizedBox(height: 8),
-          Text('作者：${book.author!}'),
+          Text(AppLocalizations.of(context)!.bookDetailFieldAuthor(book.author!)),
         ],
         const SizedBox(height: 16),
-        Text('格式：${book.format == BookFormat.epub ? 'EPUB' : 'PDF'}'),
-        Text('文件大小：${_humanSize(book.fileSizeBytes)}'),
-        Text('添加时间：${book.addedAt.toLocal()}'),
+        Text(AppLocalizations.of(context)!.bookDetailFieldFormat(book.format == BookFormat.epub ? 'EPUB' : 'PDF')),
+        Text(AppLocalizations.of(context)!.bookDetailFieldFileSize(_humanSize(book.fileSizeBytes))),
+        Text(AppLocalizations.of(context)!.bookDetailFieldAddedAt(book.addedAt.toLocal().toString())),
         if (book.lastReadAt != null)
-          Text('最近阅读：${book.lastReadAt!.toLocal()}'),
+          Text(AppLocalizations.of(context)!.bookDetailFieldLastReadAt(book.lastReadAt!.toLocal().toString())),
         const Divider(),
         _PreprocessPanel(
           state: preprocess,
@@ -155,7 +156,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         const Divider(),
         ListTile(
           leading: const Icon(Icons.article_outlined),
-          title: const Text('查看笔记'),
+          title: Text(AppLocalizations.of(context)!.bookDetailActionViewNotes),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => context.push('/book/${widget.bookId}/notes'),
         ),
@@ -176,20 +177,20 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除书籍？'),
+        title: Text(AppLocalizations.of(context)!.bookDetailDeleteTitle),
         content: Text(
-          '《${book.title}》及其阅读进度和高亮笔记都会被删除，无法恢复。',
+          AppLocalizations.of(context)!.bookDetailDeleteBody(book.title),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(AppLocalizations.of(context)!.bookDetailDeleteCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              '删除',
-              style: TextStyle(color: Colors.red),
+            child: Text(
+              AppLocalizations.of(context)!.bookDetailDeleteConfirm,
+              style: const TextStyle(color: Colors.red),
             ),
           ),
         ],
@@ -222,25 +223,26 @@ class _PreprocessPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     switch (state.status) {
       case PreprocessStatus.idle:
-        return const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: Text('AI 预处理：未开始'),
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(l10n.bookDetailPreprocessIdle),
         );
       case PreprocessStatus.chunking:
       case PreprocessStatus.summarizing:
         final total = state.totalChapters > 0 ? state.totalChapters : 1;
         final current = state.currentChapter.clamp(0, total);
         final phase = state.status == PreprocessStatus.chunking
-            ? '切分章节中'
-            : '生成摘要中';
+            ? l10n.bookDetailPreprocessChunking
+            : l10n.bookDetailPreprocessSummarizing;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('AI 预处理：$phase ($current/$total)'),
+              Text(l10n.bookDetailPreprocessStatusLabel(phase, current, total)),
               const SizedBox(height: 4),
               LinearProgressIndicator(
                 value: current / total,
@@ -252,7 +254,7 @@ class _PreprocessPanel extends ConsumerWidget {
                       .read(bookPreprocessControllerProvider(bookId).notifier)
                       .cancel(),
                   icon: const Icon(Icons.stop_circle_outlined),
-                  label: const Text('取消'),
+                  label: Text(l10n.bookDetailPreprocessCancel),
                 ),
               ),
             ],
@@ -271,10 +273,10 @@ class _PreprocessPanel extends ConsumerWidget {
               children: [
                 const Icon(Icons.error_outline, color: Colors.red),
                 const SizedBox(width: 8),
-                const Expanded(child: Text('API key 无效')),
+                Expanded(child: Text(l10n.bookDetailPreprocessAuthFailed)),
                 TextButton(
                   onPressed: () => context.push('/settings/ai'),
-                  child: const Text('去设置'),
+                  child: Text(l10n.bookDetailPreprocessGoSettings),
                 ),
               ],
             ),
@@ -283,15 +285,15 @@ class _PreprocessPanel extends ConsumerWidget {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(
-            'AI 预处理：失败（${state.error == null ? "未知" : state.error!.name}）',
+            l10n.bookDetailPreprocessFailed(state.error == null ? l10n.bookDetailPreprocessUnknownError : state.error!.name),
             style: const TextStyle(color: Colors.red),
           ),
         );
       case PreprocessStatus.done:
         if (state.failedChapters.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('AI 预处理：完成'),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(l10n.bookDetailPreprocessDone),
           );
         }
         return Container(
@@ -307,7 +309,7 @@ class _PreprocessPanel extends ConsumerWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '${state.failedChapters.length} 章预处理失败',
+                  l10n.bookDetailPreprocessFailedCount(state.failedChapters.length),
                 ),
               ),
               TextButton(
@@ -316,7 +318,7 @@ class _PreprocessPanel extends ConsumerWidget {
                   final db = container.read(appDatabaseProvider);
                   _retryWithBookLookup(container, db);
                 },
-                child: const Text('重试'),
+                child: Text(l10n.bookDetailPreprocessRetry),
               ),
             ],
           ),

@@ -426,4 +426,103 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get qaHistoryDeleted => '已删除该条历史';
+
+  @override
+  String get bookDetailTitle => '书籍详情';
+
+  @override
+  String get bookDetailActionViewNotes => '查看笔记';
+
+  @override
+  String get bookDetailActionReprocess => '重新预处理';
+
+  @override
+  String get bookDetailActionAiGuide => 'AI 导读';
+
+  @override
+  String get bookDetailActionDelete => '删除';
+
+  @override
+  String get bookDetailNotFound => '未找到书籍';
+
+  @override
+  String bookDetailFieldAuthor(String author) {
+    return '作者：$author';
+  }
+
+  @override
+  String bookDetailFieldFormat(String format) {
+    return '格式：$format';
+  }
+
+  @override
+  String bookDetailFieldFileSize(String size) {
+    return '文件大小：$size';
+  }
+
+  @override
+  String bookDetailFieldAddedAt(String datetime) {
+    return '添加时间：$datetime';
+  }
+
+  @override
+  String bookDetailFieldLastReadAt(String datetime) {
+    return '最近阅读：$datetime';
+  }
+
+  @override
+  String get bookDetailPreprocessIdle => 'AI 预处理：未开始';
+
+  @override
+  String get bookDetailPreprocessChunking => '切分章节中';
+
+  @override
+  String get bookDetailPreprocessSummarizing => '生成摘要中';
+
+  @override
+  String bookDetailPreprocessStatusLabel(String phase, int current, int total) {
+    return 'AI 预处理：$phase ($current/$total)';
+  }
+
+  @override
+  String get bookDetailPreprocessCancel => '取消';
+
+  @override
+  String get bookDetailPreprocessAuthFailed => 'API key 无效';
+
+  @override
+  String get bookDetailPreprocessGoSettings => '去设置';
+
+  @override
+  String bookDetailPreprocessFailed(String reason) {
+    return 'AI 预处理：失败（$reason）';
+  }
+
+  @override
+  String get bookDetailPreprocessDone => 'AI 预处理：完成';
+
+  @override
+  String bookDetailPreprocessFailedCount(int count) {
+    return '$count 章预处理失败';
+  }
+
+  @override
+  String get bookDetailPreprocessRetry => '重试';
+
+  @override
+  String get bookDetailDeleteTitle => '删除书籍？';
+
+  @override
+  String bookDetailDeleteBody(String title) {
+    return '《$title》及其阅读进度和高亮笔记都会被删除，无法恢复。';
+  }
+
+  @override
+  String get bookDetailDeleteCancel => '取消';
+
+  @override
+  String get bookDetailDeleteConfirm => '删除';
+
+  @override
+  String get bookDetailPreprocessUnknownError => '未知';
 }

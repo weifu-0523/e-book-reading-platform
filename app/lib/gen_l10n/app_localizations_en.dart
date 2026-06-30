@@ -435,4 +435,103 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get qaHistoryDeleted => 'History entry deleted';
+
+  @override
+  String get bookDetailTitle => 'Book Details';
+
+  @override
+  String get bookDetailActionViewNotes => 'View Notes';
+
+  @override
+  String get bookDetailActionReprocess => 'Reprocess';
+
+  @override
+  String get bookDetailActionAiGuide => 'AI Guide';
+
+  @override
+  String get bookDetailActionDelete => 'Delete';
+
+  @override
+  String get bookDetailNotFound => 'Book not found';
+
+  @override
+  String bookDetailFieldAuthor(String author) {
+    return 'Author: $author';
+  }
+
+  @override
+  String bookDetailFieldFormat(String format) {
+    return 'Format: $format';
+  }
+
+  @override
+  String bookDetailFieldFileSize(String size) {
+    return 'File size: $size';
+  }
+
+  @override
+  String bookDetailFieldAddedAt(String datetime) {
+    return 'Added: $datetime';
+  }
+
+  @override
+  String bookDetailFieldLastReadAt(String datetime) {
+    return 'Last read: $datetime';
+  }
+
+  @override
+  String get bookDetailPreprocessIdle => 'AI preprocessing: not started';
+
+  @override
+  String get bookDetailPreprocessChunking => 'Chunking chapters';
+
+  @override
+  String get bookDetailPreprocessSummarizing => 'Generating summaries';
+
+  @override
+  String bookDetailPreprocessStatusLabel(String phase, int current, int total) {
+    return 'AI preprocessing: $phase ($current/$total)';
+  }
+
+  @override
+  String get bookDetailPreprocessCancel => 'Cancel';
+
+  @override
+  String get bookDetailPreprocessAuthFailed => 'API key invalid';
+
+  @override
+  String get bookDetailPreprocessGoSettings => 'Go to Settings';
+
+  @override
+  String bookDetailPreprocessFailed(String reason) {
+    return 'AI preprocessing: failed ($reason)';
+  }
+
+  @override
+  String get bookDetailPreprocessDone => 'AI preprocessing: done';
+
+  @override
+  String bookDetailPreprocessFailedCount(int count) {
+    return '$count chapter(s) failed preprocessing';
+  }
+
+  @override
+  String get bookDetailPreprocessRetry => 'Retry';
+
+  @override
+  String get bookDetailDeleteTitle => 'Delete book?';
+
+  @override
+  String bookDetailDeleteBody(String title) {
+    return '\"$title\" and all its reading progress and highlights will be deleted. This cannot be undone.';
+  }
+
+  @override
+  String get bookDetailDeleteCancel => 'Cancel';
+
+  @override
+  String get bookDetailDeleteConfirm => 'Delete';
+
+  @override
+  String get bookDetailPreprocessUnknownError => 'unknown';
 }
