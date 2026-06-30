@@ -1021,6 +1021,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'未知'**
   String get bookDetailPreprocessUnknownError;
+
+  /// No description provided for @loadingDefaultMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载中…'**
+  String get loadingDefaultMessage;
+
+  /// No description provided for @retryButtonLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get retryButtonLabel;
 }
 
 class _AppLocalizationsDelegate

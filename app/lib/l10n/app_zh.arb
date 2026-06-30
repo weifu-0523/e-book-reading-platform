@@ -359,5 +359,9 @@
   "bookDetailDeleteConfirm": "删除",
   "@bookDetailDeleteConfirm": {},
   "bookDetailPreprocessUnknownError": "未知",
-  "@bookDetailPreprocessUnknownError": {}
+  "@bookDetailPreprocessUnknownError": {},
+  "loadingDefaultMessage": "加载中…",
+  "@loadingDefaultMessage": {},
+  "retryButtonLabel": "重试",
+  "@retryButtonLabel": {}
 }

@@ -509,4 +509,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get bookDetailPreprocessUnknownError => '未知';
+
+  @override
+  String get loadingDefaultMessage => '加载中…';
+
+  @override
+  String get retryButtonLabel => '重试';
 }

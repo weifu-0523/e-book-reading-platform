@@ -518,4 +518,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bookDetailPreprocessUnknownError => 'unknown';
+
+  @override
+  String get loadingDefaultMessage => 'Loading…';
+
+  @override
+  String get retryButtonLabel => 'Retry';
 }

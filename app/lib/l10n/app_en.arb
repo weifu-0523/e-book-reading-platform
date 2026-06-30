@@ -236,5 +236,10 @@
   "bookDetailDeleteBody": "\"{title}\" and all its reading progress and highlights will be deleted. This cannot be undone.",
   "bookDetailDeleteCancel": "Cancel",
   "bookDetailDeleteConfirm": "Delete",
-  "bookDetailPreprocessUnknownError": "unknown"
+  "bookDetailPreprocessUnknownError": "unknown",
+  "@bookDetailPreprocessUnknownError": {},
+  "loadingDefaultMessage": "Loading…",
+  "@loadingDefaultMessage": {},
+  "retryButtonLabel": "Retry",
+  "@retryButtonLabel": {}
 }
