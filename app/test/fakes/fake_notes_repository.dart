@@ -125,6 +125,69 @@ class FakeNotesRepository implements NotesRepository {
     return filtered;
   }
 
+  @override
+  Future<void> applyChapterReview({
+    required String bookId,
+    required String bookTitle,
+    required int chapterIndex,
+    required String? chapterTitle,
+    required String summary,
+    required List<String> keyTakeaways,
+  }) async {
+    var note = _notes[bookId];
+    note ??= await createEmptyNote(
+      id: 'note_$bookId',
+      bookId: bookId,
+      bookTitle: bookTitle,
+    );
+
+    final ordinal = chapterIndex + 1;
+    final prefix = '【第$ordinal章】 ';
+    final sentinelStart = '## 第 $ordinal 章';
+    final sentinelTitle = (chapterTitle == null || chapterTitle.isEmpty)
+        ? sentinelStart
+        : '$sentinelStart · $chapterTitle';
+
+    final existingTakeaways =
+        note.keyTakeaways.where((t) => !t.startsWith(prefix)).toList();
+    final newTakeaways = keyTakeaways.map((t) => '$prefix$t').toList();
+    final mergedTakeaways = [...existingTakeaways, ...newTakeaways];
+
+    final cleanedSummary = _stripChapterSection(note.summary, sentinelStart);
+    final newSection = StringBuffer()
+      ..writeln(sentinelTitle)
+      ..writeln()
+      ..writeln(summary)
+      ..writeln();
+    final mergedSummary = cleanedSummary.isEmpty
+        ? newSection.toString()
+        : '${cleanedSummary.trimRight()}\n\n$newSection';
+
+    _notes[bookId] = note.copyWith(
+      summary: mergedSummary,
+      keyTakeaways: mergedTakeaways,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  /// 与 LocalNotesRepository._stripChapterSection 相同的语义。
+  String _stripChapterSection(String summary, String sentinelStart) {
+    if (sentinelStart.isEmpty) return summary;
+    if (!summary.contains(sentinelStart)) return summary;
+    final sections = <String>[];
+    final lines = summary.split('\n');
+    var skipping = false;
+    for (final line in lines) {
+      if (line.startsWith('## ')) {
+        skipping = line.startsWith(sentinelStart);
+        if (!skipping) sections.add(line);
+        continue;
+      }
+      if (!skipping) sections.add(line);
+    }
+    return sections.join('\n');
+  }
+
   void _emitForNote(String noteId) {
     String? bookId;
     for (final entry in _notes.entries) {

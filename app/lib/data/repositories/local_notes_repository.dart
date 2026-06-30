@@ -172,6 +172,71 @@ class LocalNotesRepository implements NotesRepository {
         .map((rows) => rows.map(_toAnnotationModel).toList());
   }
 
+  @override
+  Future<void> applyChapterReview({
+    required String bookId,
+    required String bookTitle,
+    required int chapterIndex,
+    required String? chapterTitle,
+    required String summary,
+    required List<String> keyTakeaways,
+  }) async {
+    var note = await getNoteByBook(bookId);
+    note ??= await createEmptyNote(
+      id: 'note_$bookId',
+      bookId: bookId,
+      bookTitle: bookTitle,
+    );
+
+    final ordinal = chapterIndex + 1;
+    final prefix = '【第$ordinal章】 ';
+    final sentinelStart = '## 第 $ordinal 章';
+    final sentinelTitle = (chapterTitle == null || chapterTitle.isEmpty)
+        ? sentinelStart
+        : '$sentinelStart · $chapterTitle';
+
+    // --- keyTakeaways: 删旧加新 ---
+    final existingTakeaways =
+        note.keyTakeaways.where((t) => !t.startsWith(prefix)).toList();
+    final newTakeaways = keyTakeaways.map((t) => '$prefix$t').toList();
+    final mergedTakeaways = [...existingTakeaways, ...newTakeaways];
+
+    // --- summary: 删旧加新 ---
+    final cleanedSummary = _stripChapterSection(note.summary, sentinelStart);
+    final newSection = StringBuffer()
+      ..writeln(sentinelTitle)
+      ..writeln()
+      ..writeln(summary)
+      ..writeln();
+    final mergedSummary = cleanedSummary.isEmpty
+        ? newSection.toString()
+        : '${cleanedSummary.trimRight()}\n\n$newSection';
+
+    await updateNote(note.copyWith(
+      summary: mergedSummary,
+      keyTakeaways: mergedTakeaways,
+      updatedAt: DateTime.now(),
+    ));
+  }
+
+  /// 删除 summary 中从 `## 第 N 章` 行起到下一个 `## ` 或字符串末尾的段落。
+  String _stripChapterSection(String summary, String sentinelStart) {
+    if (sentinelStart.isEmpty) return summary;
+    if (!summary.contains(sentinelStart)) return summary;
+    final sections = <String>[];
+    final lines = summary.split('\n');
+    var skipping = false;
+    for (final line in lines) {
+      if (line.startsWith('## ')) {
+        skipping = line.startsWith(sentinelStart);
+        if (!skipping) sections.add(line);
+        continue;
+      }
+      if (!skipping) sections.add(line);
+    }
+    return sections.join('\n');
+  }
+
   // ====== 私有 helpers ======
 
   Annotation _toAnnotationModel(db.Annotation row) {

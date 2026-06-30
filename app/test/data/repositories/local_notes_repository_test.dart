@@ -9,6 +9,22 @@ import 'package:zhiyue/services/sync/sync_recorder.dart';
 
 import '../../helpers/drift_test_helper.dart';
 
+/// 插入一本独立的书用于 applyChapterReview 测试（避免 setUp 已为 b1 创建 note 的污染）。
+Future<void> _insertBook(
+  db.AppDatabase database, {
+  required String bookId,
+  required String title,
+}) async {
+  await BooksDao(database).insertOne(
+    id: bookId,
+    title: title,
+    format: 'epub',
+    filePath: 'p',
+    fileHash: bookId,
+    fileSizeBytes: 0,
+  );
+}
+
 void main() {
   late db.AppDatabase database;
   late LocalNotesRepository repo;
@@ -172,5 +188,113 @@ void main() {
     expect(pending, hasLength(1));
     expect(pending.first.recordType, 'annotation');
     expect(pending.first.recordId, 'a2');
+  });
+
+  group('NotesRepository.applyChapterReview', () {
+    test('creates note if not exist, then writes summary + takeaways', () async {
+      await _insertBook(database, bookId: 'br1', title: '书 A');
+      await repo.applyChapterReview(
+        bookId: 'br1',
+        bookTitle: '书 A',
+        chapterIndex: 2,
+        chapterTitle: '三章',
+        summary: '本章讲了 XYZ',
+        keyTakeaways: ['要点1', '要点2'],
+      );
+      final note = await repo.getNoteByBook('br1');
+      expect(note, isNotNull);
+      expect(note!.summary, contains('本章讲了 XYZ'));
+      expect(note.summary, contains('第 3 章'));
+      expect(note.keyTakeaways, [
+        '【第3章】 要点1',
+        '【第3章】 要点2',
+      ]);
+    });
+
+    test('re-reviewing same chapter replaces old bullets, no duplication',
+        () async {
+      await _insertBook(database, bookId: 'br2', title: '书 A');
+      await repo.applyChapterReview(
+        bookId: 'br2',
+        bookTitle: '书 A',
+        chapterIndex: 2,
+        chapterTitle: '三章',
+        summary: '旧摘要',
+        keyTakeaways: ['旧要点'],
+      );
+      await repo.applyChapterReview(
+        bookId: 'br2',
+        bookTitle: '书 A',
+        chapterIndex: 2,
+        chapterTitle: '三章',
+        summary: '新摘要',
+        keyTakeaways: ['新要点1', '新要点2'],
+      );
+      final note = await repo.getNoteByBook('br2');
+      expect(note!.keyTakeaways, ['【第3章】 新要点1', '【第3章】 新要点2']);
+      expect(note.summary, isNot(contains('旧摘要')));
+      expect(note.summary, contains('新摘要'));
+    });
+
+    test('different chapters accumulate independently', () async {
+      await _insertBook(database, bookId: 'br3', title: 'A');
+      await repo.applyChapterReview(
+        bookId: 'br3',
+        bookTitle: 'A',
+        chapterIndex: 0,
+        chapterTitle: '一',
+        summary: 's1',
+        keyTakeaways: ['a'],
+      );
+      await repo.applyChapterReview(
+        bookId: 'br3',
+        bookTitle: 'A',
+        chapterIndex: 1,
+        chapterTitle: '二',
+        summary: 's2',
+        keyTakeaways: ['b'],
+      );
+      final note = await repo.getNoteByBook('br3');
+      expect(note!.keyTakeaways, ['【第1章】 a', '【第2章】 b']);
+      expect(note.summary, contains('s1'));
+      expect(note.summary, contains('s2'));
+    });
+
+    test('chapterTitle null produces prefix without "·"', () async {
+      await _insertBook(database, bookId: 'br4', title: 'A');
+      await repo.applyChapterReview(
+        bookId: 'br4',
+        bookTitle: 'A',
+        chapterIndex: 4,
+        chapterTitle: null,
+        summary: 's',
+        keyTakeaways: ['x'],
+      );
+      final note = await repo.getNoteByBook('br4');
+      expect(note!.summary, contains('第 5 章\n'));
+      expect(note.summary, isNot(contains('· ')));
+    });
+
+    test('preserves user-added non-prefixed takeaways', () async {
+      await _insertBook(database, bookId: 'br5', title: 'A');
+      final empty = await repo.createEmptyNote(
+        id: 'n5',
+        bookId: 'br5',
+        bookTitle: 'A',
+      );
+      await repo.updateNote(empty.copyWith(
+        keyTakeaways: ['我的手动要点'],
+      ));
+      await repo.applyChapterReview(
+        bookId: 'br5',
+        bookTitle: 'A',
+        chapterIndex: 1,
+        chapterTitle: '二',
+        summary: 's',
+        keyTakeaways: ['AI 要点'],
+      );
+      final note = await repo.getNoteByBook('br5');
+      expect(note!.keyTakeaways, ['我的手动要点', '【第2章】 AI 要点']);
+    });
   });
 }
