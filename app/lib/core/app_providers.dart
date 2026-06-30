@@ -6,11 +6,13 @@ import '../data/models/book.dart';
 import '../features/ai/providers/ai_guide_controller.dart';
 import '../features/ai/providers/book_preprocess_controller.dart';
 import '../features/ai/providers/qa_controller.dart';
+import '../features/ai/providers/review_controller.dart';
 import '../features/sync/providers/sync_controller.dart';
 import '../services/ai/ai_guide.dart';
 import '../services/ai/api_key_store.dart';
 import '../services/ai/book_preprocessor.dart';
 import '../services/ai/book_qa_service.dart';
+import '../services/ai/book_reviewer.dart';
 import '../services/ai/book_text_extractor.dart';
 import '../services/ai/chapter_text_provider.dart';
 import '../services/ai/open_ai_compatible_client.dart';
@@ -100,6 +102,40 @@ class _QaClientAdapter implements QaClientLike {
   }
 }
 
+/// BookReviewer wired to drift + ApiKeyStore + NotesRepository. The
+/// clientFactory wraps [OpenAiCompatibleClient] for production; tests
+/// inject a fake. Mirrors [bookQaServiceProvider].
+final bookReviewerProvider = Provider<BookReviewerLike>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final keys = ref.watch(apiKeyStoreProvider);
+  final httpClient = ref.watch(httpClientProvider);
+  return BookReviewer(
+    chapterTextProviderFor: (Book book) => book.format == BookFormat.epub
+        ? EpubChapterTextProvider()
+        : PdfChapterTextProvider(),
+    notesRepository: ref.watch(notesRepositoryProvider),
+    apiKeys: keys,
+    aiSummariesDao: db.aiSummariesDao,
+    clientFactory: (creds) => _ReviewClientAdapter(creds, httpClient),
+  );
+});
+
+class _ReviewClientAdapter implements ReviewClientLike {
+  _ReviewClientAdapter(this._creds, this._httpClient);
+  final AiCredentials _creds;
+  final http.Client _httpClient;
+
+  @override
+  Stream<String> streamChat({required String prompt}) {
+    return OpenAiCompatibleClient(
+      baseUrl: _creds.baseUrl,
+      apiKey: _creds.apiKey,
+      model: _creds.model,
+      httpClient: _httpClient,
+    ).streamChat(prompt: prompt);
+  }
+}
+
 /// Inert [QaHistoryDaoLike] used as the default for [qaHistoryDaoProvider]
 /// when no production override is wired. All methods are no-ops returning
 /// empty/zero. This keeps widget tests that pump [QaAskDialog] (which calls
@@ -164,5 +200,10 @@ final providers = <Override>[
   ),
   qaHistoryDaoProvider.overrideWith(
     (ref) => ref.watch(appDatabaseProvider).qaHistoryDao,
+  ),
+  // Production wires real BookReviewer; default is _NoOpBookReviewer
+  // (see review_controller.dart) so widget tests don't have to override.
+  reviewControllerProvider.overrideWith(
+    (ref, bookId) => ReviewController(ref.watch(bookReviewerProvider)),
   ),
 ];
