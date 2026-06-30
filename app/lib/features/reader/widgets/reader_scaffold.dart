@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 
+import '../../../gen_l10n/app_localizations.dart';
 import '../controllers/reader_ui_controller.dart';
 
 /// 沉浸式阅读容器：tap 区域分派 + chrome 显隐。
@@ -35,6 +36,12 @@ class ReaderScaffold extends ConsumerWidget {
   /// 点击「问答」图标回调（由父组件触发 QaAskDialog 弹出）。
   final VoidCallback? onOpenQa;
 
+  /// 点击「回顾本章」菜单项回调（由父组件触发 ReviewPreviewSheet 弹出）。
+  ///
+  /// 为 null 时不渲染溢出菜单。父组件（ReaderBody）对 PDF 书传入 null，
+  /// 对 EPUB 书传入非空回调，从而实现「PDF 跳过」语义。
+  final VoidCallback? onOpenReview;
+
   const ReaderScaffold({
     super.key,
     required this.content,
@@ -48,6 +55,7 @@ class ReaderScaffold extends ConsumerWidget {
     this.onOpenNotes,
     this.onOpenAiGuide,
     this.onOpenQa,
+    this.onOpenReview,
   });
 
   @override
@@ -103,6 +111,31 @@ class ReaderScaffold extends ConsumerWidget {
                         tooltip: '问答',
                         onPressed: onOpenQa,
                       ),
+                      if (onOpenReview != null)
+                        PopupMenuButton<String>(
+                          key: const Key('reader_overflow_menu'),
+                          icon: const Icon(Icons.more_vert),
+                          tooltip: AppLocalizations.of(context)!
+                              .reviewCurrentChapterMenuLabel,
+                          onSelected: (value) {
+                            if (value == 'review_current') {
+                              onOpenReview!();
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            PopupMenuItem<String>(
+                              value: 'review_current',
+                              child: ListTile(
+                                leading:
+                                    const Icon(Icons.rate_review_outlined),
+                                title: Text(AppLocalizations.of(ctx)!
+                                    .reviewCurrentChapterMenuLabel),
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),

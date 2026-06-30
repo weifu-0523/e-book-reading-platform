@@ -15,8 +15,10 @@ import '../../../core/widgets/error_view.dart';
 import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/annotation.dart';
 import '../../../data/models/book.dart';
+import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/ai/widgets/qa_ask_dialog.dart';
+import '../../../features/ai/widgets/review_preview_sheet.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
@@ -238,6 +240,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                     .openTypographyPanel(),
                 onOpenAiGuide: _onOpenAiGuide,
                 onOpenQa: _onOpenQa,
+                onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
               ),
             ),
             // 选区 toolbar overlay。仅在有非空 selection 时显示。
@@ -434,6 +437,45 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         initialMode: AiGuideMode.chapter,
         chapterIndex: chapterIdx,
         chapterTitle: chapterTitle,
+      ),
+    );
+  }
+
+  /// AppBar 溢出菜单「回顾本章」：触发 [ReviewController.start] 后弹出
+  /// [ReviewPreviewSheet]。sheet 关闭时若 review 已完成，把 summary +
+  /// keyTakeaways 持久化到 [NotesRepository.applyChapterReview]。
+  ///
+  /// PDF 路径不走本方法（ReaderScaffold 不渲染溢出菜单）。书被删（_cachedBook
+  /// 为 null）时静默退出。
+  Future<void> _onOpenReview() async {
+    final book = _cachedBook;
+    if (book == null || !mounted) return;
+    final chapterIdx = _currentChapterIndex();
+    final chapterTitle = _chapterTitlesCache[chapterIdx];
+    ref.read(reviewControllerProvider(book.id).notifier).start(
+          book: book,
+          chapterIndex: chapterIdx,
+        );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      builder: (_) => ReviewPreviewSheet(
+        bookId: book.id,
+        chapterIndex: chapterIdx,
+        chapterTitle: chapterTitle,
+        onSaved: () async {
+          final state = ref.read(reviewControllerProvider(book.id));
+          if (state.summary == null) return;
+          await ref.read(notesRepositoryProvider).applyChapterReview(
+                bookId: book.id,
+                bookTitle: book.title,
+                chapterIndex: chapterIdx,
+                chapterTitle: chapterTitle,
+                summary: state.summary!,
+                keyTakeaways: state.keyTakeaways,
+              );
+        },
       ),
     );
   }
