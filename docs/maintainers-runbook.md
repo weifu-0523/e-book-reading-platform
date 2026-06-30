@@ -462,7 +462,9 @@ iscc zhiyue.iss
 
 ### 7.6 截图
 
-截图通过 Win32 `PrintWindow(hwnd, hdc, 0x2)` 在窗口 iconic 恢复后捕获（M8 T14 验证可行，2208×1200 PNG）。详见 `docs/release-procedure.md`。
+截图是**手动步骤**——subagent 无法驱动 Windows GUI 导航（导入书、开 reader、切到 Notes tab）。M8 T14 用 Win32 `PrintWindow(hwnd, hdc, 0x2)` 在窗口 iconic 恢复后捕获了 `epub_reader.png`（2208×1200 PNG），其余 3 张由用户在 v1.0.0 发布前补齐。
+
+每张截图应展示的内容、捕获流程、当前 pending 状态详见 [`docs/screenshots/README.md`](screenshots/README.md)。步骤 9 of `docs/release-procedure.md` 是同一流程的简短版本。
 
 ---
 

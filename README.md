@@ -32,6 +32,8 @@
 |---|---|---|---|
 | ![Library](docs/screenshots/library.png) | ![EPUB Reader](docs/screenshots/epub_reader.png) | ![PDF Reader](docs/screenshots/pdf_reader.png) | ![Notes](docs/screenshots/notes.png) |
 
+> 截图为 Windows release 构建。`epub_reader.png` 已在 M8 捕获；其余 3 张（library / pdf_reader / notes）计划在 v1.0.0 发布前手动补齐——参见 [`docs/screenshots/README.md`](docs/screenshots/README.md) 与 [`docs/release-procedure.md`](docs/release-procedure.md) 步骤 9。
+
 ## MVP 1.0 目标
 
 - **跨端阅读**：Windows + Android，一套 Flutter 代码（Mac 后期）
