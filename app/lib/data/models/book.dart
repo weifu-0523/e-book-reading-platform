@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '../local/database.dart' as drift;
+
 enum BookFormat { epub, pdf }
 
 @immutable
@@ -49,6 +51,27 @@ class Book {
       addedAt: addedAt,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       sortOrder: sortOrder ?? this.sortOrder,
+    );
+  }
+
+  /// Construct a [Book] from a drift-generated row. Centralizes the
+  /// row -> domain model mapping so call sites don't each have to know the
+  /// 11-field layout. The drift schema is the source of truth: if a column
+  /// is added there, regenerating drift + adding it here updates every read
+  /// site. Unknown format strings fall back to PDF defensively.
+  factory Book.fromRow(drift.Book row) {
+    return Book(
+      id: row.id,
+      title: row.title,
+      author: row.author,
+      format: row.format == 'epub' ? BookFormat.epub : BookFormat.pdf,
+      filePath: row.filePath,
+      fileHash: row.fileHash,
+      fileSizeBytes: row.fileSizeBytes,
+      coverPath: row.coverPath,
+      addedAt: row.addedAt,
+      lastReadAt: row.lastReadAt,
+      sortOrder: row.sortOrder,
     );
   }
 

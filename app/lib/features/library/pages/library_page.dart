@@ -56,19 +56,7 @@ class LibraryPage extends ConsumerStatefulWidget {
           ..where((t) => t.id.equals(bookId)))
         .getSingleOrNull();
     if (row == null) return;
-    final book = Book(
-      id: row.id,
-      title: row.title,
-      author: row.author,
-      format: row.format == 'epub' ? BookFormat.epub : BookFormat.pdf,
-      filePath: row.filePath,
-      fileHash: row.fileHash,
-      fileSizeBytes: row.fileSizeBytes,
-      coverPath: row.coverPath,
-      addedAt: row.addedAt,
-      lastReadAt: row.lastReadAt,
-      sortOrder: row.sortOrder,
-    );
+    final book = Book.fromRow(row);
     container
         .read(bookPreprocessControllerProvider(bookId).notifier)
         .start(book);
