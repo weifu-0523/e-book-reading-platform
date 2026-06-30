@@ -37,6 +37,7 @@ class PreprocessState {
     this.currentChapter = 0,
     this.totalChapters = 0,
     this.failedChapters = const [],
+    this.summarizedChapters = const <int>{},
     this.error,
   });
 
@@ -44,6 +45,12 @@ class PreprocessState {
   final int currentChapter;
   final int totalChapters;
   final List<int> failedChapters;
+
+  /// Chapter indices whose Phase 2 summary has completed successfully,
+  /// accumulated from [PreprocessChapterCompletedEvent]s. Lets the TOC
+  /// drawer render per-chapter ✓ markers as each chapter finishes, rather
+  /// than waiting for the whole run to reach [PreprocessStatus.done].
+  final Set<int> summarizedChapters;
   final PreprocessError? error;
 
   PreprocessState copyWith({
@@ -51,6 +58,7 @@ class PreprocessState {
     int? currentChapter,
     int? totalChapters,
     List<int>? failedChapters,
+    Set<int>? summarizedChapters,
     PreprocessError? error,
     bool clearError = false,
   }) {
@@ -59,6 +67,7 @@ class PreprocessState {
       currentChapter: currentChapter ?? this.currentChapter,
       totalChapters: totalChapters ?? this.totalChapters,
       failedChapters: failedChapters ?? this.failedChapters,
+      summarizedChapters: summarizedChapters ?? this.summarizedChapters,
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -120,6 +129,10 @@ class BookPreprocessController extends StateNotifier<PreprocessState> {
         );
       case PreprocessChapterFailedEvent():
         break;
+      case PreprocessChapterCompletedEvent(:final chapterIndex):
+        state = state.copyWith(
+          summarizedChapters: {...state.summarizedChapters, chapterIndex},
+        );
       case PreprocessDoneEvent(:final failedChapters):
         state = state.copyWith(
           status: PreprocessStatus.done,

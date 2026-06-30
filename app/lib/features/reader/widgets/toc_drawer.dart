@@ -12,13 +12,14 @@ class TocDrawer extends StatelessWidget {
   final TableOfContents toc;
   final ValueChanged<TocEntry> onSelect;
 
-  /// 可选：当前书籍的预处理状态。若 [PreprocessStatus.done]，对每个 entry
-  /// 解析其 chapterIndex，依据 [PreprocessState.failedChapters] 渲染 ✓/⚠。
-  /// 为 null 或 idle/chunking/summarizing 时不渲染任何标记。
+  /// 可选：当前书籍的预处理状态。对每个 entry 解析其 chapterIndex，依据
+  /// [PreprocessState.summarizedChapters] / [PreprocessState.failedChapters]
+  /// 渲染渐进 ✓/⚠ 标记（无需等到 [PreprocessStatus.done]）。
+  /// 为 null 或 chapterIndex 无法解析时不渲染任何标记。
   final PreprocessState? preprocessState;
 
   /// 可选：从 [TocEntry] 解析出 0-based chapterIndex（通常取自
-  /// [EpubCfiLocator.chapterIndex]）。仅在 [preprocessState] 已 done 时使用。
+  /// [EpubCfiLocator.chapterIndex]）。仅在 [preprocessState] 非 null 时使用。
   final TocChapterIndexResolver? chapterIndexResolver;
 
   const TocDrawer({
@@ -91,13 +92,14 @@ class _TocTile extends StatelessWidget {
     );
   }
 
-  /// ✓ green when state.done and chapter not failed; ⚠ amber when in failedChapters;
-  /// null otherwise.
+  /// ⚠ amber when chapter in failedChapters;
+  /// ✓ green when chapter in summarizedChapters (regardless of run status);
+  /// null otherwise. Renders progressively as each chapter finishes so users
+  /// see markers appear before [PreprocessStatus.done].
   Widget? _buildMarker() {
     final state = preprocessState;
     final resolver = chapterIndexResolver;
     if (state == null || resolver == null) return null;
-    if (state.status != PreprocessStatus.done) return null;
     final idx = resolver(entry);
     if (idx == null) return null;
     final failed = state.failedChapters.contains(idx);
@@ -108,11 +110,14 @@ class _TocTile extends StatelessWidget {
             size: 18, color: Colors.orange),
       );
     }
-    return const Padding(
-      padding: EdgeInsets.only(left: 8),
-      child: Icon(Icons.check_circle_outline,
-          size: 18, color: Colors.green),
-    );
+    if (state.summarizedChapters.contains(idx)) {
+      return const Padding(
+        padding: EdgeInsets.only(left: 8),
+        child: Icon(Icons.check_circle_outline,
+            size: 18, color: Colors.green),
+      );
+    }
+    return null;
   }
 }
 

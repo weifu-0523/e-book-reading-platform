@@ -58,6 +58,15 @@ class PreprocessChapterFailedEvent extends PreprocessEvent {
   final Object error;
 }
 
+/// Emitted after a single chapter summary succeeds in Phase 2. Used by
+/// [BookPreprocessController] to accumulate a `summarizedChapters` set so
+/// the TOC drawer can render progressive ✓ markers as each chapter finishes,
+/// without waiting for the whole run to reach [PreprocessDoneEvent].
+class PreprocessChapterCompletedEvent extends PreprocessEvent {
+  PreprocessChapterCompletedEvent(this.chapterIndex);
+  final int chapterIndex;
+}
+
 class PreprocessDoneEvent extends PreprocessEvent {
   PreprocessDoneEvent(this.failedChapters);
   final List<int> failedChapters;
@@ -220,6 +229,9 @@ class BookPreprocessor implements BookPreprocessorLike {
       final termErr = await _runChapter(book, i, title);
       if (termErr == null) {
         consecutiveFailures = 0;
+        if (!_controller!.isClosed) {
+          _controller!.add(PreprocessChapterCompletedEvent(i));
+        }
       } else {
         final abort = termErr == AiGuideError.authFailed ||
             termErr == AiGuideError.rateLimited;
