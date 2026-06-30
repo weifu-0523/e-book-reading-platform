@@ -152,6 +152,7 @@ class BookQaService implements BookQaServiceLike {
     final accumulated = StringBuffer();
     final started = DateTime.now();
     var attempt = 0;
+    var anyChunk = false;
     while (true) {
       final iterator =
           StreamIterator(clientFactory(creds).streamChat(prompt: prompt));
@@ -165,6 +166,7 @@ class BookQaService implements BookQaServiceLike {
           if (!moved) break;
           final chunk = iterator.current;
           accumulated.write(chunk);
+          anyChunk = true;
           yield QaChunkEvent(chunk);
           if (DateTime.now().difference(started) > totalTimeout) {
             yield QaErrorEvent(QaError.network);
@@ -198,7 +200,10 @@ class BookQaService implements BookQaServiceLike {
         // let cancel() return (the generator is blocked on a future that
         // never completes). Real HTTP clients respond to cancel promptly.
         unawaited(iterator.cancel());
-        if (attempt >= retryDelays.length - 1) {
+        // Once we've streamed anything to the caller, a network blip is
+        // terminal — replaying partial text would garble the UI and corrupt
+        // the persisted history. Mirrors ai_guide.dart's anyChunk guard.
+        if (anyChunk || attempt >= retryDelays.length - 1) {
           yield QaErrorEvent(QaError.network);
           return;
         }

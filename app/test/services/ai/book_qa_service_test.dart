@@ -48,6 +48,23 @@ class _StallClient implements QaClientLike {
   }
 }
 
+class _PartialThenSuccessClient implements QaClientLike {
+  _PartialThenSuccessClient(this._partial, this._full);
+  final String _partial;
+  final String _full;
+  int callCount = 0;
+
+  @override
+  Stream<String> streamChat({required String prompt}) async* {
+    callCount += 1;
+    if (callCount == 1) {
+      yield _partial;
+      throw const AiNetworkException('connection dropped mid-stream');
+    }
+    yield _full;
+  }
+}
+
 model.Book _book() => model.Book(
       id: 'b1',
       title: 't',
@@ -220,5 +237,42 @@ void main() {
     expect(events, contains(isA<QaErrorEvent>()));
     final err = events.whereType<QaErrorEvent>().single;
     expect(err.error, QaError.network);
+  });
+
+  test(
+      'network error after partial stream is terminal (no replay of partial)',
+      () async {
+    await seedBook();
+    await seedPassages();
+    final client = _PartialThenSuccessClient('PARTIAL-', 'FULL');
+    final service = BookQaService(
+      apiKeys: _FakeApiKeyStore(_creds()),
+      passagesDao: db.bookPassagesDao,
+      qaHistoryDao: db.qaHistoryDao,
+      clientFactory: (_) => client,
+      // Two retry delays so attempt 0 is allowed to retry under the old
+      // guard (attempt < retryDelays.length - 1 == 0 < 1). Without the
+      // anyChunk fix, this would let attempt 1 run and emit 'FULL'.
+      retryDelays: const [
+        Duration(milliseconds: 1),
+        Duration(milliseconds: 1),
+      ],
+    );
+
+    final events = await service.ask(book: _book(), question: 'Q').toList();
+
+    // Only one chunk was emitted (the partial); the retry did NOT emit FULL
+    // because anyChunk was true on the second call.
+    final chunks = events.whereType<QaChunkEvent>().toList();
+    expect(chunks.map((e) => e.chunk).join(), 'PARTIAL-');
+
+    // The run terminated with a network error (not a complete event).
+    expect(events, contains(isA<QaErrorEvent>()));
+    final err = events.whereType<QaErrorEvent>().single;
+    expect(err.error, QaError.network);
+    expect(events.whereType<QaCompleteEvent>(), isEmpty);
+
+    // No history persisted (the run failed).
+    expect(await db.qaHistoryDao.getByBook('b1'), isEmpty);
   });
 }
