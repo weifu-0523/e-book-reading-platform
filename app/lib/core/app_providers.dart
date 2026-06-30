@@ -13,6 +13,7 @@ import '../services/ai/book_qa_service.dart';
 import '../services/ai/book_text_extractor.dart';
 import '../services/ai/chapter_text_provider.dart';
 import '../services/ai/open_ai_compatible_client.dart';
+import '../services/ai/qa_citation_parser.dart';
 import '../services/sync/connectivity_service.dart';
 import '../services/sync/sync_credentials.dart';
 import '../services/sync/sync_interval_pref.dart';
@@ -58,10 +59,11 @@ final bookPreprocessorProvider = Provider<BookPreprocessorLike>((ref) {
   );
 });
 
-/// Per-book Q&A history DAO. Exposed as a provider so widgets (QaAskDialog)
-/// can read history without depending on AppDatabase directly.
+/// Per-book Q&A history DAO. Default is an inert [_NoOpQaHistoryDao] so
+/// widget tests that pump QaAskDialog without a database override still
+/// work. Production wires the real DAO via the `providers` override list.
 final qaHistoryDaoProvider = Provider<QaHistoryDaoLike>((ref) {
-  return ref.watch(appDatabaseProvider).qaHistoryDao;
+  return const _NoOpQaHistoryDao();
 });
 
 /// BookQaService wired to drift + ApiKeyStore. The clientFactory wraps
@@ -91,6 +93,41 @@ class _QaClientAdapter implements QaClientLike {
   }
 }
 
+/// Inert [QaHistoryDaoLike] used as the default for [qaHistoryDaoProvider]
+/// when no production override is wired. All methods are no-ops returning
+/// empty/zero. This keeps widget tests that pump [QaAskDialog] (which calls
+/// `setHistory` from initState) functional without requiring each test to
+/// override the DAO. Mirrors the `_NoOpBookPreprocessor` pattern.
+class _NoOpQaHistoryDao implements QaHistoryDaoLike {
+  const _NoOpQaHistoryDao();
+
+  @override
+  Future<List<QaHistoryEntry>> getByBook(String bookId,
+          {int limit = 50}) async =>
+      const [];
+
+  @override
+  Future<QaHistoryEntry?> findSameQuestion(
+          String bookId, String question) async =>
+      null;
+
+  @override
+  Future<String> insert({
+    required String bookId,
+    required String question,
+    required String answer,
+    required List<int> citations,
+    DateTime? createdAt,
+  }) async =>
+      'noop';
+
+  @override
+  Future<int> deleteEntry(String id) async => 0;
+
+  @override
+  Future<int> clearForBook(String bookId) async => 0;
+}
+
 /// 全局 ProviderScope override 列表。
 ///
 /// M2.0a：注入 [SyncController]（依赖 [appDatabaseProvider] + [SyncCredentials]）。
@@ -114,5 +151,8 @@ final providers = <Override>[
   ),
   qaControllerProvider.overrideWith(
     (ref, bookId) => QaController(ref.watch(bookQaServiceProvider)),
+  ),
+  qaHistoryDaoProvider.overrideWith(
+    (ref) => ref.watch(appDatabaseProvider).qaHistoryDao,
   ),
 ];
