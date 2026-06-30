@@ -166,19 +166,5 @@ class LocalBookRepository implements BookRepository {
     }
   }
 
-  Book _toModel(db.Book row) {
-    return Book(
-      id: row.id,
-      title: row.title,
-      author: row.author,
-      format: row.format == 'epub' ? BookFormat.epub : BookFormat.pdf,
-      filePath: row.filePath,
-      fileHash: row.fileHash,
-      fileSizeBytes: row.fileSizeBytes,
-      coverPath: row.coverPath,
-      addedAt: row.addedAt,
-      lastReadAt: row.lastReadAt,
-      sortOrder: row.sortOrder,
-    );
-  }
+  Book _toModel(db.Book row) => Book.fromRow(row);
 }
