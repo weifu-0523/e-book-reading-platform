@@ -14,6 +14,7 @@ import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/notes/pages/notes_page.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 /// Fake [FilePicker] that returns a pre-configured directory path (or null to
 /// simulate user cancel). Mirrors the T5 pattern — file_picker 8.3.7 uses FFI
@@ -179,7 +180,14 @@ void main() {
             }),
       ],
     );
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    // MaterialApp.router is non-const because [router] is a runtime value.
+    // ignore: prefer_const_constructors
+    await tester.pumpWidget(MaterialApp.router(
+      routerConfig: router,
+      locale: const Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+    ));
     await tester.pumpAndSettle();
     await tester.tap(find.text('引用 1'));
     await tester.pumpAndSettle();
@@ -241,6 +249,9 @@ Widget _harness(List<Annotation> anns) {
           )),
     ],
     child: const MaterialApp(
+      locale: Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotesPage(bookId: 'b1'),
     ),
   );

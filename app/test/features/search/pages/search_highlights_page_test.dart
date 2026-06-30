@@ -5,18 +5,25 @@ import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/features/search/pages/search_highlights_page.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 import '../../../fakes/fake_notes_repository.dart';
 
 Widget _wrap(Widget child, FakeNotesRepository fake) => ProviderScope(
       overrides: [notesRepositoryProvider.overrideWithValue(fake)],
-      child: MaterialApp(home: child),
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: child,
+      ),
     );
 
 void main() {
   testWidgets('empty keyword shows hint', (tester) async {
     final fake = FakeNotesRepository();
     await tester.pumpWidget(_wrap(const SearchHighlightsPage(), fake));
+    await tester.pumpAndSettle();
     expect(find.text('输入关键词搜索全部高亮'), findsOneWidget);
   });
 

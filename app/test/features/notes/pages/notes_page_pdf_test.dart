@@ -9,6 +9,7 @@ import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/notes/pages/notes_page.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 class _FakeNotesRepository implements NotesRepository {
   final List<Annotation> annotations;
@@ -94,6 +95,9 @@ Widget _harness(List<Annotation> anns) {
           )),
     ],
     child: const MaterialApp(
+      locale: Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotesPage(bookId: 'b1'),
     ),
   );

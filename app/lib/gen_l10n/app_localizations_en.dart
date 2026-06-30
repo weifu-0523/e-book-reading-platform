@@ -524,4 +524,41 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get retryButtonLabel => 'Retry';
+
+  @override
+  String get libraryEmptyTitle => 'Library is empty';
+
+  @override
+  String get libraryEmptySubtitle => 'Import your first book to start reading';
+
+  @override
+  String get libraryEmptyAction => 'Import first book';
+
+  @override
+  String get libraryNoSearchResultTitle => 'No matching books';
+
+  @override
+  String get libraryNoSearchResultAction => 'Clear filters';
+
+  @override
+  String get notesEmptyTitle => 'No highlights or notes yet';
+
+  @override
+  String get notesEmptyAction => 'Open reader to add';
+
+  @override
+  String get notesLoadFailed => 'Failed to load';
+
+  @override
+  String get searchHint => 'Search highlights and notes...';
+
+  @override
+  String get searchEmptyKeywordHint =>
+      'Enter a keyword to search all highlights';
+
+  @override
+  String get searchEmptyResultTitle => 'No matching results';
+
+  @override
+  String get searchFailed => 'Search failed';
 }

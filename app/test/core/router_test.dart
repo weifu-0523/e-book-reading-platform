@@ -17,6 +17,7 @@ import 'package:zhiyue/core/router.dart';
 import 'package:zhiyue/features/library/providers/library_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 import '../fakes/fake_book_repository.dart';
 import '../fakes/fake_book_tags_lookup.dart';
@@ -116,7 +117,12 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: libraryOverrides(),
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -135,7 +141,12 @@ void main() {
             (ref, arg) async => _FakeReaderEngine(),
           ),
         ],
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
       ),
     );
     await tester.pumpAndSettle();

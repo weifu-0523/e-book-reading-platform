@@ -31,7 +31,10 @@ void main() {
   setUp(() {
     bookRepo = FakeBookRepository();
     tagsLookup = FakeBookTagsLookup();
-    settings = FakeSettingsRepository();
+    // Pin locale to Chinese so assertions on zh strings stay stable across
+    // test runners regardless of platform default locale.
+    settings = FakeSettingsRepository()
+      ..setSync<String?>('app.locale', 'chinese');
   });
 
   Widget buildApp() {

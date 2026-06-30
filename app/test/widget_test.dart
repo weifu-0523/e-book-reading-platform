@@ -17,7 +17,9 @@ void main() {
   testWidgets('App boots and shows LibraryPage', (tester) async {
     final bookRepo = FakeBookRepository();
     final tagsLookup = FakeBookTagsLookup();
-    final settings = FakeSettingsRepository();
+    // Pin locale to zh so the Chinese assertion on '书库为空' stays stable.
+    final settings = FakeSettingsRepository()
+      ..setSync<String?>('app.locale', 'chinese');
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

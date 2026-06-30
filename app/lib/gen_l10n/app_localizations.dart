@@ -1033,6 +1033,78 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'重试'**
   String get retryButtonLabel;
+
+  /// No description provided for @libraryEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'书库为空'**
+  String get libraryEmptyTitle;
+
+  /// No description provided for @libraryEmptySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入第一本书，开始阅读之旅'**
+  String get libraryEmptySubtitle;
+
+  /// No description provided for @libraryEmptyAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入第一本书'**
+  String get libraryEmptyAction;
+
+  /// No description provided for @libraryNoSearchResultTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'无匹配书籍'**
+  String get libraryNoSearchResultTitle;
+
+  /// No description provided for @libraryNoSearchResultAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空筛选'**
+  String get libraryNoSearchResultAction;
+
+  /// No description provided for @notesEmptyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本书暂无高亮与笔记'**
+  String get notesEmptyTitle;
+
+  /// No description provided for @notesEmptyAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'去阅读器添加'**
+  String get notesEmptyAction;
+
+  /// No description provided for @notesLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败'**
+  String get notesLoadFailed;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索高亮与笔记...'**
+  String get searchHint;
+
+  /// No description provided for @searchEmptyKeywordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入关键词搜索全部高亮'**
+  String get searchEmptyKeywordHint;
+
+  /// No description provided for @searchEmptyResultTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'无匹配结果'**
+  String get searchEmptyResultTitle;
+
+  /// No description provided for @searchFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索失败'**
+  String get searchFailed;
 }
 
 class _AppLocalizationsDelegate

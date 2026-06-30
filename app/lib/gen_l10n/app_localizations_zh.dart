@@ -515,4 +515,40 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get retryButtonLabel => '重试';
+
+  @override
+  String get libraryEmptyTitle => '书库为空';
+
+  @override
+  String get libraryEmptySubtitle => '导入第一本书，开始阅读之旅';
+
+  @override
+  String get libraryEmptyAction => '导入第一本书';
+
+  @override
+  String get libraryNoSearchResultTitle => '无匹配书籍';
+
+  @override
+  String get libraryNoSearchResultAction => '清空筛选';
+
+  @override
+  String get notesEmptyTitle => '本书暂无高亮与笔记';
+
+  @override
+  String get notesEmptyAction => '去阅读器添加';
+
+  @override
+  String get notesLoadFailed => '加载失败';
+
+  @override
+  String get searchHint => '搜索高亮与笔记...';
+
+  @override
+  String get searchEmptyKeywordHint => '输入关键词搜索全部高亮';
+
+  @override
+  String get searchEmptyResultTitle => '无匹配结果';
+
+  @override
+  String get searchFailed => '搜索失败';
 }

@@ -11,10 +11,13 @@ import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
+import '../../../core/widgets/error_view.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/annotation.dart';
 import '../../../data/models/book.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/ai/widgets/qa_ask_dialog.dart';
+import '../../../gen_l10n/app_localizations.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
 import '../services/scroll_to_offset.dart';
@@ -188,7 +191,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       );
     }
     if (_engineState is! ReaderEngineReady) {
-      return const Center(child: CircularProgressIndicator());
+      return const LoadingView();
     }
     final ui = ref.watch(readerUiControllerProvider);
 
@@ -277,9 +280,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         onLongPress: (id) => _onAnnotationLongPress(id),
         onClose: () => Navigator.of(context).maybePop(),
       ),
-      loading: () =>
-          const Drawer(child: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Drawer(child: Center(child: Text('$e'))),
+      loading: () => const Drawer(child: LoadingView()),
+      error: (e, _) => Drawer(
+        child: ErrorView(message: AppLocalizations.of(context)!.notesLoadFailed),
+      ),
     );
   }
 
@@ -532,7 +536,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   Widget _buildTocDrawer(BuildContext context) {
     final toc = engine.toc;
     if (toc == null) {
-      return const Drawer(child: Center(child: Text('目录加载中…')));
+      return const Drawer(child: LoadingView());
     }
     final preprocess = ref.watch(bookPreprocessControllerProvider(widget.bookId));
     return Drawer(

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/widgets/empty_view.dart';
+import '../../../core/widgets/error_view.dart';
+import '../../../core/widgets/loading_view.dart';
+import '../../../gen_l10n/app_localizations.dart';
 import '../../reader/widgets/annotation_tile.dart';
 import '../models/annotation_search_query.dart';
 import '../providers/annotation_search_provider.dart';
@@ -26,12 +30,13 @@ class _SearchHighlightsPageState extends ConsumerState<SearchHighlightsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: TextField(
           controller: _ctrl,
-          decoration: const InputDecoration(
-            hintText: '搜索高亮与笔记...',
+          decoration: InputDecoration(
+            hintText: l10n.searchHint,
             border: InputBorder.none,
           ),
           onSubmitted: (v) => setState(() => _query = v.trim()),
@@ -48,17 +53,24 @@ class _SearchHighlightsPageState extends ConsumerState<SearchHighlightsPage> {
   }
 
   Widget _buildBody() {
+    final l10n = AppLocalizations.of(context)!;
     if (_query.isEmpty) {
-      return const Center(child: Text('输入关键词搜索全部高亮'));
+      return EmptyView(
+        title: l10n.searchEmptyKeywordHint,
+        icon: Icons.search,
+      );
     }
     final async = ref.watch(
         annotationSearchProvider(AnnotationSearchQuery(keyword: _query)));
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('搜索失败：$e')),
+      loading: () => const LoadingView(),
+      error: (e, _) => ErrorView(message: l10n.searchFailed),
       data: (results) {
         if (results.isEmpty) {
-          return const Center(child: Text('无匹配结果'));
+          return EmptyView(
+            title: l10n.searchEmptyResultTitle,
+            icon: Icons.search_off,
+          );
         }
         return ListView.builder(
           itemCount: results.length,

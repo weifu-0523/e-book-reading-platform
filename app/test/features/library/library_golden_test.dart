@@ -6,6 +6,7 @@ import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/library/pages/library_page.dart';
 import 'package:zhiyue/features/library/providers/library_controller.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 import '../../fakes/fake_book_repository.dart';
 import '../../fakes/fake_book_tags_lookup.dart';
@@ -81,7 +82,12 @@ void main() {
               settingsRepository: settings,
             )),
       ],
-      child: const MaterialApp(home: LibraryPage()),
+      child: const MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: LibraryPage(),
+      ),
     );
   }
 

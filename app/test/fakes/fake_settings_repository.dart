@@ -9,4 +9,9 @@ class FakeSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> set<T>(String key, T value) async => _map[key] = value;
+
+  /// Synchronous variant for test setup. Sets [key] to [value] in the
+  /// in-memory map without awaiting — useful when seeding defaults before
+  /// a widget is pumped (e.g. pinning a locale before [ZhiYueApp] boots).
+  void setSync<T>(String key, T value) => _map[key] = value;
 }

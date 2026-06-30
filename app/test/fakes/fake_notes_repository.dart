@@ -9,7 +9,21 @@ import 'package:zhiyue/data/repositories/notes_repository.dart';
 /// 反应式语义与 [LocalNotesRepository] 对齐：
 /// - `watchAnnotations` 在 BookNote 不存在时立即 emit 空 list
 /// - 每次 add/update/delete 后通过 broadcast controller 通知订阅者
+///
+/// Test-only knobs:
+/// - [searchError]: when non-null, [searchAnnotations] throws synchronously,
+///   exercising the consumer's error-state rendering.
+/// - [searchAnnotationsCompleter]: when non-null, [searchAnnotations] awaits
+///   this completer before resolving, letting tests pump the loading frame.
 class FakeNotesRepository implements NotesRepository {
+  FakeNotesRepository({this.searchError, this.searchAnnotationsCompleter});
+
+  /// When non-null, [searchAnnotations] throws this synchronously.
+  final Object? searchError;
+
+  /// When non-null, [searchAnnotations] awaits this completer.
+  final Completer<List<Annotation>>? searchAnnotationsCompleter;
+
   final Map<String, BookNote> _notes = {}; // bookId -> BookNote
   final Map<String, List<Annotation>> _annotationsByNote = {}; // noteId -> list
   final Map<String, StreamController<List<Annotation>>> _controllers = {};
@@ -91,6 +105,10 @@ class FakeNotesRepository implements NotesRepository {
     List<String>? tags,
     HighlightColor? color,
   }) async {
+    if (searchError != null) throw searchError!;
+    if (searchAnnotationsCompleter != null) {
+      return searchAnnotationsCompleter!.future;
+    }
     final all = _annotationsByNote.values.expand((l) => l).toList();
     var filtered = query.isEmpty
         ? all

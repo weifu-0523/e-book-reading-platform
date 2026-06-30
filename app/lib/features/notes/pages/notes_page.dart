@@ -7,8 +7,12 @@ import 'package:go_router/go_router.dart';
 import '../../../core/locator.dart';
 import '../../../core/providers.dart'
     show bookProvider, notesRepositoryProvider;
+import '../../../core/widgets/empty_view.dart';
+import '../../../core/widgets/error_view.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/annotation.dart';
 import '../../../data/models/book_note.dart';
+import '../../../gen_l10n/app_localizations.dart';
 import '../../reader/widgets/annotation_tile.dart';
 import '../../reader/widgets/note_editor_sheet.dart';
 import '../providers/notes_page_providers.dart';
@@ -32,6 +36,7 @@ class NotesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     final annotationsAsync =
         ref.watch(notesPageAnnotationsProvider(bookId));
     final noteAsync = ref.watch(notesPageBookNoteProvider(bookId));
@@ -51,19 +56,11 @@ class NotesPage extends ConsumerWidget {
         ],
       ),
       body: annotationsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('加载失败：$e'),
-              TextButton(
-                onPressed: () =>
-                    ref.invalidate(notesPageAnnotationsProvider(bookId)),
-                child: const Text('重试'),
-              ),
-            ],
-          ),
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(
+          message: l10n.notesLoadFailed,
+          onRetry: () =>
+              ref.invalidate(notesPageAnnotationsProvider(bookId)),
         ),
         data: (annotations) => _body(context, ref, annotations),
       ),
@@ -89,18 +86,12 @@ class NotesPage extends ConsumerWidget {
   Widget _body(
       BuildContext context, WidgetRef ref, List<Annotation> annotations) {
     if (annotations.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('本书暂无高亮与笔记'),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () => context.push('/book/$bookId'),
-              child: const Text('去阅读器添加'),
-            ),
-          ],
-        ),
+      final l10n = AppLocalizations.of(context)!;
+      return EmptyView(
+        title: l10n.notesEmptyTitle,
+        icon: Icons.edit_note,
+        actionLabel: l10n.notesEmptyAction,
+        onAction: () => context.push('/book/$bookId'),
       );
     }
 
