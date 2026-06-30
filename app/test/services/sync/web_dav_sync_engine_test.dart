@@ -72,7 +72,7 @@ void main() {
   });
 
   test('push preserves existing file content (read-modify-write)', () async {
-    final existing =
+    const existing =
         '{"id":"old","type":"annotation","mtime":"2026-06-01T00:00:00.000Z","deleted":false,"payload":{"quote":"old"}}\n';
     when(() => webdav.putString(any(), any())).thenAnswer((_) async {});
     when(() => webdav.getString(any())).thenAnswer((_) async => existing);

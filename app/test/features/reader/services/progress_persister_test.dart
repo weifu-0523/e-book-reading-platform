@@ -32,8 +32,8 @@ void main() {
     );
     persister.start();
 
-    final cfi1 = EpubCfiLocator(cfi: '/6/4', chapterIndex: 0);
-    final cfi2 = EpubCfiLocator(cfi: '/6/8', chapterIndex: 0);
+    const cfi1 = EpubCfiLocator(cfi: '/6/4', chapterIndex: 0);
+    const cfi2 = EpubCfiLocator(cfi: '/6/8', chapterIndex: 0);
     controller.add(cfi1);
     controller.add(cfi2);
     controller.add(cfi1);
@@ -58,7 +58,7 @@ void main() {
     );
     persister.start();
 
-    final cfi = EpubCfiLocator(cfi: '/6/4', chapterIndex: 0);
+    const cfi = EpubCfiLocator(cfi: '/6/4', chapterIndex: 0);
     controller.add(cfi);
     await Future.delayed(const Duration(milliseconds: 150));
     controller.add(cfi); // same value
@@ -74,7 +74,7 @@ void main() {
     final repo = _FakeRepo();
     repo.next = ReadingProgress(
       bookId: 'b1',
-      locator: EpubCfiLocator(cfi: '/6/4', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: '/6/4', chapterIndex: 0),
       percent: 0.0,
       updatedAt: DateTime.now(),
     );

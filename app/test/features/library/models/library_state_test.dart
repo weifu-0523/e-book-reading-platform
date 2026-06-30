@@ -22,8 +22,8 @@ void main() {
   });
 
   test('equality covers all fields', () {
-    final a = LibraryState(books: [], searchQuery: 'x');
-    final b = LibraryState(books: [], searchQuery: 'x');
+    const a = LibraryState(books: [], searchQuery: 'x');
+    const b = LibraryState(books: [], searchQuery: 'x');
     expect(a, equals(b));
     expect(a.hashCode, b.hashCode);
   });

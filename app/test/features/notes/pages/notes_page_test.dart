@@ -102,7 +102,7 @@ void main() {
       Annotation(
         id: 'a1',
         bookNoteId: 'b1',
-        locator: EpubRangeLocator(
+        locator: const EpubRangeLocator(
             chapterIndex: 0,
             chapterTitle: '引言',
             startOffset: 0,
@@ -119,7 +119,7 @@ void main() {
       Annotation(
         id: 'a2',
         bookNoteId: 'b1',
-        locator: EpubRangeLocator(
+        locator: const EpubRangeLocator(
             chapterIndex: 1,
             chapterTitle: '正文',
             startOffset: 0,

@@ -29,11 +29,11 @@ void main() {
   Future<void> pump(WidgetTester tester, ProviderContainer c) async {
     await tester.pumpWidget(UncontrolledProviderScope(
       container: c,
-      child: MaterialApp(
+      child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('zh'),
-        home: const FontManagementPage(),
+        locale: Locale('zh'),
+        home: FontManagementPage(),
       ),
     ));
     await tester.pumpAndSettle();

@@ -8,7 +8,7 @@ void main() {
       final a = Annotation(
         id: 'a1',
         bookNoteId: 'bn1',
-        locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+        locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
         quote: '风险即未来的不确定性',
         note: null,
         color: HighlightColor.yellow,
@@ -25,7 +25,7 @@ void main() {
       final a = Annotation(
         id: 'a1',
         bookNoteId: 'bn1',
-        locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+        locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
         quote: '风险即未来的不确定性',
         note: '我的思考：...',
         color: HighlightColor.green,
@@ -42,7 +42,7 @@ void main() {
       final a = Annotation(
         id: 'a1',
         bookNoteId: 'bn1',
-        locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+        locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
         quote: '',
         note: null,
         color: HighlightColor.yellow,

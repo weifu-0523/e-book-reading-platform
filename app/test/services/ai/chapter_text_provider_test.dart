@@ -5,8 +5,8 @@ import 'package:zhiyue/services/ai/chapter_text_provider.dart';
 
 void main() {
   // Use the same fixtures as T7.
-  final epubFixture = 'test/fixtures/page-blanche.epub';
-  final pdfFixture = 'test/fixtures/pdfs/sample-text.pdf';
+  const epubFixture = 'test/fixtures/page-blanche.epub';
+  const pdfFixture = 'test/fixtures/pdfs/sample-text.pdf';
 
   group('EpubChapterTextProvider', () {
     test('chapter 0 returns non-empty text', () async {

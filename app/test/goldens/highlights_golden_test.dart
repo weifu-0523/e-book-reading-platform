@@ -8,7 +8,7 @@ import 'package:zhiyue/features/reader/widgets/notes_drawer.dart';
 final _sample = Annotation(
   id: 'a1',
   bookNoteId: 'bn1',
-  locator: EpubRangeLocator(
+  locator: const EpubRangeLocator(
       chapterIndex: 0, startOffset: 0, endOffset: 5, quote: '活着本身就是意义'),
   quote: '活着本身就是意义',
   note: '呼应主题',

@@ -16,9 +16,9 @@ void main() {
           height: 80,
           child: SingleChildScrollView(
             controller: scrollController,
-            child: Column(
+            child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text('aaa bbb'), // chars 0-6 (length 7)
                 Text('ccc ddd'), // chars 7-13
                 Text('eee fff'),

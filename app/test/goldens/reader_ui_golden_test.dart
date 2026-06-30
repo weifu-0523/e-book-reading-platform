@@ -6,7 +6,7 @@ import 'package:zhiyue/features/reader/widgets/reader_bottom_bar.dart';
 
 void main() {
   testGoldens('TocDrawer golden', (tester) async {
-    final toc = TableOfContents(entries: [
+    const toc = TableOfContents(entries: [
       TocEntry(title: '第一章 引子', locator: EpubCfiLocator(cfi: '/6', chapterIndex: 0)),
       TocEntry(title: '第二章 起点', locator: EpubCfiLocator(cfi: '/8', chapterIndex: 1)),
       TocEntry(title: '第三章 转折', locator: EpubCfiLocator(cfi: '/10', chapterIndex: 2)),

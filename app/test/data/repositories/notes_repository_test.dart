@@ -43,7 +43,7 @@ void main() {
     final a = Annotation(
       id: 'a1',
       bookNoteId: 'bn1',
-      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
       quote: '风险',
       note: '思考',
       color: HighlightColor.yellow,
@@ -64,7 +64,7 @@ void main() {
     final a = Annotation(
       id: 'a1',
       bookNoteId: 'bn1',
-      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
       quote: '',
       note: '旧',
       color: HighlightColor.yellow,
@@ -84,7 +84,7 @@ void main() {
     final original = Annotation(
       id: 'a1',
       bookNoteId: 'bn1',
-      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
       quote: '原文',
       note: '旧笔记',
       color: HighlightColor.yellow,
@@ -164,7 +164,7 @@ void main() {
     await repo.addAnnotation(Annotation(
       id: 'a1',
       bookNoteId: 'bn1',
-      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
       quote: 'abc',
       note: null,
       color: HighlightColor.yellow,

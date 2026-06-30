@@ -29,7 +29,7 @@ void main() {
   test('save and get', () async {
     final p = ReadingProgress(
       bookId: 'b1',
-      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
       percent: 0.3,
       updatedAt: DateTime(2026, 6, 24),
     );

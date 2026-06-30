@@ -123,7 +123,7 @@ void main() {
     // Compute the same hash the preprocessor will compute for chapter 0
     // text 'chapter 0 text'. The text is short (< TokenTruncator.defaultBudget),
     // so truncateToTokens returns it unchanged — same as AiGuide.
-    final sourceText = 'chapter 0 text';
+    const sourceText = 'chapter 0 text';
     final expectedHash = PreprocessorCacheHash.compute(sourceText);
     await cache.seedCached(
       bookId: 'b1',

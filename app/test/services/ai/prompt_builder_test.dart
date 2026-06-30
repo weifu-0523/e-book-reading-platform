@@ -52,7 +52,7 @@ void main() {
 
     test('prompt embeds the question', () {
       final p = PromptBuilder.qa('Who is the protagonist?', [
-        PassageChunk(
+        const PassageChunk(
             chapterIndex: 0,
             charOffset: 0,
             charLength: 5,
@@ -64,13 +64,13 @@ void main() {
 
     test('prompt embeds each chunk with [ch=N] marker', () {
       final p = PromptBuilder.qa('Question', [
-        PassageChunk(
+        const PassageChunk(
             chapterIndex: 3,
             charOffset: 0,
             charLength: 9,
             contentText: 'chunk-one',
             tokenEstimate: 3),
-        PassageChunk(
+        const PassageChunk(
             chapterIndex: 5,
             charOffset: 0,
             charLength: 9,
@@ -85,7 +85,7 @@ void main() {
 
     test('prompt instructs the LLM to use [ch=N] markers in answer', () {
       final p = PromptBuilder.qa('Q', [
-        PassageChunk(
+        const PassageChunk(
             chapterIndex: 0,
             charOffset: 0,
             charLength: 3,

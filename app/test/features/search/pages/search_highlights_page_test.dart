@@ -33,7 +33,7 @@ void main() {
     await fake.addAnnotation(Annotation(
       id: 'a1',
       bookNoteId: 'bn1',
-      locator: EpubRangeLocator(
+      locator: const EpubRangeLocator(
           chapterIndex: 0, startOffset: 0, endOffset: 3, quote: '活着'),
       quote: '活着',
       note: null,

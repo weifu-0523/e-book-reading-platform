@@ -28,7 +28,7 @@ void main() {
   });
 
   group('BookNote equality', () {
-    final locator = EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0);
+    const locator = EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0);
     final created = DateTime(2026, 6, 24);
     final updated = DateTime(2026, 6, 25);
 

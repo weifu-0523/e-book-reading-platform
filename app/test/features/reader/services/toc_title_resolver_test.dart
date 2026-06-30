@@ -11,38 +11,38 @@ void main() {
 
     test('empty toc returns empty map', () {
       expect(
-          TocTitleResolver.resolve(TableOfContents(entries: const [])),
+          TocTitleResolver.resolve(const TableOfContents(entries: [])),
           isEmpty);
     });
 
     test('single entry maps chapterIndex to title', () {
-      final toc = TableOfContents(entries: [
+      const toc = TableOfContents(entries: [
         TocEntry(
           title: 'Chapter 1',
-          locator: const EpubCfiLocator(cfi: '(1)', chapterIndex: 0),
-          children: const [],
+          locator: EpubCfiLocator(cfi: '(1)', chapterIndex: 0),
+          children: [],
         ),
       ]);
       expect(TocTitleResolver.resolve(toc), {0: 'Chapter 1'});
     });
 
     test('nested entries all map', () {
-      final toc = TableOfContents(entries: [
+      const toc = TableOfContents(entries: [
         TocEntry(
           title: 'Part 1',
-          locator: const EpubCfiLocator(cfi: '(1)', chapterIndex: 0),
+          locator: EpubCfiLocator(cfi: '(1)', chapterIndex: 0),
           children: [
             TocEntry(
               title: 'Chapter A',
-              locator: const EpubCfiLocator(cfi: '(2)', chapterIndex: 1),
-              children: const [],
+              locator: EpubCfiLocator(cfi: '(2)', chapterIndex: 1),
+              children: [],
             ),
           ],
         ),
         TocEntry(
           title: 'Part 2',
-          locator: const EpubCfiLocator(cfi: '(3)', chapterIndex: 2),
-          children: const [],
+          locator: EpubCfiLocator(cfi: '(3)', chapterIndex: 2),
+          children: [],
         ),
       ]);
       expect(TocTitleResolver.resolve(toc), {
@@ -53,32 +53,32 @@ void main() {
     });
 
     test('duplicate chapterIndex keeps first (depth-first wins)', () {
-      final toc = TableOfContents(entries: [
+      const toc = TableOfContents(entries: [
         TocEntry(
           title: 'First',
-          locator: const EpubCfiLocator(cfi: '(1)', chapterIndex: 5),
-          children: const [],
+          locator: EpubCfiLocator(cfi: '(1)', chapterIndex: 5),
+          children: [],
         ),
         TocEntry(
           title: 'Second',
-          locator: const EpubCfiLocator(cfi: '(2)', chapterIndex: 5),
-          children: const [],
+          locator: EpubCfiLocator(cfi: '(2)', chapterIndex: 5),
+          children: [],
         ),
       ]);
       expect(TocTitleResolver.resolve(toc)[5], 'First');
     });
 
     test('non-EpubCfiLocator entries skipped', () {
-      final toc = TableOfContents(entries: [
+      const toc = TableOfContents(entries: [
         TocEntry(
           title: 'Skipped',
-          locator: const EpubRangeLocator(
+          locator: EpubRangeLocator(
             chapterIndex: 0,
             startOffset: 0,
             endOffset: 5,
             quote: 'hello',
           ),
-          children: const [],
+          children: [],
         ),
       ]);
       expect(TocTitleResolver.resolve(toc), isEmpty);

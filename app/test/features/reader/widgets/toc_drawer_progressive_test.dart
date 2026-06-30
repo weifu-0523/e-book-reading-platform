@@ -95,12 +95,12 @@ void main() {
         (tester) async {
       final toc = TableOfContents(entries: [_entry(0, 'Ch 0')]);
       // Defensive edge case: ch 0 in both sets — failed should win.
-      final state = PreprocessState(
+      const state = PreprocessState(
         status: PreprocessStatus.done,
         currentChapter: 1,
         totalChapters: 1,
-        summarizedChapters: const {0},
-        failedChapters: const [0],
+        summarizedChapters: {0},
+        failedChapters: [0],
       );
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(

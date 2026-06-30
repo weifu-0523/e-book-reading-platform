@@ -6,7 +6,7 @@ void main() {
   test('ReadingProgress holds locator and percent', () {
     final p = ReadingProgress(
       bookId: 'b1',
-      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
       percent: 0.42,
       updatedAt: DateTime(2026, 6, 24),
     );
@@ -17,7 +17,7 @@ void main() {
   test('percent clamped between 0 and 1', () {
     final p = ReadingProgress(
       bookId: 'b1',
-      locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+      locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
       percent: 1.5,
       updatedAt: DateTime(2026, 6, 24),
     );
@@ -25,7 +25,7 @@ void main() {
   });
 
   group('ReadingProgress equality', () {
-    final locator = EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0);
+    const locator = EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0);
     final ts = DateTime(2026, 6, 24);
 
     test('equals by content', () {
@@ -64,13 +64,13 @@ void main() {
     test('not equals when locator differs', () {
       final a = ReadingProgress(
         bookId: 'b1',
-        locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
+        locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0),
         percent: 0.5,
         updatedAt: ts,
       );
       final b = ReadingProgress(
         bookId: 'b1',
-        locator: EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 1),
+        locator: const EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 1),
         percent: 0.5,
         updatedAt: ts,
       );

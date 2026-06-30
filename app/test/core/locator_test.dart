@@ -4,7 +4,7 @@ import 'package:zhiyue/core/locator.dart';
 void main() {
   group('EpubCfiLocator', () {
     test('serializes to JSON correctly', () {
-      final locator = EpubCfiLocator(
+      const locator = EpubCfiLocator(
         cfi: 'epubcfi(/6/4[chap01ref]!/4[body01]/10[para05]/3:10)',
         chapterIndex: 0,
         chapterTitle: '第一章',
@@ -33,7 +33,7 @@ void main() {
 
   group('PdfPageLocator', () {
     test('serializes to JSON correctly', () {
-      final locator = PdfPageLocator(page: 42, offsetX: 100.5, offsetY: 200.0);
+      const locator = PdfPageLocator(page: 42, offsetX: 100.5, offsetY: 200.0);
       expect(locator.toJson(), {
         'type': 'pdfPage',
         'page': 42,
@@ -59,14 +59,14 @@ void main() {
   // FormatException 是语义更明确的"数据格式不兼容"信号，便于上层 catch + 日志。
   test('Locator.fromJson throws FormatException on unknown type', () {
     expect(
-      () => Locator.fromJson({'type': 'unknown', 'cfi': 'epubcfi(/6)'}),
+      () => Locator.fromJson(const {'type': 'unknown', 'cfi': 'epubcfi(/6)'}),
       throwsA(isA<FormatException>()),
     );
   });
 
   test('Locator.fromJson FormatException message mentions the unknown type', () {
     try {
-      Locator.fromJson({'type': 'futureType', 'foo': 'bar'});
+      Locator.fromJson(const {'type': 'futureType', 'foo': 'bar'});
       fail('expected FormatException');
     } on FormatException catch (e) {
       // 消息应包含未知类型字符串，便于日志诊断
@@ -75,7 +75,7 @@ void main() {
   });
 
   test('round-trip serialization preserves data', () {
-    final original = EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0);
+    const original = EpubCfiLocator(cfi: 'epubcfi(/6)', chapterIndex: 0);
     final restored = Locator.fromJson(original.toJson());
     expect(restored, original);
   });

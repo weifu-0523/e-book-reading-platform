@@ -7,7 +7,7 @@ import 'package:zhiyue/features/reader/widgets/toc_drawer.dart';
 
 void main() {
   testWidgets('renders TOC entries', (tester) async {
-    final toc = TableOfContents(entries: [
+    const toc = TableOfContents(entries: [
       TocEntry(
         title: '第一章',
         locator: EpubCfiLocator(cfi: '/6', chapterIndex: 0),
@@ -33,7 +33,7 @@ void main() {
   });
 
   testWidgets('tap entry triggers onSelect', (tester) async {
-    final toc = TableOfContents(entries: [
+    const toc = TableOfContents(entries: [
       TocEntry(title: 'A', locator: EpubCfiLocator(cfi: '/6', chapterIndex: 0)),
     ]);
 

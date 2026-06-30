@@ -11,7 +11,7 @@ void main() {
         type: SyncRecordType.annotation,
         mtime: DateTime.utc(2026, 6, 28, 10, 0, 0),
         deleted: false,
-        payload: {'quote': '风险即未来', 'color': 'yellow'},
+        payload: const {'quote': '风险即未来', 'color': 'yellow'},
       );
       final json = jsonEncode(record.toJson());
       final restored = SyncRecord.fromJson(jsonDecode(json) as Map<String, dynamic>);
