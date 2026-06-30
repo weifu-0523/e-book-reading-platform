@@ -447,14 +447,18 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   ///
   /// PDF 路径不走本方法（ReaderScaffold 不渲染溢出菜单）。书被删（_cachedBook
   /// 为 null）时静默退出。
-  Future<void> _onOpenReview() async {
+  ///
+  /// [chapterIndex] 可选参数：TOC 抽屉点击时传入明确章节索引，AppBar 溢出菜单
+  /// 使用当前章节索引。
+  Future<void> _onOpenReview([int? chapterIndex]) async {
     final book = _cachedBook;
-    if (book == null || !mounted) return;
-    final chapterIdx = _currentChapterIndex();
-    final chapterTitle = _chapterTitlesCache[chapterIdx];
+    if (book == null || book.format == BookFormat.pdf) return;
+    if (!mounted) return;
+    final idx = chapterIndex ?? _currentChapterIndex();
+    final chapterTitle = _chapterTitlesCache[idx];
     ref.read(reviewControllerProvider(book.id).notifier).start(
           book: book,
-          chapterIndex: chapterIdx,
+          chapterIndex: idx,
         );
     await showModalBottomSheet<void>(
       context: context,
@@ -462,7 +466,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       useRootNavigator: true,
       builder: (_) => ReviewPreviewSheet(
         bookId: book.id,
-        chapterIndex: chapterIdx,
+        chapterIndex: idx,
         chapterTitle: chapterTitle,
         onSaved: () async {
           final state = ref.read(reviewControllerProvider(book.id));
@@ -470,7 +474,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           await ref.read(notesRepositoryProvider).applyChapterReview(
                 bookId: book.id,
                 bookTitle: book.title,
-                chapterIndex: chapterIdx,
+                chapterIndex: idx,
                 chapterTitle: chapterTitle,
                 summary: state.summary!,
                 keyTakeaways: state.keyTakeaways,
@@ -593,6 +597,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             Scaffold.of(context).closeDrawer();
           }
         },
+        onReviewChapter: engine is PdfReaderEngine ? null : _onOpenReview,
       ),
     );
   }
