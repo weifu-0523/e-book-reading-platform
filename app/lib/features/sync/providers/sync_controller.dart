@@ -3,6 +3,7 @@
 // `lifecycle` to avoid shadowing the StateNotifier.state getter.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/services/sync/background_sync_scheduler.dart';
@@ -61,10 +62,12 @@ class SyncController extends StateNotifier<SyncState>
   SyncController({
     required this.database,
     required this.credentials,
+    http.Client? httpClient,
     ConnectivityService? connectivity,
     SyncIntervalPref? intervalPref,
     DateTime Function()? clock,
-  })  : _connectivity = connectivity ?? ConnectivityPlusService(),
+  })  : _httpClient = httpClient ?? http.Client(),
+        _connectivity = connectivity ?? ConnectivityPlusService(),
         _intervalPref = intervalPref ?? SyncIntervalPref(),
         _clock = clock ?? DateTime.now,
         super(const SyncState()) {
@@ -87,7 +90,8 @@ class SyncController extends StateNotifier<SyncState>
     required SyncIntervalPrefLike intervalPref,
     required BackgroundSyncScheduler scheduler,
     required DateTime Function() clock,
-  })  : _connectivity = connectivity,
+  })  : _httpClient = http.Client(),
+        _connectivity = connectivity,
         // Tests pass the Like-interface; wrap so production field keeps
         // its concrete type but tests can use in-memory stubs.
         _intervalPref = _IntervalPrefShim(intervalPref),
@@ -98,6 +102,7 @@ class SyncController extends StateNotifier<SyncState>
 
   final AppDatabase database;
   final SyncCredentialsLike credentials;
+  final http.Client _httpClient;
   final ConnectivityService _connectivity;
   final SyncIntervalPref _intervalPref;
   final DateTime Function() _clock;
@@ -123,6 +128,7 @@ class SyncController extends StateNotifier<SyncState>
       baseUrl: baseUrl,
       username: creds.username!,
       password: creds.password!,
+      httpClient: _httpClient,
     );
     return WebDavSyncEngine(
       database: database,

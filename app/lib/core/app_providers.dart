@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../data/local/daos/qa_history_dao.dart';
 import '../data/models/book.dart';
@@ -17,6 +18,7 @@ import '../services/ai/qa_citation_parser.dart';
 import '../services/sync/connectivity_service.dart';
 import '../services/sync/sync_credentials.dart';
 import '../services/sync/sync_interval_pref.dart';
+import 'http_client_provider.dart';
 import 'providers.dart';
 
 /// AI API Key 存储（flutter_secure_storage 持久化）。
@@ -32,6 +34,7 @@ final aiGuideProvider = Provider<AiGuide>((ref) {
         ? EpubChapterTextProvider()
         : PdfChapterTextProvider(),
     cache: db.aiSummariesDao,
+    httpClient: ref.watch(httpClientProvider),
   );
 });
 
@@ -71,17 +74,19 @@ final qaHistoryDaoProvider = Provider<QaHistoryDaoLike>((ref) {
 final bookQaServiceProvider = Provider<BookQaServiceLike>((ref) {
   final db = ref.watch(appDatabaseProvider);
   final keys = ref.watch(apiKeyStoreProvider);
+  final httpClient = ref.watch(httpClientProvider);
   return BookQaService(
     apiKeys: keys,
     passagesDao: db.bookPassagesDao,
     qaHistoryDao: db.qaHistoryDao,
-    clientFactory: (creds) => _QaClientAdapter(creds),
+    clientFactory: (creds) => _QaClientAdapter(creds, httpClient),
   );
 });
 
 class _QaClientAdapter implements QaClientLike {
-  _QaClientAdapter(this._creds);
+  _QaClientAdapter(this._creds, this._httpClient);
   final AiCredentials _creds;
+  final http.Client _httpClient;
 
   @override
   Stream<String> streamChat({required String prompt}) {
@@ -89,6 +94,7 @@ class _QaClientAdapter implements QaClientLike {
       baseUrl: _creds.baseUrl,
       apiKey: _creds.apiKey,
       model: _creds.model,
+      httpClient: _httpClient,
     ).streamChat(prompt: prompt);
   }
 }
@@ -138,6 +144,7 @@ final providers = <Override>[
     (ref) => SyncController(
       database: ref.watch(appDatabaseProvider),
       credentials: SyncCredentials(),
+      httpClient: ref.watch(httpClientProvider),
       connectivity: ConnectivityPlusService(),
       intervalPref: SyncIntervalPref(),
     ),
