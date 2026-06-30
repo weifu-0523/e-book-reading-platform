@@ -97,6 +97,7 @@ dev_dependencies:
   # M7: mocktail for BookOpenBridge / MethodChannel tests
   mocktail: ^1.0.0
 
+  flutter_widget_from_html: any
 flutter:
   uses-material-design: true
   generate: true
