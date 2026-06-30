@@ -9,6 +9,35 @@
 
 M2.0a 之后到 v1.0 之间的打磨工作将记在此处。
 
+## [0.9.1-alpha] — 2026-06-30
+
+Point release addressing M1.5b+c review findings (C1 + I1-I5).
+
+### Fixed
+- **C1**: `QaAnswerView` memory leak — `TapGestureRecognizer`s are now disposed
+  when the widget unmounts or the answer text changes. Previously, streaming
+  rebuilds leaked ~1 recognizer per citation per build.
+- **I1**: `chapterCountFor` linear probe replaced with `ChapterTextProvider.count()`
+  — O(1) instead of O(N) EPUB re-parses on import of thick books.
+- **I2**: `PreprocessDoneEvent.failedChapters` now reflects transient per-chapter
+  failures (was always empty); `PreprocessChapterFailedEvent` is now emitted
+  (was dead code). The "N 章预处理失败" banner in BookDetailPage is honest.
+- **I3**: Q&A stream stall + total timeout — `BookQaService` drives a
+  `StreamIterator` with `Future.timeout(stallTimeout)` per moveNext (default
+  30s) and a 90s total cap. A "停止" button in `QaAskDialog` cancels the
+  in-flight request via `QaController.reset()`. Network errors after partial
+  output are terminal (no replay), mirroring `ai_guide.dart`'s pattern.
+- **I4**: `QaAskDialog` now shows "预处理进行中（N/M），回答可能不全" caption
+  when the per-book preprocess controller is chunking/summarizing.
+- **I5**: Q&A history list — `QaAskDialog.initState` loads top-5 entries and
+  renders them as ActionChips. Tap resubmits, long-press deletes. Introduces
+  `QaHistoryDaoLike` interface for testability. Closes spec §14 acceptance
+  gap "Q&A 历史可查看 + 重发".
+
+### Spec coverage
+Review categorization: 1 Critical + 5 Important (this release) → 6/6 closed.
+Minors (M1-M7) deferred to M2.0c.
+
 ## [0.9.0-alpha] - 2026-06-30
 
 M1.5b+c — AI Batch Preprocess + Same-Book Q&A.
