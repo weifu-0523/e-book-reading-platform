@@ -7,7 +7,58 @@
 
 ## [Unreleased]
 
-v1.0.0 GA 之后的新变更将记在此处。
+v1.1.0-alpha 之后的新变更将记在此处。
+
+## [1.1.0-alpha] — 2026-07-01
+
+智阅首个 AI 增强里程碑（M2.1）。在 v1.0.0 GA 基础上新增章节学习回顾
+与 Markdown 批量导出两大功能。仍为 alpha：UI 文案、动效、错误恢复路径
+有待真实用户反馈打磨。
+
+### Added
+
+- **章节学习回顾**（MVP 2.0）：TOC 抽屉按章节 + 阅读器溢出菜单"回顾本章"。
+  AI 用本章正文 + 用户本章高亮生成 summary + keyTakeaways，写入读书笔记。
+  模态预览 + 保存/取消。PDF 书禁用入口（Page-as-Chapter 语义不适用）。
+- **Markdown 批量导出**（MVP 2.0）：库 AppBar "导出为 Markdown"。选文件夹，
+  每本书一份 .md + 一个 index.md（Obsidian vault 兼容，含 YAML frontmatter
+  + wiki-links + 标签云）。空库提示对话框。
+- 25 个 i18n key（15 review + 10 batch export），中英双语。
+- 17 个新测试覆盖核心逻辑（总测试数 762 + 3 skipped）。
+
+### Changed
+
+- `PromptBuilder.promptVersion` 1 → 2（review 模式新 cache key；旧缓存不受影响）。
+- `LibraryAppBar` 加 `onBatchExport` callback + 新 IconButton（folder_zip_outlined）。
+- `TocDrawer` + `_TocTile` 加 `onReviewChapter` 参数（递归传递）。
+- `ReaderScaffold` 加 `onOpenReview` callback + PopupMenuItem（仅 EPUB）。
+- `maintainers-runbook.md` 新增 §10（M2.1 调试参考，6 个子节）。
+
+### Technical
+
+- 新增 `BookReviewer` **独立**服务（不复用 AiGuide）：AiGuide 的 sourceHash
+  只 hash 章节文本，无法感知高亮变化会导致缓存命中错误。BookReviewer 自己
+  计算 `sha256(truncatedText + '::' + highlightsSignature)`，让"新增高亮
+  → 下次回顾强制 miss"成为默认行为。镜像 AiGuide 的 stream/cache/persist
+  pipeline，但用项目最新 `ReviewClientLike` 抽象（参考 BookQaService）。
+- 新增 `VaultExporter` 纯逻辑服务 + `BatchExportDialog` StatefulWidget。
+- 新增 `ReviewController`（StateNotifier，状态机：idle/loading/streaming/done/error）
+  + `ReviewPreviewSheet`（模态预览）。
+- `NotesRepository.applyChapterReview` 幂等写入：`【第N章】` 前缀 +
+  `## 第 N 章` sentinel，先删后加，保留用户手动内容。
+- `ReviewOutputParser` 容错 JSON 解析（处理 ```json fence + 非 String 元素）。
+- 0 数据库 schema 迁移；0 同步逻辑改动。
+- BookReviewer sourceHash 算法、幂等前缀约定、批量导出文件命名规则
+  均记入 `docs/maintainers-runbook.md` §10。
+
+### Plan 偏差与自修
+
+实施过程中 subagent 自主发现并修正了 plan 的若干内部不一致：
+- T5 重构 BookReviewer 用 `ReviewClientLike` 抽象（与 plan 假设的 clientFactory
+  typedef 不同），更对齐项目最新 BookQaService 模式
+- T12 修正测试断言中的 Obsidian wiki-link 格式（文件名经 sanitize 后无书名号）
+- T14 改用独立 IconButton 而非 PopupMenuItem（因 LibraryAppBar 现有 UX 是
+  IconButton 行而非溢出菜单，保持一致性）
 
 ## [1.0.0] — 2026-06-30
 
