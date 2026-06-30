@@ -128,6 +128,7 @@ class BookPreprocessController extends StateNotifier<PreprocessState> {
           totalChapters: totalChapters,
         );
       case PreprocessChapterFailedEvent():
+        // No-op: failedChapters is populated atomically at PreprocessDoneEvent.
         break;
       case PreprocessChapterCompletedEvent(:final chapterIndex):
         state = state.copyWith(
