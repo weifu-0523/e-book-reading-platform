@@ -7,7 +7,7 @@ import 'book_chunker.dart';
 class PromptBuilder {
   const PromptBuilder._();
 
-  static const int promptVersion = 1;
+  static const int promptVersion = 2;
 
   static String fullBook(String truncatedText) {
     return '请用与原文相同的语言，用约 300 字总结以下书籍的核心论点和主要观点。'
@@ -35,6 +35,44 @@ class PromptBuilder {
         '--- 选中文字 ---\n'
         '$selectedText\n'
         '--- 选中文字结束 ---';
+  }
+
+  /// Prompt for chapter learning review. Asks LLM to produce a JSON object
+  /// with summary + keyTakeaways, grounded in chapter text and reader's
+  /// highlights.
+  ///
+  /// [chapterOrdinal] is 1-based. [highlightsBlock] is the pre-formatted
+  /// multi-line string of reader's highlights in this chapter; pass '' to
+  /// trigger the no-highlights fallback branch.
+  static String review({
+    required String bookTitle,
+    required int chapterOrdinal,
+    required String? chapterTitle,
+    required String truncatedChapterText,
+    required String highlightsBlock,
+  }) {
+    final titleLine = chapterTitle == null || chapterTitle.isEmpty
+        ? '第$chapterOrdinal章'
+        : '第$chapterOrdinal章 · $chapterTitle';
+    final highlightsSection = highlightsBlock.isEmpty
+        ? '（读者未做高亮，请基于本章正文做通用回顾）'
+        : highlightsBlock;
+    return '你是一位学习导师，帮读者回顾刚读完的章节。\n\n'
+        '## 本章信息\n'
+        '书名：《$bookTitle》\n'
+        '章节：$titleLine\n\n'
+        '## 本章正文（节选）\n'
+        '$truncatedChapterText\n\n'
+        '## 读者在本章的高亮与笔记\n'
+        '$highlightsSection\n\n'
+        '## 任务\n'
+        '1. 写一段 100-200 字的本章核心摘要，聚焦读者通过高亮关注的部分\n'
+        '2. 提炼 3-5 条可执行/可记忆的要点，每条一句话\n\n'
+        '## 输出格式（严格遵守，输出纯 JSON，不要 Markdown 围栏）\n'
+        '{\n'
+        '  "summary": "...",\n'
+        '  "keyTakeaways": ["...", "..."]\n'
+        '}';
   }
 
   /// Bump independently from [promptVersion] so Q&A cache misses don't

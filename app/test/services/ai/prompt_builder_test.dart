@@ -3,8 +3,8 @@ import 'package:zhiyue/services/ai/book_chunker.dart';
 import 'package:zhiyue/services/ai/prompt_builder.dart';
 
 void main() {
-  test('promptVersion is a constant', () {
-    expect(PromptBuilder.promptVersion, 1);
+  test('promptVersion is 2 (bumped from 1 for review mode)', () {
+    expect(PromptBuilder.promptVersion, 2);
   });
 
   test('fullBook renders source and 300-char instruction', () {
@@ -107,6 +107,39 @@ void main() {
       ]);
       expect(p, contains('a' * 800));
       expect(p, isNot(contains('a' * 801)));
+    });
+  });
+
+  group('PromptBuilder.review', () {
+    test('includes book title, chapter ordinal, and highlights block', () {
+      final p = PromptBuilder.review(
+        bookTitle: '量子力学讲义',
+        chapterOrdinal: 3,
+        chapterTitle: '态叠加原理',
+        truncatedChapterText: '本章正文…',
+        highlightsBlock: '> 高亮1\n> 高亮2',
+      );
+      expect(p, contains('《量子力学讲义》'));
+      expect(p, contains('第3章'));
+      expect(p, contains('态叠加原理'));
+      expect(p, contains('本章正文…'));
+      expect(p, contains('> 高亮1'));
+      expect(p, contains('"summary"'));
+      expect(p, contains('"keyTakeaways"'));
+    });
+
+    test('uses fallback hint when highlightsBlock is empty', () {
+      final p = PromptBuilder.review(
+        bookTitle: 'T',
+        chapterOrdinal: 1,
+        chapterTitle: null,
+        truncatedChapterText: 'text',
+        highlightsBlock: '',
+      );
+      expect(p, contains('（读者未做高亮'));
+      expect(p, contains('第1章'));
+      // No "· " when chapterTitle is null.
+      expect(p, isNot(contains('· ')));
     });
   });
 }
