@@ -589,11 +589,120 @@ Flutter 退出后写 `build/flutter_01.json`。读：
 
 实测数字由 M1.6 T15（perf baseline task）填入。下表为目标门限；release 前 T15 会跑 §9.1–9.3 三个场景并把数字写到本节。任何未达目标项必须在 release notes 显式说明。
 
-| 指标 | 目标 | 实测 v1.0.0（T15 填） |
+| 指标 | 目标 | 实测 v1.0.0 |
 |---|---|---|
-| Cold start (windows) | < 2000ms | — |
-| EPUB 滚动 FPS（5MB 书，30s） | ≥ 55 fps | — |
-| PDF 50MB 内存峰值 | < 500MB | — |
+| Cold start (windows, time to first frame) | < 500ms | Pending v1.0.0 manual measurement |
+| Steady-state FPS（EPUB 5MB，连续滚动 30s） | ≥ 55 fps | Pending v1.0.0 manual measurement |
+| 内存（idle，刚启动空库） | < 150MB | Pending v1.0.0 manual measurement |
+| 内存（打开 100 页书后） | < 250MB | Pending v1.0.0 manual measurement |
+
+> **Target 收紧说明**：原 §9.1–9.3 用的是 < 2000ms / ≥ 55fps / < 500MB（含 50MB PDF）。M1.6 plan §3.T15 把 cold start 收到 < 500ms、把内存拆成 idle / opened 两档（更细），PDF 50MB 那条保留在 §9.3 作为压力测试参考，不进 v1.0.0 release baseline。两个文档门限的差异是历史遗留，以本表为准；后续 release 视实测再回填。
+
+### 9.5 为什么自动化测量被阻塞（必读）
+
+子代理 / CI 目前**无法**自动跑 §9.1–9.3 三个场景并把数字写回本文件，原因有两条：
+
+1. **中文路径阻断 release / profile build**。仓库根目录是 `H:\projiect\电子书阅读平台`，含 CJK 字符。Flutter Windows toolchain 在打包 `app.dill` 时把路径串过 GBK↔UTF-8 转码层，导致 mojibake、build 失败。M1.6 T14 已确认这影响 release build；profile build 走同一套 toolchain，假定同样阻塞。详见 §3 与 T14 记录。
+2. **GUI 测量需要人**。FPS / 内存"打开书 + 滚动 30s + 等 steady state"要操作 reader UI、连 DevTools、手动 Take snapshot，这些步骤子代理无法驱动。
+
+**结论**：performance baseline 是 **release-day 手动步骤**，由 release engineer 在每次 release（或重大重构后）按 §9.6 流程跑一次，把数字填进 §9.4 的表里。Methodology 必须能被任意 maintainer 重复——下面 §9.6 给出完整步骤。
+
+### 9.6 手动测量流程（release-day checklist）
+
+> 假设：测量者在本机 Windows 上有 Flutter SDK + Android Studio（DevTools 自带）。
+
+#### Step 0：把项目复制到 ASCII 路径（绕开中文路径坑）
+
+中文路径下 profile / release build 会失败（§9.5）。测量前先把仓库 copy 到纯 ASCII 路径。**只 copy 不 move**——原仓库继续作为工作目录。
+
+```bash
+# 假设原仓库在 H:\projiect\电子书阅读平台
+# 目标 ASCII 路径：C:\dev\zhiyue-perf
+mkdir -p /c/dev/zhiyue-perf
+# 用 robocopy 比 cp -r 快很多（Windows）。/E 包含空目录，/MIR 镜像
+robocopy "H:\projiect\电子书阅读平台" "C:\dev\zhiyue-perf" /E /MIR /XD .git build .dart_tool
+cd /c/dev/zhiyue-perf/app
+/c/flutter/bin/flutter.bat pub get
+```
+
+> **注意**：robocopy `/XD .git build .dart_tool` 排除了这三个目录——`.git` 不需要（只测量不 commit），`build` 和 `.dart_tool` 会被中文路径污染过，让 Flutter 重新生成。第一次 `pub get` 会触发 codegen（drift / riverpod），稍等。
+
+#### Step 1：冷启动（cold start）
+
+```bash
+cd /c/dev/zhiyue-perf/app
+/c/flutter/bin/flutter.bat run --trace-startup --profile -d windows
+```
+
+App 启动后**立即自动退出**（`--trace-startup` 的行为）。trace 写到 `build/windows/x64/runner/Debug/flutter_01.json`（路径可能随 Flutter 版本变；搜 `flutter_*.json` 即可）。
+
+读 JSON：
+
+- `engineEnterTimestampMicros` → 启动起点
+- `timeToFrameworkSetupMicros` → framework 初始化完成
+- **首帧**：找 `firstFrameRasterizedMicros`（或老版本里的 `timeToFirstFrameMicros`）
+- **报告指标**：`firstFrameRasterizedMicros - engineEnterTimestampMicros`，单位 µs → 除以 1000 得 ms
+- 目标：< 500ms。把数字填进 §9.4 表第一行。
+
+> 重复 3 次取中位数，避免 SSD 冷缓存影响首次启动。第二次以后 Windows 会缓存 DLL，第三次数据最稳定。
+
+#### Step 2：稳态 FPS（EPUB 滚动）
+
+```bash
+/c/flutter/bin/flutter.bat run --profile -d windows
+```
+
+App 启动后：
+
+1. 打开 DevTools（IDE 里点 Flutter DevTools 按钮，或 `flutter pub global run devtools` 后浏览器打开）。
+2. DevTools → **Performance** tab → 找 **"Show Performance Overlay"** 开关，打开。App 右上角出现 FPS + GPU 折线。
+3. 在 app 里导入一本 ~5MB EPUB（用 `docs/superpowers/fixtures/` 或仓库自带样书），打开进入 reader。
+4. 用鼠标滚轮连续滚动 30s（混合快慢，模拟真实阅读）。
+5. 看 overlay 顶部的 **FPS** 数字（不是 GPU），取 30s 内**最低**值（jank 帧）。
+6. 目标：≥ 55 fps。把数字填进 §9.4 表第二行。
+
+> 如果没有现成 5MB EPUB，用任何一本中等篇幅的中文小说 EPUB 即可——目标是测稳态渲染，不是测特定书。记录用的什么书 + 大小，写进 release notes。
+
+#### Step 3：内存（idle + 打开 100 页书）
+
+继续 Step 2 的 profile session（不用重启）。
+
+**3a. Idle 测量**：
+
+1. DevTools → **Memory** tab。
+2. 点 **"Resume"** 让 app 跑（如果 paused）。
+3. 等 5 秒让启动 GC 完成，看左下 **"RSS"** 或 **"Total"** 数值（单位 KB 或 MB，看版本）。
+4. 点 **"Take a snapshot"** 保留参考点。
+5. 目标：< 150MB。填 §9.4 第三行。
+
+**3b. 打开书后测量**：
+
+6. 在 app 里导入并打开一本 ≥ 100 页的书（EPUB 或 PDF 都行，记录哪种 + 大小）。
+7. 翻 10 页让渲染缓存填充。
+8. 回 DevTools Memory tab，等 3 秒，记 RSS。
+9. 目标：< 250MB。填 §9.4 第四行。
+
+> **关于"100 页书"**：plan §3.T15 原文是 "100-page book"。EPUB 章节短可能不到 100 页，用 PDF 更容易（PDF 页数明确）。如果只有 EPUB，记 100 页约等于多少章节并说明。
+
+#### Step 4：回填 §9.4 + release notes
+
+1. 把上面三个数字填进 §9.4 表的 "Pending v1.0.0 manual measurement" 位置。
+2. 如果任何一项**没达标**，必须在 release notes 显式说明（CHANGELOG.md + Gitee Release body），写清：实测值、目标值、可能原因、是否 block release。
+3. commit 这份 runbook 改动：`docs(m1.6/perf): backfill v1.0.0 perf baseline measurements`。
+
+### 9.7 何时复测
+
+- **每个 minor / major release**（v1.0.0 → v1.1.0）：必测。
+- **patch release**（v1.0.0 → v1.0.1）：不强制，除非 patch 触及渲染 / DB / 同步路径。
+- **重大重构后**（如换渲染引擎、改 drift schema、重写 reader）：必测，即使没 release。
+- **怀疑回归时**（用户报"变卡了"）：先测 cold start + FPS，再排查。
+
+### 9.8 在 DevTools 里 toggle PerformanceOverlay（无需改代码）
+
+代码里**没有**内建的 debug toggle（v1.0.0 决定不加，YAGNI——DevTools 已经能做）。如需在 app 内常驻 overlay：
+
+1. 短期：用 §9.6 Step 2 描述的 DevTools **"Show Performance Overlay"** 开关。
+2. 长期（如果未来要做 dev settings 页）：在 `MaterialApp` 上加 `showPerformanceOverlay: debugPerfOverlay`，把 `debugPerfOverlay` 放进 `SettingsService` 的 dev-only 段。这是后续 milestone 的事，不在 v1.0.0 范围。
 
 ---
 
