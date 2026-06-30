@@ -7,6 +7,14 @@
 #include "flutter_window.h"
 #include "utils.h"
 
+// Deep-link URI parsing ("zhiyue://book/<id>") lives in
+// deep_link_parser.{h,cpp} so it can be unit-tested without booting
+// Flutter. The Windows runner does not yet wire up scheme activation
+// (argv file forwarding is the current path); when scheme activation
+// lands, call zhiyue::parseBookIdFromDeepLink from this file.
+// See test_main.cpp + run_smoke_test.bat for the regression test.
+#include "deep_link_parser.h"
+
 namespace {
 
 // Window property name used to mark the first-instance window so the
