@@ -713,7 +713,84 @@ App 启动后：
 
 ---
 
-## 10. Glossary
+## 10. M2.1 章节回顾 + 批量导出
+
+### 10.1 BookReviewer 缓存命中规则
+
+`ai_summaries` 表中 `mode='review'` 的行的 sourceHash 由两部分组成：
+
+```
+sourceHash = sha256( truncatedChapterText + '::' + highlightsSignature )
+highlightsSignature = sha256( join( '\n', sort_by_createdAt( chapter_highlights.quote ) ) )
+```
+
+**与 AiGuide 的关键差异**：AiGuide 的 sourceHash 只 hash 章节文本，不包含用户状态——所以高亮变化也能命中旧缓存。BookReviewer 独立计算 hash 就是为了让"新增高亮 → 下次回顾强制 miss → 重新生成"成为默认行为。
+
+**调试技巧**：用户报告"加了高亮但回顾没变"时：
+1. 查 `ai_summaries` 表中 `mode='review'` 且 `book_id=X` 的行
+2. 比对 `source_hash` 与代码实时算的 hash
+3. 若一致但内容旧，说明 highlightsSignature 没正确包含新 quote（检查 `_loadChapterHighlights` 的过滤逻辑）
+
+### 10.2 幂等保存前缀约定
+
+`book_notes` 表中 AI 写入的内容有两个 sentinel：
+
+| 字段 | AI 写入格式 | 用户手动内容特征 |
+|---|---|---|
+| `keyTakeaways` | `【第N章】 <内容>` | 不以 `【第N章】 ` 开头 |
+| `summary` | `## 第 N 章 · <标题>` 起的段落 | 不以 `## 第 N 章` 开头 |
+
+`NotesRepository.applyChapterReview` 实现"删旧加新"：
+- 删除该章节前缀的旧条目 / 旧段落
+- 追加新条目 / 新段落
+- 保留所有不带前缀的内容（用户手动加的 takeaway、用户手动写的 summary 段落）
+
+**幂等性**：同章重复回顾 N 次，最终 keyTakeaways 中该章节仍只有最新一批 AI 内容（不会累积）。
+
+### 10.3 批量导出文件命名与覆盖
+
+`VaultExporter` 写入路径：
+```
+<targetDir>/<sanitizeForFilename(book.title)> - 读书笔记.md
+<targetDir>/index.md
+```
+
+**与单书导出 (`NoteFileWriter.saveMarkdownFile`) 的差异**：
+- 单书导出：通过 `file_picker` 的 `saveFile` 走系统对话框，遇同名会提示用户
+- 批量导出：直接 `File.writeAsString`，**同名强制覆盖**（保证 vault 状态一致性，避免半新半旧）
+
+调试：用户报告"批量导出后旧笔记丢了"，确认是不是同名书覆盖（两本同名不同 ID 的书会互相覆盖）。
+
+### 10.4 PDF 书不支持回顾
+
+按 M4 Page-as-Chapter 设计，PDF 的"章"就是页——回顾单页意义不大。所以：
+- TOC 抽屉：`engine is PdfReaderEngine ? null : _onOpenReview`，PDF 时 IconButton 不渲染
+- 阅读器溢出菜单：`onOpenReview` 为 null 时 PopupMenuItem 不渲染
+
+**注意**：批量导出对 PDF 仍然生效（只要有 book_notes 内容），因为 Markdown 导出基于 `book_notes` 表而非章节模型。
+
+### 10.5 BatchExportDialog 测试时序坑
+
+`BatchExportDialog._runExport` 在 `addPostFrameCallback` 中启动，调用 `VaultExporter.export` 走 `dart:io` 的 `File.writeAsString`。
+
+在 `flutter_test` 中，`FakeAsync` zone 与真实 I/O 不兼容——`await` 永远不返回，导致：
+- `onCompleted` 不被调用
+- 临时文件被 tearDown 锁住（`PathException` errno 32）
+
+**测试 setup 必须**：用 `tester.binding.runAsync(() async { await tester.pumpWidget(...); await tester.pump(); await Future.delayed(...); })` 把整个 mount + pump + I/O 链放在真实异步 zone 中。参考 `test/features/library/widgets/batch_export_dialog_test.dart`。
+
+### 10.6 promptVersion bump 的影响
+
+T3 把 `PromptBuilder.promptVersion` 从 1 改为 2。**现有缓存不会失效**，因为：
+- 现有 ai_summaries 行的 `prompt_version=1`，`mode` 是 `full` / `chapter` / `selection`
+- review 查询用 `mode='review'` + `prompt_version=2`，不会命中旧行
+- 旧行的 `mode` 查询也不会要 `prompt_version=2`
+
+只有当未来再次修改 prompt 时（bump 到 3），review 行才会失效——届时按本节逻辑再次 bump 即可。
+
+---
+
+## 11. Glossary
 
 | 术语 | 含义 |
 |---|---|
@@ -745,12 +822,14 @@ App 启动后：
 
 ---
 
-## 11. 相关文档
+## 12. 相关文档
 
 - 整体设计：`docs/superpowers/specs/2026-06-24-ebook-platform-design.md`
 - Phase 2 路线图：`docs/superpowers/specs/2026-06-28-phase2-roadmap-design.md`
 - M1.6 spec：`docs/superpowers/specs/2026-06-30-m1.6-polish-sweep-design.md`
 - M1.6 plan：`docs/superpowers/plans/2026-06-30-m1.6-polish-sweep.md`
+- M2.1 spec：`docs/superpowers/specs/2026-06-30-m2-1-chapter-review-batch-export-design.md`
+- M2.1 plan：`docs/superpowers/plans/2026-06-30-m2-1-chapter-review-batch-export.md`
 - 发布流程：`docs/release-procedure.md`
 - Android SDK setup：`docs/setup-android-sdk.md`
 - 最新 review：`docs/superpowers/reviews/`
