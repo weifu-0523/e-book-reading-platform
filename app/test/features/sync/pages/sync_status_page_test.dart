@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/features/sync/pages/sync_status_page.dart';
 import 'package:zhiyue/features/sync/providers/sync_controller.dart';
@@ -51,10 +52,11 @@ class _MemIntervalPref implements SyncIntervalPrefLike {
   Future<void> clear() async {}
 }
 
-SyncController _buildController(AppDatabase db) {
+SyncController _buildController(AppDatabase db, http.Client httpClient) {
   return SyncController.forTesting(
     database: db,
     credentials: _StubCredentials(),
+    httpClient: httpClient,
     engine: _NoopEngine(),
     connectivity: _AlwaysOnline(),
     intervalPref: _MemIntervalPref(),
@@ -89,7 +91,9 @@ Widget _wrapped(Widget child, SyncController controller) {
 void main() {
   testWidgets('renders empty state when no conflicts', (tester) async {
     final db = createTestDatabase();
-    final controller = _buildController(db);
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
+    final controller = _buildController(db, httpClient);
     await controller.refreshConflictCount();
     await tester.pumpWidget(_wrapped(const SyncStatusPage(), controller));
     await tester.pumpAndSettle();
@@ -110,7 +114,9 @@ void main() {
       detectedAt: DateTime.utc(2026, 6, 29),
       payloadPreview: '{"quote":"x"}',
     );
-    final controller = _buildController(db);
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
+    final controller = _buildController(db, httpClient);
     await controller.refreshConflictCount();
     await tester.pumpWidget(_wrapped(const SyncStatusPage(), controller));
     await tester.pumpAndSettle();
@@ -132,7 +138,9 @@ void main() {
       detectedAt: DateTime.utc(2026, 6, 29),
       payloadPreview: '{}',
     );
-    final controller = _buildController(db);
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
+    final controller = _buildController(db, httpClient);
     await controller.refreshConflictCount();
     await tester.pumpWidget(_wrapped(const SyncStatusPage(), controller));
     await tester.pumpAndSettle();

@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/features/sync/providers/sync_controller.dart';
 import 'package:zhiyue/services/sync/background_sync_scheduler.dart';
@@ -90,9 +91,12 @@ void main() {
 
     final engine = _FakeEngine(
         const SyncResult.success(pushedCount: 0, pulledCount: 0));
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
     final controller = SyncController.forTesting(
       database: db,
       credentials: _StubCredentials(),
+      httpClient: httpClient,
       engine: engine,
       connectivity: _AlwaysOnline(),
       intervalPref: _MemIntervalPref(),
@@ -125,9 +129,12 @@ void main() {
       initialInterval: const Duration(minutes: 5),
     );
 
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
     final controller = SyncController.forTesting(
       database: db,
       credentials: _StubCredentials(),
+      httpClient: httpClient,
       engine: _FakeEngine(
           const SyncResult.success(pushedCount: 0, pulledCount: 0)),
       connectivity: _AlwaysOnline(),
@@ -152,9 +159,12 @@ void main() {
       payloadPreview: '{}',
     );
 
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
     final controller = SyncController.forTesting(
       database: db,
       credentials: _StubCredentials(),
+      httpClient: httpClient,
       engine: _FakeEngine(
           const SyncResult.success(pushedCount: 0, pulledCount: 0)),
       connectivity: _AlwaysOnline(),
@@ -183,9 +193,12 @@ void main() {
       payloadPreview: '{}',
     );
 
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
     final controller = SyncController.forTesting(
       database: db,
       credentials: _StubCredentials(),
+      httpClient: httpClient,
       engine: _FakeEngine(
           const SyncResult.success(pushedCount: 0, pulledCount: 0)),
       connectivity: _AlwaysOnline(),

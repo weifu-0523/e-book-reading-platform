@@ -62,11 +62,11 @@ class SyncController extends StateNotifier<SyncState>
   SyncController({
     required this.database,
     required this.credentials,
-    http.Client? httpClient,
+    required http.Client httpClient,
     ConnectivityService? connectivity,
     SyncIntervalPref? intervalPref,
     DateTime Function()? clock,
-  })  : _httpClient = httpClient ?? http.Client(),
+  })  : _httpClient = httpClient,
         _connectivity = connectivity ?? ConnectivityPlusService(),
         _intervalPref = intervalPref ?? SyncIntervalPref(),
         _clock = clock ?? DateTime.now,
@@ -85,12 +85,13 @@ class SyncController extends StateNotifier<SyncState>
   SyncController.forTesting({
     required this.database,
     required this.credentials,
+    required http.Client httpClient,
     required SyncEngine engine,
     required ConnectivityService connectivity,
     required SyncIntervalPrefLike intervalPref,
     required BackgroundSyncScheduler scheduler,
     required DateTime Function() clock,
-  })  : _httpClient = http.Client(),
+  })  : _httpClient = httpClient,
         _connectivity = connectivity,
         // Tests pass the Like-interface; wrap so production field keeps
         // its concrete type but tests can use in-memory stubs.
