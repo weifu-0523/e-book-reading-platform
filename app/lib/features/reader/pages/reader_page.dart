@@ -4,6 +4,7 @@ import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 
 import '../../../core/providers.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
 import '../services/progress_persister.dart';
@@ -52,7 +53,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
     return Scaffold(
       body: engineAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const LoadingView(),
         error: (e, _) => ReaderErrorView(
           message: '无法打开书籍: $e',
           onBack: () => Navigator.of(context).maybePop(),

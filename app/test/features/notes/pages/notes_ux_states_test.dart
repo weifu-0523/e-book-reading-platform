@@ -76,6 +76,37 @@ class _LoadingNotesRepository implements NotesRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// Controllable fake: emits an error until [shouldError] is flipped to false,
+/// at which point subsequent subscriptions emit an empty list. Used to verify
+/// the ErrorView retry button re-fetches the provider and transitions out of
+/// the error state.
+class _RetryControllableRepository implements NotesRepository {
+  bool shouldError = true;
+
+  @override
+  Stream<List<Annotation>> watchAnnotations(String bookId) {
+    if (shouldError) {
+      return Stream.error(Exception('db locked'));
+    }
+    return Stream.value(const []);
+  }
+
+  @override
+  Future<BookNote?> getNoteByBook(String bookId) async => BookNote(
+        id: 'bn1',
+        bookId: bookId,
+        title: '测试书名',
+        summary: '',
+        keyTakeaways: const [],
+        annotations: const [],
+        createdAt: DateTime(2026, 6, 27),
+        updatedAt: DateTime(2026, 6, 27),
+      );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Widget _harness(NotesRepository repo) {
   return ProviderScope(
     overrides: [
@@ -128,5 +159,26 @@ void main() {
     expect(find.byType(ErrorView), findsOneWidget);
     expect(find.text('加载失败'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
+  });
+
+  testWidgets(
+      'notes_page_retry_button invalidates provider and re-fetches annotations',
+      (tester) async {
+    final repo = _RetryControllableRepository();
+    await tester.pumpWidget(_harness(repo));
+    await tester.pumpAndSettle();
+
+    // Initial state: error view is showing.
+    expect(find.byType(ErrorView), findsOneWidget);
+
+    // Flip the underlying source to a successful (empty) state, then tap
+    // retry — the provider should be invalidated and re-fetch, transitioning
+    // out of the error state into the empty body.
+    repo.shouldError = false;
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ErrorView), findsNothing);
+    expect(find.byType(EmptyView), findsOneWidget);
   });
 }

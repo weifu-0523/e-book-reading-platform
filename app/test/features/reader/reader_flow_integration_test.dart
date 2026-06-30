@@ -5,6 +5,7 @@ import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/local/daos/books_dao.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/widgets/reader_scaffold.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 import '../../helpers/drift_test_helper.dart';
 import '../../helpers/fixture_loader.dart';
@@ -51,7 +52,12 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [appDatabaseProvider.overrideWithValue(db)],
-          child: const MaterialApp(home: ReaderPage(bookId: 'b1')),
+          child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ReaderPage(bookId: 'b1'),
+          ),
         ),
       );
 

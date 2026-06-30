@@ -57,11 +57,14 @@ class NotesPage extends ConsumerWidget {
       ),
       body: annotationsAsync.when(
         loading: () => const LoadingView(),
-        error: (e, _) => ErrorView(
-          message: l10n.notesLoadFailed,
-          onRetry: () =>
-              ref.invalidate(notesPageAnnotationsProvider(bookId)),
-        ),
+        error: (e, _) {
+          debugPrint('notesPageAnnotationsProvider error: $e');
+          return ErrorView(
+            message: l10n.notesLoadFailed,
+            onRetry: () =>
+                ref.invalidate(notesPageAnnotationsProvider(bookId)),
+          );
+        },
         data: (annotations) => _body(context, ref, annotations),
       ),
     );

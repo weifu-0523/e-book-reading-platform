@@ -15,6 +15,7 @@ import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
 import 'package:zhiyue/features/reader/widgets/reader_error_view.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 import '../../../fakes/fake_notes_repository.dart';
 
@@ -112,7 +113,12 @@ void main() {
   testWidgets('ReaderPage renders loading initially', (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: MaterialApp(home: ReaderPage(bookId: 'nonexistent')),
+        child: MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ReaderPage(bookId: 'nonexistent'),
+        ),
       ),
     );
 
@@ -135,7 +141,12 @@ void main() {
           readerEngineForBookProvider
               .overrideWith((ref, arg) async => engine),
         ],
-        child: const MaterialApp(home: ReaderPage(bookId: 'fake')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ReaderPage(bookId: 'fake'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -165,7 +176,12 @@ void main() {
           readerEngineForBookProvider
               .overrideWith((ref, arg) async => engine),
         ],
-        child: const MaterialApp(home: ReaderPage(bookId: 'fake')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ReaderPage(bookId: 'fake'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -190,7 +206,12 @@ void main() {
           readerEngineForBookProvider
               .overrideWith((ref, arg) async => engine),
         ],
-        child: const MaterialApp(home: ReaderPage(bookId: 'fake')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ReaderPage(bookId: 'fake'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -217,7 +238,12 @@ void main() {
           readerEngineForBookProvider
               .overrideWith((ref, arg) async => engine),
         ],
-        child: const MaterialApp(home: ReaderPage(bookId: 'fake')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ReaderPage(bookId: 'fake'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -234,7 +260,12 @@ void main() {
               .overrideWith((ref, arg) async => engine),
           notesRepositoryProvider.overrideWithValue(FakeNotesRepository()),
         ],
-        child: const MaterialApp(home: ReaderPage(bookId: 'fake')),
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ReaderPage(bookId: 'fake'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
