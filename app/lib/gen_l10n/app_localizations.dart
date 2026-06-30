@@ -1111,6 +1111,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'字体列表加载失败'**
   String get fontLoadFailed;
+
+  /// No description provided for @typographyProfilesLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'字体预设加载失败'**
+  String get typographyProfilesLoadFailed;
+
+  /// No description provided for @typographyProfilesEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无字体预设'**
+  String get typographyProfilesEmpty;
 }
 
 class _AppLocalizationsDelegate

@@ -207,7 +207,14 @@ cd "H:\projiect\电子书阅读平台\app"
 /c/flutter/bin/flutter.bat test --concurrency=1 --plain-name "maps all 11 fields from a drift BookData row (EPUB)"
 ```
 
-**已知 flaky**：`app/test/.../background_sync_scheduler_test.dart` 的 "isRunning reflects current state"（30ms/50ms wall-clock waits）。单跑通过，并发跑偶现。不要为它改代码，重跑即可。
+**已知 flaky**：`app/test/.../background_sync_scheduler_test.dart` 的 "isRunning reflects current state"（30ms/50ms wall-clock waits）。单跑通过，并发跑偶现。不要为它改代码，重跑即可。`app/test/.../book_import_service_test.dart` 的 "importFile concurrent same file" 同属此类（test 内 dedup 逻辑的并发 race，单独跑过、`--concurrency=1` 跑过）。
+
+**真正被 `skip:` 标记的测试（v1.0.0 共 2 个，预存在项）**：
+
+- `app/test/features/settings/font_import_service_test.dart:187` — `skip: 'FontLoader behavior on non-font bytes is environment-dependent'`
+- `app/test/features/reader/reader_page_pdf_integration_test.dart:60` — `skip: true`（占位骨架，等 fixture + 真 reader widget 接通后启用）
+
+新增 milestone 不应再增加 skip；如必须新增，需在 release notes 显式说明原因。
 
 ### 4.2 静态分析
 

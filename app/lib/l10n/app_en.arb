@@ -267,5 +267,9 @@
   "searchFailed": "Search failed",
   "@searchFailed": {},
   "fontLoadFailed": "Failed to load fonts",
-  "@fontLoadFailed": {}
+  "@fontLoadFailed": {},
+  "typographyProfilesLoadFailed": "Failed to load font profiles",
+  "@typographyProfilesLoadFailed": {},
+  "typographyProfilesEmpty": "No font profiles yet",
+  "@typographyProfilesEmpty": {}
 }

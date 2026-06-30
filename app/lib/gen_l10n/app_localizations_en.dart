@@ -564,4 +564,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get fontLoadFailed => 'Failed to load fonts';
+
+  @override
+  String get typographyProfilesLoadFailed => 'Failed to load font profiles';
+
+  @override
+  String get typographyProfilesEmpty => 'No font profiles yet';
 }

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
+import '../../../core/widgets/empty_view.dart';
+import '../../../core/widgets/error_view.dart';
+import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/typography_profile.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../widgets/profile_tile.dart';
@@ -11,10 +14,11 @@ class TypographyProfilesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     final profilesAsync = ref.watch(typographyProfileProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.settingsTypographyProfiles),
+        title: Text(l10n.settingsTypographyProfiles),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -23,10 +27,13 @@ class TypographyProfilesPage extends ConsumerWidget {
         ],
       ),
       body: profilesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        loading: () => const LoadingView(),
+        error: (e, _) {
+          debugPrint('typography_profiles_page load error: $e');
+          return ErrorView(message: l10n.typographyProfilesLoadFailed);
+        },
         data: (profiles) => profiles.isEmpty
-            ? const Center(child: Text('无预设'))
+            ? EmptyView(title: l10n.typographyProfilesEmpty)
             : ListView(
                 children: profiles
                     .map((p) => ProfileTile(

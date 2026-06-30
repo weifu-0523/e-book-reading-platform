@@ -389,5 +389,9 @@
   "searchFailed": "搜索失败",
   "@searchFailed": {},
   "fontLoadFailed": "字体列表加载失败",
-  "@fontLoadFailed": {}
+  "@fontLoadFailed": {},
+  "typographyProfilesLoadFailed": "字体预设加载失败",
+  "@typographyProfilesLoadFailed": {},
+  "typographyProfilesEmpty": "暂无字体预设",
+  "@typographyProfilesEmpty": {}
 }

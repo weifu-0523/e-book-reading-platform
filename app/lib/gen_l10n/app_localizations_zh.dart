@@ -554,4 +554,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get fontLoadFailed => '字体列表加载失败';
+
+  @override
+  String get typographyProfilesLoadFailed => '字体预设加载失败';
+
+  @override
+  String get typographyProfilesEmpty => '暂无字体预设';
 }

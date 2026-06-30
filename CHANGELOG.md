@@ -48,6 +48,12 @@ v1.0.0 GA 之后的新变更将记在此处。
 - **M1.5b+c**：导入批处理 + 同书 Q&A（v0.9.0-alpha）
 - **M1.5b+c Review Fixups**：内存泄漏 + spec 偏差闭环（v0.9.1-alpha）
 - **M1.6**：Polish Sweep（本次发布 — 713 tests + 2 skipped，GA）
+  - 跳过的 2 个测试为预存在项，非本次 milestone 新引入：
+    `app/test/features/settings/font_import_service_test.dart:187`
+    （FontLoader 在非字体字节上的行为依赖运行环境）与
+    `app/test/features/reader/reader_page_pdf_integration_test.dart:60`
+    （`skip: true` 占位骨架）。`background_sync_scheduler_test` 与
+    `book_import_service_test` 的偶发失败属于 **flaky**（与并发相关），重跑通过。
 
 ### 已知限制
 
