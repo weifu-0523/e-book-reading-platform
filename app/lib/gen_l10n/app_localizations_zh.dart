@@ -420,4 +420,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String qaPreprocessInProgress(String current, String total) {
     return '预处理进行中（$current/$total），回答可能不全';
   }
+
+  @override
+  String get qaHistoryLabel => '最近提问';
+
+  @override
+  String get qaHistoryDeleted => '已删除该条历史';
 }

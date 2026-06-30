@@ -871,6 +871,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'预处理进行中（{current}/{total}），回答可能不全'**
   String qaPreprocessInProgress(String current, String total);
+
+  /// No description provided for @qaHistoryLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近提问'**
+  String get qaHistoryLabel;
+
+  /// No description provided for @qaHistoryDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除该条历史'**
+  String get qaHistoryDeleted;
 }
 
 class _AppLocalizationsDelegate

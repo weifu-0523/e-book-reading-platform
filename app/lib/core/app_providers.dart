@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/local/daos/qa_history_dao.dart';
 import '../data/models/book.dart';
 import '../features/ai/providers/ai_guide_controller.dart';
 import '../features/ai/providers/book_preprocess_controller.dart';
@@ -55,6 +56,12 @@ final bookPreprocessorProvider = Provider<BookPreprocessorLike>((ref) {
       return provider.count(book.filePath);
     },
   );
+});
+
+/// Per-book Q&A history DAO. Exposed as a provider so widgets (QaAskDialog)
+/// can read history without depending on AppDatabase directly.
+final qaHistoryDaoProvider = Provider<QaHistoryDaoLike>((ref) {
+  return ref.watch(appDatabaseProvider).qaHistoryDao;
 });
 
 /// BookQaService wired to drift + ApiKeyStore. The clientFactory wraps

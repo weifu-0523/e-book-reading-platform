@@ -9,13 +9,33 @@ import '../tables/qa_history.dart';
 
 part 'qa_history_dao.g.dart';
 
+/// Subset of [QaHistoryDao] methods used outside the data layer (e.g. by
+/// QaAskDialog). Declared as an interface so widgets can depend on the
+/// capability without depending on drift internals, and tests can substitute
+/// a trivial fake.
+abstract class QaHistoryDaoLike {
+  Future<List<QaHistoryEntry>> getByBook(String bookId, {int limit = 50});
+  Future<QaHistoryEntry?> findSameQuestion(String bookId, String question);
+  Future<String> insert({
+    required String bookId,
+    required String question,
+    required String answer,
+    required List<int> citations,
+    DateTime? createdAt,
+  });
+  Future<int> deleteEntry(String id);
+  Future<int> clearForBook(String bookId);
+}
+
 @DriftAccessor(tables: [QaHistory])
 class QaHistoryDao extends DatabaseAccessor<AppDatabase>
-    with _$QaHistoryDaoMixin {
+    with _$QaHistoryDaoMixin
+    implements QaHistoryDaoLike {
   QaHistoryDao(super.db);
 
   /// Insert one Q&A entry. [citations] is encoded as JSON
   /// (e.g. "[3,5,8]"). Returns the inserted row's id.
+  @override
   Future<String> insert({
     required String bookId,
     required String question,
@@ -39,6 +59,7 @@ class QaHistoryDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Return entries for [bookId], newest first, capped at [limit].
+  @override
   Future<List<QaHistoryEntry>> getByBook(String bookId,
       {int limit = 50}) async {
     final rows = await (select(qaHistory)
@@ -52,6 +73,7 @@ class QaHistoryDao extends DatabaseAccessor<AppDatabase>
   /// Return the most recent entry whose question exactly matches, or null.
   /// Used by BookQaService to short-circuit a repeat ask without hitting
   /// the LLM. Exact-match only — fuzzy matching is YAGNI.
+  @override
   Future<QaHistoryEntry?> findSameQuestion(
       String bookId, String question) async {
     final rows = await (select(qaHistory)
@@ -64,10 +86,12 @@ class QaHistoryDao extends DatabaseAccessor<AppDatabase>
 
   /// Delete a single entry by id. Method named `deleteEntry` to avoid
   /// shadowing `DatabaseConnectionUser.delete<T>(TableInfo<T,D>)`.
+  @override
   Future<int> deleteEntry(String id) {
     return (delete(qaHistory)..where((t) => t.id.equals(id))).go();
   }
 
+  @override
   Future<int> clearForBook(String bookId) {
     return (delete(qaHistory)..where((t) => t.bookId.equals(bookId))).go();
   }

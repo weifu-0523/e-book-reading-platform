@@ -429,4 +429,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String qaPreprocessInProgress(String current, String total) {
     return 'Preprocessing ($current/$total) — answers may be incomplete';
   }
+
+  @override
+  String get qaHistoryLabel => 'Recent';
+
+  @override
+  String get qaHistoryDeleted => 'History entry deleted';
 }

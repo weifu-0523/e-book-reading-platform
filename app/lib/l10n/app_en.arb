@@ -213,5 +213,9 @@
   "qaStopLabel": "Stop",
   "@qaStopLabel": {},
   "qaPreprocessInProgress": "Preprocessing ({current}/{total}) — answers may be incomplete",
-  "@qaPreprocessInProgress": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}}
+  "@qaPreprocessInProgress": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}},
+  "qaHistoryLabel": "Recent",
+  "@qaHistoryLabel": {},
+  "qaHistoryDeleted": "History entry deleted",
+  "@qaHistoryDeleted": {}
 }

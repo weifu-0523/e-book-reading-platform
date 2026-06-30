@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/app_providers.dart';
 import '../../../data/models/book.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/ai/book_qa_service.dart';
@@ -35,6 +36,36 @@ class QaAskDialog extends ConsumerStatefulWidget {
 
 class _QaAskDialogState extends ConsumerState<QaAskDialog> {
   final _controller = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadHistory();
+    });
+  }
+
+  Future<void> _loadHistory() async {
+    final dao = ref.read(qaHistoryDaoProvider);
+    final rows = await dao.getByBook(widget.bookId, limit: 5);
+    if (!mounted) return;
+    ref.read(qaControllerProvider(widget.bookId).notifier).setHistory(rows);
+  }
+
+  Future<void> _deleteHistoryEntry(String id) async {
+    await ref.read(qaHistoryDaoProvider).deleteEntry(id);
+    if (!mounted) return;
+    await _loadHistory();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context)!.qaHistoryDeleted)),
+    );
+  }
+
+  void _resubmit(String question) {
+    _controller.text = question;
+    _submit();
+  }
 
   @override
   void dispose() {
@@ -117,6 +148,42 @@ class _QaAskDialogState extends ConsumerState<QaAskDialog> {
                 ),
               ),
             ),
+          if (state.history.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  l.qaHistoryLabel,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 40,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                itemCount: state.history.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final entry = state.history[i];
+                  // ActionChip has no onLongPress, so wrap with a
+                  // translucent GestureDetector that only listens to
+                  // long-press; taps still reach the chip's onPressed and
+                  // keep its ink ripple.
+                  return GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onLongPress: () => _deleteHistoryEntry(entry.id),
+                    child: ActionChip(
+                      label: Text(entry.question),
+                      onPressed: () => _resubmit(entry.question),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
           Expanded(child: _buildBody(context, state, l)),
         ],
       ),

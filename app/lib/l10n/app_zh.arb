@@ -309,5 +309,9 @@
   "qaStopLabel": "停止",
   "@qaStopLabel": {},
   "qaPreprocessInProgress": "预处理进行中（{current}/{total}），回答可能不全",
-  "@qaPreprocessInProgress": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}}
+  "@qaPreprocessInProgress": {"placeholders": {"current": {"type": "String"}, "total": {"type": "String"}}},
+  "qaHistoryLabel": "最近提问",
+  "@qaHistoryLabel": {},
+  "qaHistoryDeleted": "已删除该条历史",
+  "@qaHistoryDeleted": {}
 }
