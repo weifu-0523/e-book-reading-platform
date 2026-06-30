@@ -204,7 +204,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         try {
           context.go('/');
         } catch (_) {
-          Navigator.of(context).maybePop();
+          unawaited(Navigator.of(context).maybePop());
         }
       }
     }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:golden_toolkit/golden_toolkit.dart';
 import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/data/models/annotation.dart';

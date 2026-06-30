@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/library/models/library_mode.dart';
-import 'package:zhiyue/features/library/models/library_state.dart';
 import 'package:zhiyue/features/library/models/sort_by.dart';
 import 'package:zhiyue/features/library/models/view_mode.dart';
 import 'package:zhiyue/features/library/providers/library_controller.dart';

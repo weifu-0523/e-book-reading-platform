@@ -82,7 +82,7 @@ class BookGrid extends StatelessWidget {
     }
     return GridView.builder(
       padding: const EdgeInsets.all(16),
-      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: _cellWidth,
         mainAxisExtent: _cellHeight,
         crossAxisSpacing: 16,

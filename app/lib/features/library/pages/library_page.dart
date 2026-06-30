@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -195,13 +196,13 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     switch (action) {
       case BookCellAction.read:
         if (!mounted) return;
-        context.push('/book/${book.id}');
+        unawaited(context.push('/book/${book.id}'));
       case BookCellAction.details:
         if (!mounted) return;
-        context.push('/book/${book.id}/details');
+        unawaited(context.push('/book/${book.id}/details'));
       case BookCellAction.notes:
         if (!mounted) return;
-        context.push('/book/${book.id}/notes');
+        unawaited(context.push('/book/${book.id}/notes'));
       case BookCellAction.aiGuide:
         if (!mounted) return;
         await showModalBottomSheet<void>(
@@ -214,7 +215,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       case BookCellAction.delete:
         // 删除入口在详情页 FAB（避免重复实现删除流程）。
         if (!mounted) return;
-        context.push('/book/${book.id}/details');
+        unawaited(context.push('/book/${book.id}/details'));
     }
   }
 

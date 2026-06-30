@@ -79,7 +79,7 @@ class NotesPage extends ConsumerWidget {
     if (stripped.startsWith('《')) {
       stripped = stripped.substring(1);
     }
-    final suffix = '》读书笔记';
+    const suffix = '》读书笔记';
     if (stripped.endsWith(suffix)) {
       stripped = stripped.substring(0, stripped.length - suffix.length);
     }

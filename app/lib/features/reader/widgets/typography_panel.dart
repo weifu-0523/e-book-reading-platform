@@ -178,17 +178,22 @@ class TypographyPanel extends StatelessWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<bool>(
-                title: Text('覆盖当前「${currentProfile?.name ?? ''}」'),
-                value: true,
+              RadioGroup<bool>(
                 groupValue: overwrite,
                 onChanged: (v) => setState(() => overwrite = v ?? true),
-              ),
-              RadioListTile<bool>(
-                title: const Text('另存为新预设'),
-                value: false,
-                groupValue: overwrite,
-                onChanged: (v) => setState(() => overwrite = v ?? false),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<bool>(
+                      title: Text('覆盖当前「${currentProfile?.name ?? ''}」'),
+                      value: true,
+                    ),
+                    const RadioListTile<bool>(
+                      title: Text('另存为新预设'),
+                      value: false,
+                    ),
+                  ],
+                ),
               ),
               if (!overwrite)
                 TextField(

@@ -21,9 +21,9 @@ class _StubX implements BookTextExtractor {
 }
 
 class _StubChap implements ChapterTextProvider {
+  _StubChap(this.texts);
   final Map<int, String> texts;
-  final Map<int, String> titles;
-  _StubChap(this.texts, [this.titles = const {}]);
+  final Map<int, String> titles = const {};
   @override
   Future<String?> get(String p, int i) async => texts[i];
   @override

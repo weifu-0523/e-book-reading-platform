@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:meta/meta.dart';
 
 import '../../../data/models/book.dart';
 import 'library_mode.dart';

@@ -104,19 +104,6 @@ void main() {
     final first = await service.importFile(source, format: BookFormat.epub);
     expect(first.isNew, isTrue);
 
-    // 构造一个 fake：save 总抛 UNIQUE constraint，其他方法委托真实 repo
-    final throwingRepo = _ThrowingBookRepository(
-      inner: bookRepo,
-      saveException: Exception(
-        'SqliteException(2067): UNIQUE constraint failed: books.file_hash',
-      ),
-    );
-    final serviceWithThrowingRepo = BookImportService(
-      bookRepository: throwingRepo,
-      fileStorage: storage,
-      coverExtractor: noopExtractor,
-    );
-
     // 再次导入同一文件——findByHash 命中（first 已写入），所以快路径其实会命中。
     // 为真正走 try/catch 分支，再换一个 hash 内容 + 让 fake 的 findByHash 第一次返回 null。
     final otherSource = File(p.join(tempRoot.path, 'book_other.epub'))
@@ -286,7 +273,6 @@ class _ThrowingBookRepository implements BookRepository {
 class _FakeCoverExtractor implements EpubCoverExtractor {
   _FakeCoverExtractor({
     required this.coversDir,
-    this.alwaysReturnPath,
     this.returnPathFromBookId = false,
     this.alwaysReturnNull = false,
   });
@@ -294,7 +280,6 @@ class _FakeCoverExtractor implements EpubCoverExtractor {
   @override
   final Directory coversDir;
 
-  final String? alwaysReturnPath;
   final bool returnPathFromBookId;
   final bool alwaysReturnNull;
 
@@ -309,12 +294,6 @@ class _FakeCoverExtractor implements EpubCoverExtractor {
       final path = p.join(coversDir.path, '$bookId.png');
       await File(path).writeAsBytes([1, 2, 3]);
       return path;
-    }
-    if (alwaysReturnPath != null) {
-      // 写入 fake 文件以让 path 真实存在
-      final file = File(alwaysReturnPath!);
-      await file.writeAsBytes([1, 2, 3]);
-      return alwaysReturnPath;
     }
     return null;
   }

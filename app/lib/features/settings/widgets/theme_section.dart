@@ -36,22 +36,24 @@ class ThemeSection extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: ctx,
       builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final v in ThemeModeSetting.values)
-              RadioListTile<ThemeModeSetting>(
-                value: v,
-                groupValue: current,
-                title: Text(_label(l10n, v)),
-                onChanged: (sel) {
-                  if (sel != null) {
-                    ref.read(themeModeProvider.notifier).setThemeMode(sel);
-                  }
-                  Navigator.pop(ctx);
-                },
-              ),
-          ],
+        child: RadioGroup<ThemeModeSetting>(
+          groupValue: current,
+          onChanged: (sel) {
+            if (sel != null) {
+              ref.read(themeModeProvider.notifier).setThemeMode(sel);
+            }
+            Navigator.pop(ctx);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final v in ThemeModeSetting.values)
+                RadioListTile<ThemeModeSetting>(
+                  value: v,
+                  title: Text(_label(l10n, v)),
+                ),
+            ],
+          ),
         ),
       ),
     );

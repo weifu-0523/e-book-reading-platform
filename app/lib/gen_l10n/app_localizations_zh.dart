@@ -393,24 +393,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get qaErrorParse => 'AI 响应解析失败';
 
   @override
-  String preprocessStatusChunking(String current, String total) {
-    return '切片中 $current/$total';
-  }
-
-  @override
   String preprocessStatusSummarizing(String current, String total) {
     return 'AI 处理中 $current/$total';
-  }
-
-  @override
-  String get preprocessCancelLabel => '取消';
-
-  @override
-  String get preprocessRetryLabel => '重新预处理';
-
-  @override
-  String preprocessFailedChapters(String count) {
-    return '$count 章预处理失败';
   }
 
   @override

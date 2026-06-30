@@ -36,22 +36,24 @@ class LanguageSection extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: ctx,
       builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final v in LocaleSetting.values)
-              RadioListTile<LocaleSetting>(
-                value: v,
-                groupValue: current,
-                title: Text(_label(l10n, v)),
-                onChanged: (sel) {
-                  if (sel != null) {
-                    ref.read(localeProvider.notifier).setLocale(sel);
-                  }
-                  Navigator.pop(ctx);
-                },
-              ),
-          ],
+        child: RadioGroup<LocaleSetting>(
+          groupValue: current,
+          onChanged: (sel) {
+            if (sel != null) {
+              ref.read(localeProvider.notifier).setLocale(sel);
+            }
+            Navigator.pop(ctx);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final v in LocaleSetting.values)
+                RadioListTile<LocaleSetting>(
+                  value: v,
+                  title: Text(_label(l10n, v)),
+                ),
+            ],
+          ),
         ),
       ),
     );

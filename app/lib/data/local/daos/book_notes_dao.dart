@@ -79,8 +79,8 @@ class BookNotesDao extends DatabaseAccessor<AppDatabase>
       await updateContent(newId, keyTakeawaysJson: jsonEncode([newEntry]));
     } else {
       final arr = (jsonDecode(existing.keyTakeaways) as List)
-          .cast<Map<String, dynamic>>();
-      arr.add(newEntry);
+          .cast<Map<String, dynamic>>()
+        ..add(newEntry);
       await updateContent(existing.id, keyTakeawaysJson: jsonEncode(arr));
     }
   }

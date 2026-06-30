@@ -1,12 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/testing.dart';
 import 'package:mocktail/mocktail.dart';
-import 'package:http/http.dart' as http;
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/services/sync/conflict_recorder.dart';
-import 'package:zhiyue/services/sync/sync_credentials.dart';
 import 'package:zhiyue/services/sync/sync_record.dart';
 import 'package:zhiyue/services/sync/web_dav_client.dart';
 import 'package:zhiyue/services/sync/web_dav_sync_engine.dart';
@@ -62,7 +59,7 @@ void main() {
     when(() => webdav.putString(any(), any())).thenAnswer((_) async {});
     when(() => webdav.getString(any())).thenAnswer((_) async => '');
 
-    final id = await outbox.enqueue(
+    await outbox.enqueue(
       recordId: 'a1',
       recordType: 'annotation',
       payloadJson: '{"id":"a1","type":"annotation","mtime":"2026-06-28T10:00:00.000Z","deleted":false,"payload":{}}',

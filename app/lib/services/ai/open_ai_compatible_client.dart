@@ -13,23 +13,23 @@ abstract class AiException implements Exception {
 }
 
 class AiAuthException extends AiException {
-  const AiAuthException(String message) : super(message);
+  const AiAuthException(super.message);
 }
 
 class AiRateLimitException extends AiException {
-  const AiRateLimitException(String message) : super(message);
+  const AiRateLimitException(super.message);
 }
 
 class AiServerException extends AiException {
-  const AiServerException(String message) : super(message);
+  const AiServerException(super.message);
 }
 
 class AiNetworkException extends AiException {
-  const AiNetworkException(String message) : super(message);
+  const AiNetworkException(super.message);
 }
 
 class AiParseException extends AiException {
-  const AiParseException(String message) : super(message);
+  const AiParseException(super.message);
 }
 
 /// Minimal OpenAI-compatible chat completions client with SSE streaming.
