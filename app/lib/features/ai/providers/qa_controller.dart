@@ -142,11 +142,21 @@ class QaController extends StateNotifier<QaState> {
 /// Per-book Q&A state. autoDispose so the controller is reclaimed when the
 /// user closes the Q&A dialog; family keys state by bookId.
 ///
-/// Production wires this via [app_providers.dart]'s `providers` list. Tests
-/// that don't care about Q&A get a throw — this family must be overridden
-/// before use because it depends on AppDatabase + ApiKeyStore, which aren't
-/// available in widget tests by default.
+/// Production wires this via [app_providers.dart]'s `providers` list. The
+/// default [_NoOpBookQaService] keeps widget tests that pump QaAskDialog
+/// (which reads this provider) functional without each test having to
+/// override. Mirrors the `_NoOpQaHistoryDao` pattern.
 final qaControllerProvider = StateNotifierProvider.autoDispose
     .family<QaController, QaState, String>((ref, bookId) {
-  throw UnimplementedError('Override in ProviderScope');
+  return QaController(_NoOpBookQaService());
 });
+
+/// Inert [BookQaServiceLike] used as the default for [qaControllerProvider].
+/// All calls emit a single terminal [QaErrorEvent] (serverError) so callers
+/// see a clear "not wired" signal rather than hanging.
+class _NoOpBookQaService implements BookQaServiceLike {
+  @override
+  Stream<QaEvent> ask({required Book book, required String question}) async* {
+    yield QaErrorEvent(QaError.serverError);
+  }
+}

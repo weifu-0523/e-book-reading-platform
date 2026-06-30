@@ -156,6 +156,8 @@ final providers = <Override>[
     (ref, bookId) =>
         BookPreprocessController(ref.watch(bookPreprocessorProvider)),
   ),
+  // Production wires real BookQaService; default is _NoOpBookQaService
+  // (see qa_controller.dart) so widget tests don't have to override.
   qaControllerProvider.overrideWith(
     (ref, bookId) => QaController(ref.watch(bookQaServiceProvider)),
   ),
