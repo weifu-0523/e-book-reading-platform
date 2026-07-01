@@ -20,7 +20,7 @@
 
 ```bash
 grep "^version:" app/pubspec.yaml
-# 期望：version: 1.1.0-alpha+0（或当前发布版本）
+# 期望：version: 1.3.0-alpha+0（或当前发布版本——以 app/pubspec.yaml 实际为准）
 ```
 
 若需 bump：
@@ -39,7 +39,7 @@ cd app
 
 期望：
 - analyze 干净（0 errors / 0 warnings；131 info 为既有 cascade/const 风格 lint，可忽略）
-- test 全部通过（≥ 762 + 3 skipped）
+- test 全部通过（≥ 812 + 3 skipped）
 
 reader_engine / epub_view / pdf_view 包同样跑一遍：
 
@@ -212,7 +212,7 @@ git push origin master --tags
 - [ ] 仓库根 `README.md` 下载链接指向新 release
 - [ ] `CHANGELOG.md` 已更新到新版本
 - [ ] tag 在 `git tag --list` 中存在，已 push 到 Gitee
-- [ ] AGPLv3 源文件头覆盖（`grep -rL "SPDX-License-Identifier" app/lib --include="*.dart" | wc -l` 应 ≤ 17，即只生成文件缺）
+- [ ] AGPLv3 源文件头覆盖（`grep -rL "SPDX-License-Identifier" app/lib --include="*.dart" | wc -l` 应 = 0；仅生成文件如 `*.g.dart` 在 analysis_options.yaml 中已排除，不计入）
 - [ ] `dart analyze` 0 errors / 0 warnings
 - [ ] `flutter test --concurrency=1` 全通过
 
