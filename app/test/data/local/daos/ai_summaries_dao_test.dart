@@ -10,7 +10,7 @@ void main() {
     db = AppDatabase.forTesting();
     await db.customSelect('SELECT 1').get();
     await db.customStatement(
-      "INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes) "
+      'INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes) '
       "VALUES ('b1', 'Test', 'epub', '/p.epub', 'h1', 100)",
     );
     dao = db.aiSummariesDao;

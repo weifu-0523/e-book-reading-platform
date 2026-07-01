@@ -17,7 +17,7 @@ void main() {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
 
-    final cols = await db.customSelect("PRAGMA table_info(sync_outbox)").get();
+    final cols = await db.customSelect('PRAGMA table_info(sync_outbox)').get();
     final names = cols.map((r) => r.data['name'] as String).toSet();
     expect(names, containsAll(<String>{
       'id', 'record_id', 'record_type', 'payload_json', 'queued_at', 'pushed_at',

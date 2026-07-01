@@ -41,11 +41,10 @@ class _Keys implements ApiKeyStoreLike {
 
 http.Client _okClient(List<String> chunks) {
   return MockClient.streaming((req, bs) async {
-    final body = chunks
+    final body = '${chunks
             .map((c) =>
                 'data: ${jsonEncode({'choices': [{'delta': {'content': c}}]})}\n\n')
-            .join() +
-        'data: [DONE]\n\n';
+            .join()}data: [DONE]\n\n';
     return http.StreamedResponse(
         Stream.value(Uint8List.fromList(utf8.encode(body))), 200);
   });
@@ -94,7 +93,7 @@ void main() {
 
   tearDown(() async => db.close());
 
-  AiGuide _guide(http.Client client) => AiGuide(
+  AiGuide guide0(http.Client client) => AiGuide(
         apiKeys: _Keys(const AiCredentials(
             apiKey: 'k', baseUrl: 'https://api.deepseek.com', model: 'm')),
         extractorFor: (_) => _StubX('src'),
@@ -105,7 +104,7 @@ void main() {
       );
 
   test('startFullBook transitions idle->streaming->done', () async {
-    final controller = AiGuideController(_guide(_okClient(['a', 'b'])));
+    final controller = AiGuideController(guide0(_okClient(['a', 'b'])));
     expect(controller.state.status, AiGuideStatus.idle);
     await controller.startFullBook(book);
     expect(controller.state.status, AiGuideStatus.done);
@@ -132,7 +131,7 @@ void main() {
       callCount += 1;
       return http.StreamedResponse(Stream.value(Uint8List(0)), 200);
     });
-    final guide = _guide(mock);
+    final guide = guide0(mock);
     final c1 = AiGuideController(guide);
     await c1.startFullBook(book);
     final c2 = AiGuideController(guide);
@@ -144,7 +143,7 @@ void main() {
   });
 
   test('switchMode cancels current + restarts with new mode', () async {
-    final controller = AiGuideController(_guide(_okClient(['x'])));
+    final controller = AiGuideController(guide0(_okClient(['x'])));
     await controller.startFullBook(book);
     expect(controller.state.mode, AiGuideMode.full);
     await controller.switchMode(AiGuideMode.chapter,
@@ -156,7 +155,7 @@ void main() {
   test('cancel during streaming sets status to done with accumulated text',
       () async {
     final controller =
-        AiGuideController(_guide(_slowClient(['hello', 'world'])));
+        AiGuideController(guide0(_slowClient(['hello', 'world'])));
     final runFuture = controller.startFullBook(book);
     // Wait until at least one chunk has been processed (status flips to
     // streaming), then cancel — guarantees non-empty accumulated text.

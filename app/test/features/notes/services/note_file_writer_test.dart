@@ -89,24 +89,24 @@ void main() {
   });
 
   group('NoteFileWriter.saveMarkdownFile', () {
-    late FilePicker _previousPlatform;
+    late FilePicker previousPlatform;
     late Directory tmpDir;
 
     setUp(() async {
       // file_picker's _instance is `late`; on first access it is whatever the
       // previous test (or framework) set. Capture it so we can restore.
       try {
-        _previousPlatform = FilePicker.platform;
+        previousPlatform = FilePicker.platform;
       } catch (_) {
         // _instance was never initialized in this isolate; we'll just leave
         // the fake installed. The `late` setter accepts any value.
-        _previousPlatform = _FakeFilePicker(null);
+        previousPlatform = _FakeFilePicker(null);
       }
       tmpDir = await Directory.systemTemp.createTemp('m3.4_t5_test_');
     });
 
     tearDown(() async {
-      FilePicker.platform = _previousPlatform;
+      FilePicker.platform = previousPlatform;
       if (await tmpDir.exists()) {
         await tmpDir.delete(recursive: true);
       }

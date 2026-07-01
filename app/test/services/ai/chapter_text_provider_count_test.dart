@@ -12,7 +12,7 @@ void main() {
     test('interface declares a count method returning chapter count', () {
       // Compile-time assertion that the method exists with the right shape.
       final ChapterTextProvider provider = EpubChapterTextProvider();
-      // ignore: unnecessary_statements
+      // ignore: cascade_invocations, unnecessary_statements
       provider.count;
     });
 

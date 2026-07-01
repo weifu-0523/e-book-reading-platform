@@ -30,13 +30,15 @@ void main() {
       source: controller.stream,
       debounceMs: 500,
     );
+    // ignore: cascade_invocations - interleaving const, cannot cascade
     persister.start();
 
     const cfi1 = EpubCfiLocator(cfi: '/6/4', chapterIndex: 0);
     const cfi2 = EpubCfiLocator(cfi: '/6/8', chapterIndex: 0);
-    controller.add(cfi1);
-    controller.add(cfi2);
-    controller.add(cfi1);
+    controller
+      ..add(cfi1)
+      ..add(cfi2)
+      ..add(cfi1);
 
     await Future.delayed(const Duration(milliseconds: 600));
 
@@ -56,6 +58,7 @@ void main() {
       source: controller.stream,
       debounceMs: 100,
     );
+    // ignore: cascade_invocations - interleaving const, cannot cascade
     persister.start();
 
     const cfi = EpubCfiLocator(cfi: '/6/4', chapterIndex: 0);
@@ -72,6 +75,7 @@ void main() {
 
   test('save failure is silent', () async {
     final repo = _FakeRepo();
+    // ignore: cascade_invocations - property access only, cannot cascade
     repo.next = ReadingProgress(
       bookId: 'b1',
       locator: const EpubCfiLocator(cfi: '/6/4', chapterIndex: 0),
@@ -85,6 +89,7 @@ void main() {
       source: controller.stream,
       debounceMs: 50,
     );
+    // ignore: cascade_invocations - interleaving for, cannot cascade
     persister.start();
 
     for (var i = 0; i < 200; i++) {

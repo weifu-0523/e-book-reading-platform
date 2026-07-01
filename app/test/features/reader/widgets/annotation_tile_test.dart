@@ -65,7 +65,7 @@ void main() {
   });
 
   group('showMeta', () {
-    Annotation _annotation({
+    Annotation annotation({
       List<String> tags = const [],
       DateTime? updatedAt,
     }) {
@@ -89,7 +89,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(tags: const ['t1']),
+            annotation: annotation(tags: const ['t1']),
           ),
         ),
       ));
@@ -101,7 +101,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(tags: const ['t1']),
+            annotation: annotation(tags: const ['t1']),
             showMeta: false,
           ),
         ),
@@ -113,7 +113,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(tags: const ['t1', 't2']),
+            annotation: annotation(tags: const ['t1', 't2']),
             showMeta: true,
           ),
         ),
@@ -127,7 +127,7 @@ void main() {
         home: Scaffold(
           body: AnnotationTile(
             annotation:
-                _annotation(updatedAt: DateTime(2026, 6, 27, 14, 32)),
+                annotation(updatedAt: DateTime(2026, 6, 27, 14, 32)),
             showMeta: true,
           ),
         ),
@@ -139,7 +139,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(
+            annotation: annotation(
               tags: const ['psychology'],
               updatedAt: DateTime(2026, 6, 27, 14, 32),
             ),
@@ -154,7 +154,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(tags: const []),
+            annotation: annotation(tags: const []),
             showMeta: true,
           ),
         ),
@@ -168,7 +168,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(
+            annotation: annotation(
               tags: const [],
               updatedAt: DateTime(2026, 6, 27, 14, 32),
             ),
@@ -185,7 +185,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(),
+            annotation: annotation(),
             showMeta: true,
             onTap: () => tapped = true,
           ),
@@ -200,7 +200,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: AnnotationTile(
-            annotation: _annotation(),
+            annotation: annotation(),
             showMeta: true,
             onLongPress: () => longPressed = true,
           ),

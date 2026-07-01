@@ -119,8 +119,8 @@ void main() {
     await repo.createEmptyNote(id: 'bn1', bookId: 'b1', bookTitle: 't');
     // 直接用 SQL 注入一条 tags 含非 String 元素的脏记录。
     await database.customStatement(
-      "INSERT INTO annotations (id, book_note_id, locator, quote, color, tags, "
-      "source, created_at, updated_at) VALUES ("
+      'INSERT INTO annotations (id, book_note_id, locator, quote, color, tags, '
+      'source, created_at, updated_at) VALUES ('
       "'a1', 'bn1', '{\"type\":\"pdfPage\",\"page\":1,\"offsetX\":0.0,\"offsetY\":0.0}', "
       "'quote', 'yellow', '[\"a\", 1, true, \"b\"]', 'manual', 0, 0)",
     );

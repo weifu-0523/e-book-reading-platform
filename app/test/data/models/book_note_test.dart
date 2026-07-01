@@ -32,7 +32,7 @@ void main() {
     final created = DateTime(2026, 6, 24);
     final updated = DateTime(2026, 6, 25);
 
-    Annotation _annotation(String id) => Annotation(
+    Annotation annotation(String id) => Annotation(
           id: id,
           bookNoteId: 'bn1',
           locator: locator,
@@ -49,7 +49,7 @@ void main() {
       // 用共享 annotation 实例：Annotation 自身未实现 ==，
       // BookNote 的 == 通过 listEquals 比较列表元素，
       // 元素按引用相等时才能匹配；这是 BookNote == 的契约。
-      final ann = _annotation('a1');
+      final ann = annotation('a1');
       final a = BookNote(
         id: 'bn1',
         bookId: 'b1',
@@ -105,7 +105,7 @@ void main() {
         title: 't',
         summary: 's',
         keyTakeaways: const [],
-        annotations: [_annotation('a1')],
+        annotations: [annotation('a1')],
         createdAt: created,
         updatedAt: updated,
       );
@@ -115,7 +115,7 @@ void main() {
         title: 't',
         summary: 's',
         keyTakeaways: const [],
-        annotations: [_annotation('a2')],
+        annotations: [annotation('a2')],
         createdAt: created,
         updatedAt: updated,
       );

@@ -50,6 +50,7 @@ void main() {
 
   test('toggleSelection toggles id in selectedIds', () {
     controller.enterSelectionMode('b1');
+    // ignore: cascade_invocations - interleaving expect, cannot cascade
     controller.toggleSelection('b2');
     expect(controller.state.selectedIds, {'b1', 'b2'});
     controller.toggleSelection('b1');
@@ -58,6 +59,7 @@ void main() {
 
   test('exitSelectionMode clears selection and returns to idle', () {
     controller.enterSelectionMode('b1');
+    // ignore: cascade_invocations - interleaving expect, cannot cascade
     controller.exitSelectionMode();
     expect(controller.state.mode, LibraryMode.idle);
     expect(controller.state.selectedIds, isEmpty);
@@ -84,9 +86,11 @@ void main() {
       _fakeBook('b2', title: 'B2'),
       _fakeBook('b3', title: 'B3'),
     ]);
-    bookRepo.setTagsForBook('b1', {'fiction'});
-    bookRepo.setTagsForBook('b2', {'history'});
-    bookRepo.setTagsForBook('b3', {'fiction', 'history'});
+    // ignore: cascade_invocations - interleaving await, cannot cascade
+    bookRepo
+      ..setTagsForBook('b1', {'fiction'})
+      ..setTagsForBook('b2', {'history'})
+      ..setTagsForBook('b3', {'fiction', 'history'});
     await Future<void>.delayed(const Duration(milliseconds: 50));
     // 初始：全部三本
     expect(controller.state.books.map((b) => b.id), containsAll(['b1', 'b2', 'b3']));
@@ -194,6 +198,7 @@ void main() {
 
   test('batchDelete deletes selected and exits selection mode', () async {
     controller.enterSelectionMode('b1');
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.toggleSelection('b2');
     await controller.batchDelete();
     expect(bookRepo.deletedIds, {'b1', 'b2'});
@@ -203,6 +208,7 @@ void main() {
 
   test('selectAll replaces selectedIds with given ids', () {
     controller.enterSelectionMode('b1');
+    // ignore: cascade_invocations - interleaving expect, cannot cascade
     controller.selectAll(['b1', 'b2', 'b3']);
     expect(controller.state.selectedIds, {'b1', 'b2', 'b3'});
   });

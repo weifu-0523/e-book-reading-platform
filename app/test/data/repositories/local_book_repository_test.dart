@@ -81,6 +81,7 @@ void main() {
 
   test('watchAll emits on changes', () async {
     final stream = repo.watchAll();
+    // ignore: unawaited_futures - expectLater returns Future but test framework handles it
     expectLater(
       stream,
       emitsInOrder([

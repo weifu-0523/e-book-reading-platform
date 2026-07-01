@@ -16,6 +16,7 @@ void main() {
       initialInterval: const Duration(milliseconds: 50),
     );
 
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     scheduler.start();
     await Future<void>.delayed(const Duration(milliseconds: 175));
     scheduler.pause();
@@ -31,6 +32,7 @@ void main() {
       initialInterval: const Duration(milliseconds: 50),
     );
 
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     scheduler.start();
     await Future<void>.delayed(const Duration(milliseconds: 75));
     final countAtPause = ticks;
@@ -57,6 +59,7 @@ void main() {
       initialInterval: const Duration(milliseconds: 25),
     );
 
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     scheduler.start();
     await Future<void>.delayed(const Duration(milliseconds: 200));
     scheduler.pause();
@@ -73,6 +76,7 @@ void main() {
       initialInterval: const Duration(milliseconds: 200),
     );
 
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     scheduler.start();
     await Future<void>.delayed(const Duration(milliseconds: 50)); // no tick yet
     expect(ticks, 0);
@@ -92,6 +96,7 @@ void main() {
       initialInterval: const Duration(milliseconds: 30),
     );
 
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     scheduler.start();
     await Future<void>.delayed(const Duration(milliseconds: 50));
     scheduler.updateInterval(Duration.zero);
@@ -109,10 +114,13 @@ void main() {
       initialInterval: const Duration(milliseconds: 50),
     );
 
-    scheduler.start();
-    scheduler.pause();
+    // ignore: cascade_invocations - interleaving await, cannot cascade
+    scheduler
+      ..start()
+      ..pause();
     await Future<void>.delayed(const Duration(milliseconds: 30));
     final before = ticks;
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     await scheduler.resume(); // immediate tick
     expect(ticks, before + 1);
     await Future<void>.delayed(const Duration(milliseconds: 130));
@@ -133,6 +141,7 @@ void main() {
       initialInterval: const Duration(milliseconds: 30),
     );
 
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     scheduler.start();
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(ticks, 1); // first tick failed
@@ -158,6 +167,7 @@ void main() {
       initialInterval: const Duration(milliseconds: 30),
     );
 
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     scheduler.start();
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(scheduler.isRunning, true);

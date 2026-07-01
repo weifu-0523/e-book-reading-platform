@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -150,7 +152,7 @@ class ReviewPreviewSheet extends ConsumerWidget {
             onPressed: canSave
                 ? () async {
                     await onSaved?.call();
-                    if (context.mounted) Navigator.of(context).maybePop();
+                    if (context.mounted) unawaited(Navigator.of(context).maybePop());
                   }
                 : null,
             child: Text(l10n.reviewSaveButton),

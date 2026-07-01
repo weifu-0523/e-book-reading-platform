@@ -51,6 +51,7 @@ void main() {
           phase: PreprocessPhase.chunking),
     ]);
     final controller = BookPreprocessController(fake);
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.start(_book());
     await Future.delayed(Duration.zero);
     expect(controller.state.status, PreprocessStatus.chunking);
@@ -67,6 +68,7 @@ void main() {
           phase: PreprocessPhase.summarizing),
     ]);
     final controller = BookPreprocessController(fake);
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.start(_book());
     await Future.delayed(Duration.zero);
     expect(controller.state.status, PreprocessStatus.summarizing);
@@ -78,6 +80,7 @@ void main() {
       PreprocessDoneEvent(const [1, 2]),
     ]);
     final controller = BookPreprocessController(fake);
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.start(_book());
     await Future.delayed(Duration.zero);
     expect(controller.state.status, PreprocessStatus.done);
@@ -90,6 +93,7 @@ void main() {
       PreprocessErrorEvent(PreprocessError.authFailed),
     ]);
     final controller = BookPreprocessController(fake);
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.start(_book());
     await Future.delayed(Duration.zero);
     expect(controller.state.status, PreprocessStatus.error);
@@ -100,6 +104,7 @@ void main() {
   test('cancel delegates to preprocessor', () {
     final fake = _FakePreprocessor(const []);
     final controller = BookPreprocessController(fake);
+    // ignore: cascade_invocations - interleaving expect, cannot cascade
     controller.cancel();
     expect(fake.cancelCalled, isTrue);
     controller.dispose();

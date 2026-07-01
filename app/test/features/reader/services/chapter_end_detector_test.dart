@@ -37,6 +37,7 @@ void main() {
   test('first event for a chapter emits PromptRequest', () async {
     final reqs = <PromptRequest>[];
     detector.promptRequests.listen(reqs.add);
+    // ignore: cascade_invocations - interleaving source.add, cannot cascade
     detector.start();
 
     source.add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false));
@@ -51,10 +52,12 @@ void main() {
   test('second event for same chapter is suppressed (dedup)', () async {
     final reqs = <PromptRequest>[];
     detector.promptRequests.listen(reqs.add);
+    // ignore: cascade_invocations - interleaving source.add, cannot cascade
     detector.start();
 
-    source.add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false));
-    source.add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false));
+    source
+      ..add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false))
+      ..add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false));
     await Future<void>.delayed(Duration.zero);
 
     expect(reqs.length, 1);
@@ -63,10 +66,12 @@ void main() {
   test('event for different chapter emits again', () async {
     final reqs = <PromptRequest>[];
     detector.promptRequests.listen(reqs.add);
+    // ignore: cascade_invocations - interleaving source.add, cannot cascade
     detector.start();
 
-    source.add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false));
-    source.add(const ChapterEndEvent(chapterIndex: 4, isLastChapter: false));
+    source
+      ..add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false))
+      ..add(const ChapterEndEvent(chapterIndex: 4, isLastChapter: false));
     await Future<void>.delayed(Duration.zero);
 
     expect(reqs.length, 2);
@@ -88,8 +93,9 @@ void main() {
   test('start is idempotent (no duplicate subscription)', () async {
     final reqs = <PromptRequest>[];
     detector.promptRequests.listen(reqs.add);
-    detector.start();
-    detector.start(); // second call should be no-op
+    detector
+      ..start()
+      ..start(); // second call should be no-op
 
     source.add(const ChapterEndEvent(chapterIndex: 3, isLastChapter: false));
     await Future<void>.delayed(Duration.zero);

@@ -40,6 +40,7 @@ void main() {
       QaChunkEvent('Hello '),
       QaChunkEvent('World'),
     ]));
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.ask(book: _book(), question: 'Q');
     await Future.delayed(Duration.zero);
     expect(controller.state.status, QaStatus.streaming);
@@ -52,6 +53,7 @@ void main() {
       QaCompleteEvent(
           answer: 'Done [ch=3]', citations: const [3], fromHistory: false),
     ]));
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.ask(book: _book(), question: 'Q');
     await Future.delayed(Duration.zero);
     expect(controller.state.status, QaStatus.done);
@@ -65,6 +67,7 @@ void main() {
     final controller = QaController(_FakeQaService([
       QaErrorEvent(QaError.emptyIndex),
     ]));
+    // ignore: cascade_invocations - interleaving await, cannot cascade
     controller.ask(book: _book(), question: 'Q');
     await Future.delayed(Duration.zero);
     expect(controller.state.status, QaStatus.error);
@@ -74,8 +77,10 @@ void main() {
 
   test('reset returns state to idle and clears answer', () {
     final controller = QaController(_FakeQaService(const []));
-    controller.ask(book: _book(), question: 'Q');
-    controller.reset();
+    // ignore: cascade_invocations - interleaving expect, cannot cascade
+    controller
+      ..ask(book: _book(), question: 'Q')
+      ..reset();
     expect(controller.state.status, QaStatus.idle);
     expect(controller.state.answer, isEmpty);
     controller.dispose();

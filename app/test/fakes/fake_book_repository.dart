@@ -56,6 +56,7 @@ class FakeBookRepository implements BookRepository {
     // 为每个新订阅者立即回放当前快照，然后转发后续事件。
     // 与 LocalBookRepository 对齐：按 searchQuery 过滤 + tagFilters 过滤 + sortBy 排序后再发送。
     final controller = StreamController<List<Book>>();
+    // ignore: cascade_invocations - controller used in callback, cannot cascade
     controller.add(List.unmodifiable(
         _applySort(_applyTagFilters(_applySearch(_books, searchQuery), tagFilters), sortBy)));
     final sub = _controller.stream.listen((books) {

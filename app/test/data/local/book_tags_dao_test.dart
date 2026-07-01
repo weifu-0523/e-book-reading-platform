@@ -65,6 +65,7 @@ void main() {
 
   test('watchTagsOfBook emits changes', () async {
     final stream = dao.watchTagsOfBook('b1');
+    // ignore: unawaited_futures - expectLater returns Future but test framework handles it
     expectLater(
       stream,
       emitsInOrder([
