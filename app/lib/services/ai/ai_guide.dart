@@ -114,7 +114,17 @@ class AiGuide {
         ? selection!
         : TokenTruncator.truncateToTokens(
             sourceText, TokenTruncator.defaultBudget);
-    final sourceHash = sha256.convert(utf8.encode(truncated)).toString();
+    // P1-2 fix: include chapterTitle in selection-mode hash so the same
+    // phrase selected in different chapters caches separately. The prompt
+    // builder embeds chapterTitle, so without this the second chapter's
+    // selection would hit the first chapter's cached response (which
+    // mentions the wrong chapter context). Chapter mode is naturally
+    // protected (chapterIndex drives different sourceText via _resolveSource);
+    // full mode has no chapterTitle.
+    final hashInput = mode == AiGuideMode.selection
+        ? '$truncated::${chapterTitle ?? ''}'
+        : truncated;
+    final sourceHash = sha256.convert(utf8.encode(hashInput)).toString();
     final modeKey = mode.name; // 'full' | 'chapter' | 'selection'
 
     // Cache lookup short-circuits before the LLM call.

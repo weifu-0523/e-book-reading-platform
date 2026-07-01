@@ -198,6 +198,61 @@ void main() {
     expect(events.whereType<AiCompleteEvent>(), isNotEmpty);
   });
 
+  test(
+      'P1-2: selection cache key includes chapterTitle — same selection in '
+      'different chapters must not cache-hit', () async {
+    // Bug: sourceHash only hashed `truncated`, but prompt also included
+    // chapterTitle. Selecting same phrase in ch1 vs ch2 returned ch1's
+    // cached response (which mentions "第1章"). Fix: hash includes
+    // chapterTitle in selection mode.
+    var llmCalls = 0;
+    final countingClient = MockClient.streaming((req, bs) async {
+      llmCalls++;
+      final chunk = llmCalls == 1 ? 'comment-ch1' : 'comment-ch2';
+      final body =
+          'data: ${jsonEncode({'choices': [{'delta': {'content': chunk}}]})}\n\ndata: [DONE]\n\n';
+      return http.StreamedResponse(
+          Stream.value(Uint8List.fromList(utf8.encode(body))), 200);
+    });
+
+    final guide = AiGuide(
+      apiKeys: _InMemKeys(const AiCredentials(
+          apiKey: 'k',
+          baseUrl: 'https://api.deepseek.com',
+          model: 'deepseek-chat')),
+      extractorFor: (_) => _StubExtractor(''),
+      chapterTextProviderFor: (_) => _StubChapterProvider({}),
+      cache: db.aiSummariesDao,
+      httpClient: countingClient,
+      retryDelays: _msDelays,
+    );
+
+    final events1 = await guide.run(
+      book: book,
+      mode: AiGuideMode.selection,
+      selection: 'repeated phrase',
+      chapterTitle: 'Ch 1',
+    ).toList();
+    final events2 = await guide.run(
+      book: book,
+      mode: AiGuideMode.selection,
+      selection: 'repeated phrase',
+      chapterTitle: 'Ch 2',
+    ).toList();
+
+    // Both calls must hit the LLM — different chapterTitle → different cache key.
+    expect(llmCalls, 2);
+    expect(
+        (events1.whereType<AiCompleteEvent>().single).fullText,
+        'comment-ch1',
+    );
+    expect(
+        (events2.whereType<AiCompleteEvent>().single).fullText,
+        'comment-ch2',
+    );
+    expect((events2.whereType<AiCompleteEvent>().single).fromCache, isFalse);
+  });
+
   test('401 maps to authFailed error', () async {
     final mock = MockClient.streaming((req, bs) async =>
         http.StreamedResponse(Stream.value(Uint8List(0)), 401));
