@@ -51,6 +51,34 @@
 
 ## 已完成
 
+### v1.4.0-alpha release 准备（hygiene sweep）
+
+代码 + 文档部分（2026-07-01 完成）：
+- ✅ M2.4 spec + plan 已交付（`docs/superpowers/specs/2026-07-01-m2-4-release-hygiene-sweep-design.md`、`docs/superpowers/plans/2026-07-01-m2-4-release-hygiene-sweep.md`）
+- ✅ TDD 全流程：11 个 task（T1-T4 subagent-driven development 每 task 双阶段 review；T5-T7 docs 直接执行；T8-T11 交互/收尾）
+- ✅ T1-T2: `ReaderSelectionToolbar` + `ReaderChapterEndPrompt` widget 抽出（带新单元测试）
+- ✅ T3: `reader_body.dart` 拆分 644→578 行（orchestrator only，删除 4 个 inline helper + 2 个 state field）
+- ✅ T4: `dart fix --apply` + 手工清理（lint info 数 49→0）
+- ✅ T5: `maintainers-runbook §9.4.1` v1.4 复测决策（性能 baseline 沿用 v1.0.0，列 4 个触发复测条件）
+- ✅ T6: `release-procedure.md` 同步版本号、测试数、AGPLv3 阈值
+- ✅ T7: CHANGELOG 补 `[1.4.0-alpha]` + 漏掉的 `[1.2.0-alpha]` `[1.3.0-alpha]` 段落；新建 `release-notes-v1.4.0-alpha.md`
+- ✅ T11 prep: `pubspec.yaml` + `zhiyue.iss` + `README.md` 同步到 v1.4.0-alpha
+- ✅ 全量测试通过：824 passed + 3 skipped（T1+T2 widget 测试 +6；项目 review P0/P1 修复 +6）
+- ✅ 4 个包 analyze clean（reader_engine / reader_engine_epub_view / reader_engine_pdf_view / app/lib / app/test 全 0 issues）
+
+项目 review 修复（2026-07-02 凌晨定时任务，4 个独立 commit）：
+- ✅ `cc37f35` — P0-3 syncNow 重入保护（`_isSyncing` guard，防 UI/定时器并发丢数据）
+- ✅ `49aa15e` — P1-5 qa_history `_toEntry` 容错 corrupted citations_json
+- ✅ `a72ad39` — P1-2 selection-mode cache key 加入 chapterTitle（防跨章节串答）
+- ✅ `f3548d5` — P0 SSE 跨 TCP 包解析加 line buffer（防长 JSON 行中断丢已付 token）
+- ✅ 4 个包 analyze clean（reader_engine / reader_engine_epub_view / reader_engine_pdf_view / app/lib / app/test）
+
+待执行（用户现场操作，因远程延迟推迟到 2026-07-02）：
+- ⏳ T8: 3 张截图补齐（library / pdf_reader / notes）
+- ⏳ T9: 4 个 Gitee Release 页面（v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha）
+- ⏳ T10: DeepSeek API key 配置 + AI 导读烟测；两台 Windows 配坚果云 WebDAV 同步 E2E
+- ⏳ T11 finalize: 双 tag `m2.4-complete` + `v1.4.0-alpha` + memory 文件
+
 ### v1.3.0-alpha release 准备
 
 - ✅ tag `m2.3-complete` + `v1.3.0-alpha` 已推送（2026-07-01）

@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.3.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.3.0-alpha)
+[![Version](https://img.shields.io/badge/version-1.4.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.4.0-alpha)
 
 ## 项目状态
 
@@ -12,7 +12,8 @@
 - ✅ **v1.1.0-alpha**：在 v1.0 GA 基础上新增**章节学习回顾**（AI 用本章正文 + 用户高亮生成总结 + 要点）与 **Markdown 批量导出**（Obsidian vault 兼容）。
 - ✅ **v1.2.0-alpha**：新增**自动章节结束提示**（EPUB paged/scroll 模式翻到末页时弹出 SnackBar，提供「回顾本章 / 下一章 / 关闭」三个动作；可在 Settings 开关；首次启动根据 API key 配置情况默认开/关）。仍为 alpha：UI 文案、动效、错误恢复路径有待真实用户反馈打磨。
 - ✅ **v1.3.0-alpha**：新增**批量导出范围筛选**（独立筛选页：按标签 OR / 按导入时间 / 按最近阅读；实时预览匹配书单 + 高亮总数；底部按钮直接显示"导出 N 本"）。仍为 alpha：边界 UX、动效、错误恢复路径有待真实用户反馈打磨。
-- 下一步：补 3 张 release 截图（library/pdf/notes）+ 创建 Gitee Release 页面；之后规划 v1.4（跨书 AI 伴读、性能 baseline 测量）。
+- ✅ **v1.4.0-alpha**：release hygiene sweep——`reader_body` 拆分（644→578 行，抽出 `ReaderChapterEndPrompt` + `ReaderSelectionToolbar` 两个零依赖 widget）+ `dart fix --apply` lint 清理 + 文档同步 + 3 张截图（library/pdf_reader/notes）+ 4 个 Gitee Release 页面（v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha）。无新功能。
+- 下一步：用户真实使用测试；之后规划 v1.5（跨书 AI 伴读、性能 baseline 测量）。
 
 ## 下载安装
 
@@ -36,7 +37,7 @@
 |---|---|---|---|
 | ![Library](docs/screenshots/library.png) | ![EPUB Reader](docs/screenshots/epub_reader.png) | ![PDF Reader](docs/screenshots/pdf_reader.png) | ![Notes](docs/screenshots/notes.png) |
 
-> 截图为 Windows release 构建。`epub_reader.png` 已在 M8 捕获；其余 3 张（library / pdf_reader / notes）将在 v1.1.0 stable 发布前补齐——参见 [`docs/screenshots/README.md`](docs/screenshots/README.md) 与 [`docs/release-procedure.md`](docs/release-procedure.md) 步骤 9。
+> 截图为 Windows release 构建。`epub_reader.png` 在 M8 捕获；`library` / `pdf_reader` / `notes` 三张在 v1.4.0-alpha 补齐——参见 [`docs/screenshots/README.md`](docs/screenshots/README.md) 与 [`docs/release-procedure.md`](docs/release-procedure.md) 步骤 9。
 
 ## 已交付能力
 
@@ -71,8 +72,7 @@
 
 ## 后续阶段
 
-- **v1.4**：性能 baseline 测量、reader_body 进一步拆分、release screenshot 补齐
-- **v1.5+**：跨书 AI 伴读、Zotero/Obsidian 双向同步、知识图谱
+- **v1.5+**：跨书 AI 伴读、Zotero/Obsidian 双向同步、知识图谱、性能 baseline 测量
 - **长期**：iOS 端、Mac 端
 
 完整路线图见 [`docs/superpowers/specs/2026-06-28-phase2-roadmap-design.md`](docs/superpowers/specs/2026-06-28-phase2-roadmap-design.md)。
@@ -94,8 +94,8 @@
 
 ## 测试与质量
 
-- **测试**：812 通过 + 3 skipped（macOS-only golden + Windows release-build smoke + 1 性能测试）
-- **静态分析**：0 errors / 0 warnings / 131 info（既有 cascade/const 风格 lint）
+- **测试**：824 通过 + 3 skipped（macOS-only golden + Windows release-build smoke + 1 性能测试）
+- **静态分析**：0 errors / 0 warnings / 0 info（M2.4/T4 已清零；既有 cascade/const 风格 lint 已通过 dart fix --apply + 手工处理）
 - **文档**：836 行 maintainer's runbook + 16 milestone spec + 17 plan + 项目级 review
 - **CI**：手动（每 milestone 完成跑全量回归 + analyze）
 
