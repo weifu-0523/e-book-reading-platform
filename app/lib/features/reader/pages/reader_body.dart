@@ -35,17 +35,16 @@ import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/ai/widgets/qa_ask_dialog.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
 import '../controllers/reader_ui_controller.dart';
-import '../providers/chapter_end_prompt_controller.dart';
 import '../providers/notes_controller.dart';
 import '../services/scroll_to_offset.dart';
 import '../services/toc_title_resolver.dart';
-import '../widgets/chapter_end_prompt_snackbar.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
-import '../widgets/highlight_selection_controls.dart';
 import '../widgets/note_editor_sheet.dart';
+import '../widgets/reader_chapter_end_prompt.dart';
 import '../widgets/reader_drawer_builders.dart';
 import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
+import '../widgets/reader_selection_toolbar.dart';
 import '../widgets/toc_drawer.dart' show defaultTocChapterIndex;
 import '../../../services/ai/ai_guide.dart';
 import 'reader_progress_bar.dart';
@@ -127,13 +126,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   // initialLocator 已处理标志，避免 didChangeDependencies 重复触发。
   bool _initialLocatorHandled = false;
 
-  // Chapter-end prompt controller (M2.2). Lazy-initialized in build() only
-  // on EPUB path. PDF path skips creation entirely — no SnackBar, no
-  // detector, no overhead.
-  ChapterEndPromptController? _chapterEndPromptController;
-  ChapterEndPromptVisibility _lastPromptVisibility =
-      ChapterEndPromptVisibility.hidden;
-
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
   @override
@@ -164,50 +156,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
   @override
   void dispose() {
-    _chapterEndPromptController?.dispose();
     super.dispose();
-  }
-
-  /// Listener for [ChapterEndPromptController] state changes. Only fires
-  /// the SnackBar on the hidden→visible edge to avoid stacking duplicates
-  /// if the controller republishes visible state.
-  void _onPromptStateChanged(ChapterEndPromptState state) {
-    if (state.visibility == ChapterEndPromptVisibility.visible &&
-        _lastPromptVisibility != ChapterEndPromptVisibility.visible) {
-      _lastPromptVisibility = state.visibility;
-      _showChapterEndPrompt(state);
-    } else {
-      _lastPromptVisibility = state.visibility;
-    }
-  }
-
-  /// Show [ChapterEndPromptSnackBar] via [ScaffoldMessenger]. Hides any
-  /// current SnackBar first so consecutive prompts don't queue.
-  ///
-  /// Button wiring:
-  /// - 回顾本章: dismiss prompt state + reuse M2.1's _onOpenReview with
-  ///   the chapter index from the event (no current-chapter lookup).
-  /// - 下一章: dismiss prompt state + engine.nextSpine().
-  /// - 关闭: dismiss prompt state only.
-  void _showChapterEndPrompt(ChapterEndPromptState s) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(ChapterEndPromptSnackBar(
-        context: context,
-        hasNext: s.hasNext,
-        onReview: () {
-          _chapterEndPromptController?.dismiss();
-          _onOpenReview(s.chapterIndex);
-        },
-        onNext: () {
-          _chapterEndPromptController?.dismiss();
-          engine.nextSpine();
-        },
-        onDismiss: () {
-          _chapterEndPromptController?.dismiss();
-        },
-      ));
   }
 
   @override
@@ -251,20 +200,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
   @override
   Widget build(BuildContext context) {
-    // Lazy-init chapter-end prompt controller on EPUB path only.
-    // PDF path skips entirely (no SnackBar, no detector, no overhead).
-    // Listener is attached exactly once via the null-check guard; subsequent
-    // rebuilds reuse the existing controller.
-    if (_chapterEndPromptController == null &&
-        engine is ConcreteEpubReaderEngine) {
-      final epubEngine = engine as ConcreteEpubReaderEngine;
-      _chapterEndPromptController = ChapterEndPromptController(
-        repo: ref.read(settingsRepositoryProvider),
-        source: epubEngine.chapterEndEvents,
-        bookId: widget.bookId,
-      )..addListener(_onPromptStateChanged);
-    }
-
     if (_engineState is ReaderEngineError) {
       return ReaderErrorView(
         message: (_engineState as ReaderEngineError).message,
@@ -331,21 +266,20 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                 onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
               ),
             ),
-            // 选区 toolbar overlay。仅在有非空 selection 时显示。
-            if (_selection != null && _selection!.plainText.isNotEmpty)
-              Positioned(
-                top: 80,
-                left: 16,
-                right: 16,
-                child: Center(
-                  child: HighlightSelectionControls(
-                    onHighlight: _onToolbarHighlight,
-                    onNote: _onToolbarNote,
-                    onCopy: _onCopySelection,
-                    onAiComment: _onAiComment,
-                  ),
-                ),
+            if (engine is ConcreteEpubReaderEngine)
+              ReaderChapterEndPrompt(
+                engine: engine as ConcreteEpubReaderEngine,
+                bookId: widget.bookId,
+                onReview: _onOpenReview,
+                onNext: engine.nextSpine,
               ),
+            ReaderSelectionToolbar(
+              selection: _selection,
+              onHighlight: _onToolbarHighlight,
+              onNote: _onToolbarNote,
+              onCopy: _onCopySelection,
+              onAiComment: _onAiComment,
+            ),
             // 底栏始终可见，显示阅读进度。
             Positioned(
               left: 0,
