@@ -605,6 +605,27 @@ Flutter 退出后写 `build/flutter_01.json`。读：
 
 > **Target 收紧说明**：原 §9.1–9.3 用的是 < 2000ms / ≥ 55fps / < 500MB（含 50MB PDF）。M1.6 plan §3.T15 把 cold start 收到 < 500ms、把内存拆成 idle / opened 两档（更细），PDF 50MB 那条保留在 §9.3 作为压力测试参考，不进 v1.0.0 release baseline。两个文档门限的差异是历史遗留，以本表为准；后续 release 视实测再回填。
 
+### 9.4.1 v1.4 复测决策（2026-07-01）
+
+v1.3.0-alpha → v1.4.0-alpha 期间，渲染 / DB schema / sync 协议**无重大改动**：
+
+- M2.2 仅加 `ChapterEndPromptController`（layer above reader，不影响渲染路径）
+- M2.3 仅加 `BookFilter` pure function + `ExportFilterPage`（不影响 reader）
+- M2.4（本 sweep）是 reader_body 拆分（行为不变）+ lint cleanup（语义不变）
+
+故 §9.4 表中 v1.0.0 baseline 在 v1.4 沿用，**不强制复测**。
+
+下次强制复测触发条件：
+
+| 触发条件 | 必测项 |
+|---|---|
+| v1.5 跨书 AI 伴读（新增大型 widget tree + 可能的 DB schema 变化） | §9.4 全部 4 行 |
+| 任何 `reader_engine` 重构（epubx renderer / pdfrx controller plumbing） | §9.4 全部 4 行 |
+| 用户报告"变卡了" | §9.4 第一行（cold start）+ 第二行（FPS） |
+| DB schema migration（drift schema 版本 bump） | §9.4 第一行（cold start，验证 migration 不拖慢启动） |
+
+> **如何复测**：当任一触发条件满足时，按 §9.6 完整流程跑 4 步，把新数字填到 §9.4 表的 "Pending" 列；旧数字移到 "历史" 子表（同表中追加）。
+
 ### 9.5 为什么自动化测量被阻塞（必读）
 
 子代理 / CI 目前**无法**自动跑 §9.1–9.3 三个场景并把数字写回本文件，原因有两条：
