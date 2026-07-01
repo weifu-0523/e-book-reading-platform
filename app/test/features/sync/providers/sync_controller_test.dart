@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -215,4 +217,68 @@ void main() {
     expect(rows, hasLength(1));
     expect(rows.first.recordId, 'c1');
   });
+
+  test('syncNow is reentrant: second concurrent call short-circuits', () async {
+    // P0-3 regression test: syncNow has no reentry guard, so a UI button
+    // click during a scheduled background tick (or two rapid clicks) would
+    // run two syncs concurrently, racing on outbox push and causing
+    // last-write-wins data loss.
+    final gated = _GatedFakeEngine();
+    final httpClient = http.Client();
+    addTearDown(httpClient.close);
+    final controller = SyncController.forTesting(
+      database: db,
+      credentials: _StubCredentials(),
+      httpClient: httpClient,
+      engine: gated,
+      connectivity: _AlwaysOnline(),
+      intervalPref: _MemIntervalPref(),
+      scheduler: BackgroundSyncScheduler(
+        onTick: () async {},
+        clock: DateTime.now,
+        initialInterval: Duration.zero,
+      ),
+      clock: DateTime.now,
+    );
+
+    // Start first syncNow — it will block inside gated.sync() until we
+    // complete the gate.
+    final first = controller.syncNow();
+    // Yield once so first syncNow reaches the engine call.
+    await Future<void>.delayed(Duration.zero);
+
+    // Second concurrent call must short-circuit (not call engine.sync()
+    // again). Returns immediately.
+    await controller.syncNow();
+
+    // Engine has only been invoked once.
+    expect(gated.calls, 1);
+
+    // Release the first call and let it finish cleanly.
+    gated.complete(const SyncResult.success(pushedCount: 0, pulledCount: 0));
+    await first;
+    expect(gated.calls, 1);
+  });
+}
+
+/// Engine that blocks `sync()` until [complete] is called, allowing tests
+/// to assert reentry behavior of [SyncController.syncNow].
+class _GatedFakeEngine implements SyncEngine {
+  final List<Completer<SyncResult>> _waiters = [];
+  int calls = 0;
+
+  void complete(SyncResult result) {
+    for (final w in _waiters) {
+      w.complete(result);
+    }
+    _waiters.clear();
+  }
+
+  @override
+  Future<SyncResult> sync() async {
+    calls++;
+    final c = Completer<SyncResult>();
+    _waiters.add(c);
+    return c.future;
+  }
 }

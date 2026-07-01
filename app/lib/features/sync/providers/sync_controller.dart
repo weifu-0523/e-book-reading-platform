@@ -125,6 +125,7 @@ class SyncController extends StateNotifier<SyncState>
   final DateTime Function() _clock;
   late final BackgroundSyncScheduler _scheduler;
   SyncEngine? _engine;
+  bool _isSyncing = false;
 
   Future<void> _initInterval() async {
     final interval = await _intervalPref.load();
@@ -205,6 +206,21 @@ class SyncController extends StateNotifier<SyncState>
   }
 
   Future<void> syncNow() async {
+    // Reentry guard (P0-3 fix): without this, a UI button click during a
+    // scheduled background tick (or two rapid clicks) would run two syncs
+    // concurrently, racing on outbox push and causing last-write-wins data
+    // loss. Scheduler's own _isRunning only guards its internal tick, not
+    // external callers of syncNow.
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      await _syncNowInner();
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  Future<void> _syncNowInner() async {
     if (!await _connectivity.isOnline) {
       state = state.copyWith(
         status: SyncStatus.offline,
