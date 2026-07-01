@@ -106,10 +106,22 @@ class OpenAiCompatibleClient {
       throw AiServerException('HTTP ${response.statusCode}');
     }
 
+    // P0 fix: buffer partial lines across TCP chunk boundaries. Long SSE
+    // delta JSON lines (1-2KB with metadata) routinely get split mid-line
+    // by TCP. Without buffering, the partial line fails jsonDecode →
+    // AiParseException → stream terminates, discarding accumulated content
+    // (user has already paid for those tokens). Solution: keep the last
+    // partial segment (no trailing \n) in _pending and prepend it to the
+    // next chunk. utf8.decoder already handles partial UTF-8 sequences
+    // across chunks; this layer handles partial lines.
+    var pending = '';
     await for (final chunk in response.stream.transform(utf8.decoder)) {
-      // SSE events separated by `\n\n`; each event may span multiple data: lines.
-      // Simple line-by-line parse works for OpenAI/DeepSeek's wire format.
-      for (final rawLine in chunk.split('\n')) {
+      pending = '$pending$chunk';
+      final lines = pending.split('\n');
+      // If chunk ends with \n, split yields a trailing '' that we can
+      // process. If not, the last segment is partial — hold it back.
+      pending = lines.removeLast();
+      for (final rawLine in lines) {
         final line = rawLine.trim();
         if (!line.startsWith('data: ')) continue;
         final payload = line.substring(6).trim();
@@ -124,6 +136,23 @@ class OpenAiCompatibleClient {
         } catch (e) {
           throw AiParseException('failed to parse SSE payload: $e');
         }
+      }
+    }
+    // Flush any final partial line held in pending (rare: server may close
+    // connection without trailing \n).
+    if (pending.trim().startsWith('data: ')) {
+      final payload = pending.trim().substring(6).trim();
+      if (payload == '[DONE]') return;
+      try {
+        final json = jsonDecode(payload) as Map<String, dynamic>;
+        final choices = json['choices'] as List?;
+        if (choices != null && choices.isNotEmpty) {
+          final delta = choices[0]['delta'] as Map<String, dynamic>?;
+          final content = delta?['content'];
+          if (content is String && content.isNotEmpty) yield content;
+        }
+      } catch (e) {
+        throw AiParseException('failed to parse SSE payload: $e');
       }
     }
   }

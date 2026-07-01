@@ -15,6 +15,15 @@ http.Client _client(int status, {String body = '', List<int>? rawBody}) {
   });
 }
 
+http.Client _chunkedClient(int status, List<List<int>> chunks) {
+  return MockClient.streaming((request, byteStream) async {
+    final stream =
+        Stream.fromIterable(chunks.map((c) => Uint8List.fromList(c)));
+    return http.StreamedResponse(stream, status,
+        headers: {'content-type': 'text/event-stream'});
+  });
+}
+
 String _sseLine(String json) => 'data: $json\n\n';
 String _sseDone() => 'data: [DONE]\n\n';
 
@@ -91,5 +100,48 @@ void main() {
     expect(body['model'], 'deepseek-chat');
     expect(body['stream'], true);
     expect((body['messages'] as List).first['content'], 'hello');
+  });
+
+  test('P0: SSE event split across TCP chunks does not crash', () async {
+    // Real-world SSE: long delta JSON lines (1-2KB with metadata) routinely
+    // get split mid-line by TCP. Without line buffering, the partial line
+    // fails jsonDecode → AiParseException → stream terminates mid-response,
+    // discarding accumulated content (and the user has already paid for it).
+    final fullJson = jsonEncode({'choices': [{'delta': {'content': 'hello'}}]});
+    final fullEvent = 'data: $fullJson\n\n';
+    // Split at byte 12 — inside the JSON payload, not on a \n boundary.
+    final splitAt = 12;
+    final chunk1Bytes = utf8.encode(fullEvent.substring(0, splitAt));
+    final chunk2Bytes = utf8.encode(fullEvent.substring(splitAt));
+    final doneBytes = utf8.encode(_sseDone());
+
+    final client = OpenAiCompatibleClient(
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: 'sk-test',
+      httpClient: _chunkedClient(200, [chunk1Bytes, chunk2Bytes, doneBytes]),
+    );
+    final chunks = await client.streamChat(prompt: 'test').toList();
+    expect(chunks, ['hello']);
+  });
+
+  test('P0: SSE event split across three TCP chunks', () async {
+    // Even more pathological: split across 3 chunks at arbitrary offsets.
+    final fullJson =
+        jsonEncode({'choices': [{'delta': {'content': 'world'}}]});
+    final fullEvent = 'data: $fullJson\n\n';
+    final splitA = 5;
+    final splitB = 30;
+    final a = utf8.encode(fullEvent.substring(0, splitA));
+    final b = utf8.encode(fullEvent.substring(splitA, splitB));
+    final c = utf8.encode(fullEvent.substring(splitB));
+    final done = utf8.encode(_sseDone());
+
+    final client = OpenAiCompatibleClient(
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: 'sk-test',
+      httpClient: _chunkedClient(200, [a, b, c, done]),
+    );
+    final chunks = await client.streamChat(prompt: 'test').toList();
+    expect(chunks, ['world']);
   });
 }
