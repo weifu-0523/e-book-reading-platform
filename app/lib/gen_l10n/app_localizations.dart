@@ -1309,6 +1309,90 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'翻到一章末页时提示回顾'**
   String get settingsChapterEndPromptSubtitle;
+
+  /// No description provided for @exportFilterTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'筛选导出范围'**
+  String get exportFilterTitle;
+
+  /// No description provided for @exportFilterSectionTags.
+  ///
+  /// In zh, this message translates to:
+  /// **'按标签'**
+  String get exportFilterSectionTags;
+
+  /// No description provided for @exportFilterSectionAddedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'按导入时间'**
+  String get exportFilterSectionAddedAt;
+
+  /// No description provided for @exportFilterSectionLastReadAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'按最近阅读'**
+  String get exportFilterSectionLastReadAt;
+
+  /// No description provided for @exportFilterAllTagsChip.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部'**
+  String get exportFilterAllTagsChip;
+
+  /// No description provided for @exportFilterResetTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'重置'**
+  String get exportFilterResetTooltip;
+
+  /// No description provided for @exportFilterEmptyResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'无匹配书目'**
+  String get exportFilterEmptyResult;
+
+  /// No description provided for @exportFilterActionExport.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出 {count} 本'**
+  String exportFilterActionExport(int count);
+
+  /// No description provided for @exportFilterPreviewSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'匹配 {books} 本 · 共 {highlights} 条高亮'**
+  String exportFilterPreviewSummary(int books, int highlights);
+
+  /// No description provided for @exportFilterTimeWindowAny.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部'**
+  String get exportFilterTimeWindowAny;
+
+  /// No description provided for @exportFilterTimeWindowLast7Days.
+  ///
+  /// In zh, this message translates to:
+  /// **'近 7 天'**
+  String get exportFilterTimeWindowLast7Days;
+
+  /// No description provided for @exportFilterTimeWindowLast30Days.
+  ///
+  /// In zh, this message translates to:
+  /// **'近 30 天'**
+  String get exportFilterTimeWindowLast30Days;
+
+  /// No description provided for @exportFilterTimeWindowLast90Days.
+  ///
+  /// In zh, this message translates to:
+  /// **'近 90 天'**
+  String get exportFilterTimeWindowLast90Days;
+
+  /// No description provided for @exportFilterTimeWindowThisYear.
+  ///
+  /// In zh, this message translates to:
+  /// **'今年'**
+  String get exportFilterTimeWindowThisYear;
 }
 
 class _AppLocalizationsDelegate

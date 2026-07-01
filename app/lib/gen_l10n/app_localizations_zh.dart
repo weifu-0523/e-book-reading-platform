@@ -665,4 +665,50 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsChapterEndPromptSubtitle => '翻到一章末页时提示回顾';
+
+  @override
+  String get exportFilterTitle => '筛选导出范围';
+
+  @override
+  String get exportFilterSectionTags => '按标签';
+
+  @override
+  String get exportFilterSectionAddedAt => '按导入时间';
+
+  @override
+  String get exportFilterSectionLastReadAt => '按最近阅读';
+
+  @override
+  String get exportFilterAllTagsChip => '全部';
+
+  @override
+  String get exportFilterResetTooltip => '重置';
+
+  @override
+  String get exportFilterEmptyResult => '无匹配书目';
+
+  @override
+  String exportFilterActionExport(int count) {
+    return '导出 $count 本';
+  }
+
+  @override
+  String exportFilterPreviewSummary(int books, int highlights) {
+    return '匹配 $books 本 · 共 $highlights 条高亮';
+  }
+
+  @override
+  String get exportFilterTimeWindowAny => '全部';
+
+  @override
+  String get exportFilterTimeWindowLast7Days => '近 7 天';
+
+  @override
+  String get exportFilterTimeWindowLast30Days => '近 30 天';
+
+  @override
+  String get exportFilterTimeWindowLast90Days => '近 90 天';
+
+  @override
+  String get exportFilterTimeWindowThisYear => '今年';
 }

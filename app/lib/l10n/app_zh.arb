@@ -486,5 +486,44 @@
   "settingsChapterEndPrompt": "章节结束提示",
   "@settingsChapterEndPrompt": {},
   "settingsChapterEndPromptSubtitle": "翻到一章末页时提示回顾",
-  "@settingsChapterEndPromptSubtitle": {}
+  "@settingsChapterEndPromptSubtitle": {},
+  "exportFilterTitle": "筛选导出范围",
+  "@exportFilterTitle": {},
+  "exportFilterSectionTags": "按标签",
+  "@exportFilterSectionTags": {},
+  "exportFilterSectionAddedAt": "按导入时间",
+  "@exportFilterSectionAddedAt": {},
+  "exportFilterSectionLastReadAt": "按最近阅读",
+  "@exportFilterSectionLastReadAt": {},
+  "exportFilterAllTagsChip": "全部",
+  "@exportFilterAllTagsChip": {},
+  "exportFilterResetTooltip": "重置",
+  "@exportFilterResetTooltip": {},
+  "exportFilterEmptyResult": "无匹配书目",
+  "@exportFilterEmptyResult": {},
+  "exportFilterActionExport": "导出 {count} 本",
+  "@exportFilterActionExport": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "exportFilterPreviewSummary": "匹配 {books} 本 · 共 {highlights} 条高亮",
+  "@exportFilterPreviewSummary": {
+    "placeholders": {
+      "books": { "type": "int" },
+      "highlights": { "type": "int" }
+    }
+  },
+  "exportFilterTimeWindowAny": "全部",
+  "@exportFilterTimeWindowAny": {},
+  "exportFilterTimeWindowLast7Days": "近 7 天",
+  "@exportFilterTimeWindowLast7Days": {},
+  "exportFilterTimeWindowLast30Days": "近 30 天",
+  "@exportFilterTimeWindowLast30Days": {},
+  "exportFilterTimeWindowLast90Days": "近 90 天",
+  "@exportFilterTimeWindowLast90Days": {},
+  "exportFilterTimeWindowThisYear": "今年",
+  "@exportFilterTimeWindowThisYear": {}
 }

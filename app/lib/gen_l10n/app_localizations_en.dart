@@ -679,4 +679,50 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsChapterEndPromptSubtitle =>
       'Prompt when reaching end of chapter';
+
+  @override
+  String get exportFilterTitle => 'Filter Export Range';
+
+  @override
+  String get exportFilterSectionTags => 'By Tag';
+
+  @override
+  String get exportFilterSectionAddedAt => 'By Import Time';
+
+  @override
+  String get exportFilterSectionLastReadAt => 'By Last Read Time';
+
+  @override
+  String get exportFilterAllTagsChip => 'All';
+
+  @override
+  String get exportFilterResetTooltip => 'Reset';
+
+  @override
+  String get exportFilterEmptyResult => 'No matching books';
+
+  @override
+  String exportFilterActionExport(int count) {
+    return 'Export $count book(s)';
+  }
+
+  @override
+  String exportFilterPreviewSummary(int books, int highlights) {
+    return '$books book(s) match · $highlights highlight(s) total';
+  }
+
+  @override
+  String get exportFilterTimeWindowAny => 'Any time';
+
+  @override
+  String get exportFilterTimeWindowLast7Days => 'Last 7 days';
+
+  @override
+  String get exportFilterTimeWindowLast30Days => 'Last 30 days';
+
+  @override
+  String get exportFilterTimeWindowLast90Days => 'Last 90 days';
+
+  @override
+  String get exportFilterTimeWindowThisYear => 'This year';
 }

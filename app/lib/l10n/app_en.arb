@@ -364,5 +364,44 @@
   "settingsChapterEndPrompt": "Chapter-end prompt",
   "@settingsChapterEndPrompt": {},
   "settingsChapterEndPromptSubtitle": "Prompt when reaching end of chapter",
-  "@settingsChapterEndPromptSubtitle": {}
+  "@settingsChapterEndPromptSubtitle": {},
+  "exportFilterTitle": "Filter Export Range",
+  "@exportFilterTitle": {},
+  "exportFilterSectionTags": "By Tag",
+  "@exportFilterSectionTags": {},
+  "exportFilterSectionAddedAt": "By Import Time",
+  "@exportFilterSectionAddedAt": {},
+  "exportFilterSectionLastReadAt": "By Last Read Time",
+  "@exportFilterSectionLastReadAt": {},
+  "exportFilterAllTagsChip": "All",
+  "@exportFilterAllTagsChip": {},
+  "exportFilterResetTooltip": "Reset",
+  "@exportFilterResetTooltip": {},
+  "exportFilterEmptyResult": "No matching books",
+  "@exportFilterEmptyResult": {},
+  "exportFilterActionExport": "Export {count} book(s)",
+  "@exportFilterActionExport": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "exportFilterPreviewSummary": "{books} book(s) match · {highlights} highlight(s) total",
+  "@exportFilterPreviewSummary": {
+    "placeholders": {
+      "books": { "type": "int" },
+      "highlights": { "type": "int" }
+    }
+  },
+  "exportFilterTimeWindowAny": "Any time",
+  "@exportFilterTimeWindowAny": {},
+  "exportFilterTimeWindowLast7Days": "Last 7 days",
+  "@exportFilterTimeWindowLast7Days": {},
+  "exportFilterTimeWindowLast30Days": "Last 30 days",
+  "@exportFilterTimeWindowLast30Days": {},
+  "exportFilterTimeWindowLast90Days": "Last 90 days",
+  "@exportFilterTimeWindowLast90Days": {},
+  "exportFilterTimeWindowThisYear": "This year",
+  "@exportFilterTimeWindowThisYear": {}
 }
