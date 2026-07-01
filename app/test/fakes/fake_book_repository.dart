@@ -24,6 +24,12 @@ class FakeBookRepository implements BookRepository {
     _controller.add(List.unmodifiable(_books));
   }
 
+  /// 测试辅助：等价于 [save]，但同步且语义明确，便于测试构造场景。
+  void addBook(Book book) {
+    _books.add(book);
+    _controller.add(List.unmodifiable(_books));
+  }
+
   /// 测试辅助：为指定书籍 id 设置标签集合，使 tagFilters 过滤逻辑生效。
   void setTagsForBook(String bookId, Set<String> tags) {
     _tagsByBook[bookId] = Set<String>.of(tags);

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/providers.dart';
+import 'package:zhiyue/data/local/database.dart' as drift;
+import 'package:zhiyue/data/models/book.dart';
+import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/features/library/pages/library_page.dart';
 import 'package:zhiyue/features/library/providers/library_controller.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
@@ -18,6 +21,10 @@ import '../../../fakes/fake_settings_repository.dart';
 ///    EmptyLibraryView 的 Icons.add 干扰）。
 /// 2. 空书库点击该入口时弹「暂无可导出内容」对话框（不进入 file_picker
 ///    路径，避开 Windows FFI 单例 mock 的复杂度）。
+///
+/// T8 (M2.3)：扩展第三条用例 —— 当至少有一本带非空 BookNote 的书时，
+/// 点击入口应路由到 ExportFilterPage（标题「筛选导出范围」、底部按钮文案
+/// 含导出数量）。
 void main() {
   late FakeBookRepository bookRepo;
   late FakeBookTagsLookup tagsLookup;
@@ -34,6 +41,14 @@ void main() {
   Widget buildApp() {
     return ProviderScope(
       overrides: [
+        // _startBatchExport 在拿到 notesByBookId 后会 ref.read(appDatabaseProvider)
+        // 来查 tag 数据（BookTagsDao.allTagsByBook / allTags）。用内存 drift DB
+        // 让这条路径可被 widget 测试覆盖，不必依赖文件系统。
+        appDatabaseProvider.overrideWith((ref) {
+          final db = drift.AppDatabase.forTesting();
+          ref.onDispose(db.close);
+          return db;
+        }),
         bookRepositoryProvider.overrideWith((ref) => bookRepo),
         notesRepositoryProvider.overrideWith((ref) => notesRepo),
         settingsRepositoryProvider.overrideWith((ref) => settings),
@@ -77,4 +92,47 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+      'tapping export with at least one note opens the filter page',
+      (tester) async {
+    // 准备：一本带非空 BookNote 的书
+    bookRepo.addBook(_testBook('b1', 'Title 1'));
+    notesRepo.setNote('b1', _testNonEmptyNote('b1'));
+
+    await tester.pumpWidget(buildApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('导出为 Markdown'));
+    await tester.pumpAndSettle();
+
+    // 筛选页标题出现 → 路由正确
+    expect(find.text('筛选导出范围'), findsOneWidget);
+    // 底部按钮文案 = "导出 1 本"
+    expect(find.text('导出 1 本'), findsOneWidget);
+  });
 }
+
+Book _testBook(String id, String title) => Book(
+      id: id,
+      title: title,
+      author: null,
+      format: BookFormat.epub,
+      filePath: '/$id.epub',
+      fileHash: 'h_$id',
+      fileSizeBytes: 0,
+      coverPath: null,
+      addedAt: DateTime(2026, 1, 1),
+      lastReadAt: null,
+    );
+
+BookNote _testNonEmptyNote(String bookId) => BookNote(
+      id: 'n_$bookId',
+      bookId: bookId,
+      title: '《$bookId》读书笔记',
+      summary: 'non-empty summary',
+      keyTakeaways: const [],
+      annotations: const [],
+      createdAt: DateTime(2026, 1, 1),
+      updatedAt: DateTime(2026, 1, 1),
+    );

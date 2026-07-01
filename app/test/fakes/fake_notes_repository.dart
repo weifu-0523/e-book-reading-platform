@@ -65,6 +65,11 @@ class FakeNotesRepository implements NotesRepository {
     _notes[note.bookId] = note;
   }
 
+  /// 测试辅助：直接放入 [bookId] → [BookNote] 映射，避免每个测试都要走 async save。
+  void setNote(String bookId, BookNote note) {
+    _notes[bookId] = note;
+  }
+
   @override
   Future<List<Annotation>> listAnnotations(String noteId) async =>
       List<Annotation>.unmodifiable(
