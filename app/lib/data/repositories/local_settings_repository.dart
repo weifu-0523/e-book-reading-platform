@@ -38,6 +38,13 @@ class LocalSettingsRepository implements SettingsRepository {
     return _dao.upsert(key, jsonEncode(value));
   }
 
+  @override
+  Future<T?> getOrNull<T>(String key) async {
+    final raw = await _dao.get(key);
+    if (raw == null) return null;
+    return _decode<T>(raw);
+  }
+
   T _decode<T>(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is T) return decoded;

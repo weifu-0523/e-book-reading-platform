@@ -48,4 +48,25 @@ void main() {
     final result = await repo.get<Map<String, dynamic>>('theme_overrides', const <String, dynamic>{});
     expect(result, {'dark': true, 'primary': '#000'});
   });
+
+  // M2.2/T5: getOrNull 用于区分 "key 未设置" 与 "显式设置为默认值"
+  // （首发启动种子化 chapter_end_prompt_enabled 等场景必需）。
+  test('getOrNull returns null when key not set', () async {
+    final v = await repo.getOrNull<bool>('missing_key');
+    expect(v, isNull);
+  });
+
+  test('getOrNull returns value when key set', () async {
+    await repo.set<bool>('k', true);
+    final v = await repo.getOrNull<bool>('k');
+    expect(v, isTrue);
+  });
+
+  test('getOrNull distinguishes unset from explicit false', () async {
+    // unset → null
+    expect(await repo.getOrNull<bool>('unset'), isNull);
+    // set to false explicitly → false (not null)
+    await repo.set<bool>('explicit', false);
+    expect(await repo.getOrNull<bool>('explicit'), isFalse);
+  });
 }

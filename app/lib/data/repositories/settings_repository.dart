@@ -16,5 +16,11 @@
 
 abstract class SettingsRepository {
   Future<T> get<T>(String key, T defaultValue);
+
+  /// Returns null if [key] is not set. Use this when the caller needs to
+  /// distinguish "unset" from "explicitly set to default value" (e.g.,
+  /// first-launch seeding of preferences).
+  Future<T?> getOrNull<T>(String key);
+
   Future<void> set<T>(String key, T value);
 }
