@@ -43,6 +43,10 @@ import '../widgets/book_grid.dart';
 import '../widgets/book_list_view.dart';
 import '../widgets/empty_library_view.dart';
 import '../widgets/library_app_bar.dart';
+import '../../../data/local/daos/book_tags_dao.dart';
+import '../models/book_filter.dart';
+import '../pages/export_filter_page.dart';
+import '../services/book_filter_applicator.dart';
 
 /// 书架主页：导入入口 + 浏览（grid/list） + 选择模式 + 排序/筛选。
 ///
@@ -304,13 +308,15 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
 
   /// 批量导出整个书架的读书笔记为 Markdown 文件夹。
   ///
-  /// 流程：
+  /// 流程（M2.3 新增筛选页）：
   /// 1. 拉取所有书 + 各书的 [BookNote]；若没有任何含内容的 note，弹「暂无
   ///    可导出内容」对话框并中止（避开 file_picker）。
-  /// 2. 弹确认对话框（数量 + 取消/选择文件夹）。
-  /// 3. [FilePicker.platform.getDirectoryPath] 选目标文件夹；用户取消即中止。
-  /// 4. 弹 [BatchExportDialog] 跑 VaultExporter，完成后自动 pop。
-  /// 5. SnackBar 反馈 + 「打开文件夹」action。
+  /// 2. 预取 tag 数据（allTags + per-book tags）。
+  /// 3. 弹 [ExportFilterPage]；用户点底部按钮回 [BookFilter]，取消则回 null。
+  /// 4. 应用 [applyBookFilter] → 子集；空子集静默中止。
+  /// 5. [FilePicker.platform.getDirectoryPath] 选目标文件夹；用户取消即中止。
+  /// 6. 弹 [BatchExportDialog] 跑 VaultExporter，完成后自动 pop。
+  /// 7. SnackBar 反馈 + 「打开文件夹」action。
   Future<void> _startBatchExport() async {
     final books = await ref.read(bookRepositoryProvider).getAll();
     final notesByBookId = <String, BookNote>{};
@@ -340,25 +346,35 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    // M2.3: 预取 tag 数据
+    final db = ref.read(appDatabaseProvider);
+    final bookTagsDao = BookTagsDao(db);
+    final tagsByBookId = await bookTagsDao.allTagsByBook();
+    final allTags = (await bookTagsDao.allTags()).toList()..sort();
+    if (!mounted) return;
+
+    // M2.3: 弹筛选页
+    final filter = await showDialog<BookFilter?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.batchExportConfirmTitle),
-        content: Text(l10n.batchExportConfirmMessage(notesByBookId.length)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(l10n.reviewCancelButton),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.batchExportOpenFolder),
-          ),
-        ],
+      builder: (ctx) => ExportFilterPage(
+        books: books,
+        notesByBookId: notesByBookId,
+        tagsByBookId: tagsByBookId,
+        allTags: allTags,
+        now: DateTime.now(),
+        onApply: (f) => Navigator.of(ctx).pop(f),
       ),
     );
-    if (confirmed != true) return;
+    if (filter == null) return;
     if (!mounted) return;
+
+    final filteredBooks = applyBookFilter(
+      books: books,
+      filter: filter,
+      tagsByBookId: tagsByBookId,
+      now: DateTime.now(),
+    );
+    if (filteredBooks.isEmpty) return; // 筛选页已保证不会到这里，双保险
 
     final dirPath = await FilePicker.platform.getDirectoryPath();
     if (dirPath == null) return;
@@ -370,7 +386,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       barrierDismissible: false,
       builder: (ctx) => BatchExportDialog(
         targetDirPath: dirPath,
-        books: books,
+        books: filteredBooks,
         notesByBookId: notesByBookId,
         onCompleted: (r) {
           result = r;
