@@ -79,4 +79,19 @@ void main() {
     await dao.addTag(bookId: 'b1', tag: 'u');
     await Future<void>.delayed(const Duration(milliseconds: 50));
   });
+
+  test('allTagsByBook returns Map<bookId, Set<tags>>', () async {
+    await dao.addTag(bookId: 'b1', tag: 'AI');
+    await dao.addTag(bookId: 'b1', tag: '哲学');
+    await dao.addTag(bookId: 'b2', tag: '历史');
+    final result = await dao.allTagsByBook();
+    expect(result.length, 2);
+    expect(result['b1'], unorderedEquals(['AI', '哲学']));
+    expect(result['b2'], {'历史'});
+  });
+
+  test('allTagsByBook returns empty map when no tags exist', () async {
+    final result = await dao.allTagsByBook();
+    expect(result, isEmpty);
+  });
 }

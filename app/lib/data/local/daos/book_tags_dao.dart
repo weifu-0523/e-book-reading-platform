@@ -43,6 +43,17 @@ class BookTagsDao extends DatabaseAccessor<AppDatabase> with _$BookTagsDaoMixin 
     return rows.map((r) => r.bookId).toList();
   }
 
+  /// 一次性返回所有 book → tag 集合的映射。
+  /// 用于 M2.3 批量导出筛选页（避免 N 次 tagsOfBook 调用）。
+  Future<Map<String, Set<String>>> allTagsByBook() async {
+    final rows = await select(bookTags).get();
+    final map = <String, Set<String>>{};
+    for (final r in rows) {
+      map.putIfAbsent(r.bookId, () => <String>{}).add(r.tag);
+    }
+    return map;
+  }
+
   Future<void> addTag({required String bookId, required String tag}) async {
     await into(bookTags).insertOnConflictUpdate(
       BookTagsCompanion.insert(bookId: bookId, tag: tag),
