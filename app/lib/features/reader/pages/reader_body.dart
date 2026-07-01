@@ -22,12 +22,10 @@ import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
-import 'package:reader_engine/reader_engine.dart' show TocEntry;
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
-import '../../../core/widgets/error_view.dart';
 import '../../../core/widgets/loading_view.dart';
 import '../../../data/models/annotation.dart';
 import '../../../data/models/book.dart';
@@ -35,7 +33,6 @@ import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/ai/widgets/qa_ask_dialog.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
-import '../../../gen_l10n/app_localizations.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
 import '../services/scroll_to_offset.dart';
@@ -43,11 +40,10 @@ import '../services/toc_title_resolver.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
 import '../widgets/highlight_selection_controls.dart';
 import '../widgets/note_editor_sheet.dart';
-import '../widgets/notes_drawer.dart';
+import '../widgets/reader_drawer_builders.dart';
 import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
-import '../widgets/toc_drawer.dart';
-import '../../../features/ai/providers/book_preprocess_controller.dart';
+import '../widgets/toc_drawer.dart' show defaultTocChapterIndex;
 import '../../../services/ai/ai_guide.dart';
 import 'reader_progress_bar.dart';
 import 'reader_typography_panel_trigger.dart';
@@ -226,7 +222,12 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     // typographyPanelOpen 由 ReaderTypographyPanelTrigger 监听并弹出/收起 bottom sheet。
     return Scaffold(
       // 抽屉（左滑或图标触发）：TocDrawer。
-      drawer: _buildTocDrawer(context),
+      drawer: ReaderTocDrawerWrapper(
+        engine: engine,
+        bookId: widget.bookId,
+        onReviewChapter:
+            engine is PdfReaderEngine ? null : _onOpenReview,
+      ),
       onDrawerChanged: (open) {
         // 用户从外部滑出/收起抽屉时同步 UI 状态。
         final notifier = ref.read(readerUiControllerProvider.notifier);
@@ -236,7 +237,11 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           notifier.closeTocDrawer();
         }
       },
-      endDrawer: _buildNotesDrawer(context),
+      endDrawer: ReaderNotesDrawerWrapper(
+        chapterTitles: _chapterTitlesCache,
+        onAnnotationTap: (id) => _onAnnotationTap(id),
+        onAnnotationLongPress: (id) => _onAnnotationLongPress(id),
+      ),
       body: Builder(
         builder: (innerContext) => Stack(
           children: [
@@ -285,23 +290,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             ReaderTypographyPanelTrigger(engine: engine),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildNotesDrawer(BuildContext context) {
-    final notesAsync = ref.watch(notesControllerProvider);
-    return notesAsync.when(
-      data: (s) => NotesDrawer(
-        annotations: s.annotations,
-        chapterTitles: _chapterTitlesCache,
-        onTap: (id) => _onAnnotationTap(id),
-        onLongPress: (id) => _onAnnotationLongPress(id),
-        onClose: () => Navigator.of(context).maybePop(),
-      ),
-      loading: () => const Drawer(child: LoadingView()),
-      error: (e, _) => Drawer(
-        child: ErrorView(message: AppLocalizations.of(context)!.notesLoadFailed),
       ),
     );
   }
@@ -525,7 +513,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       _showInvalidChapterSnackBar();
       return;
     }
-    final flat = _flattenToc(toc.entries);
+    final flat = flattenTocEntries(toc.entries);
     // citation chapterIndex 来自 [ch=N] 标记，对应书的章节序号；
     // 与 defaultTocChapterIndex 同口径（EpubCfiLocator.chapterIndex）。
     final target = flat
@@ -544,18 +532,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('无效章节号')),
     );
-  }
-
-  /// 扁平化 TOC（保留嵌套顺序）。citation chapterIndex 解析依赖
-  /// [defaultTocChapterIndex]，与顺序无关，但扁平化便于 first-where 查找。
-  List<TocEntry> _flattenToc(List<TocEntry> entries) {
-    final result = <TocEntry>[];
-    for (final e in entries) {
-      result
-        ..add(e)
-        ..addAll(_flattenToc(e.children));
-    }
-    return result;
   }
 
   /// 异步刷新 [_cachedBook]。每次 build 触发一次 fire-and-forget 拉取，
@@ -593,29 +569,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       ),
     );
     if (mounted) setState(() => _selection = null);
-  }
-
-  Widget _buildTocDrawer(BuildContext context) {
-    final toc = engine.toc;
-    if (toc == null) {
-      return const Drawer(child: LoadingView());
-    }
-    final preprocess = ref.watch(bookPreprocessControllerProvider(widget.bookId));
-    return Drawer(
-      child: TocDrawer(
-        toc: toc,
-        preprocessState: preprocess,
-        chapterIndexResolver: defaultTocChapterIndex,
-        onSelect: (entry) async {
-          await engine.gotoTocEntry(entry);
-          // 跳转后关闭抽屉。
-          if (context.mounted) {
-            Scaffold.of(context).closeDrawer();
-          }
-        },
-        onReviewChapter: engine is PdfReaderEngine ? null : _onOpenReview,
-      ),
-    );
   }
 
   /// 简化处理：暂未从 Book 元数据取得标题，显示统一占位。

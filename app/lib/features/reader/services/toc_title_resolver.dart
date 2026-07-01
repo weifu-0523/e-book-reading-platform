@@ -42,3 +42,19 @@ class TocTitleResolver {
     return map;
   }
 }
+
+/// Flattens a nested [TocEntry] tree into a flat list, preserving
+/// depth-first order. Used by readers that need first-where lookups on
+/// flattened TOC (e.g., citation `[ch=N]` resolution).
+List<TocEntry> flattenTocEntries(List<TocEntry> entries) {
+  final result = <TocEntry>[];
+  void walk(List<TocEntry> list) {
+    for (final e in list) {
+      result.add(e);
+      walk(e.children);
+    }
+  }
+
+  walk(entries);
+  return result;
+}
