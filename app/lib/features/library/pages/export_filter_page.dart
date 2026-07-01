@@ -68,16 +68,11 @@ class _ExportFilterPageState extends State<ExportFilterPage> {
       tagsByBookId: widget.tagsByBookId,
       now: widget.now,
     );
-    return raw
-        .where((b) => VaultExporter.hasContent(widget.notesByBookId[b.id]!))
-        .toList();
+    return raw.where((b) {
+      final note = widget.notesByBookId[b.id];
+      return note != null && VaultExporter.hasContent(note);
+    }).toList();
   }
-
-  int get _totalHighlights => _filteredBooks.fold<int>(
-        0,
-        (sum, b) =>
-            sum + (widget.notesByBookId[b.id]?.annotations.length ?? 0),
-      );
 
   void _reset() {
     setState(() {
@@ -91,6 +86,11 @@ class _ExportFilterPageState extends State<ExportFilterPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final filtered = _filteredBooks;
+    final totalHighlights = filtered.fold<int>(
+      0,
+      (sum, b) =>
+          sum + (widget.notesByBookId[b.id]?.annotations.length ?? 0),
+    );
     final isEmpty = filtered.isEmpty;
 
     return Scaffold(
@@ -114,10 +114,7 @@ class _ExportFilterPageState extends State<ExportFilterPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              l10n.exportFilterPreviewSummary(
-                filtered.length,
-                _totalHighlights,
-              ),
+              l10n.exportFilterPreviewSummary(filtered.length, totalHighlights),
               style: Theme.of(context).textTheme.titleSmall,
             ),
           ),
@@ -273,8 +270,8 @@ class _ExportFilterPageState extends State<ExportFilterPage> {
       title: Text(b.title),
       subtitle: Text(
         tags.isEmpty
-            ? '$highlights 高亮 / $notes 笔记'
-            : '$highlights 高亮 / $notes 笔记 · ${tags.map((t) => '#$t').join(' ')}',
+            ? '$highlights · $notes'
+            : '$highlights · $notes · ${tags.map((t) => '#$t').join(' ')}',
       ),
     );
   }
