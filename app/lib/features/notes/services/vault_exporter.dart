@@ -85,6 +85,13 @@ class VaultExportFailure {
 /// - Sorts by book title (ascending) so the index is stable across runs
 ///   regardless of insertion order.
 class VaultExporter {
+  /// 公开给筛选页调用，保证"筛选页预览的书 = 实际会被导出的书"。
+  /// 与 export() 内部的过滤条件**完全一致**，单一真相源。
+  static bool hasContent(BookNote n) =>
+      n.summary.isNotEmpty ||
+      n.keyTakeaways.isNotEmpty ||
+      n.annotations.isNotEmpty;
+
   /// Export [books] + [notesByBookId] into [targetDir].
   ///
   /// - Filters out books whose [BookNote] is missing or completely empty
@@ -104,10 +111,7 @@ class VaultExporter {
     final filtered = books.where((b) {
       final n = notesByBookId[b.id];
       if (n == null) return false;
-      final hasContent = n.summary.isNotEmpty ||
-          n.keyTakeaways.isNotEmpty ||
-          n.annotations.isNotEmpty;
-      return hasContent;
+      return VaultExporter.hasContent(n);
     }).toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 

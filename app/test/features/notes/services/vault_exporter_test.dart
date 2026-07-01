@@ -159,6 +159,32 @@ void main() {
       expect(calls[2], (3, 3, 'C'));
     });
   });
+
+  group('VaultExporter.hasContent (static)', () {
+    test('empty summary + empty takeaways + empty annotations = false', () {
+      expect(VaultExporter.hasContent(_note('b', 'X')), isFalse);
+    });
+
+    test('non-empty summary = true', () {
+      expect(VaultExporter.hasContent(_note('b', 'X', summary: 's')), isTrue);
+    });
+
+    test('non-empty takeaways = true', () {
+      expect(
+        VaultExporter.hasContent(_note('b', 'X', takeaways: const ['t'])),
+        isTrue,
+      );
+    });
+
+    test('non-empty annotations = true', () {
+      expect(
+        VaultExporter.hasContent(
+          _note('b', 'X', annotations: [_annotation('quote')]),
+        ),
+        isTrue,
+      );
+    });
+  });
 }
 
 Book _book(String id, String title) => Book(
