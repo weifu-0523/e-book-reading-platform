@@ -45,6 +45,13 @@ import 'typography_css.dart';
 class EpubxRenderer implements EpubRenderer {
   EpubxRenderer();
 
+  /// Scroll-mode chapter-end detection threshold (pixels from bottom).
+  ///
+  /// When `_scrollController.position.pixels >= maxScrollExtent -
+  /// [_kChapterEndScrollThresholdPx]`, the renderer considers the reader
+  /// "at chapter end" and emits a [ChapterEndEvent].
+  static const double _kChapterEndScrollThresholdPx = 64;
+
   final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
   final StreamController<HighlightSelection> _selectionController =
@@ -120,7 +127,7 @@ class EpubxRenderer implements EpubRenderer {
     } else {
       if (_scrollController.hasClients) {
         final pos = _scrollController.position;
-        isAtChapterEnd = pos.pixels >= pos.maxScrollExtent - 64;
+        isAtChapterEnd = pos.pixels >= pos.maxScrollExtent - _kChapterEndScrollThresholdPx;
       }
     }
 
@@ -224,6 +231,7 @@ class EpubxRenderer implements EpubRenderer {
     _cachedBreaks = null;
     _book = book;
     _currentChapterIndex = 0;
+    _chapterEndFiredForCurrentChapter = false;
     _beginChapterSwitch();
   }
 
@@ -252,6 +260,7 @@ class EpubxRenderer implements EpubRenderer {
       _cachedBreaks = null;
       _book = book;
       _currentChapterIndex = 0;
+      _chapterEndFiredForCurrentChapter = false;
       _scrollController.removeListener(_onScroll);  // prevent duplicate on repeated calls
       _scrollController.addListener(_onScroll);
       _setState(const ReaderEngineReady());
@@ -405,6 +414,7 @@ class EpubxRenderer implements EpubRenderer {
     }
     if (decoded.chapterIndex != _currentChapterIndex) {
       _currentChapterIndex = decoded.chapterIndex;
+      _chapterEndFiredForCurrentChapter = false;
       // Invalidate stale paged-mode breaks and mark a chapter switch so
       // callers can `await chapterSwitchSettled` to know when
       // `_cachedBreaks` has been repopulated for the new chapter.
