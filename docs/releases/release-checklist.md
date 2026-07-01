@@ -20,6 +20,12 @@
 - **Release notes 草稿**：见 [`release-notes-v1.1.0-alpha.md`](./release-notes-v1.1.0-alpha.md)
 - **执行**：同上，选 tag `v1.1.0-alpha`
 
+### v1.2.0-alpha Gitee Release 页面
+
+- **状态**：❌ **未创建**
+- **Release notes 草稿**：TODO（M2.2 完成后补，复用 v1.1.0-alpha 模板）
+- **执行**：同上，选 tag `v1.2.0-alpha`
+
 ### 截图补齐（3/4 缺失）
 
 | 文件 | 状态 | 捕获步骤 |
@@ -38,6 +44,15 @@
 - **执行**：用 DevTools timeline + performance overlay 测三组数据，记入 `docs/maintainers-runbook.md` §9.4 backfill
 
 ## 已完成
+
+### v1.2.0-alpha release 准备
+
+- ✅ tag `m2.2-complete` + `v1.2.0-alpha` 已推送（2026-07-01）
+- ✅ `README.md` 已同步到 v1.2.0-alpha 状态
+- ✅ M2.2 spec + plan 已交付（`docs/superpowers/specs/2026-07-01-m2-2-chapter-end-prompt-design.md`、`docs/superpowers/plans/2026-07-01-m2-2-chapter-end-prompt.md`）
+- ✅ TDD 全流程：9 个 task + subagent-driven development（每 task 双阶段 review）
+- ✅ 全量测试通过：782 passed + 3 skipped（+ 22 个 M2.2 新测试）
+- ✅ 4 个包 analyze clean（reader_engine / reader_engine_epub_view / reader_engine_pdf_view / app）
 
 ### v1.1.0-alpha release 准备
 
