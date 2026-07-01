@@ -11,7 +11,7 @@
 - ✅ **v1.0.0 GA 已发布**：Windows + Android 双端 release artifact，本地阅读 + AI 导读 + 坚果云同步全功能可用。
 - ✅ **v1.1.0-alpha**：在 v1.0 GA 基础上新增**章节学习回顾**（AI 用本章正文 + 用户高亮生成总结 + 要点）与 **Markdown 批量导出**（Obsidian vault 兼容）。
 - ✅ **v1.2.0-alpha**：新增**自动章节结束提示**（EPUB paged/scroll 模式翻到末页时弹出 SnackBar，提供「回顾本章 / 下一章 / 关闭」三个动作；可在 Settings 开关；首次启动根据 API key 配置情况默认开/关）。仍为 alpha：UI 文案、动效、错误恢复路径有待真实用户反馈打磨。
-- 🚧 **v1.3.0-alpha**：新增**批量导出范围筛选**（独立筛选页：按标签 OR / 按导入时间 / 按最近阅读；实时预览匹配书单 + 高亮总数；底部按钮直接显示"导出 N 本"）。仍为 alpha。
+- ✅ **v1.3.0-alpha**：新增**批量导出范围筛选**（独立筛选页：按标签 OR / 按导入时间 / 按最近阅读；实时预览匹配书单 + 高亮总数；底部按钮直接显示"导出 N 本"）。仍为 alpha：边界 UX、动效、错误恢复路径有待真实用户反馈打磨。
 - 下一步：补 3 张 release 截图（library/pdf/notes）+ 创建 Gitee Release 页面；之后规划 v1.4（跨书 AI 伴读、性能 baseline 测量）。
 
 ## 下载安装
@@ -71,7 +71,7 @@
 
 ## 后续阶段
 
-- **v1.3**：批量导出筛选（按 tag / 时间）、性能 baseline 测量
+- **v1.4**：性能 baseline 测量、reader_body 进一步拆分、release screenshot 补齐
 - **v1.5+**：跨书 AI 伴读、Zotero/Obsidian 双向同步、知识图谱
 - **长期**：iOS 端、Mac 端
 
