@@ -127,6 +127,7 @@ void main() {
     test('last7Days boundary', () {
       final books = [
         book(id: 'in', addedAt: now.subtract(const Duration(days: 6))),
+        book(id: 'atBoundary', addedAt: now.subtract(const Duration(days: 7))),
         book(id: 'out', addedAt: now.subtract(const Duration(days: 8))),
       ];
       final result = applyBookFilter(
@@ -135,12 +136,15 @@ void main() {
         tagsByBookId: const {},
         now: now,
       );
-      expect(result.map((b) => b.id), ['in']);
+      // <= 7 含端点：6 天、7 天都通过；8 天排除
+      expect(result.map((b) => b.id), containsAll(['in', 'atBoundary']));
+      expect(result.length, 2);
     });
 
     test('last30Days boundary', () {
       final books = [
         book(id: 'in', addedAt: now.subtract(const Duration(days: 29))),
+        book(id: 'atBoundary', addedAt: now.subtract(const Duration(days: 30))),
         book(id: 'out', addedAt: now.subtract(const Duration(days: 31))),
       ];
       final result = applyBookFilter(
@@ -149,12 +153,15 @@ void main() {
         tagsByBookId: const {},
         now: now,
       );
-      expect(result.map((b) => b.id), ['in']);
+      // <= 30 含端点：29 天、30 天都通过；31 天排除
+      expect(result.map((b) => b.id), containsAll(['in', 'atBoundary']));
+      expect(result.length, 2);
     });
 
     test('last90Days boundary', () {
       final books = [
         book(id: 'in', addedAt: now.subtract(const Duration(days: 89))),
+        book(id: 'atBoundary', addedAt: now.subtract(const Duration(days: 90))),
         book(id: 'out', addedAt: now.subtract(const Duration(days: 91))),
       ];
       final result = applyBookFilter(
@@ -163,7 +170,9 @@ void main() {
         tagsByBookId: const {},
         now: now,
       );
-      expect(result.map((b) => b.id), ['in']);
+      // <= 90 含端点：89 天、90 天都通过；91 天排除
+      expect(result.map((b) => b.id), containsAll(['in', 'atBoundary']));
+      expect(result.length, 2);
     });
 
     test('thisYear rejects last year', () {
