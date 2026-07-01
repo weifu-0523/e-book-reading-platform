@@ -27,6 +27,7 @@ import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 
 import 'epubx_renderer.dart';
+import 'src/chapter_end_event.dart';
 
 /// 包装 [EpubxRenderer] 的 [ReaderEngine] 具体实现。
 ///
@@ -63,6 +64,10 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
 
   @override
   Future<void> get chapterSwitchSettled => _renderer.chapterSwitchSettled;
+
+  /// Forward [EpubxRenderer.chapterEndEvents] so app layer can subscribe
+  /// without casting to [EpubxRenderer].
+  Stream<ChapterEndEvent> get chapterEndEvents => _renderer.chapterEndEvents;
 
   @override
   TableOfContents? get toc => _toc;
