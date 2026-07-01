@@ -4,14 +4,15 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.2.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.2.0-alpha)
+[![Version](https://img.shields.io/badge/version-1.3.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.3.0-alpha)
 
 ## 项目状态
 
 - ✅ **v1.0.0 GA 已发布**：Windows + Android 双端 release artifact，本地阅读 + AI 导读 + 坚果云同步全功能可用。
 - ✅ **v1.1.0-alpha**：在 v1.0 GA 基础上新增**章节学习回顾**（AI 用本章正文 + 用户高亮生成总结 + 要点）与 **Markdown 批量导出**（Obsidian vault 兼容）。
-- 🚧 **v1.2.0-alpha**：新增**自动章节结束提示**（EPUB paged/scroll 模式翻到末页时弹出 SnackBar，提供「回顾本章 / 下一章 / 关闭」三个动作；可在 Settings 开关；首次启动根据 API key 配置情况默认开/关）。仍为 alpha：UI 文案、动效、错误恢复路径有待真实用户反馈打磨。
-- 下一步：补 3 张 release 截图（library/pdf/notes）+ 创建 Gitee Release 页面；之后规划 v1.3（批量导出筛选、性能 baseline 测量）。
+- ✅ **v1.2.0-alpha**：新增**自动章节结束提示**（EPUB paged/scroll 模式翻到末页时弹出 SnackBar，提供「回顾本章 / 下一章 / 关闭」三个动作；可在 Settings 开关；首次启动根据 API key 配置情况默认开/关）。仍为 alpha：UI 文案、动效、错误恢复路径有待真实用户反馈打磨。
+- 🚧 **v1.3.0-alpha**：新增**批量导出范围筛选**（独立筛选页：按标签 OR / 按导入时间 / 按最近阅读；实时预览匹配书单 + 高亮总数；底部按钮直接显示"导出 N 本"）。仍为 alpha。
+- 下一步：补 3 张 release 截图（library/pdf/notes）+ 创建 Gitee Release 页面；之后规划 v1.4（跨书 AI 伴读、性能 baseline 测量）。
 
 ## 下载安装
 
@@ -64,6 +65,10 @@
 
 - **自动章节结束提示**（EPUB）：用户翻到一章末页（paged 或 scroll 模式）时弹出非阻塞 SnackBar，提供「回顾本章 / 下一章 / 关闭」三个动作。同章本次会话去重；Settings 页可全局开关；首次启动根据 API key 配置情况默认开/关。PDF 阅读不弹（pdfrx Page-as-Chapter 频繁打扰）。
 
+### v1.3.0-alpha 新增
+
+- **批量导出范围筛选**：Library 溢出菜单"导出为 Markdown"先开筛选页，支持按标签（多选 OR）、按导入时间、按最近阅读三维度组合筛选；实时预览匹配书目数与高亮总数；底部按钮直接显示"导出 N 本"。底层 `BookFilter` + `applyBookFilter` 纯函数 + 既有 `VaultExporter` 零改动；预览数 = 实际导出数的不变量由 `VaultExporter.hasContent` 公开为 static 保证。
+
 ## 后续阶段
 
 - **v1.3**：批量导出筛选（按 tag / 时间）、性能 baseline 测量
@@ -89,7 +94,7 @@
 
 ## 测试与质量
 
-- **测试**：782 通过 + 3 skipped（macOS-only golden + Windows release-build smoke + 1 性能测试）
+- **测试**：812 通过 + 3 skipped（macOS-only golden + Windows release-build smoke + 1 性能测试）
 - **静态分析**：0 errors / 0 warnings / 131 info（既有 cascade/const 风格 lint）
 - **文档**：836 行 maintainer's runbook + 16 milestone spec + 17 plan + 项目级 review
 - **CI**：手动（每 milestone 完成跑全量回归 + analyze）

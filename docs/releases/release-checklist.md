@@ -26,6 +26,12 @@
 - **Release notes 草稿**：TODO（M2.2 完成后补，复用 v1.1.0-alpha 模板）
 - **执行**：同上，选 tag `v1.2.0-alpha`
 
+### v1.3.0-alpha Gitee Release 页面
+
+- **状态**：❌ **未创建**
+- **Release notes 草稿**：TODO（M2.3 完成后补，复用 v1.1.0-alpha 模板）
+- **执行**：同上，选 tag `v1.3.0-alpha`
+
 ### 截图补齐（3/4 缺失）
 
 | 文件 | 状态 | 捕获步骤 |
@@ -44,6 +50,15 @@
 - **执行**：用 DevTools timeline + performance overlay 测三组数据，记入 `docs/maintainers-runbook.md` §9.4 backfill
 
 ## 已完成
+
+### v1.3.0-alpha release 准备
+
+- ✅ tag `m2.3-complete` + `v1.3.0-alpha` 已推送（2026-07-01）
+- ✅ `README.md` 已同步到 v1.3.0-alpha 状态
+- ✅ M2.3 spec + plan 已交付（`docs/superpowers/specs/2026-07-01-m2-3-export-filter-design.md`、`docs/superpowers/plans/2026-07-01-m2-3-export-filter.md`）
+- ✅ TDD 全流程：8 个 task + subagent-driven development（每 task 双阶段 review）
+- ✅ 全量测试通过：812 passed + 3 skipped
+- ✅ 4 个包 analyze clean
 
 ### v1.2.0-alpha release 准备
 
