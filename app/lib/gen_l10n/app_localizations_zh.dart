@@ -647,4 +647,22 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get batchExportOpenFolder => '打开文件夹';
+
+  @override
+  String get chapterEndPromptMessage => '本章已读完？';
+
+  @override
+  String get chapterEndPromptReview => '回顾本章';
+
+  @override
+  String get chapterEndPromptNext => '下一章';
+
+  @override
+  String get chapterEndPromptDismiss => '关闭';
+
+  @override
+  String get settingsChapterEndPrompt => '章节结束提示';
+
+  @override
+  String get settingsChapterEndPromptSubtitle => '翻到一章末页时提示回顾';
 }

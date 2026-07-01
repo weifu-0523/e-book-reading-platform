@@ -20,11 +20,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+import 'bootstrap/chapter_end_prompt_default.dart';
 import 'core/app.dart';
 import 'core/app_providers.dart';
 import 'core/providers.dart';
 import 'core/router.dart';
 import 'core/scaffold_messenger_key.dart';
+import 'services/ai/api_key_store.dart';
 import 'services/book_open_bridge.dart';
 
 void main(List<String> args) async {
@@ -53,6 +55,13 @@ void main(List<String> args) async {
       ),
     );
   });
+
+  // M2.2/T6: seed chapter-end prompt default on first launch.
+  unawaited(() async {
+    final settings = container.read(settingsRepositoryProvider);
+    final apiKeys = ApiKeyStore();
+    await ensureChapterEndPromptDefault(settings: settings, apiKeys: apiKeys);
+  }());
 
   runApp(
     UncontrolledProviderScope(

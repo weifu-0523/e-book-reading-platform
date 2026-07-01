@@ -352,5 +352,17 @@
     }
   },
   "batchExportOpenFolder": "Open folder",
-  "@batchExportOpenFolder": {}
+  "@batchExportOpenFolder": {},
+  "chapterEndPromptMessage": "Finished this chapter?",
+  "@chapterEndPromptMessage": {},
+  "chapterEndPromptReview": "Review chapter",
+  "@chapterEndPromptReview": {},
+  "chapterEndPromptNext": "Next chapter",
+  "@chapterEndPromptNext": {},
+  "chapterEndPromptDismiss": "Dismiss",
+  "@chapterEndPromptDismiss": {},
+  "settingsChapterEndPrompt": "Chapter-end prompt",
+  "@settingsChapterEndPrompt": {},
+  "settingsChapterEndPromptSubtitle": "Prompt when reaching end of chapter",
+  "@settingsChapterEndPromptSubtitle": {}
 }

@@ -660,4 +660,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get batchExportOpenFolder => 'Open folder';
+
+  @override
+  String get chapterEndPromptMessage => 'Finished this chapter?';
+
+  @override
+  String get chapterEndPromptReview => 'Review chapter';
+
+  @override
+  String get chapterEndPromptNext => 'Next chapter';
+
+  @override
+  String get chapterEndPromptDismiss => 'Dismiss';
+
+  @override
+  String get settingsChapterEndPrompt => 'Chapter-end prompt';
+
+  @override
+  String get settingsChapterEndPromptSubtitle =>
+      'Prompt when reaching end of chapter';
 }

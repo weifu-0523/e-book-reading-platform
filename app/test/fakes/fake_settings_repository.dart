@@ -8,6 +8,9 @@ class FakeSettingsRepository implements SettingsRepository {
       _map[key] as T? ?? defaultValue;
 
   @override
+  Future<T?> getOrNull<T>(String key) async => _map[key] as T?;
+
+  @override
   Future<void> set<T>(String key, T value) async => _map[key] = value;
 
   /// Synchronous variant for test setup. Sets [key] to [value] in the

@@ -474,5 +474,17 @@
     }
   },
   "batchExportOpenFolder": "打开文件夹",
-  "@batchExportOpenFolder": {}
+  "@batchExportOpenFolder": {},
+  "chapterEndPromptMessage": "本章已读完？",
+  "@chapterEndPromptMessage": {},
+  "chapterEndPromptReview": "回顾本章",
+  "@chapterEndPromptReview": {},
+  "chapterEndPromptNext": "下一章",
+  "@chapterEndPromptNext": {},
+  "chapterEndPromptDismiss": "关闭",
+  "@chapterEndPromptDismiss": {},
+  "settingsChapterEndPrompt": "章节结束提示",
+  "@settingsChapterEndPrompt": {},
+  "settingsChapterEndPromptSubtitle": "翻到一章末页时提示回顾",
+  "@settingsChapterEndPromptSubtitle": {}
 }

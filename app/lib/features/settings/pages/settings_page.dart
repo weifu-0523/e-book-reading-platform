@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
+import '../../reader/providers/chapter_end_prompt_enabled_provider.dart';
 import '../widgets/language_section.dart';
 import '../widgets/theme_section.dart';
 
@@ -39,6 +40,7 @@ class SettingsPage extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/settings/typography'),
           ),
+          const _ChapterEndPromptTile(),
           _SectionHeader(label: l10n.settingsSectionFonts),
           ListTile(
             leading: const Icon(Icons.font_download_outlined),
@@ -90,6 +92,29 @@ class _SectionHeader extends StatelessWidget {
               .textTheme
               .labelLarge
               ?.copyWith(color: Theme.of(context).colorScheme.primary)),
+    );
+  }
+}
+
+class _ChapterEndPromptTile extends ConsumerWidget {
+  const _ChapterEndPromptTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final asyncEnabled = ref.watch(chapterEndPromptEnabledProvider);
+    return SwitchListTile(
+      title: Text(l10n.settingsChapterEndPrompt),
+      subtitle: Text(l10n.settingsChapterEndPromptSubtitle),
+      value: asyncEnabled.maybeWhen(
+        data: (v) => v,
+        orElse: () => false,
+      ),
+      onChanged: asyncEnabled.maybeWhen(
+        data: (_) => (v) =>
+            ref.read(chapterEndPromptEnabledProvider.notifier).set(v),
+        orElse: () => null,
+      ),
     );
   }
 }

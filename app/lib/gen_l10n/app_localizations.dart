@@ -1273,6 +1273,42 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'打开文件夹'**
   String get batchExportOpenFolder;
+
+  /// No description provided for @chapterEndPromptMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'本章已读完？'**
+  String get chapterEndPromptMessage;
+
+  /// No description provided for @chapterEndPromptReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'回顾本章'**
+  String get chapterEndPromptReview;
+
+  /// No description provided for @chapterEndPromptNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一章'**
+  String get chapterEndPromptNext;
+
+  /// No description provided for @chapterEndPromptDismiss.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get chapterEndPromptDismiss;
+
+  /// No description provided for @settingsChapterEndPrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'章节结束提示'**
+  String get settingsChapterEndPrompt;
+
+  /// No description provided for @settingsChapterEndPromptSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'翻到一章末页时提示回顾'**
+  String get settingsChapterEndPromptSubtitle;
 }
 
 class _AppLocalizationsDelegate
