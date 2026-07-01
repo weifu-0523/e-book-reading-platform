@@ -34,6 +34,7 @@ import 'package:reader_engine/rendering/renderer.dart';
 import 'cfi_codec.dart';
 import 'html_highlight_injector.dart';
 import 'paginator.dart';
+import 'src/chapter_end_event.dart';
 import 'typography_css.dart';
 
 /// epubx + flutter_widget_from_html 实现的 [EpubRenderer]。
@@ -79,6 +80,58 @@ class EpubxRenderer implements EpubRenderer {
   /// Each call to [_beginChapterSwitch] arms a fresh completer and schedules
   /// it to complete on the next post-frame callback.
   Completer<void>? _chapterSwitchCompleter;
+
+  /// Broadcast stream for [chapterEndEvents]. Emits at most once per chapter
+  /// visit (gated by [_chapterEndFiredForCurrentChapter], which [setChapter]
+  /// resets).
+  final StreamController<ChapterEndEvent> _chapterEndController =
+      StreamController<ChapterEndEvent>.broadcast();
+
+  /// True after a [ChapterEndEvent] has been emitted for the current chapter
+  /// visit. Reset to `false` in [setChapter] so each visit can re-emit.
+  bool _chapterEndFiredForCurrentChapter = false;
+
+  /// Emits a [ChapterEndEvent] when the reader reaches the last page of the
+  /// current chapter (paged mode) or scrolls within 64px of the bottom
+  /// (scroll mode). Fires at most once per chapter visit — the internal
+  /// flag resets when [setChapter] runs.
+  Stream<ChapterEndEvent> get chapterEndEvents => _chapterEndController.stream;
+
+  /// Test-only entry to [_maybeEmitChapterEnd]. Lets unit tests verify the
+  /// emit logic without pumping the widget tree.
+  @visibleForTesting
+  void maybeEmitChapterEndForTest() => _maybeEmitChapterEnd();
+
+  /// Emit a [ChapterEndEvent] if the current view position is at the chapter
+  /// end (last page in paged mode, or within 64px of bottom in scroll mode).
+  /// No-op if already fired for the current chapter visit, or if no book is
+  /// loaded, or if the scroll/page controllers have no clients yet.
+  void _maybeEmitChapterEnd() {
+    if (_chapterEndFiredForCurrentChapter) return;
+    if (_book == null) return;
+
+    bool isAtChapterEnd = false;
+    if (_paginationMode == PaginationMode.paged) {
+      final breaks = _cachedBreaks;
+      if (breaks != null && breaks.isNotEmpty && _pageController.hasClients) {
+        final page = _pageController.page?.round() ?? 0;
+        isAtChapterEnd = page >= breaks.length - 1;
+      }
+    } else {
+      if (_scrollController.hasClients) {
+        final pos = _scrollController.position;
+        isAtChapterEnd = pos.pixels >= pos.maxScrollExtent - 64;
+      }
+    }
+
+    if (!isAtChapterEnd) return;
+    _chapterEndFiredForCurrentChapter = true;
+    final chapters = flatChapters;
+    _chapterEndController.add(ChapterEndEvent(
+      chapterIndex: _currentChapterIndex,
+      isLastChapter: _currentChapterIndex >= chapters.length - 1,
+    ));
+  }
 
   /// Future that completes when the current chapter switch has settled.
   ///
@@ -225,6 +278,7 @@ class EpubxRenderer implements EpubRenderer {
     final chapters = flatChapters;
     if (index < 0 || index >= chapters.length) return;
     _currentChapterIndex = index;
+    _chapterEndFiredForCurrentChapter = false;
     _cachedBreaks = null;
     _beginChapterSwitch();
     if (_scrollController.hasClients) {
@@ -239,6 +293,7 @@ class EpubxRenderer implements EpubRenderer {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     _emitCurrentLocation();
+    _maybeEmitChapterEnd();
   }
 
   void _emitCurrentLocation() {
@@ -490,6 +545,7 @@ class EpubxRenderer implements EpubRenderer {
         return PageView.builder(
           controller: _pageController,
           itemCount: breaks.length,
+          onPageChanged: (_) => _maybeEmitChapterEnd(),
           itemBuilder: (context, i) {
             final start = breaks[i].startOffset.clamp(0, plain.length);
             final end = breaks[i].endOffset.clamp(start, plain.length);
@@ -509,6 +565,7 @@ class EpubxRenderer implements EpubRenderer {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _pageController.dispose();
+    await _chapterEndController.close();
     await _stateController.close();
     await _locationController.close();
     await _selectionController.close();
