@@ -7,7 +7,79 @@
 
 ## [Unreleased]
 
-v1.1.0-alpha 之后的新变更将记在此处。
+v1.4.0-alpha 之后的新变更将记在此处。
+
+## [1.4.0-alpha] — 2026-07-01
+
+v1.4.0-alpha 是 v1.3.0-alpha 之后的一次"release hygiene sweep"——把 Phase 3+ 之前所有遗留的 housekeeping 工作（reader 代码拆分、lint 清理、文档同步、截图补齐、Gitee Release 页面创建）一次性解决。**没有新功能**。
+
+### Changed
+
+- **Code hygiene**：`reader_body.dart` minimal split（644 → 578 行）。抽出 `ReaderChapterEndPrompt`（controller lifecycle + SnackBar emission）和 `ReaderSelectionToolbar`（Positioned overlay）两个零依赖 widget 到 `features/reader/widgets/`。零行为变化（全量测试通过）。
+- **Lint cleanup**：49 个 info lints → 0 via `dart fix --apply` + 手工清理（rename `_`-prefixed 局部变量、`unawaited()` wrap、剩余 cascade 加 `// ignore` + 注释）。
+
+### Documentation
+
+- `maintainers-runbook.md §9.4.1` — v1.4 perf re-test decision（v1.0.0 baseline 沿用，无渲染/DB/sync 重大改动；列下次强制复测触发条件）。
+- `release-procedure.md` — step 1/2/12 同步当前版本号（1.3.0-alpha+0）、测试数（812）、AGPLv3 阈值（=0）。
+- `release-notes-v1.4.0-alpha.md` — Gitee Release body 草稿。
+
+### Infrastructure
+
+- 3 张 release 截图补齐（library / pdf_reader / notes）。
+- 4 个 Gitee Release 页面创建（v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha）。
+
+### Technical
+
+- 补回遗漏的 `[1.2.0-alpha]` 与 `[1.3.0-alpha]` CHANGELOG 段落（见下）。
+- AGPLv3 头覆盖率：100%（生成文件除外）。
+- 全量测试：818 pass + 3 skipped（M2.3 baseline 812 + 6 个 M2.4 新测试）。
+
+## [1.3.0-alpha] — 2026-07-01
+
+M2.3 交付：**批量导出范围筛选**。库 AppBar "导出为 Markdown" 先开筛选页，支持按标签（多选 OR）/ 按导入时间 / 按最近阅读三维度组合筛选；实时预览匹配书单 + 高亮总数；底部按钮直接显示"导出 N 本"。底层 `BookFilter` 值类 + `applyBookFilter` 纯函数 + 既有 `VaultExporter` 零改动；预览数 = 实际导出数的不变量由 `VaultExporter.hasContent` 提为 static 保证。
+
+### Added
+
+- `app/lib/features/library/models/book_filter.dart`（T1）— `@immutable` 值类（Set<String> tags + 2 个 TimeWindow 字段；SetEquality 深相等）。
+- `app/lib/features/library/services/book_filter_applicator.dart`（T2）— 纯函数 `applyBookFilter({books, filter, tagsByBookId, now})`；OR 语义、5 段预设区间。
+- `app/lib/data/local/daos/book_tags_dao.dart`（T3）— 新增 `allTagsByBook()` 单 SELECT bulk。
+- `app/lib/features/notes/services/vault_exporter.dart`（T4）— 把"判断 BookNote 是否有内容"内联逻辑提取为 `static bool hasContent(BookNote n)` 公开方法。
+- 13 个新 i18n key（中英双语）。
+- `app/lib/features/library/pages/export_filter_page.dart`（T6，281 行）— 独立筛选页 StatefulWidget。
+
+### Changed
+
+- `LibraryAppBar._startBatchExport` 改写：fetch notes → 空短路 → fetch tags → `showDialog<BookFilter?>` → `applyBookFilter` → file_picker + BatchExportDialog。
+
+### Technical
+
+- 30 个新测试（全量 812 pass + 3 skipped）。
+- subagent-driven development: T1-T9 每 task 双阶段 review；T2 boundary test 抓住 off-by-one risk。
+
+## [1.2.0-alpha] — 2026-07-01
+
+M2.2 交付：**自动章节结束提示**（EPUB only）。用户翻到 EPUB 一章末页（paged 或 scroll 模式）时，自动弹出非阻塞 SnackBar，提供「回顾本章 / 下一章 / 关闭」三个动作。PDF 阅读不弹（pdfrx Page-as-Chapter 频繁打扰）。
+
+### Added
+
+- `reader_engine_epub_view/lib/src/chapter_end_event.dart` — 纯数据类（chapterIndex + isLastChapter，值相等）。
+- `EpubxRenderer.chapterEndEvents`（broadcast Stream）— 内部 flag 同次访问去抖。
+- `ChapterEndDetector`（app 层）— per-session per-(bookId, chapterIndex) Set 去重。
+- `ChapterEndPromptController`（StateNotifier）— settings gate + mounted 检查。
+- `ChapterEndPromptSnackBar` — 自定义 content Row（3 个 TextButton；Next 条件显示）。
+- `kChapterEndPromptEnabledKey` const + `chapterEndPromptEnabledProvider` AsyncValue<bool> + `ensureChapterEndPromptDefault` 首次启动默认值 seeding。
+- Settings 页 `_ChapterEndPromptTile` ConsumerWidget。
+
+### Changed
+
+- `reader_engine_epub_view/lib/src/epubx_renderer.dart` 4 个 `_currentChapterIndex =` 写入点都重置 flag（setChapter / gotoLocator / openFile / bookForTesting）。
+- `reader_body._ReaderBodyState` — lazy init + addListener 边沿检测（hidden→visible）+ ScaffoldMessenger.showSnackBar。
+
+### Technical
+
+- 22 个新测试（全量 782 pass + 3 skipped）。
+- spec §2.2 明确推后 PDF 路径（pdfrx controller plumbing 留待 future）。
 
 ## [1.1.0-alpha] — 2026-07-01
 
