@@ -30,6 +30,8 @@ import '../providers/review_controller.dart';
 ///
 /// [onSaved] is invoked after the user taps "save" — the caller does the
 /// actual persistence (calling `applyChapterReview` on the notes repo).
+/// The sheet awaits [onSaved] before popping so the modal doesn't dismiss
+/// mid-write (which would race with `applyChapterReview`'s DB insert).
 class ReviewPreviewSheet extends ConsumerWidget {
   const ReviewPreviewSheet({
     super.key,
@@ -42,7 +44,7 @@ class ReviewPreviewSheet extends ConsumerWidget {
   final String bookId;
   final int chapterIndex;
   final String? chapterTitle;
-  final VoidCallback? onSaved;
+  final Future<void> Function()? onSaved;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -146,9 +148,9 @@ class ReviewPreviewSheet extends ConsumerWidget {
           ),
           FilledButton(
             onPressed: canSave
-                ? () {
-                    onSaved?.call();
-                    Navigator.of(context).maybePop();
+                ? () async {
+                    await onSaved?.call();
+                    if (context.mounted) Navigator.of(context).maybePop();
                   }
                 : null,
             child: Text(l10n.reviewSaveButton),

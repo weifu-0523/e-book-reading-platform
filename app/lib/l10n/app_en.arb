@@ -344,11 +344,11 @@
       "failed": { "type": "int" }
     }
   },
-  "batchExportCancelled": "Cancelled, exported {success}/{total}",
+  "batchExportCancelled": "Cancelled, exported {count} books to {path}",
   "@batchExportCancelled": {
     "placeholders": {
-      "success": { "type": "int" },
-      "total": { "type": "int" }
+      "count": { "type": "int" },
+      "path": { "type": "String" }
     }
   },
   "batchExportOpenFolder": "Open folder",

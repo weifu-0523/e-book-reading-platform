@@ -466,11 +466,11 @@
       "failed": { "type": "int" }
     }
   },
-  "batchExportCancelled": "已取消，导出 {success}/{total}",
+  "batchExportCancelled": "已取消，已导出 {count} 本书到 {path}",
   "@batchExportCancelled": {
     "placeholders": {
-      "success": { "type": "int" },
-      "total": { "type": "int" }
+      "count": { "type": "int" },
+      "path": { "type": "String" }
     }
   },
   "batchExportOpenFolder": "打开文件夹",

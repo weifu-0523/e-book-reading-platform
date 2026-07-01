@@ -196,16 +196,22 @@ class BookReviewer implements BookReviewerLike {
     }
 
     // 8. Persist raw JSON for cache hits on subsequent reviews of the
-    //    same (text, highlights) pair.
-    await aiSummariesDao.insert(
-      bookId: book.id,
-      mode: _modeKey,
-      sourceHash: sourceHash,
-      summaryText: accumulated.toString(),
-      modelName: creds.model,
-      baseUrl: creds.baseUrl,
-      promptVersion: PromptBuilder.promptVersion,
-    );
+    //    same (text, highlights) pair. Best-effort: a DB hiccup must not
+    //    cost the user the review they already paid for in LLM tokens.
+    //    Mirrors `BookQaService.ask` persist-swallow pattern.
+    try {
+      await aiSummariesDao.insert(
+        bookId: book.id,
+        mode: _modeKey,
+        sourceHash: sourceHash,
+        summaryText: accumulated.toString(),
+        modelName: creds.model,
+        baseUrl: creds.baseUrl,
+        promptVersion: PromptBuilder.promptVersion,
+      );
+    } catch (_) {
+      // Swallow — review still surfaced to UI; next review will re-bill.
+    }
 
     // 9. Emit Complete with parsed fields.
     yield ReviewCompleteEvent(
@@ -249,6 +255,12 @@ class BookReviewer implements BookReviewerLike {
   /// sha256 of joined quote strings. Empty string when no highlights —
   /// distinct from any non-empty signature, so adding the first highlight
   /// invalidates the cache.
+  ///
+  /// **Intentionally hashes only [Annotation.quote], not `note`**: editing
+  /// a highlight's note (the comment, not the quoted text) must NOT
+  /// invalidate the cache. The note is the user's annotation on the
+  /// review, not part of the input the LLM saw. If a future spec wants
+  /// note edits to invalidate, broaden the join to include `h.note`.
   static String _highlightsSignature(List<Annotation> highlights) {
     if (highlights.isEmpty) return '';
     final joined = highlights.map((h) => h.quote).join('\n');

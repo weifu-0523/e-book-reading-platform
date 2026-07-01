@@ -654,8 +654,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String batchExportCancelled(int success, int total) {
-    return 'Cancelled, exported $success/$total';
+  String batchExportCancelled(int count, String path) {
+    return 'Cancelled, exported $count books to $path';
   }
 
   @override

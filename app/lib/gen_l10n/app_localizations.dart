@@ -1265,8 +1265,8 @@ abstract class AppLocalizations {
   /// No description provided for @batchExportCancelled.
   ///
   /// In zh, this message translates to:
-  /// **'已取消，导出 {success}/{total}'**
-  String batchExportCancelled(int success, int total);
+  /// **'已取消，已导出 {count} 本书到 {path}'**
+  String batchExportCancelled(int count, String path);
 
   /// No description provided for @batchExportOpenFolder.
   ///

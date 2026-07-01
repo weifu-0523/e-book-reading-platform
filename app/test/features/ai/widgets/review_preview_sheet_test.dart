@@ -65,7 +65,7 @@ void main() {
         bookId: 'b1',
         chapterIndex: 0,
         chapterTitle: 'X',
-        onSaved: () => saved = true,
+        onSaved: () async => saved = true,
       )),
     ));
     await tester.pump();

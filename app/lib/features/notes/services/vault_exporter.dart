@@ -32,6 +32,11 @@ import 'note_file_writer.dart';
 ///   `index.md`.
 /// - [failures]: per-book errors caught during the loop — export continues
 ///   on error so a single bad book doesn't abort the whole batch.
+/// - [wasCancelled]: true iff the user pressed cancel mid-export. When
+///   true, [booksExported] reflects the partial count up to the cancel
+///   point and `index.md` is still written (so partial output is usable).
+///   Callers can use this to choose between "exported N books" and
+///   "cancelled after N books" messaging.
 class VaultExportResult {
   const VaultExportResult({
     required this.booksExported,
@@ -39,6 +44,7 @@ class VaultExportResult {
     required this.totalNotes,
     required this.writtenFiles,
     required this.failures,
+    this.wasCancelled = false,
   });
 
   final int booksExported;
@@ -46,6 +52,7 @@ class VaultExportResult {
   final int totalNotes;
   final List<String> writtenFiles;
   final List<VaultExportFailure> failures;
+  final bool wasCancelled;
 }
 
 /// A single book that failed to export. The batch continues after recording.
@@ -113,6 +120,9 @@ class VaultExporter {
     var totalHighlights = 0;
     var totalNotes = 0;
     final allTags = <String>{};
+    // Per-book deduped tag sets, computed once here and reused by
+    // _buildIndex (which previously re-derived them per book).
+    final bookTags = <String, Set<String>>{};
 
     for (var i = 0; i < filtered.length; i++) {
       final book = filtered[i];
@@ -130,9 +140,11 @@ class VaultExporter {
         writtenFiles.add(filename);
         totalHighlights += note.annotations.length;
         totalNotes += note.annotations.where((a) => a.hasNote).length;
-        for (final a in note.annotations) {
-          allTags.addAll(a.tags);
-        }
+        final tags = note.annotations
+            .expand((a) => a.tags)
+            .toSet();
+        bookTags[book.id] = tags;
+        allTags.addAll(tags);
       } catch (e) {
         failures.add(VaultExportFailure(
           bookId: book.id,
@@ -150,6 +162,7 @@ class VaultExporter {
       totalHighlights: totalHighlights,
       totalNotes: totalNotes,
       allTags: allTags,
+      bookTags: bookTags,
     );
     final indexPath = p.join(targetDir.path, 'index.md');
     await File(indexPath).writeAsString(indexContent);
@@ -171,6 +184,7 @@ class VaultExporter {
     required int totalHighlights,
     required int totalNotes,
     required Set<String> allTags,
+    required Map<String, Set<String>> bookTags,
   }) {
     final iso = _formatIso(now);
     final dateStr =
@@ -200,9 +214,7 @@ class VaultExporter {
       final notes = note.annotations.where((a) => a.hasNote).length;
       final fileBaseName =
           '${NoteFileWriter.sanitizeForFilename(book.title)} - 读书笔记';
-      final tagsStr = note.annotations
-          .expand((a) => a.tags)
-          .toSet()
+      final tagsStr = (bookTags[book.id] ?? const <String>{})
           .map((t) => '#$t')
           .join(' ');
       final suffix = tagsStr.isEmpty ? '' : ' · $tagsStr';

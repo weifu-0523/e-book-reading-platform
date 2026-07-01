@@ -641,8 +641,8 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String batchExportCancelled(int success, int total) {
-    return '已取消，导出 $success/$total';
+  String batchExportCancelled(int count, String path) {
+    return '已取消，已导出 $count 本书到 $path';
   }
 
   @override

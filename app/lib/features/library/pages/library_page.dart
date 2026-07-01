@@ -398,6 +398,9 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     VaultExportResult result,
     String path,
   ) {
+    if (result.wasCancelled) {
+      return l10n.batchExportCancelled(result.booksExported, path);
+    }
     if (result.failures.isEmpty) {
       return l10n.batchExportSuccess(result.booksExported, path);
     }

@@ -101,6 +101,7 @@ class _BatchExportDialogState extends State<BatchExportDialog> {
           totalNotes: 0,
           writtenFiles: const [],
           failures: const [],
+          wasCancelled: true,
         ));
       }
     } catch (_) {
