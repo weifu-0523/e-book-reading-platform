@@ -113,10 +113,19 @@ class QaHistoryDao extends DatabaseAccessor<AppDatabase>
   }
 
   QaHistoryEntry _toEntry(QaHistoryData row) {
-    final decoded = jsonDecode(row.citationsJson);
-    final citations = decoded is List
-        ? decoded.map((e) => (e as num).toInt()).toList(growable: false)
-        : const <int>[];
+    // Tolerate malformed citations_json (P1-5 fix): rows can be corrupted
+    // by sync conflict merges, manual DB edits, or writes from older
+    // versions. Default to empty list rather than crashing the UI list.
+    List<int> citations = const <int>[];
+    try {
+      final decoded = jsonDecode(row.citationsJson);
+      if (decoded is List) {
+        citations =
+            decoded.map((e) => (e as num).toInt()).toList(growable: false);
+      }
+    } catch (_) {
+      // Swallow — citations default to empty.
+    }
     return QaHistoryEntry(
       id: row.id,
       bookId: row.bookId,

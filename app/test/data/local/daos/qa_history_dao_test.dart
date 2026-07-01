@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/database.dart';
 
@@ -99,5 +100,50 @@ void main() {
     expect(removed, 2);
     expect(await db.qaHistoryDao.getByBook('b1'), isEmpty);
     expect((await db.qaHistoryDao.getByBook('b2')).length, 1);
+  });
+
+  test('getByBook tolerates malformed citations_json (P1-5)', () async {
+    // P1-5 regression test: if a row's citations_json is corrupted (sync
+    // conflict merge artifact, manual DB edit, old version write),
+    // _toEntry must not throw — UI list pages would crash. Default to
+    // empty citations list instead.
+    await seedBook('b1');
+    await db.customInsert(
+      "INSERT INTO qa_history(id, book_id, question, answer, citations_json, created_at) "
+      "VALUES(?, ?, ?, ?, ?, ?)",
+      variables: [
+        Variable.withString('q1'),
+        Variable.withString('b1'),
+        Variable.withString('Q'),
+        Variable.withString('A'),
+        Variable.withString(''), // malformed: empty string is not valid JSON
+        Variable.withDateTime(DateTime.utc(2026, 7, 1)),
+      ],
+    );
+
+    final list = await db.qaHistoryDao.getByBook('b1');
+    expect(list, hasLength(1));
+    expect(list.first.citations, isEmpty);
+    expect(list.first.question, 'Q');
+  });
+
+  test('findSameQuestion tolerates malformed citations_json (P1-5)', () async {
+    await seedBook('b1');
+    await db.customInsert(
+      "INSERT INTO qa_history(id, book_id, question, answer, citations_json, created_at) "
+      "VALUES(?, ?, ?, ?, ?, ?)",
+      variables: [
+        Variable.withString('q1'),
+        Variable.withString('b1'),
+        Variable.withString('What?'),
+        Variable.withString('A'),
+        Variable.withString('not-valid-json'),
+        Variable.withDateTime(DateTime.utc(2026, 7, 1)),
+      ],
+    );
+
+    final hit = await db.qaHistoryDao.findSameQuestion('b1', 'What?');
+    expect(hit, isNotNull);
+    expect(hit!.citations, isEmpty);
   });
 }
