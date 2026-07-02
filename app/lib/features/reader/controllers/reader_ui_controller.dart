@@ -30,6 +30,20 @@ class ReaderUiState {
     this.typographyPanelOpen = false,
   });
 
+  /// 平台相关的默认状态：桌面端 chrome 默认可见，移动端默认隐藏
+  /// （移动端走全屏模式，由 T9 接管）。
+  factory ReaderUiState.defaults() {
+    final platform = defaultTargetPlatform;
+    final isDesktop = platform == TargetPlatform.windows ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.linux;
+    return ReaderUiState(
+      chromeVisible: isDesktop,
+      tocDrawerOpen: false,
+      typographyPanelOpen: false,
+    );
+  }
+
   ReaderUiState copyWith({
     bool? chromeVisible,
     bool? tocDrawerOpen,
@@ -44,7 +58,7 @@ class ReaderUiState {
 }
 
 class ReaderUiController extends StateNotifier<ReaderUiState> {
-  ReaderUiController() : super(const ReaderUiState());
+  ReaderUiController() : super(ReaderUiState.defaults());
 
   void toggleChrome() => state = state.copyWith(chromeVisible: !state.chromeVisible);
   void openTocDrawer() => state = state.copyWith(tocDrawerOpen: true);
