@@ -61,6 +61,9 @@ dependencies:
   intl: ^0.20.0
   url_launcher: ^6.3.2
 
+  # M2.5/T9: 桌面端全屏模式（windows/macos/linux）
+  window_manager: ^0.4.3
+
 dependency_overrides:
   # M4: epubx 4.0.0 pins image ^3.0.8 AND passes List<int> to
   # decodeImage (incompatible with image 4.x). pdfrx_engine 0.4.3

@@ -16,9 +16,11 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'bootstrap/chapter_end_prompt_default.dart';
 import 'core/app.dart';
@@ -32,6 +34,13 @@ import 'services/book_open_bridge.dart';
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   unawaited(pdfrxFlutterInitialize()); // M4: pdfrx 引擎初始化
+
+  // M2.5/T9：桌面平台初始化 window_manager（用于全屏模式切换）。
+  if (defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux) {
+    await windowManager.ensureInitialized();
+  }
 
   final container = ProviderContainer(overrides: providers);
 

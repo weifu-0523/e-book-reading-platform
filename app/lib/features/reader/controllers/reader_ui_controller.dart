@@ -17,6 +17,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'fullscreen_controller.dart';
+
 /// Reader drawer 统一抽屉的 tab 选项（T7 起 drawer/endDrawer 合并为单 Drawer）。
 enum DrawerTab { toc, bookmarks, notes }
 
@@ -32,12 +34,17 @@ class ReaderUiState {
   /// 40px 折叠态；`false`（默认）为 280px 展开态。窄屏路径不受此字段影响。
   final bool tocSidebarCollapsed;
 
+  /// T9：是否处于全屏模式。进入全屏时 [chromeVisible] 被置为 false；
+  /// 退出全屏时按平台默认值（桌面=true，移动=false）恢复。
+  final bool isFullscreen;
+
   const ReaderUiState({
     this.chromeVisible = false,
     this.tocDrawerOpen = false,
     this.typographyPanelOpen = false,
     this.activeDrawerTab = DrawerTab.toc,
     this.tocSidebarCollapsed = false,
+    this.isFullscreen = false,
   });
 
   /// 平台相关的默认状态：桌面端 chrome 默认可见，移动端默认隐藏
@@ -53,6 +60,7 @@ class ReaderUiState {
       typographyPanelOpen: false,
       activeDrawerTab: DrawerTab.toc,
       tocSidebarCollapsed: false,
+      isFullscreen: false,
     );
   }
 
@@ -62,6 +70,7 @@ class ReaderUiState {
     bool? typographyPanelOpen,
     DrawerTab? activeDrawerTab,
     bool? tocSidebarCollapsed,
+    bool? isFullscreen,
   }) {
     return ReaderUiState(
       chromeVisible: chromeVisible ?? this.chromeVisible,
@@ -70,12 +79,18 @@ class ReaderUiState {
       activeDrawerTab: activeDrawerTab ?? this.activeDrawerTab,
       tocSidebarCollapsed:
           tocSidebarCollapsed ?? this.tocSidebarCollapsed,
+      isFullscreen: isFullscreen ?? this.isFullscreen,
     );
   }
 }
 
 class ReaderUiController extends StateNotifier<ReaderUiState> {
-  ReaderUiController() : super(ReaderUiState.defaults());
+  /// T9：注入平台全屏实现。生产环境由 provider 按 [defaultTargetPlatform]
+  /// 选择，测试用 [NoopFullscreenController]。
+  final FullscreenController fullscreenController;
+
+  ReaderUiController({required this.fullscreenController})
+      : super(ReaderUiState.defaults());
 
   void toggleChrome() => state = state.copyWith(chromeVisible: !state.chromeVisible);
   void openTocDrawer() => state = state.copyWith(tocDrawerOpen: true);
@@ -88,9 +103,44 @@ class ReaderUiController extends StateNotifier<ReaderUiState> {
   /// T8：切换宽屏 sidebar 折叠/展开。仅对宽屏布局有意义。
   void toggleSidebarCollapsed() => state = state.copyWith(
       tocSidebarCollapsed: !state.tocSidebarCollapsed);
+
+  /// T9：切换全屏模式。
+  ///
+  /// 进入全屏 → 调用 [FullscreenController.enter] 并隐藏 chrome。
+  /// 退出全屏 → 调用 [FullscreenController.exit] 并按平台默认值恢复 chrome
+  /// （桌面可见，移动隐藏）。
+  void toggleFullscreen() {
+    final next = !state.isFullscreen;
+    if (next) {
+      fullscreenController.enter();
+      state = state.copyWith(isFullscreen: true, chromeVisible: false);
+    } else {
+      fullscreenController.exit();
+      final platform = defaultTargetPlatform;
+      final isDesktop = platform == TargetPlatform.windows ||
+          platform == TargetPlatform.macOS ||
+          platform == TargetPlatform.linux;
+      state = state.copyWith(isFullscreen: false, chromeVisible: isDesktop);
+    }
+  }
 }
 
+/// Provider：按 [defaultTargetPlatform] 注入对应 [FullscreenController]。
+/// 测试可通过 [StateNotifierProvider.overrideWith] 替换为
+/// [NoopFullscreenController]，断言纯状态机迁移。
 final readerUiControllerProvider =
     StateNotifierProvider<ReaderUiController, ReaderUiState>((ref) {
-  return ReaderUiController();
+  final platform = defaultTargetPlatform;
+  final FullscreenController fc;
+  if (platform == TargetPlatform.windows ||
+      platform == TargetPlatform.macOS ||
+      platform == TargetPlatform.linux) {
+    fc = const DesktopFullscreenController();
+  } else if (platform == TargetPlatform.android ||
+      platform == TargetPlatform.iOS) {
+    fc = const MobileFullscreenController();
+  } else {
+    fc = const NoopFullscreenController();
+  }
+  return ReaderUiController(fullscreenController: fc);
 });
