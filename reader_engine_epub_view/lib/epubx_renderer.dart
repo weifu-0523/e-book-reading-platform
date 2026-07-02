@@ -402,37 +402,57 @@ class EpubxRenderer implements EpubRenderer {
   /// still re-positions to the new offset.
   @override
   Future<void> gotoLocator(Locator locator) async {
-    if (locator is! EpubCfiLocator) return;
-    final decoded = decode(locator.cfi);
-    if (decoded == null) {
-      debugPrint('EpubxRenderer.gotoLocator: invalid cfi ${locator.cfi}');
+    if (locator is EpubCfiLocator) {
+      final decoded = decode(locator.cfi);
+      if (decoded == null) {
+        debugPrint('EpubxRenderer.gotoLocator: invalid cfi ${locator.cfi}');
+        return;
+      }
+      final chapters = flatChapters;
+      if (decoded.chapterIndex < 0 || decoded.chapterIndex >= chapters.length) {
+        return;
+      }
+      if (decoded.chapterIndex != _currentChapterIndex) {
+        _currentChapterIndex = decoded.chapterIndex;
+        _chapterEndFiredForCurrentChapter = false;
+        // Invalidate stale paged-mode breaks and mark a chapter switch so
+        // callers can `await chapterSwitchSettled` to know when
+        // `_cachedBreaks` has been repopulated for the new chapter.
+        // Without this, callers reading `currentChapterPageBreaks` after
+        // this method returns would see the PREVIOUS chapter's breaks.
+        _cachedBreaks = null;
+        _beginChapterSwitch();
+      }
+      // 字符偏移 → 滚动像素（近似反推）：等下一帧 maxScrollExtent 可用再跳。
+      final html = chapters[decoded.chapterIndex].HtmlContent ?? '';
+      final totalChars = html.isEmpty ? 1 : html.length;
+      final ratio = (decoded.charOffset / totalChars).clamp(0.0, 1.0);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scrollController.hasClients) return;
+        final max = _scrollController.position.maxScrollExtent;
+        _scrollController.jumpTo(max * ratio);
+        _emitCurrentLocation();
+      });
       return;
     }
-    final chapters = flatChapters;
-    if (decoded.chapterIndex < 0 || decoded.chapterIndex >= chapters.length) {
+    if (locator is EpubRangeLocator) {
+      // Bug #6 fix: annotations stored as Range, not CFI.
+      // Paged-mode page positioning (selecting the correct page index from
+      // currentChapterPageBreaks) is the caller's responsibility via
+      // ScrollToOffsetService — same contract as the CFI branch above.
+      final chapters = flatChapters;
+      if (locator.chapterIndex < 0 || locator.chapterIndex >= chapters.length) {
+        return;
+      }
+      if (locator.chapterIndex != _currentChapterIndex) {
+        _currentChapterIndex = locator.chapterIndex;
+        _chapterEndFiredForCurrentChapter = false;
+        _cachedBreaks = null;
+        _beginChapterSwitch();
+      }
       return;
     }
-    if (decoded.chapterIndex != _currentChapterIndex) {
-      _currentChapterIndex = decoded.chapterIndex;
-      _chapterEndFiredForCurrentChapter = false;
-      // Invalidate stale paged-mode breaks and mark a chapter switch so
-      // callers can `await chapterSwitchSettled` to know when
-      // `_cachedBreaks` has been repopulated for the new chapter.
-      // Without this, callers reading `currentChapterPageBreaks` after
-      // this method returns would see the PREVIOUS chapter's breaks.
-      _cachedBreaks = null;
-      _beginChapterSwitch();
-    }
-    // 字符偏移 → 滚动像素（近似反推）：等下一帧 maxScrollExtent 可用再跳。
-    final html = chapters[decoded.chapterIndex].HtmlContent ?? '';
-    final totalChars = html.isEmpty ? 1 : html.length;
-    final ratio = (decoded.charOffset / totalChars).clamp(0.0, 1.0);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      final max = _scrollController.position.maxScrollExtent;
-      _scrollController.jumpTo(max * ratio);
-      _emitCurrentLocation();
-    });
+    // PdfPageLocator / PdfRangeLocator / unknown: silent no-op (defensive).
   }
 
   @override
