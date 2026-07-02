@@ -15,6 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -24,6 +26,7 @@ import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
 
+import 'pdf_error_banner.dart';
 import 'pdf_outline_bridge.dart';
 import 'pdf_scanned_detector.dart';
 import 'pdf_selection_bridge.dart';
@@ -44,6 +47,14 @@ class PdfRenderer {
   int _currentPage = 0;
   ReaderEngineState _state = const ReaderEngineUnloaded();
   TypographySettings _typography = TypographySettings.defaults();
+
+  /// 缓存最近一次成功读取的 PDF 字节，供 [PdfViewer.data] 复用。
+  ///
+  /// pdfrx 在 Windows Debug build 下用 [PdfViewer.file] 重新打开同一文件时
+  /// 偶发触发 `FPDF_LoadDocument` 失败并误报为密码错误（参见
+  /// espresso3389/pdfrx#166）。改成 [PdfViewer.data] 直接走
+  /// `FPDF_LoadMemDocument` 内存加载路径，绕过文件路径/句柄相关问题。
+  Uint8List? _bytes;
 
   /// 缓存的「扫描件判定」Future。每次 [openFile] 切书时清空，重新计算。
   /// 避免每次 [build] 都跑 3 次 pdfrx loadText（昂贵且异步）。
@@ -92,10 +103,16 @@ class PdfRenderer {
   }
 
   /// 打开 PDF 文件路径，更新状态机（loading → ready / error）。
+  ///
+  /// 实现走「先 readAsBytes 再 [PdfDocument.openData]」路径而非
+  /// [PdfDocument.openFile]，以绕过 pdfrx 在 Windows Debug build 上的
+  /// `FPDF_LoadDocument` 兼容性问题（espresso3389/pdfrx#166）。读字节
+  /// 失败（文件不存在/权限问题）会被外层 catch 捕获并转 [ReaderEngineError]。
   Future<void> openFile(String path) async {
     _setState(const ReaderEngineLoading());
     try {
-      _doc = await PdfDocument.openFile(path)
+      _bytes = await File(path).readAsBytes();
+      _doc = await PdfDocument.openData(_bytes!)
           .timeout(const Duration(seconds: 30));
       _currentPage = 0;
       _scannedFuture = null; // 切书清空缓存，下次 build 重新判定
@@ -173,7 +190,8 @@ class PdfRenderer {
   /// （pdfrx 内部本就不工作，显式禁更清晰，避免空选区错误上下文）。
   Widget build(BuildContext context) {
     final doc = _doc;
-    if (doc == null) return const SizedBox.shrink();
+    final bytes = _bytes;
+    if (doc == null || bytes == null) return const SizedBox.shrink();
     _scannedFuture ??= PdfScannedDetector.isLikelyScanned(doc);
     return FutureBuilder<bool>(
       future: _scannedFuture,
@@ -185,12 +203,15 @@ class PdfRenderer {
             Expanded(
               child: PdfTheme.applyTheme(
                 theme: _typography.theme,
-                child: PdfViewer.file(
-                  doc.sourceName,
+                child: PdfViewer.data(
+                  bytes,
+                  sourceName: doc.sourceName,
                   params: PdfViewerParams(
                     textSelectionParams: PdfTextSelectionParams(
                       enabled: !showBanner,
                     ),
+                    errorBannerBuilder: (context, error, _, __) =>
+                        PdfErrorBanner(error: error),
                     buildContextMenu: (context, params) {
                       if (!params.isTextSelectionEnabled) return null;
                       return _PdfHighlightMenuButton(
