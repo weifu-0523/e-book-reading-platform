@@ -45,6 +45,7 @@ import '../widgets/reader_chapter_end_prompt.dart';
 import '../widgets/reader_drawer_builders.dart';
 import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
+import '../widgets/reader_selection_sheet.dart';
 import '../widgets/reader_selection_toolbar.dart';
 import '../widgets/toc_drawer.dart' show defaultTocChapterIndex;
 import '../../../services/ai/ai_guide.dart';
@@ -141,8 +142,8 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     });
     // PDF 选区订阅：pdfrx 内部 buildContextMenu 的「高亮」按钮点击后，
     // 通过 PdfRenderer.emitSelection → PdfReaderEngine.selection$ 流推送
-    // HighlightSelection。这里订阅并缓存，供 _onToolbarHighlight（实际上
-    // PDF 路径直接走 _onPdfHighlight，不走 toolbar overlay）使用。
+    // HighlightSelection。这里订阅并缓存，PDF 选区直接走 _onPdfHighlight
+    // （不走 toolbar overlay 的 _openExcerptSheet）。
     if (engine is PdfReaderEngine) {
       (engine as PdfReaderEngine).selection$.listen((sel) {
         if (!mounted) return;
@@ -307,8 +308,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               ),
             ReaderSelectionToolbar(
               selection: _selection,
-              onHighlight: _onToolbarHighlight,
-              onNote: _onToolbarNote,
+              onExcerpt: _openExcerptSheet,
               onCopy: _onCopySelection,
               onAiComment: _onAiComment,
             ),
@@ -392,15 +392,15 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     return 0;
   }
 
-  /// toolbar 「高亮」：选颜色 → addHighlight → 清选区。
-  Future<void> _onToolbarHighlight() async {
+  /// toolbar 「摘录」：打开 [ReaderSelectionSheet]（5 色选择 + 可选备注）
+  /// → `addHighlight(locator, color, text, note: note)` → 清选区。
+  ///
+  /// 替换了 M2.5 之前的「高亮」+「笔记」两个按钮（旧版两者行为完全相同：
+  /// 都调用颜色 dialog + addHighlight，没有备注入口）。合并为单按钮 + sheet
+  /// 后，用户在一次操作内就能完成颜色选择 + 备注录入。
+  Future<void> _openExcerptSheet() async {
     final sel = _selection;
     if (sel == null) return;
-    final color = await showDialog<HighlightColor>(
-      context: context,
-      builder: (_) => const HighlightColorPickerDialog(),
-    );
-    if (color == null || !mounted) return;
     final text = sel.plainText;
     final plainText = await engine.currentChapterPlainText;
     if (!mounted) return;
@@ -419,9 +419,26 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       );
       return;
     }
-    await ref
-        .read(notesControllerProvider.notifier)
-        .addHighlight(locator, color, text);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+        ),
+        child: ReaderSelectionSheet(
+          onSave: (color, note) async {
+            await ref.read(notesControllerProvider.notifier).addHighlight(
+                  locator,
+                  color,
+                  text,
+                  note: note,
+                );
+          },
+        ),
+      ),
+    );
     if (mounted) setState(() => _selection = null);
   }
 
@@ -430,7 +447,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   /// [PdfReaderEngine.selection$] 流；此方法把 selection 转为 [PdfRangeLocator]
   /// 写入数据库。颜色由用户从 [HighlightColorPickerDialog] 选择。
   ///
-  /// 与 [_onToolbarHighlight] 的差异：PDF 路径不需要「先选区再点 toolbar」，
+  /// 与 [_openExcerptSheet] 的差异：PDF 路径不需要「先选区再点 toolbar」，
   /// 选区已经携带 page + offset（pdfrx 直接给出），无需 `indexOf` 回查。
   Future<void> _onPdfHighlight(HighlightSelection sel) async {
     final color = await showDialog<HighlightColor>(
@@ -443,11 +460,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         .read(notesControllerProvider.notifier)
         .addHighlight(locator, color, sel.text);
   }
-
-  /// toolbar 「笔记」：与「高亮」共用 flow；颜色选好后写入高亮，
-  /// 用户在 drawer 长按该条目再编辑 note。M3.2 简化，避免在 toolbar
-  /// 里串行弹出 color picker + NoteEditorSheet 造成 UX 摩擦。
-  Future<void> _onToolbarNote() => _onToolbarHighlight();
 
   void _onCopySelection() {
     final sel = _selection;

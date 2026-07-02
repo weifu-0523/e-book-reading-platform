@@ -26,19 +26,17 @@ import 'highlight_selection_controls.dart';
 /// inside a [Positioned] at the top of the parent [Stack].
 ///
 /// Caller is responsible for owning the [SelectedContent] state and passing
-/// the 4 tap callbacks. This widget has no internal state.
+/// the 3 tap callbacks (摘录 / 复制 / 可选 AI 点评). This widget has no internal state.
 class ReaderSelectionToolbar extends StatelessWidget {
   final SelectedContent? selection;
-  final VoidCallback onHighlight;
-  final VoidCallback onNote;
+  final VoidCallback onExcerpt;
   final VoidCallback onCopy;
   final VoidCallback? onAiComment;
 
   const ReaderSelectionToolbar({
     super.key,
     required this.selection,
-    required this.onHighlight,
-    required this.onNote,
+    required this.onExcerpt,
     required this.onCopy,
     this.onAiComment,
   });
@@ -55,8 +53,7 @@ class ReaderSelectionToolbar extends StatelessWidget {
       right: 16,
       child: Center(
         child: HighlightSelectionControls(
-          onHighlight: onHighlight,
-          onNote: onNote,
+          onExcerpt: onExcerpt,
           onCopy: onCopy,
           onAiComment: onAiComment,
         ),

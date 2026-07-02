@@ -30,8 +30,7 @@ void main() {
               const Text('underlying content'),
               ReaderSelectionToolbar(
                 selection: null,
-                onHighlight: () {},
-                onNote: () {},
+                onExcerpt: () {},
                 onCopy: () {},
                 onAiComment: () {},
               ),
@@ -51,8 +50,7 @@ void main() {
               const Text('underlying content'),
               ReaderSelectionToolbar(
                 selection: const SelectedContent(plainText: ''),
-                onHighlight: () {},
-                onNote: () {},
+                onExcerpt: () {},
                 onCopy: () {},
                 onAiComment: () {},
               ),
@@ -75,8 +73,7 @@ void main() {
                 const Text('underlying content'),
                 ReaderSelectionToolbar(
                   selection: const SelectedContent(plainText: 'highlighted text'),
-                  onHighlight: () {},
-                  onNote: () {},
+                  onExcerpt: () {},
                   onCopy: () {},
                   onAiComment: () {},
                 ),
@@ -88,9 +85,9 @@ void main() {
       expect(find.byType(HighlightSelectionControls), findsOneWidget);
     });
 
-    testWidgets('fires onHighlight callback when controls invoke it',
+    testWidgets('fires onExcerpt callback when controls invoke it',
         (tester) async {
-      var highlightCount = 0;
+      var excerptCount = 0;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: SizedBox(
@@ -100,8 +97,7 @@ void main() {
               children: [
                 ReaderSelectionToolbar(
                   selection: const SelectedContent(plainText: 'text'),
-                  onHighlight: () => highlightCount++,
-                  onNote: () {},
+                  onExcerpt: () => excerptCount++,
                   onCopy: () {},
                   onAiComment: () {},
                 ),
@@ -113,8 +109,8 @@ void main() {
       final controls = tester.widget<HighlightSelectionControls>(
         find.byType(HighlightSelectionControls),
       );
-      controls.onHighlight();
-      expect(highlightCount, 1);
+      controls.onExcerpt();
+      expect(excerptCount, 1);
     });
   });
 }

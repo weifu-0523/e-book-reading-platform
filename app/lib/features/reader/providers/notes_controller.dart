@@ -105,15 +105,16 @@ class NotesController extends StateNotifier<AsyncValue<NotesState>> {
   /// 转换）。`Annotation.locator` 字段类型就是基类 [Locator]，所以这里直接
   /// 放宽参数类型即可，无需为 PDF 新增方法。
   Future<void> addHighlight(
-      Locator locator, HighlightColor color, String quote) async {
-    final note = await _ensureBookNote();
+      Locator locator, HighlightColor color, String quote,
+      {String? note}) async {
+    final bookNote = await _ensureBookNote();
     final now = DateTime.now();
     await repository.addAnnotation(Annotation(
       id: _uuid.v4(),
-      bookNoteId: note.id,
+      bookNoteId: bookNote.id,
       locator: locator,
       quote: quote,
-      note: null,
+      note: note,
       color: color,
       tags: const [],
       source: AnnotationSource.manual,

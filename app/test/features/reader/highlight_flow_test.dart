@@ -63,23 +63,19 @@ void main() {
   });
 
   testWidgets('HighlightSelectionControls buttons fire callbacks', (tester) async {
-    var highlight = false;
-    var note = false;
+    var excerpt = false;
     var copy = false;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: HighlightSelectionControls(
-          onHighlight: () => highlight = true,
-          onNote: () => note = true,
+          onExcerpt: () => excerpt = true,
           onCopy: () => copy = true,
         ),
       ),
     ));
-    await tester.tap(find.text('高亮'));
-    await tester.tap(find.text('笔记'));
+    await tester.tap(find.text('摘录'));
     await tester.tap(find.text('复制'));
-    expect(highlight, isTrue);
-    expect(note, isTrue);
+    expect(excerpt, isTrue);
     expect(copy, isTrue);
   });
 

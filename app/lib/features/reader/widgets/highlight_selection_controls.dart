@@ -17,8 +17,12 @@
 import 'package:flutter/material.dart';
 
 class HighlightSelectionControls extends StatelessWidget {
-  final VoidCallback onHighlight;
-  final VoidCallback onNote;
+  /// 摘录：打开 ReaderSelectionSheet（颜色 + 备注）。
+  ///
+  /// 合并了 M2.5 之前的 `onHighlight` + `onNote` 两个按钮：旧版两者行为
+  /// 完全相同（都调用 `_onToolbarHighlight`），用户视角是重复按钮。
+  final VoidCallback onExcerpt;
+
   final VoidCallback onCopy;
 
   /// 可选「AI 点评」按钮。仅当父组件传入回调时渲染（避免 EPUB/PDF 路径都强依赖）。
@@ -26,8 +30,7 @@ class HighlightSelectionControls extends StatelessWidget {
 
   const HighlightSelectionControls({
     super.key,
-    required this.onHighlight,
-    required this.onNote,
+    required this.onExcerpt,
     required this.onCopy,
     this.onAiComment,
   });
@@ -43,8 +46,7 @@ class HighlightSelectionControls extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _btn('高亮', onHighlight),
-          _btn('笔记', onNote),
+          _btn('摘录', onExcerpt),
           _btn('复制', onCopy),
           if (onAiComment != null) _btn('AI 点评', onAiComment!),
         ],
