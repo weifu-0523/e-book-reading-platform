@@ -109,8 +109,8 @@ void main() {
     // empty citations list instead.
     await seedBook('b1');
     await db.customInsert(
-      "INSERT INTO qa_history(id, book_id, question, answer, citations_json, created_at) "
-      "VALUES(?, ?, ?, ?, ?, ?)",
+      'INSERT INTO qa_history(id, book_id, question, answer, citations_json, created_at) '
+      'VALUES(?, ?, ?, ?, ?, ?)',
       variables: [
         Variable.withString('q1'),
         Variable.withString('b1'),
@@ -130,8 +130,8 @@ void main() {
   test('findSameQuestion tolerates malformed citations_json (P1-5)', () async {
     await seedBook('b1');
     await db.customInsert(
-      "INSERT INTO qa_history(id, book_id, question, answer, citations_json, created_at) "
-      "VALUES(?, ?, ?, ?, ?, ?)",
+      'INSERT INTO qa_history(id, book_id, question, answer, citations_json, created_at) '
+      'VALUES(?, ?, ?, ?, ?, ?)',
       variables: [
         Variable.withString('q1'),
         Variable.withString('b1'),

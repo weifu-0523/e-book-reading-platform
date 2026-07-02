@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.4.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.4.0-alpha)
+[![Version](https://img.shields.io/badge/version-1.5.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.5.0-alpha)
 
 ## 项目状态
 
@@ -13,7 +13,8 @@
 - ✅ **v1.2.0-alpha**：新增**自动章节结束提示**（EPUB paged/scroll 模式翻到末页时弹出 SnackBar，提供「回顾本章 / 下一章 / 关闭」三个动作；可在 Settings 开关；首次启动根据 API key 配置情况默认开/关）。仍为 alpha：UI 文案、动效、错误恢复路径有待真实用户反馈打磨。
 - ✅ **v1.3.0-alpha**：新增**批量导出范围筛选**（独立筛选页：按标签 OR / 按导入时间 / 按最近阅读；实时预览匹配书单 + 高亮总数；底部按钮直接显示"导出 N 本"）。仍为 alpha：边界 UX、动效、错误恢复路径有待真实用户反馈打磨。
 - ✅ **v1.4.0-alpha**：release hygiene sweep——`reader_body` 拆分（644→578 行，抽出 `ReaderChapterEndPrompt` + `ReaderSelectionToolbar` 两个零依赖 widget）+ `dart fix --apply` lint 清理 + 文档同步 + 3 张截图（library/pdf_reader/notes）+ 4 个 Gitee Release 页面（v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha）。无新功能。
-- 下一步：用户真实使用测试；之后规划 v1.5（跨书 AI 伴读、性能 baseline 测量）。
+- ✅ **v1.5.0-alpha**：Reader UX Overhaul——修 2 个 P0 bug（高亮不渲染、笔记点击无效）+ 8 项 UX 增强（多输入翻页、全屏模式、合并摘录按钮、宽屏 TOC sidebar、PDF 双页布局、书签系统、margin 调整、chrome 默认可见）。EPUB 双页渲染层留 v1.6。
+- 下一步：用户真实使用测试；之后规划 v1.6（EPUB 双页渲染、跨书 AI 伴读、性能 baseline 测量）。
 
 ## 下载安装
 
@@ -70,9 +71,21 @@
 
 - **批量导出范围筛选**：Library 溢出菜单"导出为 Markdown"先开筛选页，支持按标签（多选 OR）、按导入时间、按最近阅读三维度组合筛选；实时预览匹配书目数与高亮总数；底部按钮直接显示"导出 N 本"。底层 `BookFilter` + `applyBookFilter` 纯函数 + 既有 `VaultExporter` 零改动；预览数 = 实际导出数的不变量由 `VaultExporter.hasContent` 公开为 static 保证。
 
+### v1.5.0-alpha 新增（M2.5 Reader UX Overhaul）
+
+- **修复高亮不渲染 / 笔记点击无效**（P0 bug）：前者补 `ref.listen` 把 `NotesState.annotations` 桥接到 `engine.injectHighlights()`；后者补 `EpubxRenderer.gotoLocator` 的 `EpubRangeLocator` 分支。
+- **多输入翻页**：键盘 ←/→/↑/↓/PgUp/PgDn、鼠标滚轮、触摸拖拽、左右 tap zone 五种输入。
+- **全屏模式**：桌面 `window_manager` + 移动 `SystemChrome`；Esc/F11 快捷键，全屏态中心双击显示 chrome。`FullscreenController` 抽象让平台分支可注入测试。
+- **合并摘录按钮**：原来「高亮」「笔记」两键合并为「摘录」bottom sheet（5 色 + 笔记输入）。
+- **宽屏 TOC sidebar**：>=1100px 自动升级为永久侧栏（280↔40px 可折叠），drawer 3-tab 重构（目录 / 书签 / 笔记）。
+- **PDF 双页布局**：>=1200px 自动启用，按偶数页对齐；扫描件自动降级单页。
+- **书签系统**：drift v10 schema + sync pipeline + 4 个 UI 入口（AppBar 收藏图标 + 标签对话框、drawer 书签 tab、独立页面）。
+- **margin 调整**：Normal 16 → 24 px；新增 ExtraWide=40 px 选项。
+- **EPUB 双页布局**：API surface 已 wire，渲染层留 v1.6（详见 release notes）。
+
 ## 后续阶段
 
-- **v1.5+**：跨书 AI 伴读、Zotero/Obsidian 双向同步、知识图谱、性能 baseline 测量
+- **v1.6+**：EPUB 双页渲染层、跨书 AI 伴读、Zotero/Obsidian 双向同步、知识图谱、性能 baseline 测量
 - **长期**：iOS 端、Mac 端
 
 完整路线图见 [`docs/superpowers/specs/2026-06-28-phase2-roadmap-design.md`](docs/superpowers/specs/2026-06-28-phase2-roadmap-design.md)。

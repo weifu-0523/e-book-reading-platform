@@ -110,7 +110,7 @@ void main() {
     final fullJson = jsonEncode({'choices': [{'delta': {'content': 'hello'}}]});
     final fullEvent = 'data: $fullJson\n\n';
     // Split at byte 12 — inside the JSON payload, not on a \n boundary.
-    final splitAt = 12;
+    const splitAt = 12;
     final chunk1Bytes = utf8.encode(fullEvent.substring(0, splitAt));
     final chunk2Bytes = utf8.encode(fullEvent.substring(splitAt));
     final doneBytes = utf8.encode(_sseDone());
@@ -129,8 +129,8 @@ void main() {
     final fullJson =
         jsonEncode({'choices': [{'delta': {'content': 'world'}}]});
     final fullEvent = 'data: $fullJson\n\n';
-    final splitA = 5;
-    final splitB = 30;
+    const splitA = 5;
+    const splitB = 30;
     final a = utf8.encode(fullEvent.substring(0, splitA));
     final b = utf8.encode(fullEvent.substring(splitA, splitB));
     final c = utf8.encode(fullEvent.substring(splitB));

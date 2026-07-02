@@ -7,7 +7,47 @@
 
 ## [Unreleased]
 
-v1.4.0-alpha 之后的新变更将记在此处。
+v1.5.0-alpha 之后的新变更将记在此处。
+
+## [1.5.0-alpha] — 2026-07-03
+
+v1.5.0-alpha 是 M2.5「Reader UX Overhaul」的交付版本：2 个 P0 用户面 bug 修复 + 8 项 UX 增强 / 新功能。目标是把阅读器从"能用"推进到"在桌面宽屏上舒服用"——多输入翻页、全屏模式、宽屏 TOC sidebar、双页布局、书签系统、合并摘录入口，外加首次分页 margin 调整与 chrome 默认可见。
+
+### Fixed
+
+- **#4 高亮不渲染**：用户选中文本后选颜色，页面上不出现高亮。根因：`NotesState.annotations` 变更后没有桥接到 `engine.injectHighlights()`。修复：`reader_body.dart` 加 `ref.listen` 把 annotations 同步到 engine（T2）。
+- **#6 笔记条目点击无效**：NotesPage / drawer 里点笔记不跳回原位置。根因：`EpubxRenderer.gotoLocator` 没处理 `EpubRangeLocator`（只认 `EpubCfiLocator`）。修复：补齐 `EpubRangeLocator` 分支（T1）。
+
+### Added
+
+- **书签系统（#7）**：drift v10 schema + 仓库 + 控制器 + sync pipeline + UI 四入口。
+  - 数据：`Bookmarks` 表（id / bookId / locatorJson / label / note / createdAt / updatedAt），v9 → v10 自动迁移。
+  - 同步：`SyncRecordType.bookmark` 接入 SyncRecorder + RemoteRecordApplier，遵循 last-write-wins 与高亮相同的冲突策略。
+  - UI：AppBar 收藏图标 + 自定义标签对话框、drawer 书签 tab、独立路由 `/book/:id/bookmarks` 页面。
+- **PDF 双页布局（#10）**：宽屏（>=1200px）自动启用，按偶数页对齐；扫描件自动降级单页。
+- **EPUB 双页 API surface（#10 部分）**：`dualPageMode` 标志已端到端 wire（`EpubxRenderer` → `ConcreteEpubReaderEngine.rendererRef` → `reader_body.dart` LayoutBuilder）。**渲染层留 v1.6**——EPUB 分页当前是 degraded plain-text 模式，重写算法是抛一次性的工作；PDF T13 已覆盖更常见的双页格式需求。详见 `epubx_renderer.dart` 字段 doc-comment。
+
+### Changed
+
+- **多输入翻页（#2）**：键盘 ←/→/↑/↓/PgUp/PgDn、鼠标滚轮、触摸拖拽、左右 tap zone 五种输入都触发翻页。
+- **全屏模式（#3）**：桌面 `window_manager.setFullScreen` + 移动 `SystemChrome.setEnabledSystemUIMode`；Esc / F11 键盘快捷键，全屏态中心区域双击显示 chrome。`FullscreenController` 抽象让 StateNotifier 在测试里用 `NoopFullscreenController` 注入。
+- **合并摘录按钮（#5）**：原来「高亮」「笔记」两个按钮合并为「摘录」bottom sheet——5 色高亮 + 可选笔记输入，一站式。
+- **TOC sidebar（#8）**：宽屏（>=1100px）下抽屉升级为永久侧栏（280↔40px 可折叠）；窄屏保持原 drawer slide-over。
+- **默认 margin 调整（#9）**：Normal 16 → 24 px；新增 ExtraWide=40px 选项（Compact=8 / Normal=24 / Wide=32 / ExtraWide=40）。
+- **chrome 默认可见**：桌面端 reader AppBar 默认显示（之前需要点击切换）。中心单击不再切换 chrome（避免误触），改用 AppBar 按钮 / Esc / F11。
+- **抽屉 3-tab 重构**：原 `Scaffold.drawer`（TOC）+ `Scaffold.endDrawer`（Notes）合并为单一 `ReaderDrawer`，目录 / 书签 / 笔记三 tab 切换。
+
+### Technical
+
+- 4 个包共 1066 pass + 3 skipped（app 888 / reader_engine 50 / reader_engine_epub_view 83 / reader_engine_pdf_view 45）。
+- M2.5 共 15 个任务，全部走 subagent-driven development：每任务 implementer + 两阶段 review（spec compliance → code quality）。
+- subagent 自修多个 plan bug：T11 plan 写错了 sync 文件路径（`sync_entity_registry.dart` 不存在，实际是 enum + SyncRecorder + RemoteRecordApplier 三处）；T13 plan 把 PDF `paginationMode == paged` 当触发条件（实际 PDF 模式恒为 scroll），改为「宽度 + 非扫描件」；T9 plan 让 StateNotifier 内联平台分支会破坏可测性，重构为 `FullscreenController` 抽象 + 3 实现。
+- 1 个 flaky test (`book_import_service_test.dart::importFile concurrent same file returns existing for second caller`) 在并发执行时偶现，单跑稳定通过——已知是 drift 测试套件并发开销，与 M2.5 改动无关。
+
+### Migration
+
+- Drift 自动从 v9 迁移到 v10（创建 `bookmarks` 表 + `idx_bookmarks_book` 索引）。
+- 用户已存的 margin 偏好保留（Compact / Normal / Wide 索引不变；Normal 的实际像素值从 16 变 24）。
 
 ## [1.4.0-alpha] — 2026-07-01
 

@@ -51,6 +51,28 @@
 
 ## 已完成
 
+### v1.5.0-alpha release 准备（M2.5 Reader UX Overhaul）
+
+代码 + 文档部分（2026-07-03 完成）：
+- ✅ M2.5 spec + plan 已交付（`docs/superpowers/specs/2026-07-02-m2-5-reader-ux-overhaul-design.md`、`docs/superpowers/plans/2026-07-02-m2-5-reader-ux-overhaul.md`）
+- ✅ TDD 全流程：15 个 task（T1-T14 subagent-driven development 每 task 双阶段 review；T15 docs 直接执行）
+- ✅ T1-T2: P0 bug 修复（高亮不渲染 / 笔记点击无效）
+- ✅ T3-T6: UX 增强（合并摘录按钮 / margin 调整 / 多输入翻页 / chrome 默认可见）
+- ✅ T7-T8: drawer 3-tab 重构 + 宽屏 TOC sidebar
+- ✅ T9: 全屏模式（`FullscreenController` 抽象 + 桌面 window_manager + 移动 SystemChrome）
+- ✅ T10-T12: 书签系统（drift v10 schema + sync pipeline + 4 个 UI 入口）
+- ✅ T13: PDF 双页布局（>=1200px 自动启用，扫描件降级）
+- ✅ T14: EPUB 双页 API surface（渲染层留 v1.6）
+- ✅ T15 prep: `pubspec.yaml` + `zhiyue.iss` + `README.md` + CHANGELOG 同步到 v1.5.0-alpha；新建 `release-notes-v1.5.0-alpha.md`
+- ✅ 全量测试通过：1066 passed + 3 skipped（app 888 / reader_engine 50 / reader_engine_epub_view 83 / reader_engine_pdf_view 45）
+- ✅ 4 个包 analyze clean
+
+待执行（用户现场操作）：
+- ⏳ T8 截图补齐：v1.5 引入 sidebar / 全屏 / 书签 / 双页布局，老截图已不准；需重捕 4 张
+- ⏳ Gitee Release v1.5.0-alpha 页面创建（使用 `release-notes-v1.5.0-alpha.md` 草稿）
+- ⏳ build artifact：setup.exe / portable.zip / .apk
+- ⏳ 性能 baseline 测量（v1.5 大量 reader 重构，建议复测）
+
 ### v1.4.0-alpha release 准备（hygiene sweep）
 
 代码 + 文档部分（2026-07-01 完成）：

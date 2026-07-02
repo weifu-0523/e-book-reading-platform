@@ -150,20 +150,20 @@ void main() {
             notesRepositoryProvider.overrideWith((_) => _StubNotesRepository()),
           ],
           child: MaterialApp(
-            localizationsDelegates: [
+            localizationsDelegates: const [
               AppLocalizations.delegate,
               GlobalMaterialLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            supportedLocales: [Locale('zh')],
+            supportedLocales: const [Locale('zh')],
             home: Scaffold(
               body: ReaderDrawer(
                 bookId: 'b1',
                 initialTab: DrawerTab.notes,
                 tocBuilder: (_) => const Text('TOC_CONTENT'),
                 notesBuilder: (_) => ReaderNotesDrawerWrapper(
-                  chapterTitles: {},
+                  chapterTitles: const {},
                   onAnnotationTap: (_) {},
                   onAnnotationLongPress: (_) {},
                 ),

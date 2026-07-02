@@ -66,6 +66,7 @@ void main() {
       (tester) async {
     final repo = _RecordingNotesRepo();
     final renderer = EpubxRenderer();
+    // ignore: cascade_invocations - test fixture, EpubBook cascade is intentional
     renderer.bookForTesting = EpubBook()
       ..Title = 'T'
       ..Chapters = [
