@@ -12,6 +12,7 @@ import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:zhiyue/core/providers.dart';
+import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
 import 'package:zhiyue/features/reader/widgets/reader_error_view.dart';
@@ -135,12 +136,16 @@ void main() {
       ]),
     );
 
+    final container = ProviderContainer(overrides: [
+      readerEngineForBookProvider.overrideWith((ref, arg) async => engine),
+    ]);
+    addTearDown(container.dispose);
+    // Center-tap no longer reveals chrome — set initial state via provider.
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          readerEngineForBookProvider
-              .overrideWith((ref, arg) async => engine),
-        ],
+      UncontrolledProviderScope(
+        container: container,
         child: const MaterialApp(
           locale: Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -151,14 +156,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Initially no drawer, no chrome.
-    expect(find.byKey(const Key('reader_app_bar')), findsNothing);
-    expect(find.text('第一章'), findsNothing);
-
-    // Tap center to reveal chrome app bar.
-    await tester.tapAt(const Offset(400, 400));
-    await tester.pumpAndSettle();
+    // Chrome should already be visible.
     expect(find.byKey(const Key('reader_app_bar')), findsOneWidget);
+    expect(find.text('第一章'), findsNothing);
 
     // Tap TOC icon (Icons.list).
     await tester.tap(find.byIcon(Icons.list));
@@ -170,12 +170,15 @@ void main() {
 
   testWidgets('chrome typography icon opens TypographyPanel', (tester) async {
     final engine = FakeReaderEngine();
+    final container = ProviderContainer(overrides: [
+      readerEngineForBookProvider.overrideWith((ref, arg) async => engine),
+    ]);
+    addTearDown(container.dispose);
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          readerEngineForBookProvider
-              .overrideWith((ref, arg) async => engine),
-        ],
+      UncontrolledProviderScope(
+        container: container,
         child: const MaterialApp(
           locale: Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -184,10 +187,6 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
-
-    // Tap center to reveal chrome.
-    await tester.tapAt(const Offset(400, 400));
     await tester.pumpAndSettle();
 
     // Tap typography icon.
@@ -253,13 +252,16 @@ void main() {
 
   testWidgets('chrome notes icon opens NotesDrawer endDrawer', (tester) async {
     final engine = FakeReaderEngine();
+    final container = ProviderContainer(overrides: [
+      readerEngineForBookProvider.overrideWith((ref, arg) async => engine),
+      notesRepositoryProvider.overrideWithValue(FakeNotesRepository()),
+    ]);
+    addTearDown(container.dispose);
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          readerEngineForBookProvider
-              .overrideWith((ref, arg) async => engine),
-          notesRepositoryProvider.overrideWithValue(FakeNotesRepository()),
-        ],
+      UncontrolledProviderScope(
+        container: container,
         child: const MaterialApp(
           locale: Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -270,9 +272,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Reveal chrome app bar.
-    await tester.tapAt(const Offset(400, 400));
-    await tester.pumpAndSettle();
+    // Chrome should already be visible.
     expect(find.byKey(const Key('reader_app_bar')), findsOneWidget);
 
     // Tap notes icon (Icons.menu_book).

@@ -17,6 +17,7 @@ import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/ai/widgets/review_preview_sheet.dart';
+import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_body.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
@@ -126,17 +127,19 @@ void main() {
   /// ReaderBody 在 build() 内会 await bookRepositoryProvider.getById(...)
   /// 然后 fire-and-forget 缓存。Tests 不依赖 _cachedBook，所以 repository 可以
   /// 用 sqlite in-memory 或 fake。这里直接 override 一个返回 null 的实例。
-  Future<void> pumpReaderBody(
+  Future<ProviderContainer> pumpReaderBody(
     WidgetTester tester, {
     required String bookId,
     required Book? book,
   }) async {
+    final container = ProviderContainer(overrides: [
+      notesRepositoryProvider.overrideWithValue(_NoopRepo()),
+      bookRepositoryProvider.overrideWithValue(_FakeBookRepo(book)),
+    ]);
+    addTearDown(container.dispose);
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          notesRepositoryProvider.overrideWithValue(_NoopRepo()),
-          bookRepositoryProvider.overrideWithValue(_FakeBookRepo(book)),
-        ],
+      UncontrolledProviderScope(
+        container: container,
         child: MaterialApp(
           locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -149,22 +152,23 @@ void main() {
     // 等 fire-and-forget 的 _refreshBookCache() Future 完成（_cachedBook 赋值）。
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 10));
+    return container;
   }
 
-  /// chrome 默认隐藏（readerUiController 初始 chromeVisible=false）。
-  /// 在 paged 模式下点击屏幕中央可切换 chrome 显隐。
-  Future<void> openChrome(WidgetTester tester) async {
-    final center = tester.getCenter(find.byType(ReaderBody));
-    await tester.tapAt(center);
-    await tester.pumpAndSettle();
+  /// Center-tap 不再触发 chrome（T5 已移除该手势）。
+  /// 测试通过 provider 直接切换 chromeVisible。
+  void openChrome(ProviderContainer container) {
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
   }
 
   testWidgets(
       'reader overflow menu shows "回顾本章" item once chrome is open',
       (tester) async {
-    await pumpReaderBody(tester, bookId: 'b-epub', book: _epubBook('b-epub'));
+    final container = await pumpReaderBody(
+        tester, bookId: 'b-epub', book: _epubBook('b-epub'));
 
-    await openChrome(tester);
+    openChrome(container);
+    await tester.pumpAndSettle();
 
     // 打开 PopupMenuButton。
     await tester.tap(find.byIcon(Icons.more_vert));
@@ -175,10 +179,11 @@ void main() {
 
   testWidgets('reader overflow menu "回顾本章" opens ReviewPreviewSheet',
       (tester) async {
-    await pumpReaderBody(
+    final container = await pumpReaderBody(
         tester, bookId: 'b-epub-2', book: _epubBook('b-epub-2'));
 
-    await openChrome(tester);
+    openChrome(container);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
