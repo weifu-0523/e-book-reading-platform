@@ -266,6 +266,8 @@ class TypographyPanel extends StatelessWidget {
         return '标准';
       case PageMargin.wide:
         return '宽松';
+      case PageMargin.extraWide:
+        return '特宽';
     }
   }
 }

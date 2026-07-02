@@ -521,7 +521,7 @@ class EpubxRenderer implements EpubRenderer {
     final html = currentHighlightedHtml();
     final style = TypographyCss.textStyleFromSettings(_typography);
     final (fg, bg) = TypographyCss.themeColors(_typography.theme);
-    final margin = _marginValue(_typography.pageMargin);
+    final margin = _typography.pageMargin.pixelValue.toDouble();
 
     return ColoredBox(
       color: bg,
@@ -546,18 +546,6 @@ class EpubxRenderer implements EpubRenderer {
         ),
       ),
     );
-  }
-
-  /// 把 [PageMargin] 映射为像素值，供渲染时 Padding 使用。
-  double _marginValue(PageMargin m) {
-    switch (m) {
-      case PageMargin.compact:
-        return 8.0;
-      case PageMargin.normal:
-        return 16.0;
-      case PageMargin.wide:
-        return 24.0;
-    }
   }
 
   /// paged 模式：Paginator 把章节切成多页，PageView 左右翻页。

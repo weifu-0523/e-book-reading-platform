@@ -18,7 +18,19 @@ import 'package:meta/meta.dart';
 
 enum ReadingTheme { light, dark, sepia, eInk }
 
-enum PageMargin { compact, normal, wide }
+/// Page margin in CSS pixels. Pre-M2.5: compact=8, normal=16, wide=24.
+/// M2.5 bumped normal→24 and wide→32 for real-book whitespace feel, and
+/// added extraWide=40 for desktop. Existing user selections (enum value
+/// index) are preserved — only the pixel value changes.
+enum PageMargin {
+  compact(8),
+  normal(24),
+  wide(32),
+  extraWide(40);
+
+  final int pixelValue;
+  const PageMargin(this.pixelValue);
+}
 
 @immutable
 class TypographySettings {

@@ -32,4 +32,20 @@ void main() {
     expect(a, equals(b));
     expect(a.hashCode, b.hashCode);
   });
+
+  test('PageMargin enum has 4 values with correct pixel mappings', () {
+    expect(PageMargin.values, hasLength(4));
+    expect(PageMargin.compact.pixelValue, 8);
+    expect(PageMargin.normal.pixelValue, 24);
+    expect(PageMargin.wide.pixelValue, 32);
+    expect(PageMargin.extraWide.pixelValue, 40);
+  });
+
+  test('TypographySettings.defaults uses PageMargin.normal', () {
+    // Already asserted above, but be explicit post-bump.
+    final s = TypographySettings.defaults();
+    expect(s.pageMargin, PageMargin.normal);
+    expect(s.pageMargin.pixelValue, 24,
+        reason: 'default margin should now be 24px (was 16px pre-M2.5)');
+  });
 }
