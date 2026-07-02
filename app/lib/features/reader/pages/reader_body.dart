@@ -269,6 +269,17 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 1100;
+        // T13: PDF 双页布局触发条件 —— 宽度 >= 1200 且非扫描件。 PdfReaderEngine
+        // 的 paginationMode 始终是 scroll（pdfrx 内部按页固定布局），因此触发
+        // 实质只看宽度 + isScanned；spec 中「paginationMode == paged」对 PDF
+        // 不适用，已根据 plan 的 CRITICAL 简化 #1 调整为「宽度 + 非扫描件」。
+        // 用户无 toggle —— 宽屏自动启用，与 T8 sidebar 行为对齐。
+        final engine = this.engine;
+        if (engine is PdfReaderEngine) {
+          final renderer = engine.rendererRef;
+          renderer.dualPageMode =
+              constraints.maxWidth >= 1200 && !renderer.isScanned;
+        }
         if (isWide) {
           return _buildWideReaderTree(ui);
         }

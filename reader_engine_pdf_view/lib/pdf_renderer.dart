@@ -48,6 +48,25 @@ class PdfRenderer {
   ReaderEngineState _state = const ReaderEngineUnloaded();
   TypographySettings _typography = TypographySettings.defaults();
 
+  /// T13: 双页布局开关。由 reader_body 通过 LayoutBuilder 在每次 build 前
+  /// 根据 `constraints.maxWidth >= 1200 && !isScanned` 设置（PDF 引擎的
+  /// `paginationMode` 始终是 scroll，pdfrx 本身按页固定布局，因此触发条件
+  /// 实质只看宽度 + 非 扫描件）。默认 false —— 窄屏 / 扫描件维持单页渲染。
+  ///
+  /// 文本选区上下文菜单在双页模式下被禁用（页面归属歧义）。需要做高亮的
+  /// 用户可以缩窄窗口切回单页模式。此 trade-off 在 commit message 中记录。
+  bool dualPageMode = false;
+
+  /// T13: 缓存 [_scannedFuture] 的最新解析结果，供 reader_body 同步判断
+  /// `isScanned` 用（决定是否启用 dualPageMode）。null 表示尚未解析过。
+  bool? _scannedCache;
+
+  /// T13: 双页布局下两侧 PdfViewer 的 controller，用于在 onViewerReady
+  /// 回调里 `goToPage` 到目标页。同一 PdfRenderer 实例下复用，避免每次
+  /// build 都创建新 controller 导致 pdfrx 状态丢失。
+  final PdfViewerController _leftController = PdfViewerController();
+  final PdfViewerController _rightController = PdfViewerController();
+
   /// 缓存最近一次成功读取的 PDF 字节，供 [PdfViewer.data] 复用。
   ///
   /// pdfrx 在 Windows Debug build 下用 [PdfViewer.file] 重新打开同一文件时
@@ -83,6 +102,11 @@ class PdfRenderer {
 
   /// 总页数；未打开返回 0。
   int get pageCount => _doc?.pages.length ?? 0;
+
+  /// T13: 是否为扫描件。同步返回 [_scannedCache] 的最新值；未解析完成时
+  /// 返回 false（保守降级到单页，避免阻塞首屏）。reader_body 据此判断
+  /// 是否启用双页布局。
+  bool get isScanned => _scannedCache ?? false;
 
   /// 加载 PDF 书签（pdfrx outline）并转换为 reader_engine [TableOfContents]。
   ///
@@ -131,9 +155,24 @@ class PdfRenderer {
 
   /// 切到指定页（0-based）。未打开 / 越界时静默 no-op。
   /// 成功时通过 [currentLocation$] 发射 [PdfPageLocator]（1-based）。
+  ///
+  /// T13：[dualPageMode] 为 true 时把目标页 snap 到偶数（左页），并 clamp
+  /// 到 `pages.length - 2`（保证左右页都存在；末页若是单独一页直接保留
+  /// 单页呈现，由 build 兜底 SizedBox.shrink 右半边）。
   void setPage(int page) {
     final doc = _doc;
     if (doc == null) return;
+    if (dualPageMode) {
+      int target = page;
+      if (target.isOdd) target -= 1;
+      if (target < 0) target = 0;
+      if (target >= doc.pages.length) target = doc.pages.length - 1;
+      // 若 snap 到的偶数索引已经是末页（孤页），保留它；build 会渲染
+      // 左侧 PdfViewer + 右侧 SizedBox.shrink。
+      _currentPage = target;
+      _emitLocation();
+      return;
+    }
     if (page < 0 || page >= doc.pages.length) return;
     _currentPage = page;
     _emitLocation();
@@ -196,7 +235,13 @@ class PdfRenderer {
     return FutureBuilder<bool>(
       future: _scannedFuture,
       builder: (context, snap) {
-        final showBanner = snap.data == true;
+        // T13: 缓存解析结果，让 reader_body 同步读到 isScanned 决定是否
+        // 启用 dualPageMode。snap.data == null 表示 loading，沿用上次值。
+        if (snap.hasData) _scannedCache = snap.data;
+        final showBanner = _scannedCache == true;
+        if (dualPageMode && !showBanner) {
+          return _buildDualPage(doc, bytes, showBanner: false);
+        }
         return Column(
           children: [
             if (showBanner) const PdfScannedBanner(),
@@ -230,7 +275,69 @@ class PdfRenderer {
     );
   }
 
+  /// T13: 双页布局渲染。左侧永远是偶数（0-based）索引页，右侧是奇数索引页。
+  /// 末页若为孤页（索引等于 pageCount - 1 且为偶数），右侧用 SizedBox.shrink。
+  ///
+  /// 不挂 `buildContextMenu` —— 双页模式下选区命中具体哪一页存在歧义，
+  /// 用户需要切到窄屏单页模式做高亮。Text selection 也因此被禁用。
+  Widget _buildDualPage(PdfDocument doc, Uint8List bytes,
+      {required bool showBanner}) {
+    final leftIdx = _currentPage.isEven ? _currentPage : _currentPage - 1;
+    if (leftIdx < 0) return const SizedBox.shrink();
+    final rightIdx = leftIdx + 1;
+    final hasRight = rightIdx < doc.pages.length;
+    return Row(
+      children: [
+        Expanded(
+          child: PdfTheme.applyTheme(
+            theme: _typography.theme,
+            child: PdfViewer.data(
+              bytes,
+              sourceName: doc.sourceName,
+              controller: _leftController,
+              params: PdfViewerParams(
+                textSelectionParams:
+                    PdfTextSelectionParams(enabled: !showBanner),
+                errorBannerBuilder: (context, error, _, __) =>
+                    PdfErrorBanner(error: error),
+                onViewerReady: (pdfDoc, controller) {
+                  // 跳到 leftIdx + 1 (pdfrx 1-based)。onViewerReady 在
+                  // viewer 准备好交互后触发，是 goToPage 的安全调用点。
+                  controller.goToPage(pageNumber: leftIdx + 1);
+                },
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: hasRight
+              ? PdfTheme.applyTheme(
+                  theme: _typography.theme,
+                  child: PdfViewer.data(
+                    bytes,
+                    sourceName: doc.sourceName,
+                    controller: _rightController,
+                    params: PdfViewerParams(
+                      textSelectionParams:
+                          PdfTextSelectionParams(enabled: !showBanner),
+                      errorBannerBuilder: (context, error, _, __) =>
+                          PdfErrorBanner(error: error),
+                      onViewerReady: (pdfDoc, controller) {
+                        controller.goToPage(pageNumber: rightIdx + 1);
+                      },
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
   /// 释放 pdfrx 文档与所有 StreamController。
+  ///
+  /// T13: PdfViewerController 自身不持有 native 资源（pdfrx 文档由
+  /// PdfViewer 管理生命周期），无需 dispose；这里仅关闭文档与流。
   Future<void> dispose() async {
     await _doc?.dispose();
     await _stateController.close();

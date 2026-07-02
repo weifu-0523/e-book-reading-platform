@@ -62,12 +62,17 @@ class PdfReaderEngine implements ReaderEngine {
 
   @override
   Future<void> nextSpine() async {
-    _renderer.setPage(_renderer.currentPage + 1);
+    // T13: 双页布局下前进 / 后退按 2 步。setPage 内部已经 snap 到偶数，
+    // 所以 +1 / +2 在 dual 模式下行为一致（都到下一对左页）；显式 +2 让
+    // 意图清晰、避免依赖 snap 兜底。
+    final step = _renderer.dualPageMode ? 2 : 1;
+    _renderer.setPage(_renderer.currentPage + step);
   }
 
   @override
   Future<void> previousSpine() async {
-    _renderer.setPage(_renderer.currentPage - 1);
+    final step = _renderer.dualPageMode ? 2 : 1;
+    _renderer.setPage(_renderer.currentPage - step);
   }
 
   @override
@@ -98,6 +103,10 @@ class PdfReaderEngine implements ReaderEngine {
 
   /// PDF 总页数；未打开返回 0。
   int get pageCount => _renderer.pageCount;
+
+  /// T13: 暴露内部 [PdfRenderer] 引用，供 reader_body 在 LayoutBuilder 里
+  /// 同步设置 `dualPageMode` 与读取 `isScanned`。
+  PdfRenderer get rendererRef => _renderer;
 
   // ----- ReaderEngine EPUB-flavored members (Page-as-Chapter semantics) -----
 
