@@ -68,14 +68,12 @@ class ReaderDrawer extends ConsumerWidget {
     }
 
     return Drawer(
-      child: SizedBox(
-        width: 280,
-        child: Column(
-          children: [
-            _DrawerTabBar(current: tab, onTap: onSwitchTab),
-            Expanded(child: body),
-          ],
-        ),
+      width: 280,
+      child: Column(
+        children: [
+          _DrawerTabBar(current: tab, onTap: onSwitchTab),
+          Expanded(child: body),
+        ],
       ),
     );
   }

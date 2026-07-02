@@ -14,11 +14,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:zhiyue/gen_l10n/app_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/core/providers.dart' show notesRepositoryProvider;
+import 'package:zhiyue/data/models/annotation.dart';
+import 'package:zhiyue/data/models/book_note.dart';
+import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/widgets/reader_drawer.dart';
+import 'package:zhiyue/features/reader/widgets/reader_drawer_builders.dart';
 
 void main() {
   group('ReaderDrawer', () {
@@ -123,6 +132,101 @@ void main() {
       expect(find.text('暂无书签'), findsOneWidget);
     });
   });
+
+  group('ReaderDrawer integration', () {
+    testWidgets(
+        'mounts real ReaderNotesDrawerWrapper without nested Drawer',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            notesRepositoryProvider.overrideWith((_) => _StubNotesRepository()),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: [Locale('zh')],
+            home: Scaffold(
+              body: ReaderDrawer(
+                bookId: 'b1',
+                initialTab: DrawerTab.notes,
+                tocBuilder: (_) => const Text('TOC_CONTENT'),
+                notesBuilder: (_) => ReaderNotesDrawerWrapper(
+                  chapterTitles: {},
+                  onAnnotationTap: (_) {},
+                  onAnnotationLongPress: (_) {},
+                ),
+                onSwitchTab: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Exactly ONE Drawer widget — the outer ReaderDrawer shell.
+      expect(find.byType(Drawer), findsOneWidget,
+          reason:
+              'Nested Drawer detected — NotesDrawer must not wrap in Drawer.');
+      // Real notes content present.
+      expect(find.text('本书高亮与笔记'), findsOneWidget);
+    });
+  });
+}
+
+class _StubNotesRepository implements NotesRepository {
+  @override
+  Future<BookNote?> getNoteByBook(String bookId) async => null;
+
+  @override
+  Future<BookNote> createEmptyNote({
+    required String id,
+    required String bookId,
+    required String bookTitle,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> updateNote(BookNote note) async {}
+
+  @override
+  Future<List<Annotation>> listAnnotations(String noteId) async => const [];
+
+  @override
+  Future<void> addAnnotation(Annotation annotation) async {}
+
+  @override
+  Future<void> updateAnnotation(Annotation annotation) async {}
+
+  @override
+  Future<void> deleteAnnotation(String id) async {}
+
+  @override
+  Future<List<Annotation>> searchAnnotations(
+    String query, {
+    List<String>? tags,
+    HighlightColor? color,
+  }) async => const [];
+
+  @override
+  Future<void> applyChapterReview({
+    required String bookId,
+    required String bookTitle,
+    required int chapterIndex,
+    required String? chapterTitle,
+    required String summary,
+    required List<String> keyTakeaways,
+  }) async {}
+
+  @override
+  Stream<List<Annotation>> watchAnnotations(String bookId) async* {
+    yield const [];
+  }
 }
 
 class _TocText extends StatelessWidget {

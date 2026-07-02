@@ -87,7 +87,7 @@ class ReaderNotesDrawerWrapper extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notesAsync = ref.watch(notesControllerProvider);
     return notesAsync.when(
-      data: (s) => NotesDrawer(
+      data: (s) => NotesDrawerContent(
         annotations: s.annotations,
         chapterTitles: chapterTitles,
         onTap: onAnnotationTap,
