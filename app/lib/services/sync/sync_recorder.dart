@@ -149,6 +149,44 @@ class SyncRecorder {
     ));
   }
 
+  Future<void> recordBookmark({
+    required String id,
+    required String bookId,
+    required String locatorJson,
+    required String label,
+    required String? note,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    bool deleted = false,
+  }) {
+    final payload = <String, dynamic>{
+      'id': id,
+      'bookId': bookId,
+      'locatorJson': locatorJson,
+      'label': label,
+      'note': note,
+      'createdAt': createdAt.toUtc().toIso8601String(),
+    };
+    return _enqueue(SyncRecord(
+      id: id,
+      type: SyncRecordType.bookmark,
+      mtime: updatedAt,
+      deleted: deleted,
+      payload: deleted ? const {} : payload,
+    ));
+  }
+
+  Future<void> recordBookmarkDeletion({
+    required String id,
+    required DateTime mtime,
+  }) {
+    return _enqueue(SyncRecord.tombstone(
+      id: id,
+      type: SyncRecordType.bookmark,
+      mtime: mtime,
+    ));
+  }
+
   Future<void> _enqueue(SyncRecord record) {
     return _outbox.enqueue(
       recordId: record.id,

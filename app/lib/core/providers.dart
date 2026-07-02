@@ -26,6 +26,7 @@ import '../data/repositories/local_notes_repository.dart';
 import '../data/repositories/local_reading_progress_repository.dart';
 import '../data/repositories/local_settings_repository.dart';
 import '../data/repositories/book_repository.dart';
+import '../data/repositories/bookmark_repository.dart';
 import '../data/repositories/notes_repository.dart';
 import '../data/repositories/reading_progress_repository.dart';
 import '../data/repositories/settings_repository.dart';
@@ -72,6 +73,14 @@ final readingProgressRepositoryProvider =
 final notesRepositoryProvider = Provider<NotesRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return LocalNotesRepository(
+    db,
+    syncRecorder: SyncRecorder(db.syncOutboxDao),
+  );
+});
+
+final bookmarkRepositoryProvider = Provider<BookmarkRepository>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return LocalBookmarkRepository(
     db,
     syncRecorder: SyncRecorder(db.syncOutboxDao),
   );

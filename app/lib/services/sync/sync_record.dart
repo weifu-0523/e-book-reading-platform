@@ -23,6 +23,7 @@ enum SyncRecordType {
   bookNote,
   annotation,
   readingProgress,
+  bookmark,
 }
 
 /// JSON envelope persisted in outbox + shipped over WebDAV.

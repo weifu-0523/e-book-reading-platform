@@ -46,6 +46,8 @@ class RemoteRecordApplier {
         return _applyReadingProgress(record);
       case SyncRecordType.book:
         return _applyBook(record);
+      case SyncRecordType.bookmark:
+        return _applyBookmark(record);
     }
   }
 
@@ -91,6 +93,48 @@ class RemoteRecordApplier {
         Variable.withString(tags),
         Variable.withString(source),
         Variable.withDateTime(record.mtime),
+        Variable.withDateTime(record.mtime),
+      ],
+    );
+    return true;
+  }
+
+  Future<bool> _applyBookmark(SyncRecord record) async {
+    final existing = await _db.customSelect(
+      'SELECT updated_at FROM bookmarks WHERE id = ?',
+      variables: [Variable.withString(record.id)],
+    ).getSingleOrNull();
+    if (existing != null) {
+      final localMtime = existing.read<DateTime>('updated_at');
+      if (!record.mtime.isAfter(localMtime)) {
+        await _recordConflict(record, localMtime);
+        return false;
+      }
+    }
+
+    if (record.deleted) {
+      await _db.customStatement(
+        'DELETE FROM bookmarks WHERE id = ?',
+        [record.id],
+      );
+      return true;
+    }
+
+    final p = record.payload;
+    final createdAtStr = p['createdAt'] as String?;
+    final createdAt = createdAtStr == null
+        ? record.mtime
+        : DateTime.parse(createdAtStr);
+
+    await _db.customInsert(
+      'INSERT OR REPLACE INTO bookmarks(id, book_id, locator_json, label, note, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
+      variables: [
+        Variable.withString(record.id),
+        Variable.withString(p['bookId'] as String),
+        Variable.withString(p['locatorJson'] as String),
+        Variable.withString(p['label'] as String),
+        Variable<String>(p['note'] as String?),
+        Variable.withDateTime(createdAt),
         Variable.withDateTime(record.mtime),
       ],
     );
