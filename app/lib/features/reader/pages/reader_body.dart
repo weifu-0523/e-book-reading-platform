@@ -398,25 +398,31 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               onTapNext: () => engine.nextSpine(),
               onBack: () => Navigator.of(innerContext).maybePop(),
               onOpenToc: () {
-                // 宽屏路径下 sidebar 已经常驻，目录通过 sidebar 切换 tab；
-                // 窄屏路径仍走 Scaffold.openDrawer()。
-                if (ui.tocSidebarCollapsed ||
-                    !_isWideScreen(innerContext)) {
+                // Tab 切换是幂等且廉价的，无论宽窄屏都执行；
+                // 宽屏路径下若 sidebar 折叠则自动展开，让用户看到结果。
+                // 仅 Scaffold.openDrawer() 需要宽屏 gate（宽屏没有 Scaffold drawer）。
+                ref
+                    .read(readerUiControllerProvider.notifier)
+                    .setActiveDrawerTab(DrawerTab.toc);
+                if (ui.tocSidebarCollapsed) {
                   ref
                       .read(readerUiControllerProvider.notifier)
-                      .setActiveDrawerTab(DrawerTab.toc);
+                      .toggleSidebarCollapsed();
                 }
                 if (!_isWideScreen(innerContext)) {
                   Scaffold.of(innerContext).openDrawer();
                 }
               },
               onOpenNotes: () {
-                // 同 onOpenToc：窄屏 openDrawer；宽屏 sidebar 接管。
-                if (ui.tocSidebarCollapsed ||
-                    !_isWideScreen(innerContext)) {
+                // 同 onOpenToc：tab 切换无条件执行，sidebar 折叠则展开，
+                // 仅 openDrawer 受宽屏 gate。
+                ref
+                    .read(readerUiControllerProvider.notifier)
+                    .setActiveDrawerTab(DrawerTab.notes);
+                if (ui.tocSidebarCollapsed) {
                   ref
                       .read(readerUiControllerProvider.notifier)
-                      .setActiveDrawerTab(DrawerTab.notes);
+                      .toggleSidebarCollapsed();
                 }
                 if (!_isWideScreen(innerContext)) {
                   Scaffold.of(innerContext).openDrawer();

@@ -32,6 +32,7 @@ import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
+import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_body.dart';
 import 'package:zhiyue/features/reader/widgets/reader_drawer.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
@@ -252,6 +253,44 @@ void main() {
       // 关闭时是 offstage 的；用 widget tree 深搜确认挂载。
       final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
       expect(scaffold.drawer, isA<ReaderDrawer>());
+    });
+
+    // Regression: 宽屏 + sidebar 已展开 + 当前在 Notes tab，用户点 AppBar 的
+    // TOC 图标，期望切到 TOC tab。原 bug 把 setActiveDrawerTab 包在
+    // `ui.tocSidebarCollapsed || !_isWideScreen` 守卫里，导致宽屏展开态点击
+    // 是静默 no-op。守卫应只 gate openDrawer，tab 切换必须无条件执行。
+    testWidgets(
+        'wide screen: tapping TOC icon switches to TOC tab when sidebar expanded',
+        (tester) async {
+      final container = await pumpReaderBody(tester,
+          bookId: 'b-wide-toc', logicalSize: const Size(1600, 900));
+
+      // 模拟用户此前已在 Notes tab（通过控制器直接设置初始态）。
+      container
+          .read(readerUiControllerProvider.notifier)
+          .setActiveDrawerTab(DrawerTab.notes);
+      // 测试环境默认 platform 非 desktop，chrome 默认隐藏；显式开启以便点击 AppBar。
+      container.read(readerUiControllerProvider.notifier).toggleChrome();
+      await tester.pump();
+      expect(container.read(readerUiControllerProvider).activeDrawerTab,
+          DrawerTab.notes,
+          reason: 'precondition: should start on Notes tab');
+
+      // Sidebar 已展开是默认状态（280px），无需切换。
+      expect(find.byKey(const Key('sidebar_root')), findsOneWidget);
+
+      // 在 chrome AppBar 上找到 TOC 图标（tooltip=目录）并点击。
+      final tocIcon = find.byTooltip('目录');
+      expect(tocIcon, findsOneWidget,
+          reason: 'TOC icon should be visible in chrome AppBar on wide screen');
+      await tester.tap(tocIcon);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 10));
+
+      // 修复后：tab 应切到 TOC。
+      expect(container.read(readerUiControllerProvider).activeDrawerTab,
+          DrawerTab.toc,
+          reason: 'after fix: tapping TOC icon must switch active tab');
     });
   });
 }
