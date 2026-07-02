@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/local/database.dart';
 import '../controllers/reader_ui_controller.dart';
 import 'reader_bookmark_list.dart';
 
@@ -44,6 +45,7 @@ class ReaderDrawer extends ConsumerWidget {
     required this.tocBuilder,
     required this.notesBuilder,
     required this.onSwitchTab,
+    required this.onBookmarkJump,
     this.standalone = false,
   });
 
@@ -52,6 +54,11 @@ class ReaderDrawer extends ConsumerWidget {
   final WidgetBuilder tocBuilder;
   final WidgetBuilder notesBuilder;
   final ValueChanged<DrawerTab> onSwitchTab;
+
+  /// 用户在书签 tab 内点击书签条目时的回调。透传给 [ReaderBookmarkList.onJump]。
+  /// reader_body 通过此回调拿到 [BookmarkEntry] 后反序列化 locator 并调用
+  /// `engine.gotoLocator` + 关闭抽屉。
+  final ValueChanged<BookmarkEntry> onBookmarkJump;
   final bool standalone;
 
   @override
@@ -65,7 +72,7 @@ class ReaderDrawer extends ConsumerWidget {
         body = tocBuilder(context);
         break;
       case DrawerTab.bookmarks:
-        body = ReaderBookmarkList(bookId: bookId);
+        body = ReaderBookmarkList(bookId: bookId, onJump: onBookmarkJump);
         break;
       case DrawerTab.notes:
         body = notesBuilder(context);

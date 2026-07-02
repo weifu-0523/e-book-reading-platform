@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 import 'package:reader_engine/core/locator.dart';
 
 import '../features/ai/pages/api_key_settings_page.dart';
+import '../features/bookmarks/pages/bookmarks_page.dart';
 import '../features/library/pages/book_detail_page.dart';
 import '../features/library/pages/library_page.dart';
 import '../features/notes/pages/notes_page.dart';
@@ -64,6 +65,13 @@ GoRouter createAppRouter() {
         builder: (context, state) {
           final id = state.pathParameters['id']!;
           return NotesPage(bookId: id);
+        },
+      ),
+      GoRoute(
+        path: '/book/:id/bookmarks',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return BookmarksPage(bookId: id);
         },
       ),
       GoRoute(

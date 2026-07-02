@@ -22,12 +22,15 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/providers.dart' show notesRepositoryProvider;
+import 'package:zhiyue/data/local/database.dart' show BookmarkEntry;
 import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/widgets/reader_drawer.dart';
 import 'package:zhiyue/features/reader/widgets/reader_drawer_builders.dart';
+
+void _noopBookmarkJump(BookmarkEntry _) {}
 
 void main() {
   group('ReaderDrawer', () {
@@ -51,6 +54,7 @@ void main() {
                       .read(readerUiControllerProvider.notifier)
                       .setActiveDrawerTab(tab);
                 },
+                onBookmarkJump: _noopBookmarkJump,
               ),
             ),
           ),
@@ -71,8 +75,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(lastSwitched, DrawerTab.bookmarks);
-      // Bookmark list placeholder shows.
-      expect(find.text('暂无书签'), findsOneWidget);
+      // T12: real bookmark list widget shows '本书暂无书签' when empty.
+      expect(find.text('本书暂无书签'), findsOneWidget);
 
       // Tap 笔记 tab.
       await tester.tap(find.text('笔记'));
@@ -93,6 +97,7 @@ void main() {
                 tocBuilder: (_) => const Text('TOC_CONTENT'),
                 notesBuilder: (_) => const Text('NOTES_CONTENT'),
                 onSwitchTab: (_) {},
+                onBookmarkJump: _noopBookmarkJump,
               ),
             ),
           ),
@@ -121,6 +126,7 @@ void main() {
                 tocBuilder: (_) => const _TocText(),
                 notesBuilder: (_) => const _NotesText(),
                 onSwitchTab: _noop,
+                onBookmarkJump: _noopBookmarkJump,
               ),
             ),
           ),
@@ -129,7 +135,8 @@ void main() {
       await tester.pump();
 
       // Controller-driven initial tab = bookmarks.
-      expect(find.text('暂无书签'), findsOneWidget);
+      // T12: empty bookmark list shows '本书暂无书签'.
+      expect(find.text('本书暂无书签'), findsOneWidget);
     });
   });
 
@@ -161,6 +168,7 @@ void main() {
                   onAnnotationLongPress: (_) {},
                 ),
                 onSwitchTab: (_) {},
+                onBookmarkJump: _noopBookmarkJump,
               ),
             ),
           ),

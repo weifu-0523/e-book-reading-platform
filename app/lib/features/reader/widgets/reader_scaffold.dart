@@ -67,6 +67,10 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// 对 EPUB 书传入非空回调，从而实现「PDF 跳过」语义。
   final VoidCallback? onOpenReview;
 
+  /// 点击「添加书签」图标回调（M2.5/T12）。弹出 ReaderBookmarkDialog，
+  /// 用户确认后由本回调把 BookmarkEntry 写入数据库。为 null 时不渲染图标。
+  final VoidCallback? onAddBookmark;
+
   /// 触发水平滑动翻页的最小速度阈值（px/s）。
   ///
   /// 测试中 `timedDrag(Offset(±300, 0), 200ms)` 的速度约为 1500 px/s，
@@ -87,6 +91,7 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     this.onOpenAiGuide,
     this.onOpenQa,
     this.onOpenReview,
+    this.onAddBookmark,
   });
 
   @override
@@ -160,6 +165,14 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                 icon: const Icon(Icons.menu_book),
                 tooltip: '笔记',
                 onPressed: widget.onOpenNotes,
+              ),
+              // T12：添加书签。v1 不做「当前页已加书签」检测，统一显示
+              // bookmark_add_outlined 图标，点击弹 dialog 录入 label + note。
+              IconButton(
+                key: const Key('toggle_bookmark'),
+                icon: const Icon(Icons.bookmark_add_outlined),
+                tooltip: '添加书签',
+                onPressed: widget.onAddBookmark,
               ),
               IconButton(
                 icon: const Icon(Icons.auto_awesome),

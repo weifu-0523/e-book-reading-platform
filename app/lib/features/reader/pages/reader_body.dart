@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter/services.dart';
@@ -29,18 +32,21 @@ import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
 import '../../../core/widgets/loading_view.dart';
+import '../../../data/local/database.dart' show BookmarkEntry;
 import '../../../data/models/annotation.dart';
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/ai/widgets/qa_ask_dialog.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
+import '../controllers/bookmark_controller.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
 import '../services/scroll_to_offset.dart';
 import '../services/toc_title_resolver.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
 import '../widgets/note_editor_sheet.dart';
+import '../widgets/reader_bookmark_dialog.dart';
 import '../widgets/reader_chapter_end_prompt.dart';
 import '../widgets/reader_drawer.dart';
 import '../widgets/reader_drawer_builders.dart';
@@ -293,6 +299,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         onSwitchTab: (tab) => ref
             .read(readerUiControllerProvider.notifier)
             .setActiveDrawerTab(tab),
+        onBookmarkJump: _onBookmarkJump,
       ),
       onDrawerChanged: (open) {
         // 用户从外部滑出/收起抽屉时同步 UI 状态。
@@ -370,6 +377,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                             onSwitchTab: (tab) => ref
                                 .read(readerUiControllerProvider.notifier)
                                 .setActiveDrawerTab(tab),
+                            onBookmarkJump: _onBookmarkJump,
                           ),
                         ),
                       ],
@@ -434,6 +442,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               onOpenAiGuide: _onOpenAiGuide,
               onOpenQa: _onOpenQa,
               onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
+              onAddBookmark: _onAddBookmark,
             ),
           ),
           if (engine is ConcreteEpubReaderEngine)
@@ -723,6 +732,89 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('无效章节号')),
     );
+  }
+
+  /// AppBar「添加书签」回调（M2.5/T12）。
+  ///
+  /// 在当前 `_currentLocation` 处弹 [ReaderBookmarkDialog]，用户确认后
+  /// 把 [BookmarkEntry] 写入数据库。`_currentLocation` 来自
+  /// `engine.currentLocation$` 流（initState 订阅）；引擎未上报过位置时
+  /// 静默退出（与高亮/笔记路径一致：避免在未知位置写入书签）。
+  Future<void> _onAddBookmark() async {
+    final locator = _currentLocation;
+    if (locator == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('正在加载，请稍后再试')),
+      );
+      return;
+    }
+    final entry = await showDialog<BookmarkEntry>(
+      context: context,
+      builder: (_) => ReaderBookmarkDialog(
+        bookId: widget.bookId,
+        defaultLabel: _defaultBookmarkLabel(locator),
+        locator: locator,
+      ),
+    );
+    if (entry == null || !mounted) return;
+    await ref.read(bookmarkControllerProvider.notifier).add(
+          label: entry.label,
+          locator: locator,
+          note: entry.note,
+        );
+  }
+
+  /// Drawer / 书签页 jump 回调（M2.5/T12）。
+  ///
+  /// 反序列化 [BookmarkEntry.locatorJson] 为 [Locator]，调用
+  /// `engine.gotoLocator`，然后关闭抽屉（窄屏）/ 折叠 sidebar 不变（宽屏）。
+  /// 关闭后等待 chapter switch settle，与 [_onAnnotationTap] 路径对齐。
+  Future<void> _onBookmarkJump(BookmarkEntry entry) async {
+    Locator? locator;
+    try {
+      final decoded = jsonDecode(entry.locatorJson);
+      if (decoded is Map<String, dynamic>) {
+        locator = Locator.fromJson(decoded);
+      }
+    } catch (_) {
+      // 静默忽略损坏的 locator。
+    }
+    if (locator == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法跳转到该书签')),
+      );
+      return;
+    }
+    await engine.gotoLocator(locator);
+    await engine.chapterSwitchSettled;
+    if (!mounted) return;
+    // 关闭 Drawer（窄屏）。宽屏下抽屉是常驻 sidebar，maybePop 会关闭整页，
+    // 因此仅在窄屏调用。判断逻辑：与 onOpenToc 一致使用 _isWideScreen。
+    if (!_isWideScreen(context)) {
+      unawaited(Navigator.of(context).maybePop());
+    }
+  }
+
+  /// 根据 locator 类型推导默认书签 label。EPUB 用「第 N 章」，
+  /// PDF 用「第 N 页」，无法识别时 fallback 到「当前位置」。
+  String _defaultBookmarkLabel(Locator locator) {
+    if (locator is EpubCfiLocator) {
+      final idx = locator.chapterIndex + 1;
+      return '第 $idx 章';
+    }
+    if (locator is EpubRangeLocator) {
+      final idx = locator.chapterIndex + 1;
+      return '第 $idx 章';
+    }
+    if (locator is PdfPageLocator) {
+      return '第 ${locator.page} 页';
+    }
+    if (locator is PdfRangeLocator) {
+      return '第 ${locator.page} 页';
+    }
+    return '当前位置';
   }
 
   /// 异步刷新 [_cachedBook]。每次 build 触发一次 fire-and-forget 拉取，
