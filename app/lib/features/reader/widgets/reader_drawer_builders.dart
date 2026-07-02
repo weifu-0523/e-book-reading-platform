@@ -26,12 +26,12 @@ import '../providers/notes_controller.dart';
 import 'notes_drawer.dart';
 import 'toc_drawer.dart' show TocDrawer, defaultTocChapterIndex;
 
-/// Drawer that wraps [TocDrawer] for the reader's `Scaffold.drawer` slot.
+/// 注：T7 (M2.5) 起，抽屉由 [ReaderDrawer] 统一容器提供 `Drawer(...)` 外壳，
+/// 这里的 wrapper 不再自行包裹 `Drawer(...)`，而是直接返回 tab body widget。
 ///
-/// Extracted from `reader_body.dart` `_buildTocDrawer` so the host file
-/// doesn't need to know about preprocess controller wiring or the
-/// `closeDrawer` plumbing. The reader passes [onReviewChapter] only for
-/// EPUB books (PDF callers pass null to suppress the review button).
+/// 历史上 `ReaderTocDrawerWrapper` 用于 reader 的 `Scaffold.drawer` 槽位，
+/// 自带 `Drawer(...)` 包装；现在作为 [ReaderDrawer.tocBuilder] 的内容注入，
+/// 外层 Drawer 由 [ReaderDrawer] 提供。
 class ReaderTocDrawerWrapper extends ConsumerWidget {
   const ReaderTocDrawerWrapper({
     super.key,
@@ -48,29 +48,29 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final toc = engine.toc;
     if (toc == null) {
-      return const Drawer(child: LoadingView());
+      return const LoadingView();
     }
     final preprocess = ref.watch(bookPreprocessControllerProvider(bookId));
-    return Drawer(
-      child: TocDrawer(
-        toc: toc,
-        preprocessState: preprocess,
-        chapterIndexResolver: defaultTocChapterIndex,
-        onSelect: (entry) async {
-          await engine.gotoTocEntry(entry);
-          if (context.mounted) {
-            Scaffold.of(context).closeDrawer();
-          }
-        },
-        onReviewChapter: onReviewChapter,
-      ),
+    return TocDrawer(
+      toc: toc,
+      preprocessState: preprocess,
+      chapterIndexResolver: defaultTocChapterIndex,
+      onSelect: (entry) async {
+        await engine.gotoTocEntry(entry);
+        if (context.mounted) {
+          Scaffold.of(context).closeDrawer();
+        }
+      },
+      onReviewChapter: onReviewChapter,
     );
   }
 }
 
-/// Drawer that wraps [NotesDrawer] for the reader's `Scaffold.endDrawer`
-/// slot. Reads from [notesControllerProvider] and forwards tap/long-press
-/// callbacks to the host (the host owns the navigation + sheet logic).
+/// 注：T7 (M2.5) 起，作为 [ReaderDrawer.notesBuilder] 的内容注入。
+/// 外层 Drawer 由 [ReaderDrawer] 提供。
+///
+/// 历史上 `ReaderNotesDrawerWrapper` 用于 reader 的 `Scaffold.endDrawer`
+/// 槽位，自带 `Drawer(...)` 包装；现已移除内部 `Drawer(...)` 外壳。
 class ReaderNotesDrawerWrapper extends ConsumerWidget {
   const ReaderNotesDrawerWrapper({
     super.key,
@@ -94,10 +94,9 @@ class ReaderNotesDrawerWrapper extends ConsumerWidget {
         onLongPress: onAnnotationLongPress,
         onClose: () => Navigator.of(context).maybePop(),
       ),
-      loading: () => const Drawer(child: LoadingView()),
-      error: (e, _) => Drawer(
-        child: ErrorView(message: AppLocalizations.of(context)!.notesLoadFailed),
-      ),
+      loading: () => const LoadingView(),
+      error: (e, _) =>
+          ErrorView(message: AppLocalizations.of(context)!.notesLoadFailed),
     );
   }
 }

@@ -42,6 +42,7 @@ import '../services/toc_title_resolver.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
 import '../widgets/note_editor_sheet.dart';
 import '../widgets/reader_chapter_end_prompt.dart';
+import '../widgets/reader_drawer.dart';
 import '../widgets/reader_drawer_builders.dart';
 import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
@@ -256,12 +257,24 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
     // typographyPanelOpen 由 ReaderTypographyPanelTrigger 监听并弹出/收起 bottom sheet。
     return Scaffold(
-      // 抽屉（左滑或图标触发）：TocDrawer。
-      drawer: ReaderTocDrawerWrapper(
-        engine: engine,
+      // T7 (M2.5) 起抽屉统一为 3-tab 容器（目录 / 书签 / 笔记），
+      // 替代旧的 Scaffold.drawer (TOC) + Scaffold.endDrawer (Notes) 分体结构。
+      drawer: ReaderDrawer(
         bookId: widget.bookId,
-        onReviewChapter:
-            engine is PdfReaderEngine ? null : _onOpenReview,
+        tocBuilder: (_) => ReaderTocDrawerWrapper(
+          engine: engine,
+          bookId: widget.bookId,
+          onReviewChapter:
+              engine is PdfReaderEngine ? null : _onOpenReview,
+        ),
+        notesBuilder: (_) => ReaderNotesDrawerWrapper(
+          chapterTitles: _chapterTitlesCache,
+          onAnnotationTap: (id) => _onAnnotationTap(id),
+          onAnnotationLongPress: (id) => _onAnnotationLongPress(id),
+        ),
+        onSwitchTab: (tab) => ref
+            .read(readerUiControllerProvider.notifier)
+            .setActiveDrawerTab(tab),
       ),
       onDrawerChanged: (open) {
         // 用户从外部滑出/收起抽屉时同步 UI 状态。
@@ -272,11 +285,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           notifier.closeTocDrawer();
         }
       },
-      endDrawer: ReaderNotesDrawerWrapper(
-        chapterTitles: _chapterTitlesCache,
-        onAnnotationTap: (id) => _onAnnotationTap(id),
-        onAnnotationLongPress: (id) => _onAnnotationLongPress(id),
-      ),
       body: Builder(
         builder: (innerContext) => Stack(
           children: [
@@ -289,8 +297,20 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                 onTapPrev: () => engine.previousSpine(),
                 onTapNext: () => engine.nextSpine(),
                 onBack: () => Navigator.of(innerContext).maybePop(),
-                onOpenToc: () => Scaffold.of(innerContext).openDrawer(),
-                onOpenNotes: () => Scaffold.of(innerContext).openEndDrawer(),
+                onOpenToc: () {
+                  // 切换到「目录」tab 并打开统一抽屉。
+                  ref
+                      .read(readerUiControllerProvider.notifier)
+                      .setActiveDrawerTab(DrawerTab.toc);
+                  Scaffold.of(innerContext).openDrawer();
+                },
+                onOpenNotes: () {
+                  // T7 起笔记通过统一抽屉的「笔记」tab 访问。
+                  ref
+                      .read(readerUiControllerProvider.notifier)
+                      .setActiveDrawerTab(DrawerTab.notes);
+                  Scaffold.of(innerContext).openDrawer();
+                },
                 onOpenTypography: () => ref
                     .read(readerUiControllerProvider.notifier)
                     .openTypographyPanel(),

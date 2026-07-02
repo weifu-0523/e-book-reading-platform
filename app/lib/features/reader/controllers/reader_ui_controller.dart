@@ -17,17 +17,22 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// Reader drawer 统一抽屉的 tab 选项（T7 起 drawer/endDrawer 合并为单 Drawer）。
+enum DrawerTab { toc, bookmarks, notes }
+
 /// 阅读 UI 的瞬时状态（不持久化）：chrome 显隐、抽屉、排版面板。
 @immutable
 class ReaderUiState {
   final bool chromeVisible;
   final bool tocDrawerOpen;
   final bool typographyPanelOpen;
+  final DrawerTab activeDrawerTab;
 
   const ReaderUiState({
     this.chromeVisible = false,
     this.tocDrawerOpen = false,
     this.typographyPanelOpen = false,
+    this.activeDrawerTab = DrawerTab.toc,
   });
 
   /// 平台相关的默认状态：桌面端 chrome 默认可见，移动端默认隐藏
@@ -41,6 +46,7 @@ class ReaderUiState {
       chromeVisible: isDesktop,
       tocDrawerOpen: false,
       typographyPanelOpen: false,
+      activeDrawerTab: DrawerTab.toc,
     );
   }
 
@@ -48,11 +54,13 @@ class ReaderUiState {
     bool? chromeVisible,
     bool? tocDrawerOpen,
     bool? typographyPanelOpen,
+    DrawerTab? activeDrawerTab,
   }) {
     return ReaderUiState(
       chromeVisible: chromeVisible ?? this.chromeVisible,
       tocDrawerOpen: tocDrawerOpen ?? this.tocDrawerOpen,
       typographyPanelOpen: typographyPanelOpen ?? this.typographyPanelOpen,
+      activeDrawerTab: activeDrawerTab ?? this.activeDrawerTab,
     );
   }
 }
@@ -65,6 +73,8 @@ class ReaderUiController extends StateNotifier<ReaderUiState> {
   void closeTocDrawer() => state = state.copyWith(tocDrawerOpen: false);
   void openTypographyPanel() => state = state.copyWith(typographyPanelOpen: true);
   void closeTypographyPanel() => state = state.copyWith(typographyPanelOpen: false);
+  void setActiveDrawerTab(DrawerTab tab) =>
+      state = state.copyWith(activeDrawerTab: tab);
 }
 
 final readerUiControllerProvider =
