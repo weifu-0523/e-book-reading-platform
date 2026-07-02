@@ -32,17 +32,21 @@ class ReadingProgressDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Upsert：主键冲突时更新。
+  ///
+  /// 调用方可传 [updatedAt] 复用同一时间戳（与 sync recorder 共享，避免
+  /// μs 漂移导致 cross-device LWW 误判）。不传则取当前时间。
   Future<void> upsert({
     required String bookId,
     required String locatorJson,
     required double percent,
+    DateTime? updatedAt,
   }) async {
     await into(readingProgressTable).insertOnConflictUpdate(
       ReadingProgressTableCompanion.insert(
         bookId: bookId,
         locator: locatorJson,
         percent: percent,
-        updatedAt: Value(DateTime.now()),
+        updatedAt: Value(updatedAt ?? DateTime.now()),
       ),
     );
   }

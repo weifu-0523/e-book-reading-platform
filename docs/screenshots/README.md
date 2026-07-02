@@ -3,20 +3,17 @@
 This directory hosts Windows release-build screenshots used in the root
 `README.md` and the Gitee Release attachments.
 
-## Current state (2026-06-30, M1.6 T14)
+## Current state (2026-07-03, M2.5 后)
 
-| File          | Status      | Captured in |
-|---------------|-------------|-------------|
-| `epub_reader.png` | present (2208x1200) | M8 T14 (`bfee397`) |
-| `library.png`     | **pending** | — |
-| `pdf_reader.png`  | **pending** | — |
-| `notes.png`       | **pending** | — |
+| File          | On disk      | Captured in | Notes |
+|---------------|-------------|-------------|-------|
+| `epub_reader.png` | present (2208x1200) | M8 T14 (`bfee397`) | 老 M8 截图，未含 M2.5 sidebar/fullscreen/dual-page，需重捕 |
+| `library.png`     | present | v1.4.0-alpha | M2.5 引入 sidebar 后过时，需重捕 |
+| `pdf_reader.png`  | **missing** | — | README.md:39 渲染为 broken-image，必须补 |
+| `notes.png`       | **missing** | — | README.md:39 渲染为 broken-image，必须补 |
 
-The 3 pending shots are blocked on a manual capture step (see below).
-M8 T14 captured the EPUB shot via the Win32 `PrintWindow` API; the
-remaining 3 require interactive UI navigation (importing a book,
-opening the reader, switching to the notes page) that an automated
-subagent cannot drive.
+**v1.5.0-alpha 必做**：重捕全部 4 张（M2.5 改了 reader UX 全部布局）。
+至少补齐 `pdf_reader.png` 和 `notes.png`，否则 README 公开页面显示 broken image。
 
 ## What each pending screenshot should show
 

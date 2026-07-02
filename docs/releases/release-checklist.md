@@ -4,44 +4,37 @@
 
 ## 待办（需用户/Claude 配合）
 
-### v1.0.0 Gitee Release 页面
+> **Gitee Release 页面状态总览**（2026-07-03 订正，详见已完成段 v1.4.0-alpha T9）：v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha / v1.4.0-alpha 五个页面均已创建；v1.5.0-alpha 页面待创建。下表为单一来源，不再在「已完成」段重复。
 
-- **状态**：❌ **未创建**（tag 已推送，但 Gitee 上没有 release 页面）
-- **执行**：浏览器开 https://gitee.com/weifu0523/e-book-reading-platform/releases/new，选 tag `v1.0.0`
-- **Release notes**：复制 CHANGELOG.md `[1.0.0]` 段落
-- **附 artifact**：
-  - 需重新 build v1.0.0 tag（`git checkout v1.0.0` 后跑 release-procedure 步骤 3-7）
-  - 上传 setup.exe / portable.zip / .apk
-  - 上传 4 张截图（其中 3 张需先补齐，见下）
-
-### v1.1.0-alpha Gitee Release 页面
-
-- **状态**：❌ **未创建**
-- **Release notes 草稿**：见 [`release-notes-v1.1.0-alpha.md`](./release-notes-v1.1.0-alpha.md)
-- **执行**：同上，选 tag `v1.1.0-alpha`
-
-### v1.2.0-alpha Gitee Release 页面
-
-- **状态**：❌ **未创建**
-- **Release notes 草稿**：TODO（M2.2 完成后补，复用 v1.1.0-alpha 模板）
-- **执行**：同上，选 tag `v1.2.0-alpha`
-
-### v1.3.0-alpha Gitee Release 页面
-
-- **状态**：❌ **未创建**
-- **Release notes 草稿**：TODO（M2.3 完成后补，复用 v1.1.0-alpha 模板）
-- **执行**：同上，选 tag `v1.3.0-alpha`
-
-### 截图补齐（3/4 缺失）
-
-| 文件 | 状态 | 捕获步骤 |
+| Tag | Release 页面 | Release notes 草稿 |
 |---|---|---|
-| `docs/screenshots/epub_reader.png` | ✅ M8 T14 完成 | — |
-| `docs/screenshots/library.png` | ❌ | 启动 app → 显示 library 页面（含 ≥2 本书） → Win+Shift+S 截屏 |
-| `docs/screenshots/pdf_reader.png` | ❌ | 打开 PDF 书 → 显示 reader（page indicator 或 chapter drawer 可见） → 截屏 |
-| `docs/screenshots/notes.png` | ❌ | 打开有高亮的书的 Notes 页 → 截屏 |
+| v1.0.0 | ✅ 已创建（v1.4 sweep） | CHANGELOG `[1.0.0]` 段 |
+| v1.1.0-alpha | ✅ 已创建（v1.4 sweep） | [`release-notes-v1.1.0-alpha.md`](./release-notes-v1.1.0-alpha.md) |
+| v1.2.0-alpha | ✅ 已创建（v1.4 sweep） | CHANGELOG `[1.2.0-alpha]` 段 |
+| v1.3.0-alpha | ✅ 已创建（v1.4 sweep） | CHANGELOG `[1.3.0-alpha]` 段 |
+| v1.4.0-alpha | ✅ 已创建（v1.4 sweep） | [`release-notes-v1.4.0-alpha.md`](./release-notes-v1.4.0-alpha.md) |
+| v1.5.0-alpha | ❌ **待创建** | [`release-notes-v1.5.0-alpha.md`](./release-notes-v1.5.0-alpha.md) |
 
-详见 [`docs/screenshots/README.md`](../screenshots/README.md)。
+### v1.5.0-alpha Gitee Release 页面（待用户操作）
+
+- **状态**：❌ **待创建**
+- **执行**：浏览器开 https://gitee.com/weifu0523/e-book-reading-platform/releases/new，选 tag `v1.5.0-alpha`
+- **Release notes**：复制 [`release-notes-v1.5.0-alpha.md`](./release-notes-v1.5.0-alpha.md) 草稿
+- **附 artifact**：
+  - 需 build v1.5.0-alpha tag（`git checkout v1.5.0-alpha` 后跑 release-procedure 步骤 3-7）
+  - 上传 setup.exe / portable.zip / .apk
+  - 上传 4 张截图（其中 2 张需先补齐，见下）
+
+### 截图补齐（v1.5 需重捕全部 4 张）
+
+| 文件 | 磁盘 | 状态 | 捕获步骤 |
+|---|---|---|---|
+| `docs/screenshots/epub_reader.png` | ✅ | M8 老版本，v1.5 后过时 | M2.5 引入 sidebar/fullscreen/dual-page 后重捕 |
+| `docs/screenshots/library.png` | ✅ | v1.4 补齐，v1.5 后过时 | M2.5 引入 sidebar 后重捕 |
+| `docs/screenshots/pdf_reader.png` | ❌ **缺失** | README broken image | 打开 PDF 书 → 显示 reader（含 page indicator 或 chapter drawer 可见） → 截屏 |
+| `docs/screenshots/notes.png` | ❌ **缺失** | README broken image | 打开有高亮的书的 Notes 页 → 截屏 |
+
+> v1.4.0-alpha 期间曾补齐 library/pdf_reader/notes 三张，但 v1.5 引入 sidebar/fullscreen/dual-page 后老截图不准；且 pdf_reader.png 和 notes.png 磁盘实况确实缺失。详见 [`docs/screenshots/README.md`](../screenshots/README.md)。
 
 ### 性能 baseline 测量
 
@@ -95,9 +88,9 @@
 - ✅ `f3548d5` — P0 SSE 跨 TCP 包解析加 line buffer（防长 JSON 行中断丢已付 token）
 - ✅ 4 个包 analyze clean（reader_engine / reader_engine_epub_view / reader_engine_pdf_view / app/lib / app/test）
 
-待执行（用户现场操作，因远程延迟推迟到 2026-07-02）：
-- ⏳ T8: 3 张截图补齐（library / pdf_reader / notes）
-- ⏳ T9: 4 个 Gitee Release 页面（v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha）
+待执行（用户现场操作，因远程延迟推迟到 2026-07-02；2026-07-03 review 时订正：截图/Gitee Release 状态已统一到顶部表格，不再在此重复）：
+- ⏳ T8: 3 张截图补齐（library / pdf_reader / notes）—— 见上方「截图补齐」段（v1.5 需重捕全部 4 张）
+- ✅ T9: 4 个 Gitee Release 页面（v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha）—— 已在 v1.4 sweep 期间完成；v1.5 页面待创建（见顶部表格）
 - ⏳ T10: DeepSeek API key 配置 + AI 导读烟测；两台 Windows 配坚果云 WebDAV 同步 E2E
 - ⏳ T11 finalize: 双 tag `m2.4-complete` + `v1.4.0-alpha` + memory 文件
 

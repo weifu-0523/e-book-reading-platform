@@ -55,7 +55,17 @@ class PdfRenderer {
   ///
   /// 文本选区上下文菜单在双页模式下被禁用（页面归属歧义）。需要做高亮的
   /// 用户可以缩窄窗口切回单页模式。此 trade-off 在 commit message 中记录。
-  bool dualPageMode = false;
+  ///
+  /// Setter 在进入双页模式时调 [setPage] 重新 snap [_currentPage] 到偶数，
+  /// 避免 toggle 瞬间 `_currentPage` 仍为奇数导致 `currentLocation$` 发射
+  /// 错误页码（page indicator 显示 N+1 而实际可见 spread 起始于 N）。
+  bool _dualPageMode = false;
+  bool get dualPageMode => _dualPageMode;
+  set dualPageMode(bool value) {
+    if (_dualPageMode == value) return;
+    _dualPageMode = value;
+    if (value) setPage(_currentPage);
+  }
 
   /// T13: 缓存 [_scannedFuture] 的最新解析结果，供 reader_body 同步判断
   /// `isScanned` 用（决定是否启用 dualPageMode）。null 表示尚未解析过。

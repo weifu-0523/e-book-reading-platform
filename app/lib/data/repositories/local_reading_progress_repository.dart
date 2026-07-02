@@ -49,16 +49,21 @@ class LocalReadingProgressRepository implements ReadingProgressRepository {
 
   @override
   Future<void> save(ReadingProgress progress) async {
+    // 单次 now() 同时给 DB 和 recorder，避免 μs 漂移导致 cross-device
+    // LWW 误判（"我在手机翻到第 100 页保存了，桌面端却显示第 80 页"）。
+    final now = DateTime.now();
+    final locatorJson = jsonEncode(progress.locator.toJson());
     await _dao.upsert(
       bookId: progress.bookId,
-      locatorJson: jsonEncode(progress.locator.toJson()),
+      locatorJson: locatorJson,
       percent: progress.percent,
+      updatedAt: now,
     );
     await _syncRecorder?.recordReadingProgress(
       bookId: progress.bookId,
-      locatorJson: jsonEncode(progress.locator.toJson()),
+      locatorJson: locatorJson,
       percent: progress.percent,
-      mtime: DateTime.now(),
+      mtime: now,
     );
   }
 }

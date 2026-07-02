@@ -72,11 +72,24 @@ class LocalNotesRepository implements NotesRepository {
   }
 
   @override
-  Future<void> updateNote(BookNote note) {
-    return _notesDao.updateContent(
+  Future<void> updateNote(BookNote note) async {
+    // 单次 now() 同时给 DB 和 sync recorder —— 避免 mtime μs 漂移导致
+    // cross-device LWW 误判（参考 bookmark_repository.dart:83-96 同模式）。
+    final now = DateTime.now();
+    final keyTakeawaysJson = jsonEncode(note.keyTakeaways.toList());
+    await _notesDao.updateContent(
       note.id,
       summary: note.summary,
-      keyTakeawaysJson: jsonEncode(note.keyTakeaways.toList()),
+      keyTakeawaysJson: keyTakeawaysJson,
+      updatedAt: now,
+    );
+    await _syncRecorder?.recordBookNote(
+      id: note.id,
+      bookId: note.bookId,
+      title: note.title,
+      summary: note.summary,
+      keyTakeawaysJson: keyTakeawaysJson,
+      mtime: now,
     );
   }
 

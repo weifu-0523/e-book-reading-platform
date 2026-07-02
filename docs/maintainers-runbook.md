@@ -49,7 +49,7 @@
 └── docs/                        # 设计文档 + 本 runbook
 ```
 
-**里程碑索引**（截至 v0.9.1-alpha）：
+**里程碑索引**（截至 v1.5.0-alpha）：
 
 - M0+M1：数据层基础（drift schema + DAOs）
 - M2：EPUB 阅读器（epubx + 自研渲染）
@@ -60,6 +60,11 @@
 - M2.0a/b：坚果云 WebDAV 双向同步 + 冲突日志 + 后台定时
 - M1.5a/b/c：AI MVP（OpenAI-compatible LLM + 三模式导读 + 摘要缓存 + 同书 Q&A + 引用跳转）
 - M1.6：Polish Sweep（reader 拆分 + i18n + UX 三态 + runbook + 截图 + perf baseline） → v1.0.0
+- M2.1：章节学习回顾 + Markdown 批量导出 → v1.1.0-alpha
+- M2.2：自动章节结束提示（EPUB paged/scroll） → v1.2.0-alpha
+- M2.3：批量导出范围筛选（tag OR / addedAt / lastReadAt） → v1.3.0-alpha
+- M2.4：Release Hygiene Sweep（reader_body 拆分 + lint 清零 + 截图 + Gitee Release 页面） → v1.4.0-alpha
+- M2.5：Reader UX Overhaul（2 P0 bug + 8 UX 增强：多输入翻页 / 全屏 / 摘录合并 / sidebar / PDF 双页 / 书签 / margin / chrome） → v1.5.0-alpha
 
 ---
 
@@ -619,10 +624,24 @@ v1.3.0-alpha → v1.4.0-alpha 期间，渲染 / DB schema / sync 协议**无重�
 
 | 触发条件 | 必测项 |
 |---|---|
-| v1.5 跨书 AI 伴读（新增大型 widget tree + 可能的 DB schema 变化） | §9.4 全部 4 行 |
+| v1.6 跨书 AI 伴读（新增大型 widget tree + 可能的 DB schema 变化） | §9.4 全部 4 行 |
 | 任何 `reader_engine` 重构（epubx renderer / pdfrx controller plumbing） | §9.4 全部 4 行 |
 | 用户报告"变卡了" | §9.4 第一行（cold start）+ 第二行（FPS） |
 | DB schema migration（drift schema 版本 bump） | §9.4 第一行（cold start，验证 migration 不拖慢启动） |
+
+### 9.4.2 v1.5 复测决策（2026-07-03）
+
+v1.4.0-alpha → v1.5.0-alpha 期间触发条件**部分满足**：
+
+- ✅ DB schema migration（drift v9 → v10 新增 `bookmarks` 表）
+- ✅ reader_engine 重构（reader_body LayoutBuilder 拆 narrow/wide 路径 + drawer 3-tab + sidebar + 全屏 chrome）
+- ✅ 新增 `window_manager` 桌面全屏（首次启动窗口初始化路径变化）
+
+建议复测 §9.4 全部 4 行（cold start / FPS / idle mem / opened mem），尤其关注：
+- cold start：drift v10 migration on first launch 是否拖慢
+- opened mem：sidebar + drawer 3-tab 是否增加常驻 widget 开销
+
+但**未阻断 v1.5.0-alpha 发版**：alpha 阶段允许 perf baseline 延后到 v1.6 GA 前一次性补。当前 baseline 仍写 v1.0.0 实测，与 v1.4 决策一致。Release engineer 在 v1.6 准备阶段补测一次即可。
 
 > **如何复测**：当任一触发条件满足时，按 §9.6 完整流程跑 4 步，把新数字填到 §9.4 表的 "Pending" 列；旧数字移到 "历史" 子表（同表中追加）。
 

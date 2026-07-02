@@ -20,7 +20,7 @@
 
 ```bash
 grep "^version:" app/pubspec.yaml
-# 期望：version: 1.3.0-alpha+0（或当前发布版本——以 app/pubspec.yaml 实际为准）
+# 期望：version: 1.5.0-alpha+0（或当前发布版本——以 app/pubspec.yaml 实际为准）
 ```
 
 若需 bump：
@@ -38,8 +38,8 @@ cd app
 ```
 
 期望：
-- analyze 干净（0 errors / 0 warnings；131 info 为既有 cascade/const 风格 lint，可忽略）
-- test 全部通过（≥ 812 + 3 skipped）
+- analyze 干净（0 errors / 0 warnings / 0 info；M2.4/T4 已清零既有 cascade/const 风格 lint）
+- test 全部通过（≥ 1066 + 3 skipped）
 
 reader_engine / epub_view / pdf_view 包同样跑一遍：
 

@@ -47,7 +47,8 @@ v1.5.0-alpha 是 M2.5「Reader UX Overhaul」的交付版本：2 个 P0 用户�
 ### Migration
 
 - Drift 自动从 v9 迁移到 v10（创建 `bookmarks` 表 + `idx_bookmarks_book` 索引）。
-- 用户已存的 margin 偏好保留（Compact / Normal / Wide 索引不变；Normal 的实际像素值从 16 变 24）。
+- 用户已存的 margin 偏好保留（Compact / Normal / Wide 索引不变）。
+- **行为变化 caveat**：Normal 档位的实际像素值从 16 变 24（M2.5 调整）；升级后现有 Normal 用户会感觉阅读宽度变大，可在 Settings → Typography → Margin 切回 Compact（8 px）维持旧观感。
 
 ## [1.4.0-alpha] — 2026-07-01
 
