@@ -29,7 +29,7 @@ import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/reader/pages/reader_body.dart';
 import 'package:zhiyue/features/reader/providers/notes_controller.dart'
-    show currentBookIdProvider, notesControllerProvider;
+    show currentBookIdProvider;
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 /// In-memory [NotesRepository] that lets the test push annotations on demand

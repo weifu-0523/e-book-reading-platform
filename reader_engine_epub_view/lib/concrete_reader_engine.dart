@@ -165,9 +165,9 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   /// Bridge entrypoint for the highlight-injection pipeline.
   ///
   /// The app layer (e.g. `ReaderBody`) observes `NotesState.annotations` and
-  /// forwards the mapped [HighlightRange] list here; this method delegates to
-  /// the wrapped [EpubxRenderer] synchronously to avoid async gap losing the
-  /// current chapter revision.
+  /// forwards the mapped [HighlightRange] list here; this method forwards to
+  /// the wrapped [EpubxRenderer], which keeps the call on its internal
+  /// chapter revision at the time of invocation.
   Future<void> injectHighlights(List<HighlightRange> ranges) =>
       _renderer.injectHighlights(ranges);
 }
