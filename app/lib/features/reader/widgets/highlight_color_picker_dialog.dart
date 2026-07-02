@@ -28,14 +28,6 @@ class HighlightColorPickerDialog extends StatelessWidget {
     HighlightColor.purple: '紫色',
   };
 
-  static const _colors = <HighlightColor, Color>{
-    HighlightColor.yellow: Color(0xFFFFEB3B),
-    HighlightColor.green: Color(0xFF4CAF50),
-    HighlightColor.blue: Color(0xFF2196F3),
-    HighlightColor.red: Color(0xFFF44336),
-    HighlightColor.purple: Color(0xFF9C27B0),
-  };
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -52,7 +44,7 @@ class HighlightColorPickerDialog extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   CircleAvatar(
-                      backgroundColor: _colors[e.key], radius: 18),
+                      backgroundColor: e.key.swatch, radius: 18),
                   const SizedBox(height: 4),
                   Text(e.value),
                 ],

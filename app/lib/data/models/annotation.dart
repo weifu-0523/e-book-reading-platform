@@ -14,12 +14,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:ui' show Color;
+
 import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 
 import '../../core/locator.dart';
 
 enum HighlightColor { yellow, green, blue, red, purple }
+
+/// Material design swatch for each [HighlightColor], used wherever a chip /
+/// tile / picker dot needs the canonical color. Centralized here to avoid
+/// the same `<HighlightColor, Color>` map literal being duplicated across
+/// `reader_selection_sheet.dart`, `annotation_tile.dart`, and
+/// `highlight_color_picker_dialog.dart`.
+extension HighlightColorX on HighlightColor {
+  Color get swatch => switch (this) {
+        HighlightColor.yellow => const Color(0xFFFFEB3B),
+        HighlightColor.green => const Color(0xFF4CAF50),
+        HighlightColor.blue => const Color(0xFF2196F3),
+        HighlightColor.red => const Color(0xFFF44336),
+        HighlightColor.purple => const Color(0xFF9C27B0),
+      };
+}
 
 enum AnnotationSource { manual, aiAssisted }
 

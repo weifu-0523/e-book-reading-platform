@@ -18,35 +18,26 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/annotation.dart';
 
+/// Result of [ReaderSelectionSheet] when user taps 保存.
+/// `(selectedColor, optionalNote)`. Cancel returns `null`.
+typedef ExcerptSheetResult = (HighlightColor, String?);
+
 /// Bottom sheet shown after user selects text and taps 摘录.
 ///
-/// Combines color picking + optional note entry into one save action.
-/// Replaces the old flow of "高亮 button → color dialog → write" +
-/// "笔记 button → identical to 高亮" (both buttons did the same thing).
+/// Combines color picking + optional note entry into one save action, then
+/// pops with an [ExcerptSheetResult]. The caller is responsible for the
+/// actual DB write — this widget never crosses an async DB boundary, so it
+/// cannot be unmounted mid-write (which was the prior race condition: the
+/// sheet would dismiss while `addHighlight` was still in flight).
 ///
 /// UX:
 /// - 5 color chips rendered in a row; tapping selects + shows ring.
 /// - Optional 备注 TextField (3 lines).
-/// - 取消 pops without saving; 保存 invokes [onSave] with (color, note?).
+/// - 取消 pops without a value (`null`); 保存 pops with `(color, note?)`.
 /// - `note` is `null` if the field is left empty (so [Annotation.hasNote]
 ///   returns false and the drawer shows the quote without a note badge).
 class ReaderSelectionSheet extends StatefulWidget {
-  const ReaderSelectionSheet({
-    super.key,
-    required this.onSave,
-    this.initialColor,
-    this.initialNote,
-  });
-
-  /// Invoked with (color, note?) when user taps 保存.
-  /// `note` is null if user left the field empty.
-  final void Function(HighlightColor color, String? note) onSave;
-
-  /// Optional starting color (defaults to yellow, the most-used).
-  final HighlightColor? initialColor;
-
-  /// Optional starting note text (for edit flows).
-  final String? initialNote;
+  const ReaderSelectionSheet({super.key});
 
   @override
   State<ReaderSelectionSheet> createState() => _ReaderSelectionSheetState();
@@ -61,17 +52,8 @@ class _ReaderSelectionSheetState extends State<ReaderSelectionSheet> {
     HighlightColor.purple,
   ];
 
-  static const _chipColors = {
-    HighlightColor.yellow: Color(0xFFFFEB3B),
-    HighlightColor.green: Color(0xFF4CAF50),
-    HighlightColor.blue: Color(0xFF2196F3),
-    HighlightColor.red: Color(0xFFF44336),
-    HighlightColor.purple: Color(0xFF9C27B0),
-  };
-
-  late HighlightColor _selected = widget.initialColor ?? HighlightColor.yellow;
-  late final TextEditingController _noteCtrl =
-      TextEditingController(text: widget.initialNote ?? '');
+  HighlightColor _selected = HighlightColor.yellow;
+  final TextEditingController _noteCtrl = TextEditingController();
 
   @override
   void dispose() {
@@ -115,14 +97,14 @@ class _ReaderSelectionSheetState extends State<ReaderSelectionSheet> {
               alignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
+                  onPressed: () => Navigator.of(context).pop(),
                   child: const Text('取消'),
                 ),
                 FilledButton(
                   onPressed: () {
                     final note = _noteCtrl.text.trim();
-                    widget.onSave(_selected, note.isEmpty ? null : note);
-                    Navigator.of(context).maybePop();
+                    Navigator.of(context)
+                        .pop((_selected, note.isEmpty ? null : note));
                   },
                   child: const Text('保存'),
                 ),
@@ -143,7 +125,7 @@ class _ReaderSelectionSheetState extends State<ReaderSelectionSheet> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: _chipColors[color],
+          color: color.swatch,
           shape: BoxShape.circle,
           border: isSelected
               ? Border.all(

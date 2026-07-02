@@ -38,17 +38,9 @@ class AnnotationTile extends StatelessWidget {
     this.showMeta = false,
   });
 
-  static const _colors = <HighlightColor, Color>{
-    HighlightColor.yellow: Color(0xFFFFEB3B),
-    HighlightColor.green: Color(0xFF4CAF50),
-    HighlightColor.blue: Color(0xFF2196F3),
-    HighlightColor.red: Color(0xFFF44336),
-    HighlightColor.purple: Color(0xFF9C27B0),
-  };
-
   @override
   Widget build(BuildContext context) {
-    final color = _colors[annotation.color] ?? Colors.yellow;
+    final color = annotation.color.swatch;
     return InkWell(
       onTap: onTap,
       onLongPress: onLongPress,

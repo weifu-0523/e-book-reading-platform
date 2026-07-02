@@ -19,14 +19,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/features/reader/widgets/reader_selection_sheet.dart';
 
+/// Tiny mutable box so the helper can write through a captured reference.
+class _ResultBox {
+  ExcerptSheetResult? value;
+}
+
+/// Host harness: pumps a button that opens [ReaderSelectionSheet] via
+/// `showModalBottomSheet` and writes the value passed to `Navigator.pop`
+/// into [box]. Tests then drive the sheet (tap chips, type note, tap
+/// 保存 / 取消) and assert on `box.value`. This couples tests to the pop
+/// contract instead of internal `_selected` state.
+Future<void> _pumpHostAndOpen(WidgetTester tester, _ResultBox box) async {
+  await tester.pumpWidget(MaterialApp(
+    home: Builder(
+      builder: (context) => Scaffold(
+        body: Center(
+          child: ElevatedButton(
+            onPressed: () async {
+              box.value = await showModalBottomSheet<ExcerptSheetResult>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => const ReaderSelectionSheet(),
+              );
+            },
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ),
+  ));
+  await tester.tap(find.text('open'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('ReaderSelectionSheet', () {
     testWidgets('shows 5 color chips + note field + 保存 button', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: ReaderSelectionSheet(onSave: (_, __) {}),
-        ),
-      ));
+      final box = _ResultBox();
+      await _pumpHostAndOpen(tester, box);
 
       // 5 color chips
       for (var i = 0; i < 5; i++) {
@@ -37,68 +67,45 @@ void main() {
       expect(find.text('取消'), findsOneWidget);
     });
 
-    testWidgets('save button invokes callback with selected color + note',
+    testWidgets('save returns (color, note) via Navigator.pop',
         (tester) async {
-      HighlightColor? savedColor;
-      String? savedNote;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: ReaderSelectionSheet(
-            onSave: (color, note) {
-              savedColor = color;
-              savedNote = note;
-            },
-          ),
-        ),
-      ));
+      final box = _ResultBox();
+      await _pumpHostAndOpen(tester, box);
 
-      // Tap 3rd chip (blue, index 2).
+      // Tap chip 2 (blue).
       await tester.tap(find.byKey(const Key('excerpt_color_chip_2')));
       await tester.pump();
-      // Type a note.
+      // Type note.
       await tester.enterText(
           find.byKey(const Key('excerpt_note_field')), '关键转折');
       // Save.
       await tester.tap(find.text('保存'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(savedColor, HighlightColor.blue);
-      expect(savedNote, '关键转折');
+      expect(box.value?.$1, HighlightColor.blue);
+      expect(box.value?.$2, '关键转折');
     });
 
-    testWidgets('save with empty note passes note=null', (tester) async {
-      HighlightColor? savedColor;
-      String? savedNote;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: ReaderSelectionSheet(
-            onSave: (color, note) {
-              savedColor = color;
-              savedNote = note;
-            },
-          ),
-        ),
-      ));
+    testWidgets('save with empty note pops (color, null)', (tester) async {
+      final box = _ResultBox();
+      await _pumpHostAndOpen(tester, box);
 
       await tester.tap(find.text('保存'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(savedColor, isNotNull); // default selected color
-      expect(savedNote, isNull);
+      expect(box.value?.$1, isNotNull); // default selected color
+      expect(box.value?.$1, HighlightColor.yellow);
+      expect(box.value?.$2, isNull);
     });
 
-    testWidgets('cancel button does not invoke onSave', (tester) async {
-      var calls = 0;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: ReaderSelectionSheet(onSave: (_, __) => calls++),
-        ),
-      ));
+    testWidgets('cancel pops with null', (tester) async {
+      final box = _ResultBox();
+      await _pumpHostAndOpen(tester, box);
 
       await tester.tap(find.text('取消'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(calls, 0);
+      expect(box.value, isNull);
     });
   });
 }

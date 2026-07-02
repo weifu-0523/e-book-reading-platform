@@ -398,6 +398,11 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   /// 替换了 M2.5 之前的「高亮」+「笔记」两个按钮（旧版两者行为完全相同：
   /// 都调用颜色 dialog + addHighlight，没有备注入口）。合并为单按钮 + sheet
   /// 后，用户在一次操作内就能完成颜色选择 + 备注录入。
+  ///
+  /// Sheet 通过 `Navigator.pop` 返回 [ExcerptSheetResult] 而不是直接调用
+  /// `onSave`，由此 widget tree 不会跨 async DB 边界（避免 use-after-unmount：
+  /// 旧实现里 sheet 在 `addHighlight` 进行中就已 dismiss，若用户在写入中途
+  /// 退出 reader page，会触发在已卸载的 widget 上访问 `ref`）。
   Future<void> _openExcerptSheet() async {
     final sel = _selection;
     if (sel == null) return;
@@ -420,25 +425,25 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       return;
     }
     if (!mounted) return;
-    await showModalBottomSheet<void>(
+    final result = await showModalBottomSheet<ExcerptSheetResult>(
       context: context,
       isScrollControlled: true,
       builder: (sheetCtx) => Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
         ),
-        child: ReaderSelectionSheet(
-          onSave: (color, note) async {
-            await ref.read(notesControllerProvider.notifier).addHighlight(
-                  locator,
-                  color,
-                  text,
-                  note: note,
-                );
-          },
-        ),
+        child: const ReaderSelectionSheet(),
       ),
     );
+    if (!mounted) return;
+    if (result == null) return; // user cancelled
+    final (color, note) = result;
+    await ref.read(notesControllerProvider.notifier).addHighlight(
+          locator,
+          color,
+          text,
+          note: note,
+        );
     if (mounted) setState(() => _selection = null);
   }
 
