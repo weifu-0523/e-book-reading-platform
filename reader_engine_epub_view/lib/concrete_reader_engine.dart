@@ -25,6 +25,7 @@ import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
+import 'package:reader_engine/rendering/highlight_range.dart';
 
 import 'epubx_renderer.dart';
 import 'src/chapter_end_event.dart';
@@ -160,4 +161,13 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
 
   @override
   Widget build(BuildContext context) => _renderer.build(context);
+
+  /// Bridge entrypoint for the highlight-injection pipeline.
+  ///
+  /// The app layer (e.g. `ReaderBody`) observes `NotesState.annotations` and
+  /// forwards the mapped [HighlightRange] list here; this method delegates to
+  /// the wrapped [EpubxRenderer] synchronously to avoid async gap losing the
+  /// current chapter revision.
+  Future<void> injectHighlights(List<HighlightRange> ranges) =>
+      _renderer.injectHighlights(ranges);
 }

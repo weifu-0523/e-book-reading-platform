@@ -485,6 +485,14 @@ class EpubxRenderer implements EpubRenderer {
       ..addAll(highlights);
   }
 
+  /// Test-only: read-only view of currently injected highlights.
+  ///
+  /// Used by widget tests that need to verify the bridge between
+  /// `NotesState.annotations` and [injectHighlights] (e.g. reader_body).
+  @visibleForTesting
+  List<HighlightRange> get allHighlightsForTest =>
+      List.unmodifiable(_allHighlights);
+
   /// 当前章节经过高亮注入后的 HTML（测试入口）。
   ///
   /// M3.2 简化：每章独立 0-based plain-text offset（不做跨章累计，spec §11 留 M3.x）。

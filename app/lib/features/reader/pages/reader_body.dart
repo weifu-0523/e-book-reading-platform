@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
+import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
@@ -200,6 +201,37 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
   @override
   Widget build(BuildContext context) {
+    // Bug #4 fix: bridge NotesState.annotations → engine.injectHighlights.
+    //
+    // Placed BEFORE the engine-state early returns so the listener registers
+    // regardless of whether the engine is Ready yet. Without this bridge the
+    // toolbar writes the annotation to the DB and the notes drawer shows it,
+    // but the visible EPUB text never re-renders with the highlight color
+    // (renderer._allHighlights stays empty). PDF engines have no
+    // `injectHighlights` (pdfrx renders highlights natively), so the
+    // type-check `engine is ConcreteEpubReaderEngine` skips them.
+    ref.listen<AsyncValue<NotesState>>(
+      notesControllerProvider,
+      (_, async) {
+        final s = async.valueOrNull;
+        if (s == null) return;
+        final e = engine;
+        if (e is! ConcreteEpubReaderEngine) return;
+        final ranges = <HighlightRange>[];
+        for (final a in s.annotations) {
+          final loc = a.locator;
+          if (loc is! EpubRangeLocator) continue; // skip PdfRangeLocator etc.
+          ranges.add(HighlightRange(
+            loc.startOffset,
+            loc.endOffset,
+            _highlightColorToRgba(a.color),
+            hasNote: a.hasNote,
+          ));
+        }
+        e.injectHighlights(ranges);
+      },
+    );
+
     if (_engineState is ReaderEngineError) {
       return ReaderErrorView(
         message: (_engineState as ReaderEngineError).message,
@@ -575,4 +607,20 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   /// 简化处理：暂未从 Book 元数据取得标题，显示统一占位。
   /// M2.5-2 接入 CFI restore 时，可在此传入对应的书名。
   String _bookTitle() => '阅读中';
+
+  /// 把 [HighlightColor] 枚举映射为 CSS rgba 字符串。
+  ///
+  /// 颜色取值与 `HtmlHighlightInjector` 的测试 fixture（
+  /// `reader_engine_epub_view/test/html_highlight_injector_test.dart`）
+  /// 以及 `HighlightColorPickerDialog` 的 swatch 对齐，保证渲染管线
+  /// 上下游一致。
+  static const Map<HighlightColor, String> _highlightColorRgba = {
+    HighlightColor.yellow: 'rgba(255, 235, 59, 0.4)',
+    HighlightColor.green: 'rgba(76, 175, 80, 0.4)',
+    HighlightColor.blue: 'rgba(33, 150, 243, 0.4)',
+    HighlightColor.red: 'rgba(244, 67, 54, 0.4)',
+    HighlightColor.purple: 'rgba(156, 39, 176, 0.4)',
+  };
+
+  String _highlightColorToRgba(HighlightColor c) => _highlightColorRgba[c]!;
 }
