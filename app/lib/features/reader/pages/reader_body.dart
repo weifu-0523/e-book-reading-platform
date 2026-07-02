@@ -256,6 +256,24 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     _refreshBookCache();
 
     // typographyPanelOpen 由 ReaderTypographyPanelTrigger 监听并弹出/收起 bottom sheet。
+    //
+    // T8：宽屏（>=1100px）显示永久 sidebar（280px ↔ 40px 折叠），
+    // 窄屏维持原 Scaffold + Drawer slide-over。LayoutBuilder 让 build 在
+    // 窗口尺寸变化时即时切换分支。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 1100;
+        if (isWide) {
+          return _buildWideReaderTree(ui);
+        }
+        return _buildNarrowReaderTree(ui);
+      },
+    );
+  }
+
+  /// 窄屏 reader tree：T8 之前的标准 Scaffold + Drawer slide-over 行为，
+  /// byte-for-byte 不变（默认测试视口 800x600 即走此路径，避免回归）。
+  Widget _buildNarrowReaderTree(ReaderUiState ui) {
     return Scaffold(
       // T7 (M2.5) 起抽屉统一为 3-tab 容器（目录 / 书签 / 笔记），
       // 替代旧的 Scaffold.drawer (TOC) + Scaffold.endDrawer (Notes) 分体结构。
@@ -285,66 +303,163 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           notifier.closeTocDrawer();
         }
       },
-      body: Builder(
-        builder: (innerContext) => Stack(
-          children: [
-            SelectableRegion(
-              selectionControls: materialTextSelectionControls,
-              onSelectionChanged: _onSelectionChanged,
-              child: ReaderScaffold(
-                content: engine.build(innerContext),
-                title: _bookTitle(),
-                onTapPrev: () => engine.previousSpine(),
-                onTapNext: () => engine.nextSpine(),
-                onBack: () => Navigator.of(innerContext).maybePop(),
-                onOpenToc: () {
-                  // 切换到「目录」tab 并打开统一抽屉。
+      body: _buildReaderStack(ui),
+    );
+  }
+
+  /// 宽屏 reader tree：左侧 sidebar（280px / 40px）+ 右侧 reader stack。
+  /// Sidebar 内嵌 ReaderDrawer(standalone: true) —— 不包 Drawer widget，
+  /// 由本方法提供 Material 容器。
+  Widget _buildWideReaderTree(ReaderUiState ui) {
+    final collapsed = ui.tocSidebarCollapsed;
+    return Scaffold(
+      // 宽屏不再使用 Scaffold.drawer slot —— sidebar 直接放在 body 里。
+      body: Row(
+        children: [
+          AnimatedContainer(
+            key: const Key('sidebar_root'),
+            duration: const Duration(milliseconds: 200),
+            width: collapsed ? 40 : 280,
+            child: collapsed
+                ? Material(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: IconButton(
+                        key: const Key('expand_sidebar'),
+                        icon: const Icon(Icons.chevron_right),
+                        tooltip: '展开侧栏',
+                        onPressed: () => ref
+                            .read(readerUiControllerProvider.notifier)
+                            .toggleSidebarCollapsed(),
+                      ),
+                    ),
+                  )
+                : Material(
+                    color: Theme.of(context).colorScheme.surface,
+                    child: Column(
+                      children: [
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: IconButton(
+                            key: const Key('collapse_sidebar'),
+                            icon: const Icon(Icons.chevron_left),
+                            tooltip: '折叠侧栏',
+                            onPressed: () => ref
+                                .read(readerUiControllerProvider.notifier)
+                                .toggleSidebarCollapsed(),
+                          ),
+                        ),
+                        Expanded(
+                          child: ReaderDrawer(
+                            bookId: widget.bookId,
+                            standalone: true,
+                            tocBuilder: (_) => ReaderTocDrawerWrapper(
+                              engine: engine,
+                              bookId: widget.bookId,
+                              onReviewChapter: engine is PdfReaderEngine
+                                  ? null
+                                  : _onOpenReview,
+                            ),
+                            notesBuilder: (_) => ReaderNotesDrawerWrapper(
+                              chapterTitles: _chapterTitlesCache,
+                              onAnnotationTap: (id) => _onAnnotationTap(id),
+                              onAnnotationLongPress: (id) =>
+                                  _onAnnotationLongPress(id),
+                            ),
+                            onSwitchTab: (tab) => ref
+                                .read(readerUiControllerProvider.notifier)
+                                .setActiveDrawerTab(tab),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+          Expanded(child: _buildReaderStack(ui)),
+        ],
+      ),
+    );
+  }
+
+  /// 主体 Stack：SelectableRegion + ReaderScaffold + 选区 toolbar + 进度条 +
+  /// typography 触发器。窄屏 / 宽屏共用，避免代码重复。
+  Widget _buildReaderStack(ReaderUiState ui) {
+    return Builder(
+      builder: (innerContext) => Stack(
+        children: [
+          SelectableRegion(
+            selectionControls: materialTextSelectionControls,
+            onSelectionChanged: _onSelectionChanged,
+            child: ReaderScaffold(
+              content: engine.build(innerContext),
+              title: _bookTitle(),
+              onTapPrev: () => engine.previousSpine(),
+              onTapNext: () => engine.nextSpine(),
+              onBack: () => Navigator.of(innerContext).maybePop(),
+              onOpenToc: () {
+                // 宽屏路径下 sidebar 已经常驻，目录通过 sidebar 切换 tab；
+                // 窄屏路径仍走 Scaffold.openDrawer()。
+                if (ui.tocSidebarCollapsed ||
+                    !_isWideScreen(innerContext)) {
                   ref
                       .read(readerUiControllerProvider.notifier)
                       .setActiveDrawerTab(DrawerTab.toc);
+                }
+                if (!_isWideScreen(innerContext)) {
                   Scaffold.of(innerContext).openDrawer();
-                },
-                onOpenNotes: () {
-                  // T7 起笔记通过统一抽屉的「笔记」tab 访问。
+                }
+              },
+              onOpenNotes: () {
+                // 同 onOpenToc：窄屏 openDrawer；宽屏 sidebar 接管。
+                if (ui.tocSidebarCollapsed ||
+                    !_isWideScreen(innerContext)) {
                   ref
                       .read(readerUiControllerProvider.notifier)
                       .setActiveDrawerTab(DrawerTab.notes);
+                }
+                if (!_isWideScreen(innerContext)) {
                   Scaffold.of(innerContext).openDrawer();
-                },
-                onOpenTypography: () => ref
-                    .read(readerUiControllerProvider.notifier)
-                    .openTypographyPanel(),
-                onOpenAiGuide: _onOpenAiGuide,
-                onOpenQa: _onOpenQa,
-                onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
-              ),
+                }
+              },
+              onOpenTypography: () => ref
+                  .read(readerUiControllerProvider.notifier)
+                  .openTypographyPanel(),
+              onOpenAiGuide: _onOpenAiGuide,
+              onOpenQa: _onOpenQa,
+              onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
             ),
-            if (engine is ConcreteEpubReaderEngine)
-              ReaderChapterEndPrompt(
-                engine: engine as ConcreteEpubReaderEngine,
-                bookId: widget.bookId,
-                onReview: _onOpenReview,
-                onNext: engine.nextSpine,
-              ),
-            ReaderSelectionToolbar(
-              selection: _selection,
-              onExcerpt: _openExcerptSheet,
-              onCopy: _onCopySelection,
-              onAiComment: _onAiComment,
+          ),
+          if (engine is ConcreteEpubReaderEngine)
+            ReaderChapterEndPrompt(
+              engine: engine as ConcreteEpubReaderEngine,
+              bookId: widget.bookId,
+              onReview: _onOpenReview,
+              onNext: engine.nextSpine,
             ),
-            // 底栏始终可见，显示阅读进度。
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: ReaderProgressBar(engine: engine),
-            ),
-            // typography 面板的触发器（不可见 listener）。
-            ReaderTypographyPanelTrigger(engine: engine),
-          ],
-        ),
+          ReaderSelectionToolbar(
+            selection: _selection,
+            onExcerpt: _openExcerptSheet,
+            onCopy: _onCopySelection,
+            onAiComment: _onAiComment,
+          ),
+          // 底栏始终可见，显示阅读进度。
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ReaderProgressBar(engine: engine),
+          ),
+          // typography 面板的触发器（不可见 listener）。
+          ReaderTypographyPanelTrigger(engine: engine),
+        ],
       ),
     );
+  }
+
+  /// 读取当前可用宽度，>=1100 视为宽屏。
+  bool _isWideScreen(BuildContext context) {
+    return MediaQuery.of(context).size.width >= 1100;
   }
 
   Future<void> _onAnnotationTap(String id) async {

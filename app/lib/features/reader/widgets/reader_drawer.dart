@@ -33,6 +33,9 @@ import 'reader_bookmark_list.dart';
 ///   仅作为 controller 不可用时的兜底（极少见，比如单元测试）。
 /// - 使用自定义 TextButton 行而非 [TabBar]+[TabController]，避免在 Drawer
 ///   里嵌套 DefaultTabController 带来的 animation/vsync 复杂度。
+/// - [standalone]：默认 `false`，本 widget 返回 [Drawer] widget（用于
+///   `Scaffold.drawer` 槽）。当 `true` 时返回 Column 主体（不包 Drawer），
+///   供 T8 宽屏永久 sidebar 直接嵌入侧栏列（避免 Drawer 的宽度约束）。
 class ReaderDrawer extends ConsumerWidget {
   const ReaderDrawer({
     super.key,
@@ -41,6 +44,7 @@ class ReaderDrawer extends ConsumerWidget {
     required this.tocBuilder,
     required this.notesBuilder,
     required this.onSwitchTab,
+    this.standalone = false,
   });
 
   final String bookId;
@@ -48,6 +52,7 @@ class ReaderDrawer extends ConsumerWidget {
   final WidgetBuilder tocBuilder;
   final WidgetBuilder notesBuilder;
   final ValueChanged<DrawerTab> onSwitchTab;
+  final bool standalone;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -67,15 +72,19 @@ class ReaderDrawer extends ConsumerWidget {
         break;
     }
 
-    return Drawer(
-      width: 280,
-      child: Column(
-        children: [
-          _DrawerTabBar(current: tab, onTap: onSwitchTab),
-          Expanded(child: body),
-        ],
-      ),
+    final Widget child = Column(
+      children: [
+        _DrawerTabBar(current: tab, onTap: onSwitchTab),
+        Expanded(child: body),
+      ],
     );
+
+    if (standalone) {
+      // 宽屏 sidebar 路径：直接返回 Column 主体。外层 sidebar 容器
+      // （Material + 主题 surface 色）由调用方负责。
+      return child;
+    }
+    return Drawer(width: 280, child: child);
   }
 }
 

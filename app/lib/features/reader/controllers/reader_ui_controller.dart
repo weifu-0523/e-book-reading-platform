@@ -28,11 +28,16 @@ class ReaderUiState {
   final bool typographyPanelOpen;
   final DrawerTab activeDrawerTab;
 
+  /// T8：宽屏（>=1100px）下 TOC sidebar 是否折叠。`true` 表示当前为
+  /// 40px 折叠态；`false`（默认）为 280px 展开态。窄屏路径不受此字段影响。
+  final bool tocSidebarCollapsed;
+
   const ReaderUiState({
     this.chromeVisible = false,
     this.tocDrawerOpen = false,
     this.typographyPanelOpen = false,
     this.activeDrawerTab = DrawerTab.toc,
+    this.tocSidebarCollapsed = false,
   });
 
   /// 平台相关的默认状态：桌面端 chrome 默认可见，移动端默认隐藏
@@ -47,6 +52,7 @@ class ReaderUiState {
       tocDrawerOpen: false,
       typographyPanelOpen: false,
       activeDrawerTab: DrawerTab.toc,
+      tocSidebarCollapsed: false,
     );
   }
 
@@ -55,12 +61,15 @@ class ReaderUiState {
     bool? tocDrawerOpen,
     bool? typographyPanelOpen,
     DrawerTab? activeDrawerTab,
+    bool? tocSidebarCollapsed,
   }) {
     return ReaderUiState(
       chromeVisible: chromeVisible ?? this.chromeVisible,
       tocDrawerOpen: tocDrawerOpen ?? this.tocDrawerOpen,
       typographyPanelOpen: typographyPanelOpen ?? this.typographyPanelOpen,
       activeDrawerTab: activeDrawerTab ?? this.activeDrawerTab,
+      tocSidebarCollapsed:
+          tocSidebarCollapsed ?? this.tocSidebarCollapsed,
     );
   }
 }
@@ -75,6 +84,10 @@ class ReaderUiController extends StateNotifier<ReaderUiState> {
   void closeTypographyPanel() => state = state.copyWith(typographyPanelOpen: false);
   void setActiveDrawerTab(DrawerTab tab) =>
       state = state.copyWith(activeDrawerTab: tab);
+
+  /// T8：切换宽屏 sidebar 折叠/展开。仅对宽屏布局有意义。
+  void toggleSidebarCollapsed() => state = state.copyWith(
+      tocSidebarCollapsed: !state.tocSidebarCollapsed);
 }
 
 final readerUiControllerProvider =
