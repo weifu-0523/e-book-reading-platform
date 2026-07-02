@@ -36,6 +36,7 @@ import 'tables/annotations.dart';
 import 'tables/book_notes.dart';
 import 'tables/book_passages.dart';
 import 'tables/book_tags.dart';
+import 'tables/bookmarks.dart';
 import 'tables/book_typography_overrides.dart';
 import 'tables/books.dart';
 import 'tables/qa_history.dart';
@@ -64,6 +65,7 @@ part 'database.g.dart';
     SyncConflicts,
     BookPassages,
     QaHistory,
+    Bookmarks,
   ],
   daos: [
     BooksDao,
@@ -87,7 +89,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration {
@@ -127,6 +129,11 @@ class AppDatabase extends _$AppDatabase {
         await m.database.customStatement(
           'CREATE INDEX IF NOT EXISTS idx_qa_history_book '
           'ON qa_history(book_id, created_at DESC)',
+        );
+        // schema v10: bookmarks + per-book lookup index
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_bookmarks_book '
+          'ON bookmarks(book_id)',
         );
       },
       onUpgrade: (m, from, to) async {
@@ -193,6 +200,14 @@ class AppDatabase extends _$AppDatabase {
           await m.database.customStatement(
             'CREATE INDEX IF NOT EXISTS idx_qa_history_book '
             'ON qa_history(book_id, created_at DESC)',
+          );
+        }
+        if (from < 10) {
+          // schema v10: bookmarks
+          await m.createTable(bookmarks);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_bookmarks_book '
+            'ON bookmarks(book_id)',
           );
         }
       },

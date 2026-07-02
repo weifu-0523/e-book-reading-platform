@@ -13,8 +13,9 @@ void main() {
 
     tearDown(() async => db.close());
 
-    test('schemaVersion is 9', () {
-      expect(db.schemaVersion, 9);
+    test('schemaVersion is current (≥9)', () {
+      // v10 起表仍存在；只校验 v9 引入的内容，不锁定 schemaVersion。
+      expect(db.schemaVersion, greaterThanOrEqualTo(9));
     });
 
     test('book_passages table exists with correct columns', () async {
