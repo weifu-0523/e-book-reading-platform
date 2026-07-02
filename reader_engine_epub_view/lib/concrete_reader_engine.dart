@@ -70,6 +70,10 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   /// without casting to [EpubxRenderer].
   Stream<ChapterEndEvent> get chapterEndEvents => _renderer.chapterEndEvents;
 
+  /// M2.5/T14: 暴露 renderer 引用以让 reader_body.dart 的 LayoutBuilder
+  /// 设置 `dualPageMode`（与 PdfReaderEngine.rendererRef 模式一致）。
+  EpubxRenderer get rendererRef => _renderer;
+
   @override
   TableOfContents? get toc => _toc;
 

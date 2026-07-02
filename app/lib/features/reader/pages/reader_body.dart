@@ -279,6 +279,9 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           final renderer = engine.rendererRef;
           renderer.dualPageMode =
               constraints.maxWidth >= 1200 && !renderer.isScanned;
+        } else if (engine is ConcreteEpubReaderEngine) {
+          // M2.5/T14: API surface 端到端 wire；渲染层留 v1.6（见 EpubxRenderer.dualPageMode doc）
+          engine.rendererRef.dualPageMode = constraints.maxWidth >= 1200;
         }
         if (isWide) {
           return _buildWideReaderTree(ui);

@@ -64,6 +64,20 @@ class EpubxRenderer implements EpubRenderer {
   int _currentChapterIndex = 0;
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
   PaginationMode _paginationMode = PaginationMode.paged;
+
+  /// M2.5/T14: 双页模式 API surface — 已端到端 wire，但渲染层暂未实现。
+  ///
+  /// 当 `true` 且当前章节为 paged 模式时，理论上应在 [build] 中渲染两列
+  /// PageView（每对虚拟页 = 1 个导航步骤）。M2.5 把渲染层实现推迟到 v1.6，
+  /// 原因：
+  /// 1. EPUB 分页当前是 degraded plain-text 模式（[_buildPaged] 注释），
+  ///    不是 M3 最终形态；现在重写算法等于一次性工作。
+  /// 2. PDF 双页（T13）已覆盖更常见的双页格式需求。
+  /// 3. 真正的双页算法需要拆列、跨页导航、高亮 offset 协同 + 大量测试，
+  ///    不在 M2.5 时间预算内。
+  ///
+  /// 字段已端到端 wire，v1.6 翻开开关不需要 rewiring。
+  bool dualPageMode = false;
   final List<HighlightRange> _allHighlights = [];
   /// NOTE: keyed by chapter index only. MUST be cleared on any book-switch
   /// entry point (openFile / bookForTesting) — otherwise stale entries from
@@ -556,6 +570,10 @@ class EpubxRenderer implements EpubRenderer {
   Widget _buildPaged(TextStyle style, Color fg, String html, double margin) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        if (dualPageMode) {
+          debugPrint('[EpubxRenderer] dualPageMode=true but rendering is '
+              'single-page (deferred to v1.6; see field doc)');
+        }
         final viewport = Size(
           constraints.maxWidth.isFinite ? constraints.maxWidth : 400,
           constraints.maxHeight.isFinite ? constraints.maxHeight : 600,
