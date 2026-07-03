@@ -22,11 +22,16 @@ enum ReadingTheme { light, dark, sepia, eInk }
 /// M2.5 bumped normal→24 and wide→32 for real-book whitespace feel, and
 /// added extraWide=40 for desktop. Existing user selections (enum value
 /// index) are preserved — only the pixel value changes.
+///
+/// M2.6/T4 (Bug #8): bumped again — normal 24→32, wide 32→48, extraWide
+/// 40→64. Rationale: margins double as tap-zone widths (see reader_scaffold
+/// book-like model), so >=32px = WCAG minimum tap target. Compact stays 8
+/// (viewing-only; too narrow for comfortable tap-to-page).
 enum PageMargin {
   compact(8),
-  normal(24),
-  wide(32),
-  extraWide(40);
+  normal(32),
+  wide(48),
+  extraWide(64);
 
   final int pixelValue;
   const PageMargin(this.pixelValue);
