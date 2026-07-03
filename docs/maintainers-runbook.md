@@ -65,6 +65,7 @@
 - M2.3：批量导出范围筛选（tag OR / addedAt / lastReadAt） → v1.3.0-alpha
 - M2.4：Release Hygiene Sweep（reader_body 拆分 + lint 清零 + 截图 + Gitee Release 页面） → v1.4.0-alpha
 - M2.5：Reader UX Overhaul（2 P0 bug + 8 UX 增强：多输入翻页 / 全屏 / 摘录合并 / sidebar / PDF 双页 / 书签 / margin / chrome） → v1.5.0-alpha
+- M2.6：Emergency Bug Fix Sweep（v1.5.0-alpha 用户上手测试 9 个 bug 全闭：翻页 / 排版 / PDF 双页假启用 / 高亮 / 目录 / 边距 / 选择冲突 / ESC 全屏 / 书签红屏） → v1.5.1-alpha。Bug #1（书签红屏）仅防御性修，待用户 stack trace；PDF 双页 toggle 不持久化（延后 v1.5.2）。详见 [[zhiyue-m2-6-complete]]。
 
 ---
 
