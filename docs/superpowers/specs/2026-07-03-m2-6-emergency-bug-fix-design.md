@@ -4,19 +4,19 @@
 > **Predecessor**: M2.5 (v1.5.0-alpha, shipped 2026-07-03 09:00)
 > **Successor**: M2.7 (TBD; likely v1.6 GA prep)
 > **Target tag**: `m2.6-complete` + `v1.5.1-alpha`
-> **Estimated scope**: 13 tasks, ~6-10 hours
+> **Estimated scope**: 14 tasks (was 13; Bug #9 added 2026-07-03), ~6-10 hours
 
 ## Context
 
-M2.5 shipped 2026-07-03 with 15 tasks (sidebar drawer, fullscreen, dual-page, bookmarks, multi-input paging, typography tweaks). User rebuilt the Windows Debug exe (`flutter build windows --debug`, 09:16) and ran hands-on UX testing on 2026-07-03 morning. Reported 8 bugs, several of which block core reading flow.
+M2.5 shipped 2026-07-03 with 15 tasks (sidebar drawer, fullscreen, dual-page, bookmarks, multi-input paging, typography tweaks). User rebuilt the Windows Debug exe (`flutter build windows --debug`, 09:16) and ran hands-on UX testing on 2026-07-03 morning. Reported 9 bugs (was 8; Bug #9 ESC fullscreen added later same day), several of which block core reading flow.
 
-Four parallel opus-review subagents investigated; main thread verified key file:line claims. Root-cause confidence is HIGH for 4 bugs, MEDIUM for 3, LOW for 1 (needs runtime stack trace).
+Four parallel opus-review subagents investigated the original 8; main thread verified key file:line claims. Bug #9 root cause analyzed by main thread post-hoc. Root-cause confidence is HIGH for 5 bugs, MEDIUM for 3, LOW for 1 (needs runtime stack trace).
 
 This is a regression/quality milestone, not a feature milestone. Goal: restore v1.4-level reading usability on top of the M2.5 architecture, then ship v1.5.1-alpha patch.
 
 ## Goals
 
-1. **All 8 user-reported bugs closed** with at least one regression test each
+1. **All 9 user-reported bugs closed** with at least one regression test each (Bug #1 ships defensive only)
 2. **No new features** — pure fix sweep
 3. **Version bumped** to v1.5.1-alpha, dual-tagged and pushed
 4. **Memory + runbook** updated with M2.6 entry
@@ -151,6 +151,61 @@ The EpubRangeLocator branch updates chapter index but doesn't trigger a state no
 
 **Decision**: emit state in renderer (`epubx_renderer.dart` EpubRangeLocator branch). Rationale: benefits all callers (TOC, notes, bookmarks) without each one wiring ScrollToOffsetService. The state notification triggers consumer rebuild; precise scroll positioning is a follow-up if user reports residual "chapter changed but not positioned" symptom.
 
+#### Bug #9: ESC doesn't exit fullscreen (HIGH confidence, focus dynamics)
+
+**User report (2026-07-03, added post-M2.6 kickoff)**: "全屏后 esc 不能退出全屏状态"
+
+**Root cause** (`app/lib/features/reader/widgets/reader_scaffold.dart:114-116 + 245-251`):
+
+The ESC handler IS wired:
+```dart
+// reader_scaffold.dart:114
+return Focus(
+  autofocus: true,
+  onKeyEvent: (node, event) => _handleKeyEvent(event),
+  ...
+);
+
+// reader_scaffold.dart:245-251 (inside _handleKeyEvent)
+if (key == LogicalKeyboardKey.escape) {
+  final ui = ref.read(readerUiControllerProvider);
+  if (ui.isFullscreen) {
+    ref.read(readerUiControllerProvider.notifier).toggleFullscreen();
+    return KeyEventResult.handled;
+  }
+}
+```
+
+So the code path exists. The bug is **focus dynamics**:
+1. User clicks the fullscreen button in AppBar → `IconButton`'s `Focus` node receives focus
+2. After click, the Focus node remains on the button (or its parent)
+3. Reader_scaffold's outer `Focus(autofocus: true)` only requests focus on initial mount; it does NOT reclaim focus when the AppBar button releases it
+4. ESC key events are dispatched to the currently-focused widget's `onKeyEvent`
+5. The button doesn't have an ESC handler → ESC is silently dropped
+
+**Why tests missed it**: The widget test for fullscreen ESC (M2.5/T9) likely `pumpWidget`s ReaderScaffold directly and sends a keyEvent via `tester.sendKeyEvent`, which dispatches to whatever has focus at the top of the tree — which IS ReaderScaffold in the test harness. Real app has a deeper widget tree with AppBar buttons competing for focus.
+
+**Fix options**:
+- **Option A (recommended)**: Use a `FocusScope` with `onKeyEvent` at a higher level than ReaderScaffold (e.g., wrap the entire `MaterialApp` or the reader `Scaffold`). Higher-level scopes receive events that bubble up.
+- **Option B**: After `toggleFullscreen()` is called from the button, programmatically re-request focus on the ReaderScaffold Focus node (`_focusNode.requestFocus()`).
+- **Option C**: Use `HardwareKeyboard` global listener (added in Flutter 3.x) — doesn't depend on focus at all.
+- **Option D**: Add `Shortcut` + `Action` for ESC with high priority.
+
+Lean toward Option B (minimal change, well-targeted). In `IconButton.onPressed` for the fullscreen button at `reader_scaffold.dart:188-194`:
+```dart
+onPressed: () {
+  ref.read(readerUiControllerProvider.notifier).toggleFullscreen();
+  // Reclaim focus so ESC handler receives future key events
+  _focusNode.requestFocus();
+},
+```
+
+This requires hoisting the Focus node to a field (`_focusNode`) instead of using `autofocus: true` on an anonymous Focus widget.
+
+**Risk**: Other AppBar buttons (TOC, bookmark) may also need to relinquish focus after click. Generalize the pattern: every IconButton in `_buildChrome` calls `_focusNode.requestFocus()` after its onPressed side-effect.
+
+**Confidence**: HIGH — focus dynamics explanation is consistent with Flutter's event dispatch model. Verification: user re-test post-fix.
+
 #### Bug #1: Bookmark click → red error screen (LOW confidence — needs stack trace)
 
 **User report**: "左侧书签点击出现错误，红色背景，黄色一大串英文报错"
@@ -165,7 +220,7 @@ Most likely crash paths:
 2. Engine not yet ready when bookmark tapped → gotoLocator hits an internal assert
 3. PDF bookmark locator (PdfPageLocator) routed to wrong engine branch
 
-**Action**: T8 will add try-catch around gotoLocator + log stack trace. User will reproduce and report the actual stack trace from the yellow text; we'll patch the specific cause in a follow-up if the generic try-catch doesn't fully resolve.
+**Action**: T9 will add try-catch around gotoLocator + log stack trace. User will reproduce and report the actual stack trace from the yellow text; we'll patch the specific cause in a follow-up if the generic try-catch doesn't fully resolve.
 
 ### P2 — Polish
 
