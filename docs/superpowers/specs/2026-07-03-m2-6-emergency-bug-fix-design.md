@@ -49,6 +49,8 @@ Keyboard handlers (line 253), pointer-signal / wheel handler (line 292), and hor
 
 **Fix**: Lift the paginationMode gate from keyboard/wheel/drag handlers. Each engine's `nextSpine/previousSpine` already knows how to step (1 page in scroll, 1-2 in paged dual). The gate was overzealous — paged-specific semantics (e.g., snap-to-page) belong inside the engine, not the input handler.
 
+**Tap-zone model update (per A2 below)**: Mouse-click paging is restricted to left/right margin rectangles (Bug #5a fix). Center-area clicks do NOT page — they reach SelectableRegion for text selection. This eliminates the "乱翻" symptom (inconsistent 1 vs 2 page stepping on accidental center clicks) by design.
+
 #### Bug #4: PDF dual-page not engaging (HIGH confidence, related to #6)
 
 **User report**: "浏览书籍还是一个页面，全屏下没有分为左右两页"
@@ -167,9 +169,14 @@ Most likely crash paths:
 
 ### P2 — Polish
 
-#### Bug #5a: Selection flaky (MEDIUM confidence)
+#### Bug #5a: Selection flaky + tap-zone overlap with text (MEDIUM confidence)
 
 **User report**: "不能自由的选择书籍内容进行摘要，偶尔选择到文字摘要"
+
+**Refined requirement (per user 2026-07-03)**: 仿真书模型——
+- **左右空白边**（text 与屏幕边缘之间的 margin 区域）：点击 = 翻页（左 = 上一页，右 = 下一页）
+- **文字内容区**（text 本身）：纯选择，不翻页；SelectableRegion 独享手势
+- **上下空白**：上下也必须留白（与左右一致），文字不贴边——和真实书籍排版一致
 
 **Root cause** (`app/lib/features/reader/widgets/reader_scaffold.dart:119-123`):
 ```dart
@@ -180,21 +187,30 @@ child: GestureDetector(
   child: Stack(children: [widget.content, ...]),
 )
 ```
-The GestureDetector with `HitTestBehavior.opaque` sits ABOVE the content (which contains SelectableRegion). The opaque behavior + nested `Listener` for pointer signals can win the gesture arena in edge cases, blocking SelectableRegion's long-press.
+The GestureDetector with `HitTestBehavior.opaque` sits ABOVE the content (which contains SelectableRegion). The opaque behavior + nested `Listener` for pointer signals can win the gesture arena in edge cases, blocking SelectableRegion's long-press. Tap zones are also computed by `localPosition.dx / size.width` (left 1/3, right 1/3, center 1/3) which spans the entire surface — meaning any tap-up gesture, including one ending on text, can trigger paging.
 
-**User decision**: Refactor to sibling layer (rather than lightweight HitTestBehavior change).
+**User decision**: Book-like model — tap zones restricted to **left/right margin rectangles only**. Center content area is pure selection territory.
 
 **Fix**:
-- Restructure `reader_scaffold.dart` build() to use a `Stack` with two layers:
-  - Bottom layer: `widget.content` (SelectableRegion gets full gesture scope)
-  - Top layer: transparent `GestureDetector` for tap/drag, but ONLY active in the tap zones (left 1/3, right 1/3, center 1/3 for double-tap chrome toggle) — not blocking the entire surface
-- This preserves paging behavior while giving SelectableRegion first-class gesture access
+- Restructure `reader_scaffold.dart` build() to use a `Stack` with explicit layers:
+  - **Bottom layer**: `widget.content` (SelectableRegion gets first-class gesture scope across the entire content area)
+  - **Top layer 1 (left margin)**: `Positioned(left: 0, width: marginPx, top: 0, bottom: 0)` containing a transparent `GestureDetector(onTapUp: prev)`, `onHorizontalDragEnd: dragHandler`
+  - **Top layer 2 (right margin)**: same as above with `right: 0`, calls `next`
+  - **Top layer 3 (center double-tap zone)**: optional, `Positioned(left: marginPx, right: marginPx, top: 0, bottom: 0)` for double-tap-to-toggle-chrome — does NOT consume single taps
+- `marginPx` is read from current `TypographySettings.margin` pixel value (Compact 8 / Normal 32 / Wide 48 / ExtraWide 64) — see Bug #8 fix. With Normal=32, each tap zone is 32px wide which is the WCAG minimum tap target.
+- The opaque GestureDetector (line 119) is **removed entirely**; replaced by the three Positioned layers above
+- `_handleTap(details.localPosition.dx, size.width)` is replaced by per-zone handlers — no zone arithmetic needed
 
-**Risk**: Widget test gesture arena is unreliable. Will need manual smoke verification.
+**Side benefit**: Bug #6's mouse-click "乱翻" symptom (inconsistent 1 vs 2 page stepping) becomes a non-issue in the text area because clicks there no longer page.
+
+**Risk**: 
+- Widget test gesture arena is unreliable — manual smoke required
+- Margin <32px (Compact=8) means tap zone is too narrow; document that Compact is "viewing-only, no comfortable tap-to-page"
+- Need to verify top/bottom padding is actually applied to content (see Bug #8 side note)
 
 #### Bug #8: Margins still too tight (HIGH confidence, tuning)
 
-**User report**: "浏览书籍时文字距离边界还是太近了，还需要进行调整"
+**User report**: "浏览书籍时文字距离边界还是太近了，还需要进行调整" + "每一页文字出来左右要留空白外，上下也必须留空，就和一本真实的书籍一样"
 
 **Current values** (`reader_engine/lib/core/typography_settings.dart:25-32`):
 - compact: 8
@@ -202,11 +218,15 @@ The GestureDetector with `HitTestBehavior.opaque` sits ABOVE the content (which 
 - wide: 32 (was 24 pre-M2.5)
 - extraWide: 40 (new in M2.5)
 
-**User decision**: Bump to normal=32, wide=48, extraWide=64. Compact stays 8.
+**User decision**: Bump to normal=32, wide=48, extraWide=64. Compact stays 8. **Plus**: verify top/bottom padding matches left/right (book-like 4-sided whitespace).
 
-**Fix**: Update the enum pixel values. Existing user setting (e.g., "normal") automatically inherits new value.
+**Fix**:
+1. Update enum pixel values: normal 24→32, wide 32→48, extraWide 40→64
+2. Audit `epubx_renderer.dart` padding application (line ~538 / 556 / 598): confirm `EdgeInsets.all(marginPx)` or symmetric — NOT just horizontal
+3. If only horizontal padding today, add top/bottom (recommend 0.5× horizontal for visual balance, e.g., Normal horizontal=32 / vertical=16) — exact ratio to be confirmed during impl
+4. Margin pixel value is reused as tap-zone width in Bug #5a fix → Normal=32 satisfies WCAG tap target
 
-**Migration note**: This is another behavior change for existing users (margin grows again). CHANGELOG entry must call out: "v1.5.1-alpha 再次调整边距：Normal 24→32 (推荐), Wide 32→48, ExtraWide 40→64。如偏好窄边距请 Settings → Typography → Margin 切到 Compact。"
+**Migration note**: This is another behavior change for existing users (margin grows again). CHANGELOG entry must call out: "v1.5.1-alpha 再次调整边距：Normal 24→32 (推荐), Wide 32→48, ExtraWide 40→64，并补足上下留白。如偏好窄边距请 Settings → Typography → Margin 切到 Compact。"
 
 ## Architecture Decisions
 
@@ -218,13 +238,18 @@ The GestureDetector with `HitTestBehavior.opaque` sits ABOVE the content (which 
 
 **Trade-off**: Implementation is more complex than "just switch to paged" — the dual-page widget must coexist with scroll semantics. Estimated +1 task of work.
 
-### A2: Bug #5a uses sibling-layer refactor
+### A2: Book-like reading model (margin-only tap zones + 4-sided whitespace)
 
-**Decision**: Move GestureDetector out of the parent-child relationship with content. Tap zones become explicit Positioned widgets in a Stack.
+**Decision**: Reader tap zones exist ONLY in left/right margin rectangles. Center content area is pure selection territory. Pages also have top/bottom whitespace matching left/right (book-like 4-sided).
 
-**Rationale (per user)**: Cleaner architecture; avoids fragility of HitTestBehavior tuning.
+**Rationale (per user 2026-07-03)**: "戍边在左右空白区域点击翻页，在书籍内部鼠标主要还是选择文字，每一页文字出来左右要留空白外，上下也必须留空，就和一本真实的书籍一样". Mirrors real-book interaction model where you tap edge to turn page and the text body is selection territory.
 
-**Trade-off**: Reader_scaffold.dart gets a more substantial rewrite. Estimated +1 task of work.
+**Trade-off**: 
+- Reader_scaffold.dart gets a substantial rewrite (remove opaque GestureDetector, add 3 Positioned layers)
+- Compact margin (8px) makes tap zones too narrow — document as "viewing-only"
+- Margins must be sized to double as comfortable tap targets (≥32px = WCAG minimum)
+
+**Coupling with Bug #8**: margin pixel value now serves two purposes (visual whitespace + tap target size). Must coordinate T4 (margin bump) with T9 (sibling-layer refactor).
 
 ### A3: Bug #1 ships with defensive try-catch, awaits user stack trace
 
