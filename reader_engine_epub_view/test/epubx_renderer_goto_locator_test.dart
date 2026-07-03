@@ -17,6 +17,7 @@
 import 'package:epubx/epubx.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 EpubBook _bookWithThreeChapters() {
@@ -70,6 +71,42 @@ void main() {
       const pdf = PdfPageLocator(page: 5, offsetX: 0, offsetY: 0);
       await r.gotoLocator(pdf);
       expect(r.currentChapterIndex, 0, reason: 'PDF locator must not crash');
+      await r.dispose();
+    });
+
+    // M2.6/T7 (Bug #7 regression test): verify EpubRangeLocator branch
+    // emits state so consumer widgets rebuild with the new chapter.
+    test('EpubRangeLocator emits state on chapter switch (M2.6/T7)', () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithThreeChapters();
+      // Drain initial state emission from bookForTesting setter / state$ setup
+      final states = <ReaderEngineState>[];
+      final sub = r.state$.listen(states.add);
+      // Allow the initial yield to flush.
+      await Future<void>.delayed(Duration.zero);
+
+      const range = EpubRangeLocator(
+        chapterIndex: 2,
+        startOffset: 10,
+        endOffset: 50,
+        quote: 'sample quote for range locator',
+        chapterTitle: 'Ch 2',
+      );
+      await r.gotoLocator(range);
+      // Allow state$ async* to deliver.
+      await Future<void>.delayed(Duration.zero);
+
+      expect(r.currentChapterIndex, 2,
+          reason: 'chapter index should switch');
+      // Filter for emissions that came AFTER gotoLocator (i.e. ReaderEngineReady
+      // — bookForTesting may also emit a loading state during setup).
+      final readyStates = states.whereType<ReaderEngineReady>().toList();
+      expect(readyStates, isNotEmpty,
+          reason:
+              'Bug #7 regression: gotoLocator EpubRangeLocator branch must emit '
+              'state notification so reader_body rebuilds with new chapter. '
+              'Pre-fix the chapter index updated silently and UI did not refresh.');
+      await sub.cancel();
       await r.dispose();
     });
   });

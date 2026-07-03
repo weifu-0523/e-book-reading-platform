@@ -461,6 +461,11 @@ class EpubxRenderer implements EpubRenderer {
       // Paged-mode page positioning (selecting the correct page index from
       // currentChapterPageBreaks) is the caller's responsibility via
       // ScrollToOffsetService — same contract as the CFI branch above.
+      //
+      // M2.6/T7 (Bug #7): emit state notification so consumer widgets
+      // rebuild with the new chapter. Pre-fix, TOC tap updated
+      // _currentChapterIndex but consumers (reader_body) didn't see the
+      // change, so the visible chapter didn't update.
       final chapters = flatChapters;
       if (locator.chapterIndex < 0 || locator.chapterIndex >= chapters.length) {
         return;
@@ -470,6 +475,7 @@ class EpubxRenderer implements EpubRenderer {
         _chapterEndFiredForCurrentChapter = false;
         _cachedBreaks = null;
         _beginChapterSwitch();
+        _stateController.add(const ReaderEngineReady());
       }
       return;
     }
@@ -496,6 +502,12 @@ class EpubxRenderer implements EpubRenderer {
     _allHighlights
       ..clear()
       ..addAll(highlights);
+    // M2.6/T5 (Bug #5b): notify consumers so widget tree rebuilds and
+    // reads the new _allHighlights. Pre-fix, the field was updated but
+    // no state was emitted, so highlights appeared in memory but not on
+    // screen. Caller (reader_body.dart ref.listen) is a listener, not
+    // inside a build phase, so emitting here is safe (no rebuild loop).
+    _stateController.add(const ReaderEngineReady());
   }
 
   /// 仅测试用：同步版本，避免 async setup。

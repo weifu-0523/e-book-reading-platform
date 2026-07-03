@@ -503,7 +503,12 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     // ScrollToOffsetService reads it.
     await engine.chapterSwitchSettled;
     if (!mounted) return;
-    await Navigator.of(context).maybePop(); // 关闭 endDrawer
+    // M2.5/T7 重构后抽屉是 Scaffold.drawer，不再是 endDrawer。
+    // 窄屏 maybePop() 会 pop 整个 reader route（Bug #2），必须只在窄屏调。
+    // 与 _onBookmarkJump:809 同模式。
+    if (!_isWideScreen(context)) {
+      unawaited(Navigator.of(context).maybePop());
+    }
     if (!mounted) return;
     final scrollable = Scrollable.maybeOf(context);
     if (scrollable == null) return;
@@ -801,8 +806,21 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       );
       return;
     }
-    await engine.gotoLocator(locator);
-    await engine.chapterSwitchSettled;
+    // M2.6/T8 (Bug #1 防御性修复)：gotoLocator 可能因 locator 类型不匹配、
+    // flatChapters 越界、engine 未 ready 等原因抛异常，导致 Flutter 红屏。
+    // 防御性 try-catch + SnackBar 防止 UX 灾难；待用户复现提供 stack trace
+    // 后再做精准修复。
+    try {
+      await engine.gotoLocator(locator);
+      await engine.chapterSwitchSettled;
+    } catch (e, st) {
+      debugPrint('Bookmark jump failed: $e\n$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('跳转失败：$e')),
+      );
+      return;
+    }
     if (!mounted) return;
     // 关闭 Drawer（窄屏）。宽屏下抽屉是常驻 sidebar，maybePop 会关闭整页，
     // 因此仅在窄屏调用。判断逻辑：与 onOpenToc 一致使用 _isWideScreen。
