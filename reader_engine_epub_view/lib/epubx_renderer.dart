@@ -65,6 +65,13 @@ class EpubxRenderer implements EpubRenderer {
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
   PaginationMode _paginationMode = PaginationMode.paged;
 
+  /// Read-only access to the current [TypographySettings].
+  ///
+  /// M2.6/T3: exposed so [ConcreteEpubReaderEngine.typography] can forward
+  /// the renderer's live value to UI (e.g. TypographyPanel) instead of a
+  /// const default. Pre-fix, panel onChanged wrote to a discarded object.
+  TypographySettings get typography => _typography;
+
   /// M2.5/T14: 双页模式 API surface — 已端到端 wire，但渲染层暂未实现。
   ///
   /// 当 `true` 且当前章节为 paged 模式时，理论上应在 [build] 中渲染两列

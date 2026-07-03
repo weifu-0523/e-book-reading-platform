@@ -78,9 +78,7 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   TableOfContents? get toc => _toc;
 
   @override
-  TypographySettings get typography => TypographySettings.defaults();
-  // 注：typography 实际由 _renderer 持有；为简洁此处返回默认。
-  // M3 重构为 _renderer.typography。
+  TypographySettings get typography => _renderer.typography;
 
   @override
   PaginationMode get paginationMode => PaginationMode.paged;
