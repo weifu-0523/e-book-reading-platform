@@ -27,11 +27,17 @@ enum ReadingTheme { light, dark, sepia, eInk }
 /// 40→64. Rationale: margins double as tap-zone widths (see reader_scaffold
 /// book-like model), so >=32px = WCAG minimum tap target. Compact stays 8
 /// (viewing-only; too narrow for comfortable tap-to-page).
+///
+/// M2.7 round-3 (Bug #8 revisited): user feedback after M2.6 said margins
+/// improved but still too narrow. Bumped again — normal 32→48, wide 48→72,
+/// extraWide 64→96. Compact stays 8 (preserves "viewing-only" semantics).
+/// 48px ≈ 1.5× WCAG tap target, comfortable on desktops; 72/96 give the
+/// real-book whitespace feel users asked for.
 enum PageMargin {
   compact(8),
-  normal(32),
-  wide(48),
-  extraWide(64);
+  normal(48),
+  wide(72),
+  extraWide(96);
 
   final int pixelValue;
   const PageMargin(this.pixelValue);

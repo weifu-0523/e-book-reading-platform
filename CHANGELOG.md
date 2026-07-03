@@ -9,6 +9,29 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M2.7 Round 3 — 2026-07-03（v1.5.1-alpha 用户复测反馈 #2）
+
+Round 2 修复后用户报告 "排版页点击很多次才变动一点点，边距有改善但仍需更宽"。代码层追溯发现 Round 2 修复**完全没生效**：emit 调用加在了 `EpubxRenderer._stateController`，但 `ConcreteEpubReaderEngine.state$` 返回的是 adapter 自己的 `_stateController.stream` —— renderer 的 emission **从未转发到 adapter**，所以 `reader_body.dart:144` 的 listen 永远收不到事件。用户感受到的"一点点变化"只是 M2.6/T4 enum pixel value bump（normal 24→32）造成的视觉初值差异，跟排版切换无关。
+
+TypographyPanel 自身还有第二层 bug：`reader_typography_panel_trigger.dart:65` 的 sheet builder snapshot `engine.typography` 作为 `current`，但 sheet 内部 `Consumer` 只 watch profile/font providers，没订阅 engine state。即使 Round 3 桥接通，sheet 内 `current` 仍不刷新 —— 每次 ChoiceChip 点击基于闭包里旧 `current.copyWith(...)`，写到 engine 的值永远不变。
+
+#### Fixed
+
+- **Bug #3 + #8 排版无反应（真根因）**：`ConcreteEpubReaderEngine` 构造函数加 `_renderer.state$.listen(_setState)` 桥接，转发 renderer 内部 stream emission 到 adapter 的 `_stateController`。Round 2 在 `epubx_renderer.dart` 加的 4 处 emit (setTypography / setPaginationMode / gotoLocator CFI / injectHighlights) 现在真正能传到 reader_body。这是 Round 2 修复"看似不生效"的根本原因。
+- **TypographyPanel current 不刷新**：`reader_typography_panel_trigger.dart` 的 sheet builder 内嵌 `StreamBuilder<ReaderEngineState>` 订阅 `widget.engine.state$`，rebuild 时重新读 `widget.engine.typography` 作为 `current`。修复后字号 +/- 按钮、行距/字体/主题/边距 ChoiceChip 都即时刷新且可重复点击。
+- **Bug #8 边距（加宽）**：用户反馈 M2.6/T4 (normal=32, wide=48, extraWide=64) 后"边距有改善但仍需更宽"。再次 bump: normal 32→48, wide 48→72, extraWide 64→96。Compact 保留 8（仅查看）。48px ≈ 1.5× WCAG tap target。
+
+#### Tests
+
+新增 `concrete_reader_engine_state_bridge_test.dart`（4 cases）：setTypography / setPaginationMode / gotoLocator CFI / injectHighlights 各自验证从 `ConcreteEpubReaderEngine.state$`（adapter stream）能收到 `ReaderEngineReady`。这是 Round 2 的盲点 —— 之前只测 renderer.state$ 有 emit，没测 adapter stream 是否能转发。
+
+**总数：1076 通过 + 3 skipped**（baseline 1069 + 4 round-3 + 3 round-2 之前已加）。
+
+#### Lessons
+
+- **两路 state$ 的盲点**：`EpubxRenderer` 有自己的 `_stateController`，`ConcreteEpubReaderEngine` 又有自己的 `_stateController`。两路独立意味着 renderer emit 必须 bridge 到 adapter 才能到 consumer。这是 adapter pattern 常见陷阱：每个层级都得有自己的 notification pipeline，否则会出现"emit 看着对、consumer 收不到"的 silent failure。
+- **Modal sheet 是独立 overlay**：父 widget rebuild 不会触发 sheet 内 builder 重跑。Riverpod `Consumer` 只在 watch 的 provider 变化时 rebuild。如果 sheet 需要 follow 外部 state（如 engine.state\$），必须显式 StreamBuilder / EventBus 订阅。
+
 ### M2.7 Round 2 — 2026-07-03（v1.5.1-alpha 用户复测反馈）
 
 v1.5.1-alpha 交付后用户立即上手测试，发现 9 个 bug 中 7 个依旧（仅 Bug #5a 部分缓解、Bug #2 行为变化）。代码层追溯发现 **5 个 bug 同根因**：`EpubxRenderer` 是普通 class（不是 widget），改实例字段（`_typography` / `_paginationMode` / `_currentChapterIndex`）后**必须 emit state**，上游 `reader_body.dart:144` 的 `engine.state$.listen → setState → rebuild` 才能让屏幕更新。M2.6 修了 `injectHighlights` + `gotoLocator` EpubRangeLocator 分支的 emit state，但漏了 3 处。

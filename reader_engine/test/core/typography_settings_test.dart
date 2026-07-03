@@ -36,21 +36,23 @@ void main() {
   test('PageMargin enum has 4 values with correct pixel mappings', () {
     expect(PageMargin.values, hasLength(4));
     expect(PageMargin.compact.pixelValue, 8);
-    expect(PageMargin.normal.pixelValue, 32,
-        reason: 'M2.6/T4: bumped 24→32 to satisfy WCAG tap-target minimum '
-            '(margins double as tap-zone widths in reader_scaffold)');
-    expect(PageMargin.wide.pixelValue, 48,
-        reason: 'M2.6/T4: bumped 32→48 proportional scaling');
-    expect(PageMargin.extraWide.pixelValue, 64,
-        reason: 'M2.6/T4: bumped 40→64 for ultra-wide desktop preference');
+    expect(PageMargin.normal.pixelValue, 48,
+        reason: 'M2.7 round-3: bumped 32→48 after user feedback that M2.6/T4 '
+            '(32px) was still too narrow; 48px ≈ 1.5× WCAG tap target on '
+            'desktop. Margins double as tap-zone widths in reader_scaffold.');
+    expect(PageMargin.wide.pixelValue, 72,
+        reason: 'M2.7 round-3: bumped 48→72 proportional scaling for '
+            'real-book whitespace feel');
+    expect(PageMargin.extraWide.pixelValue, 96,
+        reason: 'M2.7 round-3: bumped 64→96 for ultra-wide desktop preference');
   });
 
   test('TypographySettings.defaults uses PageMargin.normal', () {
     // Already asserted above, but be explicit post-bump.
     final s = TypographySettings.defaults();
     expect(s.pageMargin, PageMargin.normal);
-    expect(s.pageMargin.pixelValue, 32,
-        reason: 'M2.6/T4: default margin should be 32px '
-            '(was 24px M2.5, was 16px pre-M2.5)');
+    expect(s.pageMargin.pixelValue, 48,
+        reason: 'M2.7 round-3: default margin should be 48px '
+            '(was 32px M2.6, 24px M2.5, 16px pre-M2.5)');
   });
 }

@@ -35,10 +35,24 @@ import 'src/chapter_end_event.dart';
 /// 当 [BookRef.format] == epub 时由 provider 选择此实现。
 class ConcreteEpubReaderEngine implements ReaderEngine {
   ConcreteEpubReaderEngine({required EpubxRenderer renderer})
-      : _renderer = renderer;
+      : _renderer = renderer {
+    // M2.7 round-3 bridge: forward renderer's state emissions to this
+    // engine's _stateController. Without bridging, mutations like
+    // setTypography / setPaginationMode / gotoLocator (CFI branch) /
+    // injectHighlights that emit ReaderEngineReady on the renderer's
+    // internal stream never reach consumers (reader_body subscribes to
+    // Concrete.state$, not renderer.state$). Pre-fix, the round-2 emit
+    // calls in epubx_renderer.dart appeared inert — round-2 fixed the
+    // renderer half but missed this adapter half.
+    _rendererStateSub = _renderer.state$.listen((s) {
+      _state = s;
+      _stateController.add(s);
+    });
+  }
 
   final EpubxRenderer _renderer;
   final _stateController = StreamController<ReaderEngineState>.broadcast();
+  late final StreamSubscription<ReaderEngineState> _rendererStateSub;
 
   ReaderEngineState _state = const ReaderEngineUnloaded();
   TableOfContents? _toc;
@@ -157,6 +171,7 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
 
   @override
   Future<void> close() async {
+    await _rendererStateSub.cancel();
     await _renderer.dispose();
     await _stateController.close();
   }

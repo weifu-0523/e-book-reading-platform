@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/engine/reader_engine_state.dart';
 
 import '../../../core/providers.dart';
 import '../../../features/settings/providers/font_library_provider.dart';
@@ -56,39 +57,54 @@ class _ReaderTypographyPanelTriggerState
             final fontsAsync = ref.watch(fontLibraryProvider);
             final profiles = profilesAsync.valueOrNull ?? const [];
             final userFonts = fontsAsync.valueOrNull ?? const [];
-            final currentProfile = profiles.isEmpty
-                ? null
-                : profiles.firstWhere(
-                    (p) => p.settings == widget.engine.typography,
-                    orElse: () => profiles.first,
-                  );
-            return TypographyPanel(
-              current: widget.engine.typography,
-              onChanged: (settings) => widget.engine.setTypography(settings),
-              profiles: profiles,
-              currentProfile: currentProfile,
-              onSelectProfile: (p) {
-                widget.engine.setTypography(p.settings);
-                ref.read(typographyProfileRepositoryProvider).setDefault(p.id);
+            // M2.7 round-3: subscribe to engine.state$ so the panel's `current`
+            // snapshot tracks live mutations. Pre-fix, the sheet builder ran
+            // once and `current` was a frozen snapshot — every ChoiceChip tap
+            // computed `current.copyWith(...)` from the original value, so
+            // repeated taps wrote the same settings to the engine (panel
+            // appeared sluggish / "clicks many times for a tiny change").
+            // StreamBuilder rebuilds on each emit, picking up the new value.
+            return StreamBuilder<ReaderEngineState>(
+              initialData: widget.engine.state,
+              stream: widget.engine.state$,
+              builder: (ctx, _) {
+                final current = widget.engine.typography;
+                final currentProfile = profiles.isEmpty
+                    ? null
+                    : profiles.firstWhere(
+                        (p) => p.settings == current,
+                        orElse: () => profiles.first,
+                      );
+                return TypographyPanel(
+                  current: current,
+                  onChanged: (settings) =>
+                      widget.engine.setTypography(settings),
+                  profiles: profiles,
+                  currentProfile: currentProfile,
+                  onSelectProfile: (p) {
+                    widget.engine.setTypography(p.settings);
+                    ref.read(typographyProfileRepositoryProvider).setDefault(p.id);
+                  },
+                  onSaveAsProfile:
+                      ({required settings, required overwrite, newName}) async {
+                    final repo =
+                        ref.read(typographyProfileRepositoryProvider);
+                    if (overwrite) {
+                      final def = await repo.getDefault();
+                      if (def != null) {
+                        await repo.update(def.id, settings: settings);
+                      }
+                    } else {
+                      await repo.insert(
+                          name: newName ?? '新预设',
+                          settings: settings,
+                          isDefault: false);
+                    }
+                    ref.invalidate(typographyProfileProvider);
+                  },
+                  userFonts: userFonts,
+                );
               },
-              onSaveAsProfile:
-                  ({required settings, required overwrite, newName}) async {
-                final repo =
-                    ref.read(typographyProfileRepositoryProvider);
-                if (overwrite) {
-                  final def = await repo.getDefault();
-                  if (def != null) {
-                    await repo.update(def.id, settings: settings);
-                  }
-                } else {
-                  await repo.insert(
-                      name: newName ?? '新预设',
-                      settings: settings,
-                      isDefault: false);
-                }
-                ref.invalidate(typographyProfileProvider);
-              },
-              userFonts: userFonts,
             );
           },
         ),
