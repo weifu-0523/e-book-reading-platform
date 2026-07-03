@@ -418,6 +418,8 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               title: _bookTitle(),
               onTapPrev: () => engine.previousSpine(),
               onTapNext: () => engine.nextSpine(),
+              // M2.6/T9: 边距像素值同时作为翻页 tap zone 宽度。
+              marginPx: engine.typography.pageMargin.pixelValue,
               onBack: () => Navigator.of(innerContext).maybePop(),
               onOpenToc: () {
                 // Tab 切换是幂等且廉价的，无论宽窄屏都执行；

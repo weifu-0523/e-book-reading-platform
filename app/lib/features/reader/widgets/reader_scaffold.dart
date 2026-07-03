@@ -25,15 +25,23 @@ import '../controllers/reader_ui_controller.dart';
 
 /// 沉浸式阅读容器：多输入翻页 + chrome 显隐。
 ///
-/// **paged 模式**支持四种翻页输入：
+/// **翻页输入（所有模式均生效，M2.6/T1 lift 了 paginationMode 门控）：**
 /// - **键盘**：←/→/↑/↓/PgUp/PgDn
-/// - **鼠标滚轮**：向下滚动 → next；向上 → prev
 /// - **水平拖拽**：左滑（负速度）→ next；右滑（正速度）→ prev
-/// - **点击区域**：tap 左 1/3 → prev；右 1/3 → next；中央 → double-tap 检测
+/// - **点击区域（M2.6/T9 book-like model）**：
+///   - 左侧空白边（width = [marginPx]）tap → prev
+///   - 右侧空白边（width = [marginPx]）tap → next
+///   - 中央内容区 tap → 纯选择（不翻页），double-tap → chrome 切换
 ///
-/// **scroll 模式**：所有翻页输入均被禁用（用户用滚动手势滚动内容）。
+/// **scroll 模式仍保留：**
+/// - **鼠标滚轮**：scroll 模式下不拦截（让内容 ScrollView 自然滚动）；
+///   paged 模式下滚轮 = 上下翻页。
 ///
 /// chrome 的显隐不再由中央 tap 控制（T6/T9 接管 chrome 默认值与切换 UI）。
+///
+/// **M2.6/T10 Focus 动态**：State 持有 [FocusNode]，所有 AppBar IconButton
+/// onPressed 后调 [_reclaimFocus] 重新获焦，确保键盘事件（特别是 ESC 退出全屏）
+/// 不会被按钮节点吞掉。
 class ReaderScaffold extends ConsumerStatefulWidget {
   final Widget content;
   final VoidCallback onTapPrev;
@@ -71,6 +79,16 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// 用户确认后由本回调把 BookmarkEntry 写入数据库。为 null 时不渲染图标。
   final VoidCallback? onAddBookmark;
 
+  /// M2.6/T9 (Bug #5a)：左右空白边的像素宽度，作为翻页 tap zone。
+  ///
+  /// 取自当前 `engine.typography.pageMargin.pixelValue`，由父组件
+  /// reader_body 传入。M2.6/T4 后默认值 normal=32 / wide=48 / extraWide=64
+  /// / compact=8。Normal 及以上满足 WCAG 最小 tap target。
+  ///
+  /// 边距同时承担两个职责：视觉留白 + 翻页命中区域。文字内容区（中央）
+  /// 完全归 SelectableRegion 独享，不再与翻页手势竞争。
+  final int marginPx;
+
   /// 触发水平滑动翻页的最小速度阈值（px/s）。
   ///
   /// 测试中 `timedDrag(Offset(±300, 0), 200ms)` 的速度约为 1500 px/s，
@@ -84,6 +102,7 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     required this.onTapNext,
     required this.title,
     this.paginationMode = PaginationMode.paged,
+    this.marginPx = 32,
     this.onBack,
     this.onOpenToc,
     this.onOpenTypography,
@@ -99,39 +118,109 @@ class ReaderScaffold extends ConsumerStatefulWidget {
 }
 
 class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
-  /// T9：手动 double-tap 检测的上一次中央 tap 时间戳。
-  ///
-  /// 不使用 [GestureDetector.onDoubleTap]：该回调会强制 GestureDetector
-  /// 等待 double-tap 超时（~300ms）才识别为 single tap，破坏翻页响应。
-  /// 这里在 [onTapUp] 内手动判断两次 tap 的时间差，仅影响中央 1/3 区域。
-  DateTime? _lastCenterTap;
+  /// M2.6/T10 (Bug #9)：State 持有的 FocusNode，确保 AppBar IconButton
+  /// 点击后能 [_reclaimFocus] 重新获焦，避免 ESC/F11/方向键被按钮节点吞掉。
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode(debugLabel: 'ReaderScaffold');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  /// M2.6/T10：所有 AppBar IconButton onPressed 完成主操作后调本方法，
+  /// 把焦点从按钮拉回到 ReaderScaffold，确保后续键盘事件可达。
+  void _reclaimFocus() {
+    if (mounted) _focusNode.requestFocus();
+  }
 
   @override
   Widget build(BuildContext context) {
     final ui = ref.watch(readerUiControllerProvider);
     final size = MediaQuery.sizeOf(context);
+    // Tap zone width clamped to [0, half of screen] so a misconfigured
+    // marginPx (e.g., > screen/2) doesn't cause the two zones to overlap.
+    final zoneWidth = widget.marginPx.clamp(0, (size.width / 2).toInt());
 
     return Focus(
+      focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: (node, event) => _handleKeyEvent(event),
       child: Listener(
         onPointerSignal: _handlePointerSignal,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (details) =>
-              _handleTap(details.localPosition.dx, size.width),
-          onHorizontalDragEnd: _handleDragEnd,
-          child: Stack(
-            children: [
-              widget.content,
-              // T9：全屏模式下 chrome 默认隐藏；中央 double-tap 可临时唤出
-              // （chromeVisible 由 [toggleChrome] 单独控制）。
-              if (ui.chromeVisible) _buildChrome(context),
-            ],
-          ),
+        child: Stack(
+          children: [
+            // 底层：内容（SelectableRegion 独享手势）
+            widget.content,
+
+            // T9 左空白边：tap = prev；水平拖拽同。
+            if (zoneWidth > 0)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: zoneWidth.toDouble(),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (_) => widget.onTapPrev(),
+                  onHorizontalDragEnd: _handleDragEnd,
+                ),
+              ),
+
+            // T9 右空白边：tap = next；水平拖拽同。
+            if (zoneWidth > 0)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: zoneWidth.toDouble(),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (_) => widget.onTapNext(),
+                  onHorizontalDragEnd: _handleDragEnd,
+                ),
+              ),
+
+            // T9 中央 double-tap（chrome 切换）：translucent，不消费 single tap，
+            // 让 SelectableRegion 在文字选择时独享手势。
+            Positioned(
+              left: zoneWidth.toDouble(),
+              right: zoneWidth.toDouble(),
+              top: 0,
+              bottom: 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onDoubleTap: _toggleChrome,
+              ),
+            ),
+
+            // Chrome 覆盖层（AppBar + actions）。
+            if (ui.chromeVisible) _buildChrome(context),
+          ],
         ),
       ),
     );
+  }
+
+  /// M2.6/T9：中央 double-tap 触发的 chrome 切换。
+  ///
+  /// 仅在全屏模式下生效：全屏时 chrome 默认隐藏，double-tap 临时唤出/隐藏；
+  /// 非全屏时 chrome 由平台默认值（桌面 true / 移动 false）+ AppBar 全屏图标
+  /// 接管，double-tap 不干预（保留 T9-5 测试期望的"非全屏 no-op"语义）。
+  void _toggleChrome() {
+    final ui = ref.read(readerUiControllerProvider);
+    if (ui.isFullscreen) {
+      ref.read(readerUiControllerProvider.notifier).toggleChrome();
+    }
   }
 
   Widget _buildChrome(BuildContext context) {
@@ -148,23 +237,41 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
             title: Text(widget.title),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: widget.onBack ?? () => Navigator.maybePop(context),
+              onPressed: () {
+                (widget.onBack ?? () => Navigator.maybePop(context))();
+                _reclaimFocus();
+              },
             ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.list),
                 tooltip: '目录',
-                onPressed: widget.onOpenToc,
+                onPressed: widget.onOpenToc == null
+                    ? null
+                    : () {
+                        widget.onOpenToc!.call();
+                        _reclaimFocus();
+                      },
               ),
               IconButton(
                 icon: const Icon(Icons.text_fields),
                 tooltip: '排版',
-                onPressed: widget.onOpenTypography,
+                onPressed: widget.onOpenTypography == null
+                    ? null
+                    : () {
+                        widget.onOpenTypography!.call();
+                        _reclaimFocus();
+                      },
               ),
               IconButton(
                 icon: const Icon(Icons.menu_book),
                 tooltip: '笔记',
-                onPressed: widget.onOpenNotes,
+                onPressed: widget.onOpenNotes == null
+                    ? null
+                    : () {
+                        widget.onOpenNotes!.call();
+                        _reclaimFocus();
+                      },
               ),
               // T12：添加书签。v1 不做「当前页已加书签」检测，统一显示
               // bookmark_add_outlined 图标，点击弹 dialog 录入 label + note。
@@ -172,17 +279,32 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                 key: const Key('toggle_bookmark'),
                 icon: const Icon(Icons.bookmark_add_outlined),
                 tooltip: '添加书签',
-                onPressed: widget.onAddBookmark,
+                onPressed: widget.onAddBookmark == null
+                    ? null
+                    : () {
+                        widget.onAddBookmark!.call();
+                        _reclaimFocus();
+                      },
               ),
               IconButton(
                 icon: const Icon(Icons.auto_awesome),
                 tooltip: 'AI 导读',
-                onPressed: widget.onOpenAiGuide,
+                onPressed: widget.onOpenAiGuide == null
+                    ? null
+                    : () {
+                        widget.onOpenAiGuide!.call();
+                        _reclaimFocus();
+                      },
               ),
               IconButton(
                 icon: const Icon(Icons.quiz_outlined),
                 tooltip: '问答',
-                onPressed: widget.onOpenQa,
+                onPressed: widget.onOpenQa == null
+                    ? null
+                    : () {
+                        widget.onOpenQa!.call();
+                        _reclaimFocus();
+                      },
               ),
               // T9：全屏模式切换。全屏下 chrome 默认隐藏，需先通过中央
               // double-tap 唤出 chrome 才能点击此图标退出。
@@ -192,9 +314,12 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                     ? Icons.fullscreen_exit
                     : Icons.fullscreen),
                 tooltip: ui.isFullscreen ? '退出全屏' : '全屏',
-                onPressed: () => ref
-                    .read(readerUiControllerProvider.notifier)
-                    .toggleFullscreen(),
+                onPressed: () {
+                  ref
+                      .read(readerUiControllerProvider.notifier)
+                      .toggleFullscreen();
+                  _reclaimFocus();
+                },
               ),
               if (widget.onOpenReview != null)
                 PopupMenuButton<String>(
@@ -206,6 +331,7 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                     if (value == 'review_current') {
                       widget.onOpenReview!();
                     }
+                    _reclaimFocus();
                   },
                   itemBuilder: (ctx) => [
                     PopupMenuItem<String>(
@@ -227,10 +353,12 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     );
   }
 
-  /// T9：键盘事件处理。在全屏/翻页输入间协调：
-  /// - **Esc**：若处于全屏，则退出全屏（任何 paginationMode）。
-  /// - **F11**：切换全屏（任何 paginationMode）。
-  /// - 方向键 / PgUp / PgDn：仅在 paged 模式下翻页（T5）。
+  /// T9/T10：键盘事件处理。在全屏/翻页输入间协调：
+  /// - **Esc**：若处于全屏，则退出全屏（任何 paginationMode，T9）。
+  /// - **F11**：切换全屏（任何 paginationMode，T9）。
+  /// - 方向键 / PgUp / PgDn：M2.6/T1 起，所有 paginationMode 均生效（不再
+  ///   gated on paged 模式）。Engine.nextSpine/previousSpine 自己知道
+  ///   scroll vs paged 模式下该如何步进。
   KeyEventResult _handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
@@ -250,9 +378,8 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
       }
     }
 
-    if (widget.paginationMode != PaginationMode.paged) {
-      return KeyEventResult.ignored;
-    }
+    // M2.6/T1：移除 paginationMode gate。原先 PDF（scroll）模式下方向键被
+    // 静默吞掉，用户报告"键盘左右键不能翻页"。
     if (key == LogicalKeyboardKey.arrowRight ||
         key == LogicalKeyboardKey.pageDown ||
         key == LogicalKeyboardKey.arrowDown) {
@@ -268,26 +395,9 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     return KeyEventResult.ignored;
   }
 
-  /// T9：中央 double-tap。全屏模式下临时切换 chromeVisible；非全屏模式下
-  /// 空操作（chrome 显隐由 AppBar 全屏图标 + 平台默认值接管）。
-  ///
-  /// 在 [_handleTap] 内手动检测：连续两次中央区域 tap 间隔 < 300ms 即视为
-  /// double-tap。不依赖 [GestureDetector.onDoubleTap] 以避免 single-tap
-  /// 延迟（破坏翻页响应）。
-  void _maybeHandleCenterDoubleTap() {
-    final now = DateTime.now();
-    final last = _lastCenterTap;
-    _lastCenterTap = now;
-    if (last == null) return;
-    final delta = now.difference(last);
-    if (delta.inMilliseconds > 300) return;
-
-    final ui = ref.read(readerUiControllerProvider);
-    if (ui.isFullscreen) {
-      ref.read(readerUiControllerProvider.notifier).toggleChrome();
-    }
-  }
-
+  /// T9：滚轮事件。**保留** paginationMode gate —— scroll 模式下应让内容
+  /// ScrollView 自然滚动（用户的预期行为），不应转换为翻页。
+  /// paged 模式下滚轮才翻页。
   void _handlePointerSignal(PointerSignalEvent signal) {
     if (widget.paginationMode != PaginationMode.paged) return;
     if (signal is! PointerScrollEvent) return;
@@ -298,8 +408,9 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     }
   }
 
+  /// M2.6/T1：水平拖拽翻页。**移除** paginationMode gate —— scroll 模式下
+  /// 水平拖拽也应翻页（垂直滚动由内容 ScrollView 处理，不冲突）。
   void _handleDragEnd(DragEndDetails details) {
-    if (widget.paginationMode != PaginationMode.paged) return;
     final v = details.primaryVelocity;
     if (v == null) return;
     // Swipe left (negative velocity) → next page.
@@ -309,27 +420,5 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     } else if (v > ReaderScaffold.dragVelocityThreshold) {
       widget.onTapPrev();
     }
-  }
-
-  void _handleTap(double dx, double width) {
-    final third = width / 3;
-    final isCenter = dx >= third && dx <= width - third;
-
-    // T9：无论 paginationMode，中央 tap 都参与 double-tap 检测。
-    if (isCenter) {
-      _maybeHandleCenterDoubleTap();
-    }
-
-    if (widget.paginationMode == PaginationMode.scroll) {
-      // Scroll mode: tap does nothing else (no paging, no chrome toggle).
-      // Chrome visibility is controlled by the AppBar fullscreen icon (T9).
-      return;
-    }
-    if (dx < third) {
-      widget.onTapPrev();
-    } else if (dx > width - third) {
-      widget.onTapNext();
-    }
-    // Center third: only double-tap detection above. Single-tap no-op.
   }
 }

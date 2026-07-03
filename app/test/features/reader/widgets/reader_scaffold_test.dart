@@ -15,6 +15,9 @@ void main() {
             content: const Center(child: Text('book')),
             title: 't',
             paginationMode: PaginationMode.paged,
+            // M2.6/T9: explicit margin so tap at 750 falls inside right zone
+            // (right zone = [800 - 48, 800] = [752, 800]).
+            marginPx: 48,
             onTapPrev: () {},
             onTapNext: () => nextTapped = true,
           ),
@@ -22,7 +25,7 @@ void main() {
       ),
     );
 
-    await tester.tapAt(const Offset(750, 400));
+    await tester.tapAt(const Offset(770, 400));
     await tester.pumpAndSettle();
 
     expect(nextTapped, isTrue);
@@ -37,6 +40,9 @@ void main() {
             content: const Center(child: Text('book')),
             title: 't',
             paginationMode: PaginationMode.paged,
+            // M2.6/T9: explicit margin so tap at 30 falls inside left zone
+            // (left zone = [0, 48]).
+            marginPx: 48,
             onTapPrev: () => prevTapped = true,
             onTapNext: () {},
           ),
@@ -44,13 +50,16 @@ void main() {
       ),
     );
 
-    await tester.tapAt(const Offset(50, 400));
+    await tester.tapAt(const Offset(30, 400));
     await tester.pumpAndSettle();
 
     expect(prevTapped, isTrue);
   });
 
-  testWidgets('scroll mode tap right does NOT trigger prev/next', (tester) async {
+  testWidgets('scroll mode tap in zones still triggers page (M2.6/T9)',
+      (tester) async {
+    // M2.6/T9: tap zones are mode-independent. Scroll mode also pages on
+    // margin taps (only wheel-scroll is gated to paged mode now).
     var nextTapped = false;
     var prevTapped = false;
     await tester.pumpWidget(
@@ -60,6 +69,7 @@ void main() {
             content: const Center(child: Text('book')),
             title: 't',
             paginationMode: PaginationMode.scroll,
+            marginPx: 48,
             onTapPrev: () => prevTapped = true,
             onTapNext: () => nextTapped = true,
           ),
@@ -67,13 +77,13 @@ void main() {
       ),
     );
 
-    await tester.tapAt(const Offset(750, 400));
+    await tester.tapAt(const Offset(770, 400));
     await tester.pumpAndSettle();
-    await tester.tapAt(const Offset(50, 400));
-    await tester.pumpAndSettle();
+    expect(nextTapped, isTrue);
 
-    expect(nextTapped, isFalse);
-    expect(prevTapped, isFalse);
+    await tester.tapAt(const Offset(30, 400));
+    await tester.pumpAndSettle();
+    expect(prevTapped, isTrue);
   });
 
   testWidgets('chrome is revealed by toggling readerUiControllerProvider',
