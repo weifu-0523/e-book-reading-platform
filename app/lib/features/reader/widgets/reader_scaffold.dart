@@ -89,6 +89,13 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// 完全归 SelectableRegion 独享，不再与翻页手势竞争。
   final int marginPx;
 
+  /// M2.6/T2 (Bug #4)：双页布局切换回调。仅 PDF 引擎提供（EPUB 渲染层
+  /// 推到 v1.6）。null 时不渲染双页按钮。
+  final VoidCallback? onToggleDualPage;
+
+  /// M2.6/T2：当前是否处于双页模式（用于切换图标 + tooltip）。
+  final bool isDualPageMode;
+
   /// 触发水平滑动翻页的最小速度阈值（px/s）。
   ///
   /// 测试中 `timedDrag(Offset(±300, 0), 200ms)` 的速度约为 1500 px/s，
@@ -111,6 +118,8 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     this.onOpenQa,
     this.onOpenReview,
     this.onAddBookmark,
+    this.onToggleDualPage,
+    this.isDualPageMode = false,
   });
 
   @override
@@ -321,6 +330,20 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                   _reclaimFocus();
                 },
               ),
+              // M2.6/T2 (Bug #4): PDF 双页独立切换按钮。仅 PDF 引擎时父组件
+              // 传入回调；null 时不渲染。v1.5.1 不持久化，每次启动默认 false。
+              if (widget.onToggleDualPage != null)
+                IconButton(
+                  key: const Key('toggle_dual_page'),
+                  icon: Icon(widget.isDualPageMode
+                      ? Icons.menu_book_outlined
+                      : Icons.menu_book),
+                  tooltip: widget.isDualPageMode ? '切到单页' : '切到双页',
+                  onPressed: () {
+                    widget.onToggleDualPage!();
+                    _reclaimFocus();
+                  },
+                ),
               if (widget.onOpenReview != null)
                 PopupMenuButton<String>(
                   key: const Key('reader_overflow_menu'),

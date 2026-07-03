@@ -269,20 +269,12 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 1100;
-        // T13: PDF 双页布局触发条件 —— 宽度 >= 1200 且非扫描件。 PdfReaderEngine
-        // 的 paginationMode 始终是 scroll（pdfrx 内部按页固定布局），因此触发
-        // 实质只看宽度 + isScanned；spec 中「paginationMode == paged」对 PDF
-        // 不适用，已根据 plan 的 CRITICAL 简化 #1 调整为「宽度 + 非扫描件」。
-        // 用户无 toggle —— 宽屏自动启用，与 T8 sidebar 行为对齐。
-        final engine = this.engine;
-        if (engine is PdfReaderEngine) {
-          final renderer = engine.rendererRef;
-          renderer.dualPageMode =
-              constraints.maxWidth >= 1200 && !renderer.isScanned;
-        } else if (engine is ConcreteEpubReaderEngine) {
-          // M2.5/T14: API surface 端到端 wire；渲染层留 v1.6（见 EpubxRenderer.dualPageMode doc）
-          engine.rendererRef.dualPageMode = constraints.maxWidth >= 1200;
-        }
+        // M2.6/T2 (Bug #4): PDF 双页布局改为用户-driven 独立 toggle，不再
+        // 根据宽度自动启用。原 M2.5/T13 自动触发逻辑（>=1200px 且非扫描件）
+        // 在 window_manager 全屏切换 + isScanned FutureBuilder 解析之间存在
+        // race condition，用户报告"全屏下没有分为左右两页"。
+        //
+        // EPUB 双页渲染推到 v1.6（M2.5/T14 API surface），此处不再 wire。
         if (isWide) {
           return _buildWideReaderTree(ui);
         }
@@ -420,6 +412,17 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               onTapNext: () => engine.nextSpine(),
               // M2.6/T9: 边距像素值同时作为翻页 tap zone 宽度。
               marginPx: engine.typography.pageMargin.pixelValue,
+              // M2.6/T2 (Bug #4): PDF 双页独立 toggle。仅 PDF 引擎提供回调；
+              // EPUB 渲染层推到 v1.6。每次启动默认 false（v1.5.1 不持久化）。
+              onToggleDualPage: engine is PdfReaderEngine
+                  ? () => setState(() {
+                        final pdfEngine = engine as PdfReaderEngine;
+                        pdfEngine.dualPageMode = !pdfEngine.dualPageMode;
+                      })
+                  : null,
+              isDualPageMode: engine is PdfReaderEngine
+                  ? (engine as PdfReaderEngine).dualPageMode
+                  : false,
               onBack: () => Navigator.of(innerContext).maybePop(),
               onOpenToc: () {
                 // Tab 切换是幂等且廉价的，无论宽窄屏都执行；

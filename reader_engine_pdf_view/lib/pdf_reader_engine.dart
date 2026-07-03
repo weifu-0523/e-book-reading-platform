@@ -108,6 +108,22 @@ class PdfReaderEngine implements ReaderEngine {
   /// 同步设置 `dualPageMode` 与读取 `isScanned`。
   PdfRenderer get rendererRef => _renderer;
 
+  /// M2.6/T2 (Bug #4): 把 dualPageMode 暴露为引擎级独立 toggle。
+  ///
+  /// 历史背景：M2.5/T13 把触发条件耦合到 LayoutBuilder 宽度（>=1200px），
+  /// 但用户报告"全屏下没有分为左右两页"——window_manager 切换全屏后的
+  /// LayoutBuilder rebuild 时序与 isScanned FutureBuilder 解析存在 race。
+  /// 现在改为用户-driven：默认 false，AppBar 按钮显式切换。
+  ///
+  /// v1.5.1 简化：不持久化（每次启动默认 false）；持久化留 v1.5.2。
+  bool get dualPageMode => _renderer.dualPageMode;
+
+  /// 同步 setter，直接转发到 [PdfRenderer]。renderer 内部 setter 会在
+  /// 进入 dual 模式时 snap 到偶数页（避免左右页错位）。
+  set dualPageMode(bool value) {
+    _renderer.dualPageMode = value;
+  }
+
   // ----- ReaderEngine EPUB-flavored members (Page-as-Chapter semantics) -----
 
   @override
