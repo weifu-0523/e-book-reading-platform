@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.5.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.5.0-alpha)
+[![Version](https://img.shields.io/badge/version-1.5.1--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.5.1-alpha)
 
 ## 项目状态
 
@@ -14,7 +14,8 @@
 - ✅ **v1.3.0-alpha**：新增**批量导出范围筛选**（独立筛选页：按标签 OR / 按导入时间 / 按最近阅读；实时预览匹配书单 + 高亮总数；底部按钮直接显示"导出 N 本"）。仍为 alpha：边界 UX、动效、错误恢复路径有待真实用户反馈打磨。
 - ✅ **v1.4.0-alpha**：release hygiene sweep——`reader_body` 拆分（644→578 行，抽出 `ReaderChapterEndPrompt` + `ReaderSelectionToolbar` 两个零依赖 widget）+ `dart fix --apply` lint 清理 + 文档同步 + 3 张截图（library/pdf_reader/notes）+ 4 个 Gitee Release 页面（v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha）。无新功能。
 - ✅ **v1.5.0-alpha**：Reader UX Overhaul——修 2 个 P0 bug（高亮不渲染、笔记点击无效）+ 8 项 UX 增强（多输入翻页、全屏模式、合并摘录按钮、宽屏 TOC sidebar、PDF 双页布局、书签系统、margin 调整、chrome 默认可见）。EPUB 双页渲染层留 v1.6。
-- 下一步：用户真实使用测试；之后规划 v1.6（EPUB 双页渲染、跨书 AI 伴读、性能 baseline 测量）。
+- ✅ **v1.5.1-alpha**：Emergency Bug Fix Sweep——v1.5.0-alpha 用户上手测试发现 9 个 bug（翻页/排版/双页/高亮/目录/边距/选择/全屏 ESC/书签）全闭。无新功能，纯 fix sweep。
+- 下一步：用户复测；之后规划 v1.6（EPUB 双页渲染、跨书 AI 伴读、性能 baseline 测量）。
 
 ## 下载安装
 
@@ -107,7 +108,7 @@
 
 ## 测试与质量
 
-- **测试**：1066 通过 + 3 skipped（app 888 / reader_engine 50 / reader_engine_epub_view 83 / reader_engine_pdf_view 45；3 skipped：macOS-only golden + Windows release-build smoke + 1 字体环境相关）
+- **测试**：1069 通过 + 3 skipped（app 888 / reader_engine 50 / reader_engine_epub_view 86 / reader_engine_pdf_view 45；3 skipped：macOS-only golden + Windows release-build smoke + 1 字体环境相关）
 - **静态分析**：0 errors / 0 warnings / 0 info（M2.4/T4 已清零；既有 cascade/const 风格 lint 已通过 dart fix --apply + 手工处理）
 - **文档**：836 行 maintainer's runbook + 16 milestone spec + 17 plan + 项目级 review
 - **CI**：手动（每 milestone 完成跑全量回归 + analyze）

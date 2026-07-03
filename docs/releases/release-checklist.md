@@ -2,6 +2,20 @@
 
 本文档跟踪 release 相关任务的完成状态。每次发版前对照检查。
 
+### v1.5.1-alpha release 准备（M2.6 Emergency Bug Fix Sweep）
+
+代码 + 文档部分（2026-07-03 完成）：
+- ✅ M2.6 spec + plan 已交付（`docs/superpowers/specs/2026-07-03-m2-6-emergency-bug-fix-design.md`、`docs/superpowers/plans/2026-07-03-m2-6-emergency-bug-fix.md`）
+- ✅ 10 个 fix task（T1-T10）+ T11 verify
+- ✅ 4 包测试通过：1069 passed + 3 skipped（app 888 / reader_engine 50 / reader_engine_epub_view 86 / reader_engine_pdf_view 45）
+- ✅ 4 个包 analyze clean
+
+待执行（用户现场操作）：
+- ⏳ 重新启动新 Debug exe 复测 8/9 bug（Bug #1 防御性修，可能仍复现 → 拿 stack trace）
+- ⏳ Gitee Release v1.5.1-alpha 页面创建（使用 `release-notes-v1.5.1-alpha.md` 草稿）
+- ⏳ build artifact：setup.exe / portable.zip / .apk（按 v1.5.1-alpha tag）
+- ⏳ 截图：M2.6 又改了 reader UX（边距/tap zone），4 张需重捕
+
 ## 待办（需用户/Claude 配合）
 
 > **Gitee Release 页面状态总览**（2026-07-03 订正，详见已完成段 v1.4.0-alpha T9）：v1.0.0 / v1.1.0-alpha / v1.2.0-alpha / v1.3.0-alpha / v1.4.0-alpha 五个页面均已创建；v1.5.0-alpha 页面待创建。下表为单一来源，不再在「已完成」段重复。

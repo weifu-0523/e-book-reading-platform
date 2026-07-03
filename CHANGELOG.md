@@ -7,7 +7,46 @@
 
 ## [Unreleased]
 
-v1.5.0-alpha 之后的新变更将记在此处。
+v1.5.1-alpha 之后的新变更将记在此处。
+
+## [1.5.1-alpha] — 2026-07-03
+
+v1.5.1-alpha 是 M2.6「Emergency Bug Fix Sweep」的交付版本：v1.5.0-alpha 用户上手测试 2026-07-03 上午发现的 9 个 bug（核心阅读流程多处不通）紧急修复。无新功能，纯 fix sweep。
+
+### Fixed
+
+- **Bug #1 书签点击红屏（防御性修复）**：`_onBookmarkJump` 的 `engine.gotoLocator(locator)` 未包 try-catch，任何异常直接渲染为 Flutter 红屏。包了 try-catch + SnackBar，根因待用户复现提供 stack trace 后做精准修复（M2.7 或 v1.5.2-alpha hotfix）。
+- **Bug #2 笔记点击退出书**：`_onAnnotationTap` 无条件调 `Navigator.maybePop()`，M2.5/T7 抽屉重构成 `Scaffold.drawer` 后会 pop 掉整个 reader route。复用 `_onBookmarkJump:809` 的 `_isWideScreen` gate 模式。
+- **Bug #3 排版页无反应**：`ConcreteEpubReaderEngine.typography` 返回 `TypographySettings.defaults()`（const 默认），`TypographyPanel.onChanged` 写到丢弃对象。一行修复：`get typography => _renderer.typography;`。`EpubxRenderer.typography` 暴露为 public getter（之前是 private 字段）。
+- **Bug #4 PDF 双页假启用**：M2.5/T13 把双页触发耦合到 LayoutBuilder 宽度（>=1200px），全屏切换 + isScanned FutureBuilder 解析存在 race condition。改为用户-driven 独立 toggle（AppBar 新按钮，仅 PDF 引擎可见），默认 false。**v1.5.1 简化**：不持久化（每次启动默认 false）；持久化延后 v1.5.2。
+- **Bug #5a 选择困难 + 翻页冲突**：reader_scaffold.dart 重构。原代码用单个 `GestureDetector(behavior: HitTestBehavior.opaque)` 包内容，会与 SelectableRegion 抢手势。改为 Stack 3 层（左空白边 / 右空白边 / 中央 double-tap），文字内容区归 SelectableRegion 独享。仿真书模型 per user 2026-07-03：左右空白边点击翻页，中央纯选择，4 面留白。
+- **Bug #5b 高亮不渲染**：`injectHighlights` 只更新 `_allHighlights` 字段，不触发 consumer 重建。在 inject 后 emit `ReaderEngineReady` 到 `_stateController`，reader_body 监听到后重建读出新高亮。
+- **Bug #6 翻页延迟/错乱**：`reader_scaffold._handleKeyEvent` + `_handleDragEnd` 的 `paginationMode != paged` gate 静默吞掉了 PDF（scroll）模式的所有键盘/拖拽事件。lift 该 gate（保留 wheel gate —— scroll 模式滚轮应让内容 ScrollView 自然滚动）。用户报告"键盘左右键不能翻页"解决。
+- **Bug #7 TOC 不跳页**：`epubx_renderer.gotoLocator` 的 `EpubRangeLocator` 分支只更新 `_currentChapterIndex`，不 emit state。consumer widgets（reader_body）不重建，视觉上章节没变。补 `_stateController.add(const ReaderEngineReady())`。
+- **Bug #8 边距太小**：`PageMargin` enum 像素值 bump：normal 24→32, wide 32→48, extraWide 40→64。Compact 保留 8（仅查看，不适合点击翻页）。M2.6/T9 后边距同时承担「视觉留白 + 翻页 tap zone 宽度」双职责，Normal 及以上满足 WCAG 最小 tap target（>=32px）。epubx_renderer.dart 已用 `EdgeInsets.all(margin)`，4 面留白已到位。
+- **Bug #9 ESC 不退全屏**：`Focus` widget 在 AppBar 按钮点击后失去焦点捕获，ESC 事件被按钮节点吞掉。Hoist FocusNode 到 State 字段，所有 AppBar IconButton `onPressed` 完成主操作后调 `_reclaimFocus()` 重新获焦。
+
+### Architecture
+
+- **A1**：PDF 保留 scroll 模式默认；双页布局是独立 toggle，per-book 持久化延后 v1.5.2。
+- **A2**：仿真书阅读模型——tap zone 仅存在于左右空白边，文字内容区是纯选择领地；4 面留白。
+- **A3**：Bug #1 ships defensive（防御性 try-catch）；待用户 stack trace 后做精准修复。
+
+### Tests
+
+3 个新回归测试（T3 typography getter + T5 injectHighlights emit state + T7 gotoLocator EpubRangeLocator emit state）。T6/T8 widget tests deferred（fix 是 mechanical copy-paste，手动 smoke 验证）。T1+T9+T10 修改了既有 paging/scaffold 测试以反映新行为（scroll 模式键盘/拖拽现在翻页；tap zone 仅在空白边）。
+
+**总数：1069 通过 + 3 skipped**（baseline 1066 + 3，flaky `book_import_service_test.dart:77` 偶发不影响 ship）。
+
+### Known Limitations
+
+- Bug #1 根因可能未完全解决，待用户提供 stack trace。
+- EPUB 双页渲染仍推到 v1.6（M2.5/T14 API surface 未动）。
+- PDF 双页 toggle 不持久化（v1.5.2 加 SharedPreferences）。
+
+### Upgrade Notes
+
+如新边距过宽：**Settings → Typography → Margin → Compact**（8px）。
 
 ## [1.5.0-alpha] — 2026-07-03
 
