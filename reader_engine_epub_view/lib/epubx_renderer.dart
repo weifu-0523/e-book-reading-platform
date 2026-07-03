@@ -443,6 +443,13 @@ class EpubxRenderer implements EpubRenderer {
         // this method returns would see the PREVIOUS chapter's breaks.
         _cachedBreaks = null;
         _beginChapterSwitch();
+        // M2.7 (Bug #7): emit state so reader_body rebuilds with the new
+        // chapter. gotoTocEntry → gotoLocator(entry.locator) typically lands
+        // here (TocEntry.locator are usually EpubCfiLocator), so without
+        // emission TOC taps switched _currentChapterIndex silently and the
+        // visible chapter did not change. M2.6/T7 covered only the
+        // EpubRangeLocator branch; this completes the fix for CFI branch.
+        _stateController.add(const ReaderEngineReady());
       }
       // 字符偏移 → 滚动像素（近似反推）：等下一帧 maxScrollExtent 可用再跳。
       final html = chapters[decoded.chapterIndex].HtmlContent ?? '';
@@ -485,16 +492,26 @@ class EpubxRenderer implements EpubRenderer {
   @override
   Future<void> setTypography(TypographySettings settings) async {
     _typography = settings;
-    // Task 19: build() 直接读 _typography → TextStyle，无需手动重建 widget tree。
+    // M2.7 (Bug #3 + #8): emit state so reader_body (state$ → setState →
+    // rebuild) picks up the new _typography. EpubxRenderer is a plain class,
+    // not a widget — field mutations don't auto-trigger rebuild, so without
+    // this notification the typography panel appeared non-functional (the
+    // panel wrote to setTypography, the field updated in memory, but the
+    // visible text style / margin never changed).
+    _stateController.add(const ReaderEngineReady());
   }
 
   @override
   Future<void> setPaginationMode(PaginationMode mode) async {
     _paginationMode = mode;
     _cachedBreaks = null;
-    // Pagination-mode change invalidates the cache; the chapter revision is
-    // unchanged so we don't bump the notifier here (chapter index did not
-    // change). Caller-driven rebuild repopulates the cache on next layout.
+    // M2.7 (Bug #6 partial): same emit-state requirement as setTypography.
+    // Pre-fix the paged ↔ scroll toggle updated the field silently and the
+    // visible layout did not change. Pagination-mode change invalidates the
+    // cache; the chapter revision is unchanged so we don't bump the chapter
+    // notifier, but state$ must still fire so the widget tree rebuilds under
+    // the new mode.
+    _stateController.add(const ReaderEngineReady());
   }
 
   @override

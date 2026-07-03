@@ -9,6 +9,20 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M2.7 Round 2 — 2026-07-03（v1.5.1-alpha 用户复测反馈）
+
+v1.5.1-alpha 交付后用户立即上手测试，发现 9 个 bug 中 7 个依旧（仅 Bug #5a 部分缓解、Bug #2 行为变化）。代码层追溯发现 **5 个 bug 同根因**：`EpubxRenderer` 是普通 class（不是 widget），改实例字段（`_typography` / `_paginationMode` / `_currentChapterIndex`）后**必须 emit state**，上游 `reader_body.dart:144` 的 `engine.state$.listen → setState → rebuild` 才能让屏幕更新。M2.6 修了 `injectHighlights` + `gotoLocator` EpubRangeLocator 分支的 emit state，但漏了 3 处。
+
+#### Fixed
+
+- **Bug #3 + #8 排版无反应 + 边距太窄**：`setTypography` (epubx_renderer.dart:486) 只赋值 `_typography` 不 emit state → 上游 reader_body 收不到事件 → widget 不 rebuild → 字号/行高/margin/主题任何选项都看不到变化。Bug #8 不是 enum 没改（已确认 normal=32），而是因为 widget 不 rebuild 永远显示旧值。补 `_stateController.add(const ReaderEngineReady())`。
+- **Bug #7 TOC 不跳页**：M2.6/T7 只修了 `gotoLocator` 的 EpubRangeLocator 分支，但 `gotoTocEntry → gotoLocator(entry.locator)` 通常落到 CFI 分支（TocEntry.locator 多为 EpubCfiLocator）。CFI 分支 (epubx_renderer.dart:435) 同样只更新 `_currentChapterIndex` 不 emit state。补 emit state。
+- **Bug #6 翻页（部分）**：`setPaginationMode` (epubx_renderer.dart:492) 不 emit state，paged ↔ scroll 切换后 widget 不 rebuild。补 emit state。注意：这只解决翻页问题的部分原因，焦点路径问题（Bug #9 ESC 同根因）仍待用户配合诊断。
+
+#### Lessons
+
+- **M2.6 测试覆盖层级错配重现**：单元测试只测"字段被赋值"，没测"emit state 后 widget 真重建"。M2.7 round-2 加了 3 个回归测试覆盖 setTypography / setPaginationMode / gotoLocator CFI 分支的 emit state 行为，防再次回归。
+
 ## [1.5.1-alpha] — 2026-07-03
 
 v1.5.1-alpha 是 M2.6「Emergency Bug Fix Sweep」的交付版本：v1.5.0-alpha 用户上手测试 2026-07-03 上午发现的 9 个 bug（核心阅读流程多处不通）紧急修复。无新功能，纯 fix sweep。
