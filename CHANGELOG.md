@@ -9,6 +9,38 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M3c — 2026-07-03（顶栏增强：实时时钟/字号±快捷键/书架弹窗）
+
+用户希望顶栏信息更密：中间显示实时时间，加字号±快捷按钮，加书架入口（弹出书架对话框选新书直接切换阅读）。Spec: `docs/superpowers/specs/2026-07-03-m3c-topbar-bookshelf-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3c-topbar-bookshelf.md`。
+
+#### Added — 任务 3 顶栏实时时钟
+
+- 新建 `app/lib/features/reader/widgets/reader_clock.dart`：`StatefulWidget`，initState 起 `Timer.periodic(1s)` 刷新，dispose 取消；build 渲染 `DateFormat.Hm().format(_now)`（24h 制 `HH:mm`，复用项目已有 `intl ^0.20.0`）。
+- `reader_scaffold.dart` 的 `_buildChrome` 内 AppBar.title 由静态 `Text(widget.title)` 改为 `const ReaderClock()`，并加 `centerTitle: true`，时间居中显示。
+- **Timer 不泄漏**：`ReaderClock` 只在 `_buildChrome`（`if (ui.chromeVisible)` 内）创建；chrome 隐藏时 `_buildChrome` 不调用 → widget 不挂载 → Timer 不启动。dispose 必取消 Timer。
+- 时间源可注入（`now` 参数，默认 `DateTime.now`），便于测试推进时间验证文字更新。
+
+#### Added — 任务 6a 字号±快捷按钮
+
+- `ReaderScaffold` 加 `VoidCallback? onFontDecrease / onFontIncrease / onOpenBookshelf`（均 nullable，不影响现有构造）。
+- AppBar.actions 在「排版」按钮前后加 `Icons.text_decrease` / `Icons.text_increase` 两个 IconButton（各带 Key：`reader_font_decrease` / `reader_font_increase`）。
+- `reader_body.dart` 传入回调：直接改 `engine.typography` 内存值，`fontSize ± 1` 后 `.clamp(12.0, 32.0)`（复用排版面板范围），用 `unawaited` 包裹 `setTypography`。**不写预设/DB**（与排版面板即时改值一致）。
+
+#### Added — 任务 6b 书架弹窗
+
+- 新建 `app/lib/features/reader/widgets/bookshelf_dialog.dart`：`showBookshelfDialog(BuildContext, {required String currentBookId})` → `showDialog`（`useRootNavigator: true`）全屏 `Dialog`。顶部「书架」标题 + 关闭按钮；主体可滚动封面网格（复用 `BookCover`）；当前书用主题色边框 + 「阅读中」标记。选书 → `Navigator.pop` → `context.pushReplacement('/book/$newId')`。
+- AppBar.actions 加 `Icons.collections_bookmark_outlined`（书架）按钮（Key：`reader_open_bookshelf`）。
+- `reader_body.dart` 传入 `onOpenBookshelf: () => showBookshelfDialog(innerContext, currentBookId: widget.bookId)`。
+- **数据源**：探查确认 `libraryControllerProvider` / `coverLoaderProvider` / `bookRepositoryProvider` 均为 `core/providers.dart` / `library/providers/` 顶层全局 provider（非 LibraryPage 页面局部），对话框直接 watch 同源 provider 取数据，与 LibraryPage 完全一致。
+
+#### 测试
+
+- `reader_clock_test.dart`（新，4 测试）：挂载即渲染当前 HH:mm；文字格式校验；时间源推进后文字更新；dispose 取消 Timer（pumpAndSettle 不挂起证明）。
+- `reader_scaffold_test.dart`（扩，+5 测试）：title 是 ReaderClock；字号±/书架 icon 渲染；字号±/书架按钮点击触发回调。
+- `bookshelf_dialog_test.dart`（新，4 测试）：网格渲染全部书籍；当前书「阅读中」标记；关闭按钮 pop；点非当前书 `pushReplacement` 导航到 `/book/:id`（真 GoRouter 验证）。
+- `reader_body_font_buttons_test.dart`（新，5 测试）：字号 +1/-1；clamp 上限 32 / 下限 12；书架按钮打开弹窗（含当前书渲染）。
+- analyze 三包（reader_engine / reader_engine_epub_view / app）0 error；`flutter build windows --debug` 通过。reader+library 全量测试 340 passed（仅 2 个 PDF fixture 缺失的预存失败与 M3c 无关）。
+
 ### M3b — 2026-07-03（阅读交互增强：翻页动画微调/悬停翻页箭头/摘录工具条跟随选区）
 
 用户反馈阅读交互手感 3 项：翻页要左右箭头提示、翻页要有 PPT 式平移过渡、选文字后摘录工具条应跟着选区走（不要老固定屏幕中间顶部）。Spec: `docs/superpowers/specs/2026-07-03-m3b-reading-interaction-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3b-reading-interaction.md`。

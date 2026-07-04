@@ -46,6 +46,7 @@ import '../providers/notes_controller.dart';
 import '../services/scroll_to_offset.dart';
 import '../services/toc_title_resolver.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
+import '../widgets/bookshelf_dialog.dart';
 import '../widgets/note_editor_sheet.dart';
 import '../widgets/reader_bookmark_dialog.dart';
 import '../widgets/reader_chapter_end_prompt.dart';
@@ -523,10 +524,27 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               onOpenTypography: () => ref
                   .read(readerUiControllerProvider.notifier)
                   .openTypographyPanel(),
+              // M3c/任务 6a：字号 ± 快捷键。直接改 engine.typography 内存值
+              // （与排版面板一致，不写预设/DB），clamp 复用排版面板的 12-32 范围。
+              onFontDecrease: () {
+                final t = engine.typography;
+                unawaited(engine.setTypography(
+                    t.copyWith(fontSize: (t.fontSize - 1).clamp(12.0, 32.0))));
+              },
+              onFontIncrease: () {
+                final t = engine.typography;
+                unawaited(engine.setTypography(
+                    t.copyWith(fontSize: (t.fontSize + 1).clamp(12.0, 32.0))));
+              },
               onOpenAiGuide: _onOpenAiGuide,
               onOpenQa: _onOpenQa,
               onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
               onAddBookmark: _onAddBookmark,
+              // M3c/任务 6b：弹出书架对话框选书切换。
+              onOpenBookshelf: () => showBookshelfDialog(
+                innerContext,
+                currentBookId: widget.bookId,
+              ),
             ),
           ),
           if (engine is ConcreteEpubReaderEngine)

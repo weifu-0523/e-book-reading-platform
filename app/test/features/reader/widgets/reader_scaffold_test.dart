@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
+import 'package:zhiyue/features/reader/widgets/reader_clock.dart';
 import 'package:zhiyue/features/reader/widgets/reader_scaffold.dart';
 
 void main() {
@@ -112,6 +113,155 @@ void main() {
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('reader_app_bar')), findsOneWidget);
+  });
+
+  // ── M3c：顶栏时钟 + 字号± + 书架按钮 ───────────────────────────────
+
+  testWidgets('title is a ReaderClock when chrome is visible', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: ReaderScaffold(
+            content: Center(child: Text('book')),
+            title: 't',
+            paginationMode: PaginationMode.paged,
+            onTapPrev: nil,
+            onTapNext: nil,
+          ),
+        ),
+      ),
+    );
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReaderClock), findsOneWidget);
+  });
+
+  testWidgets('renders font decrease / increase icons (M3c/任务6a)',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            title: 't',
+            paginationMode: PaginationMode.paged,
+            onTapPrev: nil,
+            onTapNext: nil,
+            onFontDecrease: () {},
+            onFontIncrease: () {},
+          ),
+        ),
+      ),
+    );
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('reader_font_decrease')), findsOneWidget);
+    expect(find.byKey(const Key('reader_font_increase')), findsOneWidget);
+    expect(find.byIcon(Icons.text_decrease), findsOneWidget);
+    expect(find.byIcon(Icons.text_increase), findsOneWidget);
+  });
+
+  testWidgets('font increase tap invokes callback (M3c/任务6a)',
+      (tester) async {
+    var increased = false;
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            title: 't',
+            paginationMode: PaginationMode.paged,
+            onTapPrev: nil,
+            onTapNext: nil,
+            onFontIncrease: () => increased = true,
+          ),
+        ),
+      ),
+    );
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('reader_font_increase')));
+    await tester.pumpAndSettle();
+
+    expect(increased, isTrue);
+  });
+
+  testWidgets('font decrease tap invokes callback (M3c/任务6a)',
+      (tester) async {
+    var decreased = false;
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            title: 't',
+            paginationMode: PaginationMode.paged,
+            onTapPrev: nil,
+            onTapNext: nil,
+            onFontDecrease: () => decreased = true,
+          ),
+        ),
+      ),
+    );
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('reader_font_decrease')));
+    await tester.pumpAndSettle();
+
+    expect(decreased, isTrue);
+  });
+
+  testWidgets('renders and triggers the bookshelf button (M3c/任务6b)',
+      (tester) async {
+    var bookshelfOpened = false;
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            title: 't',
+            paginationMode: PaginationMode.paged,
+            onTapPrev: nil,
+            onTapNext: nil,
+            onOpenBookshelf: () => bookshelfOpened = true,
+          ),
+        ),
+      ),
+    );
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('reader_open_bookshelf')), findsOneWidget);
+    expect(find.byIcon(Icons.collections_bookmark_outlined), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('reader_open_bookshelf')));
+    await tester.pumpAndSettle();
+
+    expect(bookshelfOpened, isTrue);
   });
 }
 

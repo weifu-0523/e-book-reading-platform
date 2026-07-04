@@ -22,6 +22,7 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
 import '../controllers/reader_ui_controller.dart';
+import 'reader_clock.dart';
 
 /// 沉浸式阅读容器：多输入翻页 + chrome 显隐。
 ///
@@ -96,6 +97,17 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// M2.6/T2：当前是否处于双页模式（用于切换图标 + tooltip）。
   final bool isDualPageMode;
 
+  /// M3c/任务 6a：点击「字号减小」图标回调。父组件（ReaderBody）在回调内
+  /// 调 `engine.setTypography(fontSize - 1, clamp 12-32)`。为 null 时不渲染。
+  final VoidCallback? onFontDecrease;
+
+  /// M3c/任务 6a：点击「字号增大」图标回调。同 [onFontDecrease] 但 +1。
+  final VoidCallback? onFontIncrease;
+
+  /// M3c/任务 6b：点击「书架」图标回调（弹出书架对话框选书切换）。
+  /// 为 null 时不渲染图标。
+  final VoidCallback? onOpenBookshelf;
+
   /// 触发水平滑动翻页的最小速度阈值（px/s）。
   ///
   /// 测试中 `timedDrag(Offset(±300, 0), 200ms)` 的速度约为 1500 px/s，
@@ -120,6 +132,9 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     this.onAddBookmark,
     this.onToggleDualPage,
     this.isDualPageMode = false,
+    this.onFontDecrease,
+    this.onFontIncrease,
+    this.onOpenBookshelf,
   });
 
   @override
@@ -298,7 +313,10 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
         color: Colors.black54,
         child: SafeArea(
           child: AppBar(
-            title: Text(widget.title),
+            // M3c/任务 3：顶栏中间显示实时时钟（每秒刷新）。chrome 隐藏时
+            // _buildChrome 不调用，ReaderClock 不挂载，Timer 不启动。
+            title: const ReaderClock(),
+            centerTitle: true,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: () {
@@ -307,6 +325,18 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
               },
             ),
             actions: [
+              // M3c/任务 6b：书架入口。点击弹出书架对话框选书切换。
+              IconButton(
+                key: const Key('reader_open_bookshelf'),
+                icon: const Icon(Icons.collections_bookmark_outlined),
+                tooltip: '书架',
+                onPressed: widget.onOpenBookshelf == null
+                    ? null
+                    : () {
+                        widget.onOpenBookshelf!.call();
+                        _reclaimFocus();
+                      },
+              ),
               IconButton(
                 icon: const Icon(Icons.list),
                 tooltip: '目录',
@@ -317,6 +347,19 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                         _reclaimFocus();
                       },
               ),
+              // M3c/任务 6a：字号减小。与排版面板同 clamp 范围（12-32），
+              // 仅改内存值，不写预设/DB（与排版面板即时改值一致）。
+              IconButton(
+                key: const Key('reader_font_decrease'),
+                icon: const Icon(Icons.text_decrease),
+                tooltip: '字号减小',
+                onPressed: widget.onFontDecrease == null
+                    ? null
+                    : () {
+                        widget.onFontDecrease!();
+                        _reclaimFocus();
+                      },
+              ),
               IconButton(
                 icon: const Icon(Icons.text_fields),
                 tooltip: '排版',
@@ -324,6 +367,18 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                     ? null
                     : () {
                         widget.onOpenTypography!.call();
+                        _reclaimFocus();
+                      },
+              ),
+              // M3c/任务 6a：字号增大。
+              IconButton(
+                key: const Key('reader_font_increase'),
+                icon: const Icon(Icons.text_increase),
+                tooltip: '字号增大',
+                onPressed: widget.onFontIncrease == null
+                    ? null
+                    : () {
+                        widget.onFontIncrease!();
                         _reclaimFocus();
                       },
               ),
