@@ -42,6 +42,24 @@ v1.5.1-alpha 之后的新变更将记在此处。
 - 3 个按钮的 Key 不变（`reader_open_bookshelf` / `reader_font_decrease` / `reader_font_increase`），基于 Key 的测试 finder 不受位置影响。
 - 测试：`reader_scaffold_test.dart` +1 case（断言 leading 是含 4 按钮的 Row、3 个 Key 在 leading 内、leadingWidth≥160、时钟仍在 title）。10 cases 全过。
 
+#### Fixed — Q5 摘录条真正跟随选区（M3b API 误判纠正）
+
+用户坚持要"摘录条跟随选区"。M3b 曾断言「Flutter 3.44.4 的 SelectableRegion 不暴露选区坐标，故 _selectionRect 暂时始终 null」。**这是误判** —— 源码追踪确认：
+
+- `SelectableRegion` 接受 `GlobalKey<SelectableRegionState>`（构造参数）。
+- `SelectableRegionState.contextMenuAnchors` 返回 `TextSelectionToolbarAnchors`（`primaryAnchor` = 选区上方中心**全局坐标**，`secondaryAnchor` = 下方中心）。
+- 官方 example `selection_area.2.dart` 第 157-201 行正是这套用法（`selectionAreaKey.currentState!.selectableRegion.contextMenuAnchors`）。
+
+实现：
+
+- `reader_body.dart` 加 `GlobalKey<SelectableRegionState> _selectableRegionKey` 挂到 `SelectableRegion`；`_onSelectionChanged` 在选区非空时 `addPostFrameCallback` 调 `_updateSelectionRectFromAnchors`：读 `contextMenuAnchors` → 经 `_stackKey` RenderBox `globalToLocal` 转 Stack 局部坐标 → 合成 `_selectionRect`（top=primaryAnchor.y, bottom=secondaryAnchor.y, 水平中心=primaryAnchor.x）。选区清空时 `_selectionRect=null`（toolbar 消失）。
+- `stackSize` 从 `MediaQuery.sizeOf`（屏幕尺寸）改为 `_stackSize()`（Stack 实际尺寸，更精确的水平 clamp）。
+- `reader_selection_toolbar.dart` 定位逻辑无需改（M3b 已写好，rect.top/bottom/center.dx 直接用）。
+
+**关键验证测试**：新增 `selectable_region_anchors_test.dart` —— 用 `SelectAllTextIntent` 触发全选，断言 `contextMenuAnchors.primaryAnchor` 非零、`secondaryAnchor` 非空，**证明 API 在 Flutter 3.44.4 可用**（直接证伪 M3b 的误判）。另有 `reader_selection_toolbar_follow_test.dart` 3 cases（toolbar top 跟随 rect / 翻下方 / null fallback）。现有 `reader_selection_toolbar_test.dart` 9 cases + reader_body 10 cases 无回归。
+
+**诚实说明**：`contextMenuAnchors` 依赖 finalized 选区几何；选区变化中（changing）可能返回 stale，用 postFrameCallback 规避。PDF 路径不走 SelectableRegion（pdfrx 自管选区 UI），本改动仅影响 EPUB。
+
 #### Fixed — Q1+Q2 排版（reader_engine_epub_view 包）
 
 **Q1 段落首行缩进从未生效（关键根因纠正）**：M3a 的 `<style>p{ text-indent: 2em }</style>` 注入对 flutter_widget_from_html 0.15.3 **完全无效** —— 源码追踪确认 fwfh 把 `<style>` tag 当 `display:none`（`core_widget_factory.dart:934`），且其内联 CSS 解析器（`parseStyle` switch）**根本没有 `text-indent` 分支**。所以 M3a 的缩进实际上从未渲染，只是没崩。

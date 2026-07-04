@@ -18,7 +18,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show SelectedContent;
+import 'package:flutter/rendering.dart' show RenderBox, SelectedContent;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
@@ -125,18 +125,20 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   SelectedContent? _selection;
   Locator? _currentLocation;
 
-  // M3b/任务9：选区在 reader stack 局部坐标系内的 Rect，用于驱动摘录工具条
-  // 跟随选区定位。当前 Flutter 3.44.4 的 SelectableRegion 不暴露选区坐标
-  // （无 selectionNotifier 参数，SelectionDetails 无 coords 字段），故此字段
-  // 暂时始终为 null → 工具条走 fallback 顶部居中（与原行为一致，不崩）。
-  // 待 Flutter 升级提供坐标 API 后，在 _onSelectionChanged 中填充本字段，
-  // 工具条跟随逻辑（reader_selection_toolbar.dart）即可立即生效。
+  // M3e/Q5：选区在 reader stack 局部坐标系内的 Rect，用于驱动摘录工具条
+  // 跟随选区定位（不再固定顶部居中）。由 _onSelectionChanged 在选区确定后
+  // 通过 SelectableRegionState.contextMenuAnchors（全局坐标）+ stackKey
+  // RenderBox.globalToLocal 转换填充。Flutter 3.44.4 实测该 API 可用。
   Rect? _selectionRect;
 
-  // M3b/任务9：reader 主 Stack 的 GlobalKey，供选区坐标全局→局部转换
-  // （RenderBox.globalToLocal）。当前未填充 _selectionRect，但保留以备
-  // Flutter 升级后使用。
+  // M3e/Q5：reader 主 Stack 的 GlobalKey，供选区坐标全局→局部转换
+  // （RenderBox.globalToLocal）+ 读取 Stack 实际尺寸（替代 MediaQuery.sizeOf）。
   final GlobalKey _stackKey = GlobalKey();
+
+  // M3e/Q5：SelectableRegion 的 GlobalKey，访问 currentState.contextMenuAnchors
+  // 拿选区上下界全局坐标点（primaryAnchor = 选区上方中心，secondaryAnchor = 下方）。
+  final GlobalKey<SelectableRegionState> _selectableRegionKey =
+      GlobalKey<SelectableRegionState>();
 
   // 章节标题缓存。build 中从 engine.toc 通过 TocTitleResolver 解析得到，
   // 供高亮 locator 的 chapterTitle 字段使用。
@@ -248,7 +250,71 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   }
 
   void _onSelectionChanged(SelectedContent? content) {
-    setState(() => _selection = content);
+    setState(() {
+      _selection = content;
+      // 选区清空时同步清掉定位 Rect（让 toolbar 消失）。
+      if (content == null || content.plainText.isEmpty) {
+        _selectionRect = null;
+      }
+    });
+    // M3e/Q5：选区非空时，在下一帧（选区几何已 settle）读 contextMenuAnchors
+    // 转换为 Stack 局部坐标，驱动 toolbar 跟随选区定位。
+    if (content != null && content.plainText.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _updateSelectionRectFromAnchors();
+      });
+    }
+  }
+
+  /// M3e/Q5：从 SelectableRegionState.contextMenuAnchors 取选区上下界全局坐标，
+  /// 经 Stack RenderBox.globalToLocal 转成局部坐标，合成 _selectionRect。
+  /// toolbar 据此定位（选区上方优先，空间不足转下方）。
+  void _updateSelectionRectFromAnchors() {
+    final regionState = _selectableRegionKey.currentState;
+    final stackCtx = _stackKey.currentContext;
+    if (regionState == null || stackCtx == null) return;
+    final stackBox = stackCtx.findRenderObject();
+    if (stackBox is! RenderBox || !stackBox.hasSize) return;
+
+    TextSelectionToolbarAnchors anchors;
+    try {
+      anchors = regionState.contextMenuAnchors;
+    } catch (_) {
+      // contextMenuAnchors 在选区不完整（无 start/end point）时可能 throw
+      // （assert）。捕获后保持现状（toolbar 走 fallback）。
+      return;
+    }
+    final primary = anchors.primaryAnchor;
+    final secondary = anchors.secondaryAnchor;
+    // 合成 Rect：top = primaryAnchor.y（选区上沿），bottom = secondaryAnchor.y
+    // （选区下沿），水平中心 = primaryAnchor.x。toolbar 据此上下翻转定位。
+    final top = stackBox.globalToLocal(primary).dy;
+    final bottom = secondary == null ? top : stackBox.globalToLocal(secondary).dy;
+    final centerX = stackBox.globalToLocal(primary).dx;
+    // 用 Stack 宽度做水平 clamp 基准（比 primaryAnchor.x 更适合居中 toolbar）。
+    final stackWidth = stackBox.size.width;
+    final half = stackWidth / 2;
+    setState(() {
+      _selectionRect = Rect.fromLTRB(
+        centerX - half,
+        top,
+        centerX + half,
+        bottom,
+      );
+    });
+  }
+
+  /// M3e/Q5：返回 reader 主 Stack 的实际尺寸（供 toolbar 水平 clamp）。
+  /// Stack 未布局时退回屏幕尺寸（fallback，与旧行为一致）。
+  Size _stackSize() {
+    final ctx = _stackKey.currentContext;
+    if (ctx != null) {
+      final box = ctx.findRenderObject();
+      if (box is RenderBox && box.hasSize) return box.size;
+    }
+    // context 在 build 内可用（_buildReaderStack 的 Builder 上下文）。
+    return MediaQuery.maybeSizeOf(context) ?? const Size(800, 600);
   }
 
   @override
@@ -454,6 +520,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         key: _stackKey,
         children: [
           SelectableRegion(
+            key: _selectableRegionKey,
             selectionControls: materialTextSelectionControls,
             onSelectionChanged: _onSelectionChanged,
             child: ReaderScaffold(
@@ -557,7 +624,9 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           ReaderSelectionToolbar(
             selection: _selection,
             selectionRect: _selectionRect,
-            stackSize: MediaQuery.sizeOf(context),
+            // M3e/Q5：用 Stack 实际尺寸（而非 MediaQuery 屏幕尺寸）做水平 clamp，
+            // toolbar 边缘对齐 Stack 而非整屏。
+            stackSize: _stackSize(),
             onExcerpt: _openExcerptSheet,
             onCopy: _onCopySelection,
             onAiComment: _onAiComment,
