@@ -17,6 +17,7 @@
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 /// M2.10/Bug A regression tests: paged-mode page content must NOT throw a
@@ -30,11 +31,12 @@ import 'package:reader_engine_epub_view/epubx_renderer.dart';
 /// slightly taller and overflow the slot's cross-axis → yellow-black zebra
 /// overflow indicator + "bottom overflowed by N pixels".
 ///
-/// Fix: each page's `Padding > HtmlWidget` is wrapped in a
-/// `SingleChildScrollView(physics: NeverScrollableScrollPhysics())`, which
-/// absorbs the measurement gap (content scrolls internally instead of
-/// throwing). The NeverScrollable physics prevents the inner scroll from
-/// fighting PageView's horizontal paging gesture.
+/// Fix (M3e/Q8续): each page's `Padding > HtmlWidget` is wrapped in
+/// `_PageVerticalAligner`, which uses an `OverflowBox(maxHeight: infinity)`
+/// to absorb the measurement gap (child lays out at natural height; the slot
+/// clips overflow instead of throwing a RenderFlex assertion). Additionally,
+/// full pages are centered (symmetric top/bottom margins, Q8续) while short
+/// last pages stay top-aligned (Q2).
 ///
 /// Test strategy: use a deliberately tight viewport + dense content so the
 /// measurement gap is maximized, then assert NO overflow exception is thrown
@@ -148,19 +150,52 @@ void main() {
       await renderer.dispose();
     });
 
-    testWidgets('page content is wrapped in SingleChildScrollView',
+    testWidgets('page content is wrapped in overflow-absorbing container',
         (tester) async {
-      // Structural assertion: the fix is present in the widget tree.
+      // Structural assertion: the overflow-absorption fix is present in the
+      // widget tree. M3e/Q8续 replaced M2.10's SingleChildScrollView with
+      // _PageVerticalAligner (uses OverflowBox to absorb measurement gap +
+      // center full pages / top-align last pages). Verify HtmlWidget renders
+      // and no overflow exception.
       final renderer = EpubxRenderer();
       renderer.bookForTesting = _bookWithDenseContent();
 
       await tester.pumpWidget(_tree(renderer));
       await tester.pump();
+      await tester.pump();
 
-      expect(find.byType(SingleChildScrollView), findsWidgets,
-          reason: 'M2.10/Bug A fix: each paged page must be wrapped in a '
-              'SingleChildScrollView to absorb HtmlWidget/TextPainter height '
-              'divergence');
+      expect(find.byType(HtmlWidget), findsWidgets,
+          reason: 'paged pages must render HtmlWidget content');
+      expect(tester.takeException(), isNull,
+          reason: 'M3e/Q8续 fix: each paged page must absorb '
+              'HtmlWidget/TextPainter height divergence via _PageVerticalAligner '
+              '(OverflowBox), preventing RenderFlex overflow assertion');
+
+      await renderer.dispose();
+    });
+
+    // M3e/Q12（翻页优化回归）: 预计算所有页 HTML 后，翻到中间页应仍正确渲染
+    // 内容（有 RichText、有缩进 em-space、无异常）。验证预计算没丢内容/缩进。
+    testWidgets(
+        'Q12: paging to a middle page renders content correctly '
+        '(precomputed page HTML not lost)',
+        (tester) async {
+      final renderer = EpubxRenderer();
+      renderer.bookForTesting = _bookWithDenseContent();
+      await tester.pumpWidget(_tree(renderer, width: 800, height: 600));
+      await tester.pump();
+      await tester.pump();
+
+      final pageCount = renderer.cachedBreakCountForTest!;
+      expect(pageCount, greaterThan(3));
+      // 翻到中间页，验证内容存在。
+      renderer.pageController!.jumpToPage(pageCount ~/ 2);
+      await tester.pump();
+      await tester.pump();
+      final rts = find.byType(RichText);
+      expect(rts.evaluate(), isNotEmpty,
+          reason: '中间页应有渲染内容（预计算 HTML 未丢失）');
+      expect(tester.takeException(), isNull);
 
       await renderer.dispose();
     });

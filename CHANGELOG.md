@@ -9,6 +9,73 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M3e/Q8 — 2026-07-03（分页文字溢出底部修复）
+
+用户反馈"部分页面文字比较多的时候下方文字会超出页面下底线，导致部分数据看不到"。
+
+#### Fixed — Q8 分页测量漏算段间距/缩进/冗余导致末行被裁
+
+- **根因**：`Paginator._paginateUncached` 的分页测量与 fwfh 实际渲染存在**系统性偏小**，导致每页塞入过多内容 → 渲染时末行溢出底部被裁。代码 L920-924 自己注释承认误差存在，但低估了累积量。具体 3 处漏算：
+  1. **段落间距**：测量只算 `TextPainter` 纯文本高度，但渲染层 `_paragraphMarginBuilder` 给每个 `<p>` 加 `margin: 0 0 0.5em 0`。一页 N 段时累积漏掉 N×0.5em。
+  2. **首行缩进 em-space**：`TypographyStyleInjector` 每段首行注入 2×`U+2003`（≈2em），首行有效宽度变窄 → 多换 1 行。测量层不知道此前缀。
+  3. **安全冗余为 0**：`TextPainter` 与 fwfh 的 `line-height`/font-metrics 有微小偏差（代码自认 <1 行），临界页（刚好踩线）易溢出。旧代码容差为 0。
+- **为何"看不到"而非"斑马线"**：页面包了 `SingleChildScrollView(NeverScrollableScrollPhysics)`（M2.10 防 assertion），溢出时不会抛 RenderFlex assertion（无斑马线），但 `NeverScrollable` 也无法滚动看到被裁内容 → 用户看到末行凭空消失。
+- **修复**（`paginator.dart` `_paginateUncached`）：
+  - 测量每段时把缩进前缀 `indentEm × U+2003` 拼到段首，让 TextPainter 自然算入首行多换的行。
+  - 非页首段累加 `0.5em` 段间距（页首段上方无前段，不加）。
+  - 临界判断加 `safetyMargin` 冗余，临界页提前换页（初始 1 行高度，Q8续 调到 0.3 行——见下）。
+- **回归测试**（`paginator_overflow_test.dart`，3 cases 全过）：
+  - 60 段长内容分页数 > 3（防分页过粗）。
+  - 30 段内容每页纯文本高度 ≤ 可用高度（直接证明不再过满）。
+  - 缩进关闭时仍正确分页。
+
+### M3e/Q8续-Q12 — 2026-07-04（paged 模式边距统一 + 翻页卡顿）
+
+Q8 修完溢出后，用户连续反馈 4 个 paged 模式排版/性能问题，逐一定位修复。最终采用**真书版心固定**模型（放弃居中对齐）。
+
+#### Fixed — Q8续 上下边距不对称 → safetyMargin 从 1 行降到 0.3 行
+
+- 用户反馈「上边距窄、下边距宽」。根因：Q8 的 `safetyMargin = 1 行高度`（32px）过保守，每页底部多预留一整行 → 视觉上下方明显比上方宽。
+- 修复：`safetyMargin = 0.3 × lineHeight`（约 10px），既保留临界页防溢出余量，又消除肉眼可见的上下不对称。
+
+#### Fixed — Q9 双页模式右页上下边距比左页窄
+
+- 用户反馈「左右两页都有内容时，右侧上下边距比左侧窄一点点」。
+- 根因：双页 `Row` 的左右两页各自用 `_PageVerticalAligner` 独立管理上下边距，fwfh 渲染高度与 TextPainter 测量的微小偏差在左右两页独立累积，导致右侧略偏。
+- 修复：双页模式引入 `_DualSpreadAligner`，**上下边距提升到 spread 层统一管理**（左右两页共享同一 vertical padding），`_PageVerticalAligner` 在双页模式下 `enableCentering=false` 且不重复加 padding。
+
+#### Changed — Q10+Q11 放弃居中对齐，改真书「版心固定」模型
+
+- 用户反馈反复振荡：居中对齐（Q8续 目标）能修上下对称，但破坏左右对齐（Q9）和导致页高跳变（Q11）；顶部对齐能修左右和页高，但上方比下方窄（Q8续/Q10）。
+- **最终决策**：完全放弃居中，所有页**固定顶部对齐**到统一边距（真书做法）。满页底部允许有少量自然留空（末页更明显），这是真书的正常版心效果，用户接受。
+- 实现：`_PageVerticalAligner` / `_DualSpreadAligner` 都改为 `StatelessWidget`，固定顶部对齐，`OverflowBox(maxHeight: infinity, alignment: topLeft)` 吸收 fwfh 与测量的高度误差（不抛 assertion）。
+- **删除**两阶段测量方案（`_MeasureSize` / `_RenderMeasureSize` / `_measuredHeight` state / `didUpdateWidget`）——`postFrameCallback` 在测试环境不触发 + 子页 OverflowBox 干扰测量，方案不可靠且不必要。
+
+#### Fixed — Q11 每页高度不一样 → 统一固定版心
+
+- 用户反馈「每页高度都不一样，能不能限定在范围之内」。
+- 根因：居中对齐模式下，短页（末页）在 slot 内垂直居中 → 文字起始 y 随内容多少浮动（72-110px 不等）。
+- 修复：固定顶部对齐后，所有页首行 y 恒定（实测 topM=72.0，不再浮动）。回归测试断言单页所有页 + 双页左右页首行共享同一固定 top（maxTop-minTop < 2px）。
+
+#### Performance — Q12 翻页卡顿 → 预计算页 HTML，buildSinglePage 改 O(1)
+
+- 用户反馈「翻页有时候卡住，卡的时候点章节页也卡住」。
+- 根因：`buildSinglePage` 被 `PageView.itemBuilder` **每页每次**调用，里面 3 步都遍历整章 HTML：`HtmlSlicer.sliceByPlainRange`（DOM 解析整章）+ `HtmlHighlightInjector.inject` + `TypographyStyleInjector.inject`。翻到中间页时每页都重做一遍整章解析 → 50-100ms/页。
+- 修复：把这 3 步**上移到 LayoutBuilder.builder**（每章 rebuild 只跑一次），结果存进 `pageHtmls: List<String>`。`buildSinglePage` 改成 `pageHtmls[breakIdx]` 直接取用（O(1)）。
+- 实测：翻页从 50-100ms 降到 4-11ms。
+- 回归测试：`epubx_renderer_paged_overflow_test.dart` 加「翻到中间页渲染内容正确」用例，验证预计算没丢内容。
+
+### M4/Q-TOC — 2026-07-05（PDF 目录永久转圈修复）
+
+用户反馈打开 PDF 后「目录一直转圈」。
+
+#### Fixed — PdfReaderEngine.toc 永远返回 null
+
+- **根因**：`ReaderEngine.toc` 是同步 getter（`TableOfContents?`），但 pdfrx 加载目录是异步的（`PdfDocument.loadOutline()` 返回 Future）。`PdfReaderEngine` 旧实现直接 `get toc => null` 硬编码，而 UI 层 `reader_drawer_builders.dart` 用 `if (toc == null) LoadingView()` 同步判定 → PDF 目录 tab **永久转圈**。`PdfRenderer.toc`（真正调 loadOutline 的异步 getter）从未被调用。EPUB 不受影响（目录在解析时同步拿到）。
+- **修复**（`pdf_reader_engine.dart`，对齐 `ConcreteEpubReaderEngine._toc` 模式）：加 `TableOfContents? _toc` 字段；`open()` 里 `await openFile` 后 `_toc = await _renderer.toc`（loadOutline 失败也降级为 empty TOC，不抛）；getter 返回 `_toc`。
+- 效果：open 期间转圈（正常），open 完成后必非 null —— 有书签显示目录，无书签/加载失败显示「本书无目录」。
+- 回归测试（`pdf_reader_engine_test.dart`，2 cases）：未 open 时 toc=null；open 后（即便文件不存在进 error 状态）toc 非 null 且为空 TOC。
+
 ## [1.6.0-alpha] — 2026-07-04（阅读体验大修：双页对开 + 排版 + 字体 + 交互）
 
 v1.5.1-alpha 之后的一大批阅读体验修复，涵盖双页对开布局、段落排版、字体扩展、

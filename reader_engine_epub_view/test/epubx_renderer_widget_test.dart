@@ -1,6 +1,7 @@
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
@@ -54,22 +55,16 @@ void main() {
       await tester.pump();
       // 默认 _paginationMode == PaginationMode.paged → 应当出现 PageView。
       expect(find.byType(PageView), findsOneWidget);
-      // M2.10/Bug A: paged 模式每页内容现在包在 SingleChildScrollView 里
-      // （NeverScrollableScrollPhysics）以吸收 HtmlWidget 与 TextPainter 的高度
-      // 误差，避免 RenderFlex bottom-overflow assertion（黄黑斑马线）。这与
-      // scroll 模式的 SingleChildScrollView 区别在于：paged 的子页 physics 锁死
-      // NeverScrollable，不挂 ScrollController，仅作 overflow 兜底。
-      // 旧断言（findsNothing）是 M2.9 之前的契约，Bug A 修复后失效。
-      final pagedScrollables = tester
-          .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView));
-      expect(pagedScrollables, isNotEmpty,
-          reason: 'paged pages must be wrapped in SingleChildScrollView '
-              '(M2.10/Bug A overflow absorption)');
-      for (final sv in pagedScrollables) {
-        expect(sv.controller, isNull,
-            reason: 'paged scrollable must not bind a ScrollController '
-                '(unlike scroll mode which binds _scrollController)');
-      }
+      // M3e/Q8续: paged 模式每页内容由 _PageVerticalAligner 包裹（替换 M2.10 的
+      // SingleChildScrollView）。_PageVerticalAligner 用 OverflowBox(maxHeight:
+      // infinity) 兜底吸收 HtmlWidget 与 TextPainter 的高度误差，避免 RenderFlex
+      // bottom-overflow assertion（黄黑斑马线）——与 M2.10 同目的，只是换了 widget。
+      // 满页时内容居中（上下边距对称），末页顶部对齐（Q2）。断言：HtmlWidget 渲染
+      // 且无溢出异常（takeException isNull）。
+      expect(find.byType(HtmlWidget), findsWidgets,
+          reason: 'paged pages should render HtmlWidget content');
+      expect(tester.takeException(), isNull,
+          reason: 'paged pages must not overflow (OverflowBox absorbs error)');
       await renderer.dispose();
     },
   );

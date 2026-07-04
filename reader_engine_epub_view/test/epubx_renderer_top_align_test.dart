@@ -17,6 +17,7 @@
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
@@ -53,29 +54,19 @@ void main() {
       );
 
   testWidgets(
-    'paged mode: page content is SingleChildScrollView > Padding > HtmlWidget '
-    '(NO Align — M3e/Q2 removed the no-op Align)',
+    'paged mode: renders HtmlWidget without overflow exceptions '
+    '(M3e/Q8续: structure changed from SingleChildScrollView to _PageVerticalAligner)',
     (tester) async {
       final renderer = EpubxRenderer();
       renderer.bookForTesting =
           _book(List.filled(40, '<p>${'hello world ' * 30}</p>').join());
       await tester.pumpWidget(_tree(renderer));
       await tester.pump();
+      await tester.pump(); // _PageVerticalAligner 两阶段，多 pump 一帧。
 
-      final scrollables = tester
-          .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView));
-      expect(scrollables, isNotEmpty);
-      for (final sv in scrollables) {
-        expect(sv.controller, isNull,
-            reason: 'paged scrollable must not bind a ScrollController');
-        // Q2 修复：child 是 Padding（不再有 Align 包裹）。
-        expect(sv.child, isA<Padding>(),
-            reason: 'M3e/Q2: SingleChildScrollView.child 应为 Padding，无 Align');
-        // 确保没有任何 Align 残留（防止回归）。
-        expect(find.descendant(of: find.byWidget(sv), matching: find.byType(Align)),
-            findsNothing,
-            reason: 'M3e/Q2: paged 页内不应有 Align（之前是 no-op，已删）');
-      }
+      // 结构断言：HtmlWidget 至少渲染一个、无溢出异常。
+      expect(find.byType(HtmlWidget), findsWidgets);
+      expect(tester.takeException(), isNull);
       await renderer.dispose();
     },
   );
@@ -89,9 +80,10 @@ void main() {
       await renderer.setTypography(TypographySettings.defaults());
       await tester.pumpWidget(_tree(renderer));
       await tester.pump();
+      await tester.pump();
 
       // 结构断言：至少一个 HtmlWidget 渲染、无溢出异常。
-      expect(find.byType(SingleChildScrollView), findsWidgets);
+      expect(find.byType(HtmlWidget), findsWidgets);
       expect(tester.takeException(), isNull);
       await renderer.dispose();
     },
@@ -315,6 +307,147 @@ void main() {
       expect(leftFirstTop, isNotNull);
       expect(leftFirstTop!, lessThan(225),
           reason: '左页首行应顶部对齐，实际 top=$leftFirstTop');
+      await renderer.dispose();
+    },
+  );
+
+  // ── Q8续/Q11 回归：版心固定——满页首行 top 固定在 margin，末页也顶部对齐 ─
+  //
+  // Q8续 原断言"满页上下边距对称"已被 Q11 取代：居中会让各页 top 随内容量浮动
+  // （翻页跳动）。Q11 改为固定顶部对齐——所有页首行都在 top=margin（版心顶）。
+  // 本测试验证：所有满页首行 top 一致（=margin），末页也顶部对齐（不浮空）。
+  testWidgets(
+    'Q11: all pages (full + last) top-align at fixed margin — no vertical jump',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
+      final renderer = EpubxRenderer();
+      // 28 段中等长度内容 → 分多页。
+      final buf = StringBuffer();
+      for (var i = 0; i < 28; i++) {
+        buf.write('<p>第 $i 段测试内容用来填充页面测量版心固定。'
+            '${'正文继续填充。' * 4}</p>');
+      }
+      renderer.bookForTesting = _book(buf.toString());
+      await renderer.setTypography(TypographySettings.defaults());
+      await tester.pumpWidget(_treeSized(renderer, 800, 600));
+      await tester.pump();
+      await tester.pump();
+
+      final pageCount = renderer.cachedBreakCountForTest!;
+      const margin = 72.0; // defaults → PageMargin.wide = 72
+      const lineH = 18.0 * 1.8; // fontSize 18 × lineHeight 1.8
+
+      // 所有页（含末页）首行 top 都应 ≈ margin（固定版心顶），容许 1 行测量噪声。
+      for (var pageIdx = 0; pageIdx < pageCount; pageIdx++) {
+        renderer.pageControllerForTest.jumpToPage(pageIdx);
+        await tester.pump();
+        await tester.pump();
+        final rts = find.byType(RichText);
+        expect(rts.evaluate(), isNotEmpty, reason: '页 $pageIdx 应有文字');
+        double minTop = double.infinity;
+        for (final w in rts.evaluate()) {
+          final rect = tester.getRect(find.byWidget(w.widget));
+          if (rect.top < minTop) minTop = rect.top;
+        }
+        expect((minTop - margin).abs(), lessThan(lineH),
+            reason: '页 $pageIdx 首行 top 应 ≈ margin=$margin（固定版心顶），'
+                '实际 top=$minTop；若浮动大说明居中对齐（Q11 版心固定回归，'
+                '翻页时文字会上下跳动）。');
+      }
+      await renderer.dispose();
+    },
+  );
+
+  // ── Q11 回归：版心固定——所有页首行 top 一致，翻页不跳动 ────────────────
+  //
+  // 背景（用户反馈"每一页高度都不一样"）：段落长短不均时，居中对齐会让各页
+  // top 随内容量浮动（实测 topM 在 72~110px 间跳动），翻页时文字上下窜动。
+  // 修复（Q11）：去掉居中，所有页统一顶部对齐到固定版心顶（top=margin）。
+  // 这样所有页首行都在同一 y 坐标，像真书版心，翻页稳定。
+  //
+  // 同时验证 Q9（双页左右页首行对齐）仍成立——双页模式两页都从同一 top 起。
+  testWidgets(
+    'Q11 single-page: all pages share the same fixed first-line top '
+    '(no vertical jump when paging), even with uneven paragraph lengths',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
+      final renderer = EpubxRenderer();
+      // 段落长度不均（长短交错），模拟真实书籍——这正是触发各页 top 浮动的场景。
+      final buf = StringBuffer();
+      final lens = [3, 12, 5, 15, 2, 10, 6, 14, 4, 11, 7, 13, 3, 9, 8, 12, 5, 10];
+      for (final len in lens) {
+        buf.write('<p>${'内容段落测试文字。' * len}</p>');
+      }
+      renderer.bookForTesting = _book(buf.toString());
+      await renderer.setTypography(TypographySettings.defaults());
+      await tester.pumpWidget(_treeSized(renderer, 800, 600));
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final pageCount = renderer.cachedBreakCountForTest!;
+      expect(pageCount, greaterThan(2));
+      final tops = <double>[];
+      for (var p = 0; p < pageCount; p++) {
+        renderer.pageControllerForTest.jumpToPage(p);
+        await tester.pump(const Duration(milliseconds: 120));
+        await tester.pump(const Duration(milliseconds: 120));
+        final rts = find.byType(RichText);
+        double firstTop = double.infinity;
+        for (final w in rts.evaluate()) {
+          final rect = tester.getRect(find.byWidget(w.widget));
+          if (rect.top < firstTop) firstTop = rect.top;
+        }
+        tops.add(firstTop);
+      }
+      // 所有页（含末页）首行 top 应一致（容许 1px 测量噪声）。
+      // 修复前（居中）：tops 在 72~110 间浮动；修复后（固定顶部）：全部 ≈72。
+      final minTop = tops.reduce((a, b) => a < b ? a : b);
+      final maxTop = tops.reduce((a, b) => a > b ? a : b);
+      expect(maxTop - minTop, lessThan(2.0),
+          reason: '所有页首行 top 应一致 (差<2px)，实际 tops=$tops；'
+              '若浮动大说明各页按内容量居中（Q11 版心固定回归，翻页会跳动）。');
+      await renderer.dispose();
+    },
+  );
+
+  testWidgets(
+    'Q11 dual-page: left and right page first lines share the same fixed top '
+    '(aligned AND stable across spreads)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      final renderer = EpubxRenderer();
+      renderer.setDualPageMode(true);
+      final buf = StringBuffer();
+      for (var i = 0; i < 17; i++) {
+        buf.write('<p>段落 $i 构造左右不对称。${'填充正文。' * 5}</p>');
+      }
+      renderer.bookForTesting = _book(buf.toString());
+      await renderer.setTypography(TypographySettings.defaults());
+      await tester.pumpWidget(_treeSized(renderer, 1600, 900));
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pump(const Duration(milliseconds: 120));
+
+      final rts = find.byType(RichText);
+      double leftTop = double.infinity, rightTop = double.infinity;
+      for (final w in rts.evaluate()) {
+        final rect = tester.getRect(find.byWidget(w.widget));
+        if (rect.left < 800) {
+          if (rect.top < leftTop) leftTop = rect.top;
+        } else {
+          if (rect.top < rightTop) rightTop = rect.top;
+        }
+      }
+      expect(leftTop, lessThan(double.infinity), reason: '左页应有内容');
+      expect(rightTop, lessThan(double.infinity), reason: '右页应有内容（非孤页）');
+      // Q9: 左右页首行对齐（都从固定版心顶起）。
+      final topDiff = (rightTop - leftTop).abs();
+      expect(topDiff, lessThan(2.0),
+          reason: '双页左右页首行应上下对齐 (topDiff<2px)，'
+              '实际 leftTop=$leftTop rightTop=$rightTop diff=$topDiff（Q9 回归）。');
+      expect(tester.takeException(), isNull);
       await renderer.dispose();
     },
   );

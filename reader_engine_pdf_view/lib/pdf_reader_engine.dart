@@ -41,6 +41,16 @@ class PdfReaderEngine implements ReaderEngine {
 
   TypographySettings _typography = TypographySettings.defaults();
 
+  /// 目录缓存。初始 null → UI 显示 LoadingView；[open] 完成 loadOutline 后
+  /// 赋值（成功 = 实际 TOC，失败 = empty TOC），后者显示「本书无目录」而非
+  /// 永久转圈。对齐 [ConcreteEpubReaderEngine._toc] 模式。
+  ///
+  /// 背景：[ReaderEngine.toc] 是同步 getter（`TableOfContents?`），但 pdfrx
+  /// 的 outline 加载是异步的（`PdfDocument.loadOutline()` 返回 Future）。
+  /// 旧实现 `get toc => null` 永远返回 null，导致 PDF 目录 tab 一直转圈
+  /// （reader_drawer_builders.dart:50 `if (toc == null) LoadingView()`）。
+  TableOfContents? _toc;
+
   @override
   ReaderEngineState get state => _renderer.state;
 
@@ -51,7 +61,14 @@ class PdfReaderEngine implements ReaderEngine {
   Stream<Locator> get currentLocation$ => _renderer.currentLocation$;
 
   @override
-  Future<void> open(BookRef book) => _renderer.openFile(book.filePath);
+  Future<void> open(BookRef book) async {
+    await _renderer.openFile(book.filePath);
+    // openFile 成功后才加载 outline（doc 未打开时 loadOutline 无意义）。
+    // PdfRenderer.toc 内部已 catch 异常并降级为 empty TOC，这里不再额外
+    // 包裹 try/catch —— 任何情况都给 _toc 赋一个非 null 值，确保 UI 不会
+    // 因 toc==null 永久停在 LoadingView（转圈）。
+    _toc = await _renderer.toc;
+  }
 
   @override
   Future<void> gotoLocator(Locator locator) => _renderer.gotoLocator(locator);
@@ -152,8 +169,10 @@ class PdfReaderEngine implements ReaderEngine {
   @override
   Future<void> get chapterSwitchSettled async {}
 
+  /// 由 [open] 在 loadOutline 完成后填充。open 期间为 null → UI 转圈；
+  /// open 完成后必为非 null（即使 PDF 无书签也是 empty TOC，显示「本书无目录」）。
   @override
-  TableOfContents? get toc => null;
+  TableOfContents? get toc => _toc;
 
   @override
   TypographySettings get typography => _typography;

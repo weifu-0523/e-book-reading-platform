@@ -956,29 +956,18 @@ class EpubxRenderer implements EpubRenderer {
         // M2.11/问题3：必须先按 chapterIndex 过滤到**当前章**的高亮，否则
         // 全书高亮用各自的章内 0-based offset 去 match 当前章的页范围，offset
         // 范围恰好重叠的页会冒出"幽灵高亮"（属于别的章）。每章 offset 独立 0-based。
-        final pageHighlights = <int, List<HighlightRange>>{};
         final chapterHighlights = _allHighlights
             .where((h) => h.chapterIndex == _currentChapterIndex)
             .toList();
-        if (chapterHighlights.isNotEmpty) {
-          for (var i = 0; i < breaks.length; i++) {
-            final pb = breaks[i];
-            final local = HtmlSlicer.localizeHighlights(
-              chapterHighlights,
-              pb.startOffset,
-              pb.endOffset,
-            );
-            if (local.isNotEmpty) pageHighlights[i] = local;
-          }
-        }
-        // M2.9: 双页模式 PageView 的 itemCount = spread 数（每 spread 含
-        // 2 breaks）；单页模式 = breaks.length。
-        final itemCount =
-            _dualPageMode ? (breaks.length + 1) ~/ 2 : breaks.length;
-
-        Widget buildSinglePage(int breakIdx) {
-          // breakIdx 越界（双页孤页）由调用方判断，这里假定合法。
-          final pb = breaks[breakIdx];
+        // M3e/Q12（翻页卡顿优化）: 预计算每页最终 HTML（切片+高亮+缩进注入），
+        // 一次性在 LayoutBuilder.builder（每章 rebuild 只跑一次）内完成。
+        // buildSinglePage（被 PageView.itemBuilder 每页调用）只从这里 O(1) 取用，
+        // 不再每页重新解析整章 HTML（旧实现每页 3 次整章 HtmlParser.parse，
+        // 是翻页卡顿的主因）。缩进/高亮变化时因分页缓存 key 含 typography、
+        // LayoutBuilder 会因 rebuild 重跑本段，故预计算天然随设置更新。
+        final pageHtmls = List<String>.filled(breaks.length, '');
+        for (var i = 0; i < breaks.length; i++) {
+          final pb = breaks[i];
           final start = pb.startOffset.clamp(0, plain.length);
           final end = pb.endOffset.clamp(start, plain.length);
           var pageHtml = HtmlSlicer.sliceByPlainRange(
@@ -987,18 +976,36 @@ class EpubxRenderer implements EpubRenderer {
             end,
             plainLength: plain.length,
           );
-          final localHl = pageHighlights[breakIdx];
-          if (localHl != null) {
-            pageHtml = HtmlHighlightInjector.inject(pageHtml, localHl);
+          if (chapterHighlights.isNotEmpty) {
+            final local = HtmlSlicer.localizeHighlights(
+              chapterHighlights,
+              pb.startOffset,
+              pb.endOffset,
+            );
+            if (local.isNotEmpty) {
+              pageHtml = HtmlHighlightInjector.inject(pageHtml, local);
+            }
           }
-          // M3e/Q1（重写 M3a/任务2）：注入段落首行缩进。injector 现在用 HTML
-          // 预处理（em-space），不再用被 fwfh 忽略的 `<style>`。highlight inject
-          // 后、HtmlWidget 前调用，em-space 前缀对本页所有 <p> 生效。
-          pageHtml = TypographyStyleInjector.inject(
+          pageHtmls[i] = TypographyStyleInjector.inject(
             pageHtml,
             indentEm: _typography.paragraphIndentEm,
             enabled: _typography.paragraphIndentEnabled,
           );
+        }
+        // M2.9: 双页模式 PageView 的 itemCount = spread 数（每 spread 含
+        // 2 breaks）；单页模式 = breaks.length。
+        final itemCount =
+            _dualPageMode ? (breaks.length + 1) ~/ 2 : breaks.length;
+
+        Widget buildSinglePage(int breakIdx, {double verticalMargin = double.nan}) {
+          // breakIdx 越界（双页孤页）由调用方判断，这里假定合法。
+          // verticalMargin: NaN（默认）= 用 [margin] 作上下 padding（单页模式，
+          //   页内自管上下边距）。双页模式传入 0 → 上下 padding 为 0，上下边距
+          //   由 _DualSpreadAligner 在 spread 层统一管理（保证左右两页 top 一致
+          //   且上下对称）。左右 padding 始终用 [margin]。
+          final vMargin = verticalMargin.isNaN ? margin : verticalMargin;
+          // Q12: 直接取预计算好的页面 HTML（切片+高亮+缩进已在上文一次性完成）。
+          final pageHtml = pageHtmls[breakIdx];
           // M2.10/Bug A: 页内容包 SingleChildScrollView(NeverScrollable) 吸收
           // HtmlWidget 与 TextPainter 的高度误差。每个 PageView 页面被赋予固定
           // 高度（= viewport 高度），而 HtmlWidget 渲染出的实际高度与 Paginator
@@ -1017,16 +1024,25 @@ class EpubxRenderer implements EpubRenderer {
           // SingleChildScrollView 默认 child 从顶部排（scrollOffset=0），短内容
           // （末页）天然顶部对齐，无需额外 Align。删除无效 Align 后行为不变
           // （M3a 之前就是这个结构且本就顶部对齐）。
-          return SingleChildScrollView(
-            physics: const NeverScrollableScrollPhysics(),
-            child: Padding(
-              padding: EdgeInsets.all(margin),
-              child: HtmlWidget(
-                pageHtml,
-                textStyle: style.copyWith(color: fg),
-                // M3e/Q1: 段落统一 margin（fwfh 支持 margin）。缩进走 injector。
-                customStylesBuilder: _paragraphMarginBuilder,
-              ),
+          //
+          // M3e/Q8续（上下边距对称）+ Q9（双页左右对齐）+ Q10（双页上下对称）:
+          // 单页模式：_PageVerticalAligner 自管上下边距，满页居中/末页顶部。
+          // 双页模式：buildSinglePage 传 verticalMargin=0（页内不管上下），
+          //   由外层 _DualSpreadAligner 在 spread 层统一管理上下边距——它测出
+          //   左右两页中较高者的高度，算出余量后给整个 spread 加对称的 top/
+          //   bottom padding。这样两页共享同一 top offset（左右对齐），且上下
+          //   边距对称（余量分摊），同时满足 Q9（左右对齐）和 Q10（上下对称）。
+          //   enableCentering 在双页时无意义（verticalMargin=0 时无居中空间），
+          //   保留参数仅为单页模式。
+          return _PageVerticalAligner(
+            horizontalMargin: margin,
+            verticalMargin: vMargin,
+            enableCentering: !_dualPageMode,
+            child: HtmlWidget(
+              pageHtml,
+              textStyle: style.copyWith(color: fg),
+              // M3e/Q1: 段落统一 margin（fwfh 支持 margin）。缩进走 injector。
+              customStylesBuilder: _paragraphMarginBuilder,
             ),
           );
         }
@@ -1049,23 +1065,27 @@ class EpubxRenderer implements EpubRenderer {
             final leftIdx = i * 2;
             final rightIdx = leftIdx + 1;
             final hasRight = rightIdx < breaks.length;
-            // M3e/Q2（真正根因）: Row 的 crossAxisAlignment 默认 center，会把
-            // 高度小于 slot 的子页（末页/孤页只有几行）**垂直居中**在 slot 内，
-            // 视觉上"几行字浮在屏幕中间"。实测：默认 center 时右页短内容 top≈49%，
-            // 改 start 后 top≈2%（顶部对齐）。这是用户反复反馈"末页居中"的真因
-            // ——不在 buildSinglePage（单页模式本就顶部对齐），而在双页 Row 的
-            // cross-axis 对齐。强制 start 让左右两页都从顶部排起，像真书。
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: buildSinglePage(leftIdx)),
-                SizedBox(width: gutterPx),
-                Expanded(
-                  child: hasRight
-                      ? buildSinglePage(rightIdx)
-                      : const SizedBox.shrink(),
-                ),
-              ],
+            // M3e/Q2: Row 的 crossAxisAlignment 必须 start（否则右页短内容会
+            // 在 slot 内垂直居中浮空）。
+            //
+            // M3e/Q9+Q10: 双页模式两页传 verticalMargin=0（页内不管上下边距），
+            // 整个 spread 由 _DualSpreadAligner 统一加对称的 top/bottom padding。
+            // _DualSpreadAligner 测出 Row（两页中较高者）的高度，算余量后对称
+            // 分摊，这样两页共享同一 top offset（左右对齐）且上下边距对称。
+            return _DualSpreadAligner(
+              margin: margin,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: buildSinglePage(leftIdx, verticalMargin: 0)),
+                  SizedBox(width: gutterPx),
+                  Expanded(
+                    child: hasRight
+                        ? buildSinglePage(rightIdx, verticalMargin: 0)
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -1084,3 +1104,108 @@ class EpubxRenderer implements EpubRenderer {
     await _selectionController.close();
   }
 }
+
+/// M3e/Q8续（上下边距对称）: 分页模式下每页内容的垂直对齐器。
+///
+/// top-aligned 分页的固有特性是一页放完最后一段后剩余空间全堆底部 → "上窄下宽"。
+/// 本 widget 按页面**填充度**分两种对齐：
+/// - **满页**（内容渲染高 ≥ 可用高度 70%）：内容在可用区内垂直居中，余量对称
+///   分摊到上下，像真书版心居中（上下边距视觉一致）。
+/// - **末页/孤页**（< 70%）：顶部对齐（Q2 要求——几行字居中反而像浮空）。
+///
+/// 为何需要两阶段（StatefulWidget）：Flutter 单次 build 无法既"测 child 高度"
+/// 又"据高度选 alignment"——选 alignment 要先知道高度，知道高度要先 build 一次。
+/// 用 stateful：第一帧用 OverflowBox(无限高) 让 child 自然布局并测其高度存 state，
+/// setState 触发第二帧据填充度选 Align(center) 或 Align(topLeft)。两帧对用户
+/// 不可见（同一 microtask 内完成 pump）。
+///
+/// 兜底：OverflowBox(maxHeight: double.infinity) 让 child 超 usableH 时不抛
+/// RenderFlex assertion（与旧 SingleChildScrollView 吸收误差同目的）。
+///
+/// Q11（版心固定）: 去掉了居中逻辑（居中导致各页 top 随内容量浮动，翻页跳动），
+/// 统一顶部对齐。简化为 StatelessWidget。[horizontalMargin]/[verticalMargin]
+/// 分开——双页模式页内 verticalMargin=0（上下边距由 _DualSpreadAligner 统一管），
+/// 单页模式两者都 = margin。[enableCentering] 保留参数仅为向后兼容（已无实际作用）。
+class _PageVerticalAligner extends StatelessWidget {
+  const _PageVerticalAligner({
+    required this.horizontalMargin,
+    this.verticalMargin = double.nan,
+    required this.child,
+    this.enableCentering = true,
+  });
+
+  final double horizontalMargin;
+  /// 上下 padding。NaN = 用 horizontalMargin（单页模式默认）。双页模式传 0
+  /// （由 _DualSpreadAligner 在 spread 层统一管理上下边距）。
+  final double verticalMargin;
+  final Widget child;
+  /// 已废弃（Q11 后统一顶部对齐）。保留仅为调用点向后兼容。
+  final bool enableCentering;
+
+  @override
+  Widget build(BuildContext context) {
+    // M3e/Q11（版心固定）: 所有页统一顶部对齐到固定版心顶（top = margin），
+    // 不再按填充度居中。原因：居中会让各页 top 随内容量浮动（段落长短不均时
+    // topM 在 74~110px 间跳动），翻页时文字上下窜动，视觉不稳定。固定顶部
+    // 对齐后所有页首行都在同一 y 坐标，像真书版心。满页时内容近乎填满可用区
+    // （Q8 后 safetyMargin 仅 0.3 行，余量小），末页顶部对齐（Q2）。
+    // 溢出兜底：OverflowBox 让 child 超 usableH 时不抛 assertion。
+    final vMargin = verticalMargin.isNaN ? horizontalMargin : verticalMargin;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 600.0;
+        return SizedBox(
+          height: maxH,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalMargin,
+              vertical: vMargin,
+            ),
+            child: OverflowBox(
+              minHeight: 0,
+              maxHeight: double.infinity,
+              alignment: Alignment.topLeft,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// M3e/Q11（版心固定）: 双页模式 spread 级别的垂直对齐器。
+///
+/// 双页模式所有 spread 统一顶部对齐（top = margin），不再居中。原因同
+/// _PageVerticalAligner：居中会让各 spread 的 top 随内容量浮动，翻页跳动。
+/// 固定顶部对齐后：左右页共享同一 Row，都从 top=margin 起（左右对齐 Q9），
+/// 且所有 spread 的 top 一致（版心固定，翻页不跳）。页内两页 verticalMargin=0
+/// （上下边距由此处统一加）。OverflowBox 兜底溢出。
+class _DualSpreadAligner extends StatelessWidget {
+  const _DualSpreadAligner({required this.margin, required this.child});
+
+  final double margin;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 600.0;
+        return SizedBox(
+          height: maxH,
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: margin),
+            child: OverflowBox(
+              minHeight: 0,
+              maxHeight: double.infinity,
+              alignment: Alignment.topLeft,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
