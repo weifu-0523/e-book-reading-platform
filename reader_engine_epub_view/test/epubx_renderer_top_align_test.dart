@@ -18,6 +18,7 @@ import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/typography_settings.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 /// M3e/Q1+Q2 acceptance tests.
@@ -126,24 +127,109 @@ void main() {
     },
   );
 
+  // ── Q2 真正的回归测试：测量末页文字的**实际绘制 y 坐标** ──────────────
+  //
+  // 背景：M3e-Q2 第一版只断言"无 Align 包裹"（结构），没测量坐标 → 测试过了
+  // 但用户仍反馈"末页居中"。根因是 fwfh 内部用 Column(MainAxisSize.min)，
+  // 在 SingleChildScrollView 无限高度约束下天然顶部对齐；只要不在外面套
+  // Center/Flexible 就不会居中。本测试直接测 RichText 的 top，确保 < 视口
+  // 高度的 1/3（顶部区），若未来回归引入居中会立刻失败。
+
+  Widget _treeSized(EpubxRenderer renderer, double w, double h) {
+    return MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: w,
+          height: h,
+          child: Builder(builder: (ctx) => renderer.build(ctx)),
+        ),
+      ),
+    );
+  }
+
   testWidgets(
-    'paged mode: short content (last page) renders at top, not centered',
+    'Q2 paged: single short paragraph (last page) renders near TOP '
+    '(first RichText.top < viewport/3), never vertically centered',
     (tester) async {
-      // 模拟末页：单章单页，内容短于视口。验证 SingleChildScrollView 让短内容
-      // 从顶部排起（scrollOffset=0），而非垂直居中。
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
       final renderer = EpubxRenderer();
-      renderer.bookForTesting = _book('<p>short end of chapter</p>');
+      renderer.bookForTesting = _book('<p>末页只有这一行短内容。</p>');
       await renderer.setTypography(TypographySettings.defaults());
-      await tester.pumpWidget(_tree(renderer));
+      await tester.pumpWidget(_treeSized(renderer, 800, 600));
+      await tester.pump();
       await tester.pump();
 
-      // 找到页内的 SingleChildScrollView，断言其 scrollOffset 为 0（顶部）。
-      final sv = tester.widget<SingleChildScrollView>(
-          find.byType(SingleChildScrollView).first);
-      // paged 模式 SingleChildScrollView 不绑 controller（physics=NeverScrollable），
-      // 故无法直接读 offset；改为断言结构：child 是 Padding（顶部锚定），且无溢出。
-      expect(sv.child, isA<Padding>());
+      final rts = find.byType(RichText);
+      expect(rts.evaluate(), isNotEmpty,
+          reason: '至少应渲染出一行文字');
+      final firstTop = tester
+          .getRect(find.byWidget(rts.evaluate().first.widget))
+          .top;
+      // viewport 高度 600，中线 300。顶部对齐 → firstTop 远小于 200；
+      // 若居中 → firstTop ≈ 280+。断言 < 200 留足 margin，杜绝回归。
+      expect(firstTop, lessThan(200),
+          reason: '末页短内容应从顶部排起（top<200），实际 top=$firstTop；'
+              '若 top≈300 则被垂直居中了');
       expect(tester.takeException(), isNull);
+      await renderer.dispose();
+    },
+  );
+
+  testWidgets(
+    'Q2 paged: multipage chapter — actual LAST page also top-aligned',
+    (tester) async {
+      // 多页章节，翻到真正的末页，测末页首行 top。
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
+      final renderer = EpubxRenderer();
+      final buf = StringBuffer();
+      for (var i = 0; i < 40; i++) {
+        buf.write('<p>这是第 $i 段内容，填满多个页面。</p>');
+      }
+      renderer.bookForTesting = _book(buf.toString());
+      await renderer.setTypography(TypographySettings.defaults());
+      await tester.pumpWidget(_treeSized(renderer, 800, 600));
+      await tester.pump();
+      await tester.pump();
+
+      final breakCount = renderer.cachedBreakCountForTest;
+      expect(breakCount, greaterThan(1), reason: '内容应跨多页');
+      renderer.pageControllerForTest.jumpToPage(breakCount! - 1);
+      await tester.pumpAndSettle();
+
+      final rts = find.byType(RichText);
+      expect(rts.evaluate(), isNotEmpty);
+      final firstTop = tester
+          .getRect(find.byWidget(rts.evaluate().first.widget))
+          .top;
+      expect(firstTop, lessThan(200),
+          reason: '末页首行 top 应 < 200（顶部对齐），实际 $firstTop');
+      expect(tester.takeException(), isNull);
+      await renderer.dispose();
+    },
+  );
+
+  testWidgets(
+    'Q2 scroll: short content also top-aligned (not centered)',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 600);
+      tester.view.devicePixelRatio = 1.0;
+      final renderer = EpubxRenderer();
+      renderer.bookForTesting = _book('<p>scroll 末页短内容。</p>');
+      await renderer.setTypography(TypographySettings.defaults());
+      await renderer.setPaginationMode(PaginationMode.scroll);
+      await tester.pumpWidget(_treeSized(renderer, 800, 600));
+      await tester.pump();
+      await tester.pump();
+
+      final rts = find.byType(RichText);
+      expect(rts.evaluate(), isNotEmpty);
+      final firstTop = tester
+          .getRect(find.byWidget(rts.evaluate().first.widget))
+          .top;
+      expect(firstTop, lessThan(200),
+          reason: 'scroll 模式短内容应顶部对齐，实际 top=$firstTop');
       await renderer.dispose();
     },
   );

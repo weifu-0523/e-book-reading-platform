@@ -799,6 +799,15 @@ class EpubxRenderer implements EpubRenderer {
   List<HighlightRange> get allHighlightsForTest =>
       List.unmodifiable(_allHighlights);
 
+  /// Test-only: expose internal PageController for navigation tests.
+  @visibleForTesting
+  PageController get pageControllerForTest => _pageController;
+
+  /// Test-only: number of cached page breaks (after first build in paged mode).
+  @visibleForTesting
+  int? get cachedBreakCountForTest =>
+      _cachedBreaks == null ? null : _cachedBreaks!.length;
+
   /// 当前章节经过高亮注入后的 HTML（测试入口）。
   ///
   /// M3.2 简化：每章独立 0-based plain-text offset（不做跨章累计，spec §11 留 M3.x）。
