@@ -20,6 +20,9 @@ import 'package:epubx/epubx.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:reader_engine_epub_view/plain_text_utils.dart';
 
+import '../markdown_book_loader.dart';
+import '../text_book_loader.dart';
+
 /// Provides chapter-scoped plain text for the AI guide.
 ///
 /// EPUB: flatten chapters, take chapterIndex, strip HTML.
@@ -110,5 +113,46 @@ class PdfChapterTextProvider implements ChapterTextProvider {
   Future<String?> title(String filePath, int chapterIndex) async {
     // PDFs use page-as-chapter; per-page titles are not exposed.
     return null;
+  }
+}
+
+/// M4.5: Markdown / TXT 的章节文本提供者。
+///
+/// 复用 [MarkdownBookLoader] / [TextBookLoader] 把文件解析成 HtmlChapterSource，
+/// 再用 [PlainTextUtils.htmlToPlainWithOffsets] 把每章 HTML 转 plain text 喂给
+/// AI。MD 按标题切章（count = 标题数），TXT 单章（count = 1）。
+///
+/// 与 EPUB 的 EpubChapterTextProvider 对称 —— 只是文件解析走 markdown/txt
+/// 加载器而非 epubx。每次调用都重新解析文件（AI 预处理是低频操作，可接受）。
+class HtmlFileChapterTextProvider implements ChapterTextProvider {
+  HtmlFileChapterTextProvider({required this.isMarkdown});
+
+  /// true = Markdown（按标题切章）；false = TXT（单章）。
+  final bool isMarkdown;
+
+  Future<List<({String title, String html})>> _load(String filePath) async {
+    final bytes = await File(filePath).readAsBytes();
+    final sources = isMarkdown
+        ? MarkdownBookLoader.load(bytes, title: '')
+        : TextBookLoader.load(bytes, title: '');
+    return sources.map((s) => (title: s.title, html: s.html)).toList();
+  }
+
+  @override
+  Future<int> count(String filePath) async => (await _load(filePath)).length;
+
+  @override
+  Future<String?> get(String filePath, int chapterIndex) async {
+    final chapters = await _load(filePath);
+    if (chapterIndex < 0 || chapterIndex >= chapters.length) return null;
+    final plain = PlainTextUtils.htmlToPlainWithOffsets(chapters[chapterIndex].html).$1.trim();
+    return plain.isEmpty ? null : plain;
+  }
+
+  @override
+  Future<String?> title(String filePath, int chapterIndex) async {
+    final chapters = await _load(filePath);
+    if (chapterIndex < 0 || chapterIndex >= chapters.length) return null;
+    return chapters[chapterIndex].title;
   }
 }

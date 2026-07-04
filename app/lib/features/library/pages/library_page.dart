@@ -247,7 +247,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   Future<void> _importBook() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['epub', 'pdf'],
+      allowedExtensions: ['epub', 'pdf', 'md', 'markdown', 'txt'],
     );
     if (result == null || result.files.single.path == null) return;
     final path = result.files.single.path!;

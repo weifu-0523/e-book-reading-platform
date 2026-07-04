@@ -65,6 +65,43 @@ Q8 修完溢出后，用户连续反馈 4 个 paged 模式排版/性能问题，
 - 实测：翻页从 50-100ms 降到 4-11ms。
 - 回归测试：`epubx_renderer_paged_overflow_test.dart` 加「翻到中间页渲染内容正确」用例，验证预计算没丢内容。
 
+### M4.5 — 2026-07-05（新增 Markdown / 纯文本格式支持）
+
+用户要求新增 `.md` / `.txt` 书籍格式支持。MD/TXT 复用 EPUB 的 HTML 渲染管道（md→html / txt→`<p>` → fwfh HtmlWidget），行为与 EPUB 一致（分页、高亮、双页、主题、AI 伴读）。
+
+#### Added — MD/TXT 格式全链路
+
+- **格式无关渲染抽象**（`reader_engine_epub_view/lib/html_chapter_source.dart`）：新增 `HtmlChapterSource{title, html}` 数据类。`EpubxRenderer` 内部所有章节访问（`.HtmlContent`）改成走格式无关的 `_chapters` 字段 + `chapterCount` / `flatChapterHtmlAt` / `flatChapterTitleAt` 访问器。EPUB 路径仍走 epubx 解析（`openFile`），解析后同步填充 `_chapters`；MD/TXT 走新方法 `openChapters(List<HtmlChapterSource>)` 直接填充。**EPUB 渲染逻辑零改动**（Paginator/HtmlSlicer/injector/双页/版心对齐全部原样复用）。
+- **MD/TXT 加载器**（`app/lib/services/`）：`MarkdownBookLoader`（`markdown` 包 `markdownToHtml`，按 `#`/`##` 标题切章，无标题则单章）+ `TextBookLoader`（按空行分段包 `<p>`，单章，HTML 实体转义）。UTF-8 优先，失败降级 latin1。
+- **格式检测**：`BookFormatDetector` 加 `.md`/`.markdown`/`.mdown`/`.txt` 扩展名分支（无 magic bytes，扩展名判定）；`FilePicker`、`BookOpenBridge`、Windows `flutter_window.cpp` 三处白名单同步扩展（cpp size guard 从 `<5` 放宽到 `<4`）。
+- **AI 路径**：新增 `HtmlFileChapterTextProvider` + `HtmlFileExtractor`（复用加载器 + `htmlToPlainWithOffsets`），`chapterTextProviderFor` / `extractorFor` 加 markdown/text 分支。MD/TXT 支持 AI 伴读/总结/章节复习。
+- **依赖**：`app/pubspec.yaml` 加 `markdown: ^7.0.0`（BSD-3-Clause）。
+
+#### Changed — 消除 5 处「三元地雷」+ UI 标签通用化
+
+- `BookFormat` enum（app + reader_engine 两处）加 `markdown, text`。新增 `BookFormatDb` 扩展集中管理 `dbValue` / `fileExtension` / `displayLabel` 映射，替代散落在 `fromRow` / `local_book_repository` / `import_service` / `reader_engine_provider` / `markdown_exporter` 的 ternary（旧代码对未知格式默认降级为 PDF，会让 MD/TXT 被误当 PDF 崩溃）。
+- `reader_engine_provider` 加 markdown/text 路由分支 → `ConcreteEpubReaderEngine.openChapters`。**关键设计**：MD/TXT 复用 `ConcreteEpubReaderEngine` 类型 → `reader_body.dart` 的 12 处 `is ConcreteEpubReaderEngine` 检查对 MD/TXT 也成立，双页/高亮/章节摘录等能力零改 UI 自动继承。
+- 书架 chip 通用化：`_PdfChip` → `_FormatChip(format)`，所有非 EPUB 格式显示标签（PDF/Markdown/TXT）。详情页格式标签走 `displayLabel`。
+
+#### Fixed — openChapters 未填充 _toc（Q-TOC 同构 bug）
+
+- 集成测试发现 `ConcreteEpubReaderEngine.openChapters` 漏了 `_toc = await _renderer.toc`（与 M4/Q-TOC 的 PDF 目录转圈 bug 完全同构）。修复后 MD/TXT 目录 tab 正常显示（MD 标题树 / TXT 单条「全文」）。
+
+#### Non-Goals（本期不做）
+
+- MD 原生 markdown 渲染器（`flutter_markdown`）—— 走 md→html→fwfh，保持全格式渲染一致。
+- TXT 按字数自动切章 —— 本期单章，靠分页翻页。
+- 封面提取 —— MD/TXT 无封面，沿用首字母占位图。
+- Android mimeType 扩展 —— 留 follow-up。
+
+#### 测试
+
+- `book_format_detector_test.dart`：+6 用例（md/txt/markdown 扩展名、大小写、空文件），共 11 测。
+- `markdown_book_loader_test.dart`：新建，18 测（MD 切章边界/前言/无标题/空文件/编码、TXT 分段/转义/`<br>`、HtmlChapterSource 值对象）。
+- `html_chapter_engine_integration_test.dart`：新建，7 测（状态机、TOC 填充、build 渲染、纯文本提取、_chapters 数据源）。
+- EPUB 回归：epub_view 160/161 通过（1 预存在 cover fixture 失败）。app 全量无新增失败（13 个预存在失败：typography margin / import fixture / exporter CRLF，均与 M4.5 无关，已 git stash 验证）。
+- `dart analyze` 4 包 0 issues。Windows Debug build 成功。
+
 ### M4/Q-TOC — 2026-07-05（PDF 目录永久转圈修复）
 
 用户反馈打开 PDF 后「目录一直转圈」。

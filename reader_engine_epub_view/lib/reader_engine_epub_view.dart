@@ -19,5 +19,6 @@ library reader_engine_epub_view;
 
 export 'concrete_reader_engine.dart';
 export 'epub_cover_extractor.dart';
+export 'html_chapter_source.dart';
 export 'plain_text_utils.dart';
 export 'src/chapter_end_event.dart';

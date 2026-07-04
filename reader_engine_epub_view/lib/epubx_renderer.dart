@@ -33,6 +33,7 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
 import 'cfi_codec.dart';
+import 'html_chapter_source.dart';
 import 'html_highlight_injector.dart';
 import 'html_slicer.dart';
 import 'paginator.dart';
@@ -75,6 +76,13 @@ class EpubxRenderer implements EpubRenderer {
   int _currentChapterIndex = 0;
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
   PaginationMode _paginationMode = PaginationMode.paged;
+
+  /// M4.5: 格式无关的章节数据源。EPUB 路径由 [openFile] 解析 epubx 后填充；
+  /// Markdown/TXT 路径由 [openChapters] 直接填充（不经 epubx）。所有渲染/
+  /// 分页/高亮/双页逻辑只读 [_chapters]（通过 [flatChapterHtmlAt] /
+  /// [chapterCount]），不直接碰 [_book] —— 这样 EPUB 与 MD/TXT 共享同一套
+  /// 渲染管道，EPUB 路径零回归（openFile 仍走 epubx，填充本字段后委托渲染）。
+  List<HtmlChapterSource> _chapters = const [];
 
   /// Read-only access to the current [TypographySettings].
   ///
@@ -194,7 +202,7 @@ class EpubxRenderer implements EpubRenderer {
   /// loaded, or if the scroll/page controllers have no clients yet.
   void _maybeEmitChapterEnd() {
     if (_chapterEndFiredForCurrentChapter) return;
-    if (_book == null) return;
+    if (_chapters.isEmpty) return;
 
     bool isAtChapterEnd = false;
     if (_paginationMode == PaginationMode.paged) {
@@ -215,10 +223,9 @@ class EpubxRenderer implements EpubRenderer {
 
     if (!isAtChapterEnd) return;
     _chapterEndFiredForCurrentChapter = true;
-    final chapters = flatChapters;
     _chapterEndController.add(ChapterEndEvent(
       chapterIndex: _currentChapterIndex,
-      isLastChapter: _currentChapterIndex >= chapters.length - 1,
+      isLastChapter: _currentChapterIndex >= _chapters.length - 1,
     ));
   }
 
@@ -230,7 +237,7 @@ class EpubxRenderer implements EpubRenderer {
   /// 用户用滚轮自管滚动，tap zone 在 scroll 下应换章）。
   /// 返回 true 表示发生了翻页（供调用方决定是否做额外动效）。
   bool nextPage() {
-    if (_book == null) return false;
+    if (_chapters.isEmpty) return false;
     if (_paginationMode == PaginationMode.scroll) {
       return _nextChapterIfPossible();
     }
@@ -262,7 +269,7 @@ class EpubxRenderer implements EpubRenderer {
   /// `_cachedBreaks` 被填充，[_maybeApplyPendingLastPageJump] 把 controller
   /// 拉到末页。这复刻了 Kindle / 微信读书的章首左翻行为。
   bool previousPage() {
-    if (_book == null) return false;
+    if (_chapters.isEmpty) return false;
     if (_paginationMode == PaginationMode.scroll) {
       return _previousChapterIfPossible();
     }
@@ -309,7 +316,7 @@ class EpubxRenderer implements EpubRenderer {
 
   bool _nextChapterIfPossible() {
     final nextIdx = _currentChapterIndex + 1;
-    if (nextIdx < flatChapters.length) {
+    if (nextIdx < _chapters.length) {
       setChapter(nextIdx);
       return true;
     }
@@ -373,25 +380,44 @@ class EpubxRenderer implements EpubRenderer {
   /// 当前书的扁平化章节列表（Chapters + SubChapters 递归展开）。
   ///
   /// epubx 的 EpubChapter 含 SubChapters 嵌套；UI 与 cfi 都按扁平索引访问。
+  ///
+  /// M4.5: 仅 EPUB 路径有意义（返回 epubx 的 EpubChapter）。MD/TXT 路径
+  /// 无 epubx book，应改用格式无关的 [chapterCount] / [flatChapterHtmlAt] /
+  /// [flatChapterTitleAt]。渲染核心已全部迁移到格式无关访问器。
   List<EpubChapter> get flatChapters =>
       _flattenChapters(_book?.Chapters ?? const []);
+
+  /// M4.5: 格式无关 —— 章节总数（EPUB 的 flatChapters.length 等价）。
+  int get chapterCount => _chapters.length;
+
+  /// M4.5: 格式无关 —— 第 [index] 章的正文 HTML。
+  /// 越界返回空串（与旧 `flatChapters[i].HtmlContent ?? ''` 同语义，保护 race）。
+  String flatChapterHtmlAt(int index) {
+    if (index < 0 || index >= _chapters.length) return '';
+    return _chapters[index].html;
+  }
+
+  /// M4.5: 格式无关 —— 第 [index] 章的标题（TOC 显示用）。
+  String flatChapterTitleAt(int index) {
+    if (index < 0 || index >= _chapters.length) return '';
+    return _chapters[index].title;
+  }
 
   /// Plain text of the current chapter, parsed from
   /// `flatChapters[_currentChapterIndex].HtmlContent`.
   /// Cached per `chapterIndex` for the renderer's lifetime.
   Future<String> get currentChapterPlainText async {
-    final chapters = flatChapters;
-    if (chapters.isEmpty) return '';
+    if (_chapters.isEmpty) return '';
     // M2.8/B4 (Bug #1): 跨 book-switch race 下 _currentChapterIndex 可能
     // 暂时 >= 新 chapters.length。build 同样保护（见 build）。越界返回空串
     // 而非抛 RangeError，避免调用方（_openExcerptSheet 等）拿到红屏。
     if (_currentChapterIndex < 0 ||
-        _currentChapterIndex >= chapters.length) {
+        _currentChapterIndex >= _chapters.length) {
       return '';
     }
     final cached = _plainTextCache[_currentChapterIndex];
     if (cached != null) return cached;
-    final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final html = flatChapterHtmlAt(_currentChapterIndex);
     final plain = HtmlTextUtils.htmlToPlainText(html);
     _plainTextCache[_currentChapterIndex] = plain;
     return plain;
@@ -422,6 +448,29 @@ class EpubxRenderer implements EpubRenderer {
     _cachedBreaks = null;
     _pendingJumpToLastPage = false;
     _book = book;
+    // M4.5: 与 openFile 同步填充 _chapters，让走 bookForTesting 的测试也覆盖
+    // 格式无关数据源路径（渲染逻辑只读 _chapters）。
+    _chapters = book == null
+        ? const []
+        : _flattenChapters(book.Chapters ?? const [])
+            .map((c) => HtmlChapterSource(
+                  title: c.Title ?? '',
+                  html: c.HtmlContent ?? '',
+                ))
+            .toList();
+    _currentChapterIndex = 0;
+    _chapterEndFiredForCurrentChapter = false;
+    _beginChapterSwitch();
+  }
+
+  /// M4.5: 测试入口 —— 直接注入格式无关章节源（MD/TXT 测试用，跳过 epubx）。
+  @visibleForTesting
+  set chaptersForTesting(List<HtmlChapterSource> chapters) {
+    _plainTextCache.clear();
+    _cachedBreaks = null;
+    _pendingJumpToLastPage = false;
+    _book = null;
+    _chapters = List<HtmlChapterSource>.unmodifiable(chapters);
     _currentChapterIndex = 0;
     _chapterEndFiredForCurrentChapter = false;
     _beginChapterSwitch();
@@ -452,6 +501,15 @@ class EpubxRenderer implements EpubRenderer {
       _cachedBreaks = null;
       _pendingJumpToLastPage = false;
       _book = book;
+      // M4.5: 同步填充格式无关数据源（扁平化 epubx 章节 → HtmlChapterSource），
+      // 让渲染/分页/高亮/TOC 走统一路径。EPUB 路径 toc getter 仍读 _book 以
+      // 保留嵌套 SubChapters 树（flatChapters 只展平、不丢层级信息给 TOC）。
+      _chapters = _flattenChapters(book.Chapters ?? const [])
+          .map((c) => HtmlChapterSource(
+                title: c.Title ?? '',
+                html: c.HtmlContent ?? '',
+              ))
+          .toList();
       _currentChapterIndex = 0;
       _chapterEndFiredForCurrentChapter = false;
       _scrollController.removeListener(_onScroll);  // prevent duplicate on repeated calls
@@ -469,6 +527,41 @@ class EpubxRenderer implements EpubRenderer {
     }
   }
 
+  /// M4.5: 以预解析的格式无关章节源打开（Markdown / TXT 路径）。
+  ///
+  /// 与 [openFile]（EPUB 路径，走 epubx 解析）对应：调用方（reader_engine_provider
+  /// 的 MD/TXT 分支）先用 MarkdownBookLoader / TextBookLoader 把文件转成
+  /// `List<HtmlChapterSource>`，再调本方法。本方法不碰 epubx，[book] 保持 null
+  /// —— [toc] getter 据此走扁平 TOC 分支。
+  ///
+  /// [title] 仅用于错误信息，不参与渲染。空 [chapters] 进入 error 状态。
+  Future<void> openChapters(
+    List<HtmlChapterSource> chapters, {
+    String title = '',
+  }) async {
+    _setState(const ReaderEngineLoading());
+    try {
+      if (chapters.isEmpty) {
+        throw StateError('openChapters: empty chapter list'
+            '${title.isEmpty ? '' : ' (book: $title)'}');
+      }
+      _plainTextCache.clear();
+      _cachedBreaks = null;
+      _pendingJumpToLastPage = false;
+      _book = null; // MD/TXT 路径无 epubx book；toc getter 据此走扁平分支
+      _chapters = List<HtmlChapterSource>.unmodifiable(chapters);
+      _currentChapterIndex = 0;
+      _chapterEndFiredForCurrentChapter = false;
+      _scrollController.removeListener(_onScroll);
+      _scrollController.addListener(_onScroll);
+      _setState(const ReaderEngineReady());
+    } catch (e, st) {
+      debugPrint('EpubxRenderer.openChapters failed: $title\n$e\n$st');
+      _setState(ReaderEngineError(message: '$e', cause: e));
+    }
+  }
+
+
   // ---- 章节渲染 / 位置流 / 跳转 (Task 12) ----
 
   /// 切换到指定章节（chapterIndex 基于 flatChapters）。
@@ -485,8 +578,7 @@ class EpubxRenderer implements EpubRenderer {
   /// 走 fallback 换章分支，章节号被无声推进 → "跨章节乱翻"。gotoLocator 的
   /// CFI 分支（见下方 emit）早有此修复，setChapter 漏了。
   void setChapter(int index) {
-    final chapters = flatChapters;
-    if (index < 0 || index >= chapters.length) return;
+    if (index < 0 || index >= _chapters.length) return;
     _currentChapterIndex = index;
     _chapterEndFiredForCurrentChapter = false;
     _cachedBreaks = null;
@@ -514,10 +606,9 @@ class EpubxRenderer implements EpubRenderer {
   }
 
   void _emitCurrentLocation() {
-    if (_book == null) return;
-    final chapters = flatChapters;
-    if (_currentChapterIndex >= chapters.length) return;
-    final html = chapters[_currentChapterIndex].HtmlContent ?? '';
+    if (_chapters.isEmpty) return;
+    if (_currentChapterIndex >= _chapters.length) return;
+    final html = flatChapterHtmlAt(_currentChapterIndex);
     final totalChars = html.length;
     // M2.11/问题1：paged 模式下 _scrollController 没有 client（用 PageView），
     // 旧代码用 scroll ratio 算 charOffset → 恒为 0 → 书签只记章节、跳转只回
@@ -555,9 +646,28 @@ class EpubxRenderer implements EpubRenderer {
 
   @override
   Future<TableOfContents> get toc async {
+    // M4.5: EPUB 路径保留嵌套 TOC 树（epubx EpubChapter.SubChapters）；
+    // MD/TXT 路径（_book == null，_chapters 由 openChapters 填充）用扁平 TOC。
     final book = _book;
-    if (book == null) return TableOfContents.empty();
-    return TableOfContents(entries: _chaptersToToc(book.Chapters ?? const [], 0));
+    if (book != null) {
+      return TableOfContents(entries: _chaptersToToc(book.Chapters ?? const [], 0));
+    }
+    if (_chapters.isEmpty) return TableOfContents.empty();
+    return TableOfContents(entries: _flatChaptersToToc());
+  }
+
+  /// M4.5: 扁平章节源（MD/TXT）→ 扁平 TocEntry 列表（无子节点）。
+  /// chapterIndex 与 cfi_codec 对齐（_chapters 的 0-based 索引）。
+  List<TocEntry> _flatChaptersToToc() {
+    final result = <TocEntry>[];
+    for (var i = 0; i < _chapters.length; i++) {
+      final title = _chapters[i].title;
+      result.add(TocEntry(
+        title: title.isEmpty ? '(无标题)' : title,
+        locator: EpubCfiLocator(cfi: encode(i, 0), chapterIndex: i),
+      ));
+    }
+    return result;
   }
 
   /// 把 epubx 的 EpubChapter 树转 TocEntry 树。
@@ -636,8 +746,8 @@ class EpubxRenderer implements EpubRenderer {
         debugPrint('EpubxRenderer.gotoLocator: invalid cfi ${locator.cfi}');
         return;
       }
-      final chapters = flatChapters;
-      if (decoded.chapterIndex < 0 || decoded.chapterIndex >= chapters.length) {
+      if (decoded.chapterIndex < 0 ||
+          decoded.chapterIndex >= _chapters.length) {
         return;
       }
       if (decoded.chapterIndex != _currentChapterIndex) {
@@ -670,7 +780,7 @@ class EpubxRenderer implements EpubRenderer {
       // 旧实现 paged 模式只走 scroll 重定位（no-op，_scrollController 无 client）
       // → 书签跳转永远落在 jumpToPage(0) 的首页。现在 _emitCurrentLocation
       // 编码了页位置（break.startOffset），此处反查落到正确页。
-      final html = chapters[decoded.chapterIndex].HtmlContent ?? '';
+      final html = flatChapterHtmlAt(decoded.chapterIndex);
       final totalChars = html.isEmpty ? 1 : html.length;
       final isPaged = _paginationMode == PaginationMode.paged;
       // M2.8/B4 (Bug #1): post-frame callback 跑在调用方（_onBookmarkJump）
@@ -724,8 +834,8 @@ class EpubxRenderer implements EpubRenderer {
       // rebuild with the new chapter. Pre-fix, TOC tap updated
       // _currentChapterIndex but consumers (reader_body) didn't see the
       // change, so the visible chapter didn't update.
-      final chapters = flatChapters;
-      if (locator.chapterIndex < 0 || locator.chapterIndex >= chapters.length) {
+      if (locator.chapterIndex < 0 ||
+          locator.chapterIndex >= _chapters.length) {
         return;
       }
       if (locator.chapterIndex != _currentChapterIndex) {
@@ -813,14 +923,13 @@ class EpubxRenderer implements EpubRenderer {
   /// M3.2 简化：每章独立 0-based plain-text offset（不做跨章累计，spec §11 留 M3.x）。
   @visibleForTesting
   String currentHighlightedHtml() {
-    final chapters = flatChapters;
-    if (chapters.isEmpty) return '';
+    if (_chapters.isEmpty) return '';
     // M2.8/B4 (Bug #1): 与 build() 同步加越界保护。
     if (_currentChapterIndex < 0 ||
-        _currentChapterIndex >= chapters.length) {
+        _currentChapterIndex >= _chapters.length) {
       return '';
     }
-    final rawHtml = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final rawHtml = flatChapterHtmlAt(_currentChapterIndex);
     // M2.11/问题3：只注入当前章的高亮（按 chapterIndex 过滤），避免跨章泄漏。
     final inChapter = _allHighlights
         .where((h) => h.chapterIndex == _currentChapterIndex)
@@ -846,17 +955,16 @@ class EpubxRenderer implements EpubRenderer {
 
   @override
   Widget build(BuildContext context) {
-    final chapters = flatChapters;
-    if (chapters.isEmpty) return const SizedBox.shrink();
+    if (_chapters.isEmpty) return const SizedBox.shrink();
     // M2.8/B4 (Bug #1): book-switch race 下 _currentChapterIndex 可能
     // 暂时越界（openFile 把 _book 换了但 _currentChapterIndex 还没重置，
     // 或 gotoLocator 解码出一个超大 chapterIndex）。build 是 Flutter 渲染
     // 管线调用，任何抛出直接红屏。越界返回空白而非抛 RangeError。
     if (_currentChapterIndex < 0 ||
-        _currentChapterIndex >= chapters.length) {
+        _currentChapterIndex >= _chapters.length) {
       return const SizedBox.shrink();
     }
-    final rawHtml = chapters[_currentChapterIndex].HtmlContent ?? '';
+    final rawHtml = flatChapterHtmlAt(_currentChapterIndex);
     final style = TypographyCss.textStyleFromSettings(_typography);
     final (fg, bg) = TypographyCss.themeColors(_typography.theme);
     final margin = _typography.pageMargin.pixelValue.toDouble();

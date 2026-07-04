@@ -21,6 +21,8 @@ import 'package:pdfrx/pdfrx.dart';
 import 'package:reader_engine_epub_view/plain_text_utils.dart';
 
 import '../../data/models/book.dart';
+import '../markdown_book_loader.dart';
+import '../text_book_loader.dart';
 
 /// Raised when an extractor cannot produce any usable text
 /// (e.g. EPUB with empty chapters, or a scanned/image-only PDF).
@@ -112,9 +114,48 @@ class PdfTextExtractor implements BookTextExtractor {
   }
 }
 
+/// M4.5: Markdown / TXT 实现 —— 复用加载器把文件转成 HtmlChapterSource，
+/// 每章 HTML 转 plain text 后拼接（与 EpubTextExtractor 同构，只是解析走
+/// markdown/txt 加载器而非 epubx）。
+class HtmlFileExtractor implements BookTextExtractor {
+  HtmlFileExtractor({required this.isMarkdown});
+
+  /// true = Markdown（按标题切章）；false = TXT（单章）。
+  final bool isMarkdown;
+
+  @override
+  Future<String> extract(Book book) async {
+    final bytes = await File(book.filePath).readAsBytes();
+    final sources = isMarkdown
+        ? MarkdownBookLoader.load(bytes, title: book.title)
+        : TextBookLoader.load(bytes, title: book.title);
+    final buf = StringBuffer();
+    for (final s in sources) {
+      if (s.html.isEmpty) continue;
+      buf
+        ..write(PlainTextUtils.htmlToPlainWithOffsets(s.html).$1)
+        ..write('\n');
+    }
+    final text = buf.toString().trim();
+    if (text.isEmpty) {
+      throw EmptyTextException(
+          '${isMarkdown ? 'Markdown' : 'TXT'} has no extractable text');
+    }
+    return text;
+  }
+}
+
 /// Factory: returns the right extractor for the book's format.
+/// M4.5: 加 markdown / text 分支。
 BookTextExtractor extractorFor(Book book) {
-  return book.format == BookFormat.epub
-      ? EpubTextExtractor()
-      : PdfTextExtractor();
+  switch (book.format) {
+    case BookFormat.epub:
+      return EpubTextExtractor();
+    case BookFormat.pdf:
+      return PdfTextExtractor();
+    case BookFormat.markdown:
+      return HtmlFileExtractor(isMarkdown: true);
+    case BookFormat.text:
+      return HtmlFileExtractor(isMarkdown: false);
+  }
 }

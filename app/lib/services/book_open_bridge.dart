@@ -47,10 +47,16 @@ class BookOpenBridge {
   /// 是否是支持的电子书路径（按扩展名白名单）。
   ///
   /// 大小写不敏感；空字符串返回 false。
+  /// M4.5: 新增 .md / .markdown / .mdown / .txt。
   static bool isSupportedBookPath(String path) {
     if (path.isEmpty) return false;
     final ext = p.extension(path).toLowerCase();
-    return ext == '.epub' || ext == '.pdf';
+    return ext == '.epub' ||
+        ext == '.pdf' ||
+        ext == '.md' ||
+        ext == '.markdown' ||
+        ext == '.mdown' ||
+        ext == '.txt';
   }
 
   /// 处理 native 层推送的文件路径：导入并路由到 reader。

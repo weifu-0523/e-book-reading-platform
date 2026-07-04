@@ -19,6 +19,7 @@ Copyright 2026 ZhiYue Open Source contributors
 - go_router (BSD-3-Clause) - https://pub.dev/packages/go_router
 - http (BSD-3-Clause) - https://pub.dev/packages/http
 - intl (BSD-3-Clause) - https://pub.dev/packages/intl
+- markdown (BSD-3-Clause) - https://pub.dev/packages/markdown
 - meta (BSD-3-Clause) - https://pub.dev/packages/meta
 - path (BSD-3-Clause) - https://pub.dev/packages/path
 - path_provider (BSD-3-Clause) - https://pub.dev/packages/path_provider

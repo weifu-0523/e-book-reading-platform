@@ -28,6 +28,7 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 
 import 'epubx_renderer.dart';
+import 'html_chapter_source.dart';
 import 'src/chapter_end_event.dart';
 
 /// 包装 [EpubxRenderer] 的 [ReaderEngine] 具体实现。
@@ -150,6 +151,32 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
     }
   }
 
+  /// M4.5: 以预解析的格式无关章节源打开（Markdown / TXT 路径）。
+  ///
+  /// 与 [open]（EPUB 路径走 epubx 解析）对应：MD/TXT 不经 epubx，由调用方
+  /// （reader_engine_provider）先用加载器转成 `List<HtmlChapterSource>`，
+  /// 调本方法委托给 [_renderer.openChapters]。复用同一个引擎类型，让
+  /// reader_body 的 `is ConcreteEpubReaderEngine` 检查对 MD/TXT 也成立
+  /// —— 双页/高亮/章节摘录等能力自动继承，零改 UI。
+  Future<void> openChapters(
+    List<HtmlChapterSource> chapters, {
+    String title = '',
+    Locator? lastLocator,
+  }) async {
+    await _renderer.openChapters(chapters, title: title);
+    // M4.5/Q-TOC：与 open() 同步填充 _toc（否则 toc getter 返回 null →
+    // 目录 tab 永久转圈，与 PDF 目录转圈 bug 同构）。openChapters 成功后
+    // 必非 null；失败进 Error 状态时 _renderer.toc 返回 empty TOC。
+    _toc = await _renderer.toc;
+    if (_state is ReaderEngineReady && lastLocator != null) {
+      try {
+        await gotoLocator(lastLocator);
+      } catch (e, st) {
+        debugPrint('CFI restore failed: $e\n$st');
+      }
+    }
+  }
+
   @override
   Future<void> gotoTocEntry(TocEntry entry) =>
       _renderer.gotoLocator(entry.locator);
@@ -159,7 +186,7 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
     final renderer = _renderer;
     final currentIdx = renderer.currentChapterIndex;
     final nextIdx = currentIdx + 1;
-    if (nextIdx < renderer.flatChapters.length) {
+    if (nextIdx < renderer.chapterCount) {
       renderer.setChapter(nextIdx);
     }
     // At end of book: no-op (could emit event later)

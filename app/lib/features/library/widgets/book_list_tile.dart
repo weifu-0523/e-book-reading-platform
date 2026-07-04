@@ -69,11 +69,12 @@ class BookListTile extends StatelessWidget {
               title: book.title,
               aspectRatio: 0.7,
             ),
-            if (book.format == BookFormat.pdf)
-              const Positioned(
+            // M4.5: 所有非 EPUB 格式都显示格式标签。
+            if (book.format != BookFormat.epub)
+              Positioned(
                 right: 0,
                 bottom: 0,
-                child: _PdfChip(),
+                child: _FormatChip(format: book.format),
               ),
             if (preprocess != null &&
                 (preprocess.status == PreprocessStatus.chunking ||
@@ -147,9 +148,12 @@ class _ListChip extends StatelessWidget {
   }
 }
 
-/// PDF 文档标识 chip，叠加在封面右下角。
-class _PdfChip extends StatelessWidget {
-  const _PdfChip();
+/// 格式标识 chip，叠加在封面右下角。
+/// M4.5: 通用化 —— 接收 [BookFormat]，显示对应标签（PDF/Markdown/TXT）。
+class _FormatChip extends StatelessWidget {
+  const _FormatChip({required this.format});
+
+  final BookFormat format;
 
   @override
   Widget build(BuildContext context) {
@@ -159,9 +163,9 @@ class _PdfChip extends StatelessWidget {
         color: Colors.black54,
         borderRadius: BorderRadius.circular(4),
       ),
-      child: const Text(
-        'PDF',
-        style: TextStyle(color: Colors.white, fontSize: 10),
+      child: Text(
+        format.displayLabel,
+        style: const TextStyle(color: Colors.white, fontSize: 10),
       ),
     );
   }

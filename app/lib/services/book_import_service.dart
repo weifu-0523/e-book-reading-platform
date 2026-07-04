@@ -63,8 +63,6 @@ class BookImportService {
     // 调用方未显式提供 format → 走 magic bytes 检测；失败则在 dedup 之后抛出，
     // 以保证同 hash 已入库记录的复用不被打断（dedup-first）。
     final effectiveFormat = format ?? BookFormatDetector.detect(source.path);
-    final extension =
-        effectiveFormat == BookFormat.epub ? 'epub' : 'pdf';
 
     // Dedup by hash（先快路径）
     final existing = await _bookRepository.findByHash(hash);
@@ -78,11 +76,11 @@ class BookImportService {
       );
     }
 
-    // Store file
+    // Store file（extension 在 null 检查后取，effectiveFormat 此处非空）
     final stored = await _fileStorage.storeLibraryFile(
       source: source,
       fileHash: hash,
-      extension: extension,
+      extension: effectiveFormat.fileExtension,
     );
 
     final fileName = p.basenameWithoutExtension(source.path);

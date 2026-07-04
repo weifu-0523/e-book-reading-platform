@@ -34,6 +34,8 @@ dependencies:
   crypto: ^3.0.5
   meta: ^1.15.0
   reorderables: ^0.6.0
+  # M4.5: Markdown → HTML 转换（md/txt 书籍加载器用）
+  markdown: ^7.0.0
 
   # M2 阅读引擎
   reader_engine:

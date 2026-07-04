@@ -13,8 +13,10 @@ constexpr ULONG_PTR kCopyDataArgvTag = 1;
 
 // Check whether a file path is one we should forward to Dart BookOpenBridge.
 // Mirrors BookOpenBridge.isSupportedBookPath on Dart side.
+// M4.5: add .md / .markdown / .mdown / .txt support.
 bool IsSupportedBookPath(const std::string& path) {
-  if (path.size() < 5) return false;  // shortest: ".epub" / ".pdf"
+  // shortest valid: "x.md" (4 chars). Guard against degenerate paths.
+  if (path.size() < 4) return false;
   auto pos = path.find_last_of('.');
   if (pos == std::string::npos) return false;
   std::string ext = path.substr(pos);
@@ -22,7 +24,8 @@ bool IsSupportedBookPath(const std::string& path) {
   for (auto& c : ext) {
     if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
   }
-  return ext == ".epub" || ext == ".pdf";
+  return ext == ".epub" || ext == ".pdf" || ext == ".md" ||
+         ext == ".markdown" || ext == ".mdown" || ext == ".txt";
 }
 
 }  // namespace

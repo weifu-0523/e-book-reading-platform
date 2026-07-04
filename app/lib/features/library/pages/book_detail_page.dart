@@ -160,7 +160,7 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
           Text(AppLocalizations.of(context)!.bookDetailFieldAuthor(book.author!)),
         ],
         const SizedBox(height: 16),
-        Text(AppLocalizations.of(context)!.bookDetailFieldFormat(book.format == BookFormat.epub ? 'EPUB' : 'PDF')),
+        Text(AppLocalizations.of(context)!.bookDetailFieldFormat(book.format.displayLabel)),
         Text(AppLocalizations.of(context)!.bookDetailFieldFileSize(_humanSize(book.fileSizeBytes))),
         Text(AppLocalizations.of(context)!.bookDetailFieldAddedAt(book.addedAt.toLocal().toString())),
         if (book.lastReadAt != null)

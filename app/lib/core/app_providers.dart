@@ -42,15 +42,31 @@ import 'providers.dart';
 /// AI API Key 存储（flutter_secure_storage 持久化）。
 final apiKeyStoreProvider = Provider<ApiKeyStore>((ref) => ApiKeyStore());
 
+/// M4.5: 按 [Book.format] 选择章节文本提供者（AI 伴读/总结/复习共用）。
+///
+/// EPUB → epubx spine；PDF → pdfrx 页文本；MD/TXT → 加载器解析的章节。
+/// 抽成顶层函数，消除 aiGuideProvider / bookPreprocessorProvider /
+/// bookReviewerProvider 三处的重复 ternary（旧代码对未知格式默认走 PDF）。
+ChapterTextProvider chapterTextProviderFor(Book book) {
+  switch (book.format) {
+    case BookFormat.epub:
+      return EpubChapterTextProvider();
+    case BookFormat.pdf:
+      return PdfChapterTextProvider();
+    case BookFormat.markdown:
+      return HtmlFileChapterTextProvider(isMarkdown: true);
+    case BookFormat.text:
+      return HtmlFileChapterTextProvider(isMarkdown: false);
+  }
+}
+
 /// AI Guide：根据 [Book.format] 选择 EPUB / PDF 文本提取与章节文本提供者。
 final aiGuideProvider = Provider<AiGuide>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return AiGuide(
     apiKeys: ref.watch(apiKeyStoreProvider),
     extractorFor: (Book book) => extractorFor(book),
-    chapterTextProviderFor: (Book book) => book.format == BookFormat.epub
-        ? EpubChapterTextProvider()
-        : PdfChapterTextProvider(),
+    chapterTextProviderFor: (Book book) => chapterTextProviderFor(book),
     cache: db.aiSummariesDao,
     httpClient: ref.watch(httpClientProvider),
   );
@@ -66,15 +82,11 @@ final bookPreprocessorProvider = Provider<BookPreprocessorLike>((ref) {
   final keys = ref.watch(apiKeyStoreProvider);
   return BookPreprocessor(
     passagesDao: db.bookPassagesDao,
-    chapterTextProviderFor: (Book book) => book.format == BookFormat.epub
-        ? EpubChapterTextProvider()
-        : PdfChapterTextProvider(),
+    chapterTextProviderFor: chapterTextProviderFor,
     aiGuide: guide,
     apiKeys: keys,
     chapterCountFor: (book) async {
-      final provider = book.format == BookFormat.epub
-          ? EpubChapterTextProvider()
-          : PdfChapterTextProvider();
+      final provider = chapterTextProviderFor(book);
       return provider.count(book.filePath);
     },
     aiSummariesDao: db.aiSummariesDao,
@@ -126,9 +138,7 @@ final bookReviewerProvider = Provider<BookReviewerLike>((ref) {
   final keys = ref.watch(apiKeyStoreProvider);
   final httpClient = ref.watch(httpClientProvider);
   return BookReviewer(
-    chapterTextProviderFor: (Book book) => book.format == BookFormat.epub
-        ? EpubChapterTextProvider()
-        : PdfChapterTextProvider(),
+    chapterTextProviderFor: chapterTextProviderFor,
     notesRepository: ref.watch(notesRepositoryProvider),
     apiKeys: keys,
     aiSummariesDao: db.aiSummariesDao,

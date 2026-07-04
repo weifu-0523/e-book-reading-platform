@@ -256,13 +256,12 @@ class MarkdownExporter {
     }
   }
 
-  static String _sourceLabel(BookFormat f) =>
-      f == BookFormat.epub ? 'EPUB' : 'PDF';
+  /// M4.5: 复用 [BookFormatDb.displayLabel]（支持 markdown/text）。
+  static String _sourceLabel(BookFormat f) => f.displayLabel;
 
-  /// Lowercase machine-readable format tag (matches [BookFormat.name]).
-  /// Distinct from [_sourceLabel] which is a human-readable alias.
-  static String _formatKey(BookFormat f) =>
-      f == BookFormat.epub ? 'epub' : 'pdf';
+  /// Lowercase machine-readable format tag.
+  /// M4.5: 复用 [BookFormatDb.dbValue]（支持 markdown/text）。
+  static String _formatKey(BookFormat f) => f.dbValue;
 
   static String _formatDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-'

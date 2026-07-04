@@ -20,9 +20,14 @@ import 'package:meta/meta.dart';
 ///
 /// 与 M1 `app/lib/data/models/book.dart` 中的 `BookFormat` 同构；
 /// 这里在 reader_engine 重新定义以避免 reader_engine 反向依赖 app 包。
+///
+/// M4.5: 新增 `markdown` / `text`。两者走 HTML 渲染管道（md→html / txt→<p>），
+/// 由 ConcreteEpubReaderEngine.openChapters 接收预解析的 HtmlChapterSource。
 enum BookFormat {
   epub,
   pdf,
+  markdown,
+  text,
 }
 
 /// 渲染层对书籍的轻量引用。

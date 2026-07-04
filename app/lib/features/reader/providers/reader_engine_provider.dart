@@ -24,6 +24,8 @@ import 'package:reader_engine_pdf_view/pdf_renderer.dart';
 import 'package:zhiyue/data/models/book.dart';
 
 import '../../../core/providers.dart';
+import '../../../services/markdown_book_loader.dart';
+import '../../../services/text_book_loader.dart';
 
 /// 给定 bookId，加载 BookRef、查询上次阅读位置，并打开 [ReaderEngine]。
 ///
@@ -44,9 +46,13 @@ final readerEngineForBookProvider =
   final bookRef = re.BookRef(
     id: book.id,
     title: book.title,
-    format: book.format == BookFormat.epub
-        ? re.BookFormat.epub
-        : re.BookFormat.pdf,
+    // M4.5: app BookFormat → reader_engine BookFormat 映射（两者同构）。
+    format: switch (book.format) {
+      BookFormat.epub => re.BookFormat.epub,
+      BookFormat.pdf => re.BookFormat.pdf,
+      BookFormat.markdown => re.BookFormat.markdown,
+      BookFormat.text => re.BookFormat.text,
+    },
     filePath: book.filePath,
   );
 
@@ -59,12 +65,35 @@ final readerEngineForBookProvider =
     );
     return engine;
   }
-  // M4: PDF routing
-  final engine = PdfReaderEngine(renderer: PdfRenderer());
-  final lastProgress = await progressRepo.get(bookId);
-  await engine.openWithLastProgress(
-    book: bookRef,
-    lastLocator: lastProgress?.locator,
-  );
-  return engine;
+  if (bookRef.format == re.BookFormat.pdf) {
+    // M4: PDF routing — pdfrx 原生页渲染
+    final engine = PdfReaderEngine(renderer: PdfRenderer());
+    final lastProgress = await progressRepo.get(bookId);
+    await engine.openWithLastProgress(
+      book: bookRef,
+      lastLocator: lastProgress?.locator,
+    );
+    return engine;
+  }
+  // M4.5: Markdown / TXT routing — 复用 EPUB 的 HTML 渲染管道。
+  // 加载器把文件转成 List<HtmlChapterSource>（md→html / txt→<p>），喂给
+  // ConcreteEpubReaderEngine.openChapters。复用同一引擎类型 → reader_body
+  // 的 `is ConcreteEpubReaderEngine` 检查对 md/txt 也成立，双页/高亮/
+  // 章节摘录等能力自动继承，零改 UI。
+  if (bookRef.format == re.BookFormat.markdown ||
+      bookRef.format == re.BookFormat.text) {
+    final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+    final lastProgress = await progressRepo.get(bookId);
+    final sources = bookRef.format == re.BookFormat.markdown
+        ? await MarkdownBookLoader.loadFile(book.filePath, title: book.title)
+        : await TextBookLoader.loadFile(book.filePath, title: book.title);
+    await engine.openChapters(
+      sources,
+      title: book.title,
+      lastLocator: lastProgress?.locator,
+    );
+    return engine;
+  }
+  // 防御性兜底：未来新增格式若忘了在此路由，明确报错而非静默走 PDF。
+  throw StateError('Unsupported book format: ${book.format}');
 });
