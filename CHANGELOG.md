@@ -13,6 +13,21 @@ v1.5.1-alpha 之后的新变更将记在此处。
 
 用户拉取 M3a-d 后上手测试，反馈 6 个问题（Q1 段落缩进未生效 / Q2 末页依旧居中 / Q3 字体太少 / Q4 书架字号按钮挪位 / Q5 摘录条跟随选区 / Q6 删除键找不到）。Q7 是 Q6 的修正补丁：用户反馈「摘录、书签右键菜单这个功能没看到」。
 
+#### Fixed — Q2（重审）末页居中诊断 + 回归测试改测真实坐标
+
+第二轮用户反馈「末页依旧居中」。深入诊断后纠正了 M3e-Q2 第一版的误判：
+
+- **M3e-Q2 第一版的测试是「假绿」**：只断言 `SingleChildScrollView.child isA<Padding>`（结构上没有 Align），从未测量文字的真实绘制 y 坐标。结构对 ≠ 渲染对，测试过了用户仍看到居中。
+- **新写 3 个坐标测量测试**（直接读 `RichText.top`）：
+  - paged 单页短内容：首行 `top < viewport/3`（实测 top≈72，居中应≈300）
+  - paged 多页章节**真正末页**（`jumpToPage` 到最后）：首行 `top < 200`
+  - scroll 模式短内容：`top < 200`
+- **三测全过**，证明源码末页文字始终顶部对齐。代码层面**根本不会居中**——fwfh 内部用 `Column(MainAxisSize.min, mainAxisAlignment.start)`，在 `SingleChildScrollView` 无限高度约束下天然从顶排。
+- **用户看到居中的真因**：Debug 目录 `zhiyue.exe` 时间戳 `02:11` 早于 Q2 修复 commit（`18:11`），用户运行的是旧版二进制。M3a 曾误包 `Align(topCenter)`（后证实在 SingleChildScrollView 内是 no-op），但更早的版本可能有其它居中来源；不论如何，**当前源码已确认顶部对齐，干净重建后即可生效**。
+- renderer 新增两个 `@visibleForTesting` 入口供坐标测试导航：`pageControllerForTest`（翻末页）、`cachedBreakCountForTest`（取页数）。
+
+
+
 #### Added — Q7 阅读器内抽屉摘录 tab 补右键菜单 + 可见按钮（修正 Q6「没看到」）
 
 用户反馈「摘录、书签右键菜单这个功能没看到」。核查发现：Q6 只处理了**独立的摘录页**（`/notes`）和**书签列表**（共用 ReaderBookmarkList，drawer + BookmarksPage 都覆盖），但**阅读器内侧边抽屉的摘录 tab**（`notes_drawer.dart`）漏了 —— 那里的 AnnotationTile 只接了 onTap/onLongPress，没有右键、没有可见按钮。这就是用户"没看到"的地方。
