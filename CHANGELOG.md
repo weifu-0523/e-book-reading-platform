@@ -11,7 +11,21 @@ v1.5.1-alpha 之后的新变更将记在此处。
 
 ### M3e — 2026-07-03（阅读体验第二批修复，进行中）
 
-用户拉取 M3a-d 后上手测试，反馈 6 个问题（Q1 段落缩进未生效 / Q2 末页依旧居中 / Q3 字体太少 / Q4 书架字号按钮挪位 / Q5 摘录条跟随选区 / Q6 删除键找不到）。
+用户拉取 M3a-d 后上手测试，反馈 6 个问题（Q1 段落缩进未生效 / Q2 末页依旧居中 / Q3 字体太少 / Q4 书架字号按钮挪位 / Q5 摘录条跟随选区 / Q6 删除键找不到）。Q7 是 Q6 的修正补丁：用户反馈「摘录、书签右键菜单这个功能没看到」。
+
+#### Added — Q7 阅读器内抽屉摘录 tab 补右键菜单 + 可见按钮（修正 Q6「没看到」）
+
+用户反馈「摘录、书签右键菜单这个功能没看到」。核查发现：Q6 只处理了**独立的摘录页**（`/notes`）和**书签列表**（共用 ReaderBookmarkList，drawer + BookmarksPage 都覆盖），但**阅读器内侧边抽屉的摘录 tab**（`notes_drawer.dart`）漏了 —— 那里的 AnnotationTile 只接了 onTap/onLongPress，没有右键、没有可见按钮。这就是用户"没看到"的地方。
+
+补齐（与独立摘录页同款交互）：
+- `notes_drawer.dart`（`NotesDrawerContent` + `NotesDrawer`）加可选回调 `onSecondaryTapDown(id, globalPos)` / `onEdit(id)` / `onExport(id)` / `onDelete(id)`，全 null 时向后兼容（无右键、无可见按钮，与旧版完全一致）。
+- `reader_drawer_builders.dart` `ReaderNotesDrawerWrapper` 加同名回调透传。
+- `reader_body.dart` 加 `_onAnnotationSecondaryTapDown`（弹 `showAnnotationContextMenu` 5 项桌面右键菜单，与 notes_page 同款）+ `_onAnnotationEdit/Export/Delete`（可见按钮）+ `_dispatchAnnotationAction` / `_showNoteEditor` / `_copyText` / `_exportAnnotation` 共用 helper + `_annotationById` 反查。右键删除直接删（右键是明确二次操作），可见删除按钮弹确认。两处 wrapper 调用点（窄屏 + 宽屏）都接入。
+- 搜索高亮结果页（`search_highlights_page.dart`）本次未改（那是搜索场景，非"摘录/书签页面"，列为后续）。
+
+测试：`notes_drawer_test.dart` +5 cases（无回调向后兼容 / 有回调渲染 3 按钮 / 右键触发 onSecondaryTapDown 带 id+坐标 / 编辑按钮触发 onEdit / 删除按钮触发 onDelete）。8 cases 全过。reader_body 11 cases 无回归。
+
+#### Added — Q3 新增 2 款字体（共 5 款 + 系统）
 
 #### Added — Q3 新增 2 款字体（共 5 款 + 系统）
 

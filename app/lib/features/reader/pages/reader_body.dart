@@ -35,6 +35,9 @@ import '../../../core/providers.dart';
 import '../../../core/widgets/loading_view.dart';
 import '../../../data/local/database.dart' show BookmarkEntry;
 import '../../../data/models/annotation.dart';
+import '../../notes/services/markdown_exporter.dart';
+import '../../notes/services/note_file_writer.dart';
+import '../../notes/widgets/annotation_context_sheet.dart';
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
@@ -417,6 +420,11 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           chapterTitles: _chapterTitlesCache,
           onAnnotationTap: (id) => _onAnnotationTap(id),
           onAnnotationLongPress: (id) => _onAnnotationLongPress(id),
+          // M3e/Q7：抽屉摘录右键 + 可见操作按钮。
+          onAnnotationSecondaryTapDown: _onAnnotationSecondaryTapDown,
+          onAnnotationEdit: _onAnnotationEdit,
+          onAnnotationExport: _onAnnotationExport,
+          onAnnotationDelete: _onAnnotationDelete,
         ),
         onSwitchTab: (tab) => ref
             .read(readerUiControllerProvider.notifier)
@@ -495,6 +503,12 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                               onAnnotationTap: (id) => _onAnnotationTap(id),
                               onAnnotationLongPress: (id) =>
                                   _onAnnotationLongPress(id),
+                              // M3e/Q7：抽屉摘录右键 + 可见操作按钮（宽屏路径）。
+                              onAnnotationSecondaryTapDown:
+                                  _onAnnotationSecondaryTapDown,
+                              onAnnotationEdit: _onAnnotationEdit,
+                              onAnnotationExport: _onAnnotationExport,
+                              onAnnotationDelete: _onAnnotationDelete,
                             ),
                             onSwitchTab: (tab) => ref
                                 .read(readerUiControllerProvider.notifier)
@@ -742,6 +756,144 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         ),
       ),
     );
+  }
+
+  /// M3e/Q7：抽屉摘录右键 → 弹桌面原生右键菜单（编辑/删除/复制摘录/
+  /// 复制 Markdown/导出），与 notes_page 桌面右键同款（共用
+  /// showAnnotationContextMenu）。按 id 反查 annotation（与 tap/longPress 同模式）。
+  Future<void> _onAnnotationSecondaryTapDown(
+      String id, Offset globalPosition) async {
+    final ann = _annotationById(id);
+    if (ann == null || !mounted) return;
+    final action =
+        await showAnnotationContextMenu(context, globalPosition);
+    if (action == null || !mounted) return;
+    await _dispatchAnnotationAction(action, ann);
+  }
+
+  /// M3e/Q7：抽屉摘录「编辑」可见按钮 → 复用 NoteEditorSheet（与长按同）。
+  Future<void> _onAnnotationEdit(String id) async {
+    final ann = _annotationById(id);
+    if (ann == null || !mounted) return;
+    await _showNoteEditor(ann);
+  }
+
+  /// M3e/Q7：抽屉摘录「导出」可见按钮 → 单条 Markdown 存文件。
+  Future<void> _onAnnotationExport(String id) async {
+    final ann = _annotationById(id);
+    if (ann == null || !mounted) return;
+    await _exportAnnotation(ann);
+  }
+
+  /// M3e/Q7：抽屉摘录「删除」可见按钮 → 弹确认对话框，确认后删。
+  Future<void> _onAnnotationDelete(String id) async {
+    final ann = _annotationById(id);
+    if (ann == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除摘录'),
+        content: Text('确定删除这条摘录吗？此操作不可撤销。\n\n'
+            '「${ann.quote.length > 40 ? '${ann.quote.substring(0, 40)}…' : ann.quote}」'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await ref.read(notesControllerProvider.notifier).deleteAnnotation(ann.id);
+  }
+
+  /// M3e/Q7：从 notesController 反查 annotation（tap/longPress/右键/可见按钮共用）。
+  Annotation? _annotationById(String id) {
+    final notesState = ref.read(notesControllerProvider).valueOrNull;
+    return notesState?.annotations
+        .cast<Annotation?>()
+        .firstWhere((a) => a?.id == id, orElse: () => null);
+  }
+
+  /// M3e/Q7：右键菜单 action 分发（编辑/删除/复制摘录/复制 Markdown/导出）。
+  Future<void> _dispatchAnnotationAction(
+      AnnotationContextAction action, Annotation ann) async {
+    switch (action) {
+      case AnnotationContextAction.edit:
+        await _showNoteEditor(ann);
+        break;
+      case AnnotationContextAction.delete:
+        // 右键删除：直接删（右键本身是明确二次操作）。可见按钮走确认。
+        await ref.read(notesControllerProvider.notifier).deleteAnnotation(ann.id);
+        break;
+      case AnnotationContextAction.copyQuote:
+        await _copyText(ann.quote, '已复制');
+        break;
+      case AnnotationContextAction.copyMarkdown:
+        await _copyText(MarkdownExporter.exportSingle(ann), '已复制 Markdown 片段');
+        break;
+      case AnnotationContextAction.export:
+        await _exportAnnotation(ann);
+        break;
+    }
+  }
+
+  /// M3e/Q7：弹 NoteEditorSheet 编辑（抽屉长按 / 右键编辑 / 可见编辑按钮共用）。
+  Future<void> _showNoteEditor(Annotation ann) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: NoteEditorSheet(
+          annotation: ann,
+          suggestions: const [],
+          onSave: (note, color) async {
+            await ref.read(notesControllerProvider.notifier).updateAnnotation(
+                  ann.copyWith(note: note, color: color),
+                );
+          },
+          onDelete: () async {
+            await ref
+                .read(notesControllerProvider.notifier)
+                .deleteAnnotation(ann.id);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// M3e/Q7：复制到剪贴板 + SnackBar。
+  Future<void> _copyText(String text, String toast) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(toast)));
+  }
+
+  /// M3e/Q7：单条摘录导出为 Markdown 文件。
+  Future<void> _exportAnnotation(Annotation ann) async {
+    final markdown = MarkdownExporter.exportSingle(ann);
+    final name = NoteFileWriter.sanitizeForFilename(ann.quote);
+    try {
+      final path = await NoteFileWriter.saveMarkdownFile(
+        content: markdown,
+        suggestedName: name,
+      );
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已保存：$path')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败：$e')),
+      );
+    }
   }
 
   int _currentChapterIndex() {

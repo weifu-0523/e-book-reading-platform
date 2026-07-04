@@ -32,6 +32,15 @@ class NotesDrawerContent extends StatelessWidget {
   final ValueChanged<String> onLongPress;
   final VoidCallback onClose;
 
+  /// M3e/Q7：摘录右键 / 可见操作按钮回调。这些是按 annotation id 委托的
+  /// （与 onTap/onLongPress 一致），由父级（reader_body）反查 annotation 后
+  /// 弹菜单或执行操作。全 null 时（旧行为）AnnotationTile 不渲染 actions 行、
+  /// 不接右键 —— 向后兼容。
+  final void Function(String id, Offset globalPosition)? onSecondaryTapDown;
+  final ValueChanged<String>? onEdit;
+  final ValueChanged<String>? onExport;
+  final ValueChanged<String>? onDelete;
+
   const NotesDrawerContent({
     super.key,
     required this.annotations,
@@ -39,6 +48,10 @@ class NotesDrawerContent extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     required this.onClose,
+    this.onSecondaryTapDown,
+    this.onEdit,
+    this.onExport,
+    this.onDelete,
   });
 
   @override
@@ -86,6 +99,20 @@ class NotesDrawerContent extends StatelessWidget {
                           chapterTitle: null,
                           onTap: () => onTap(a.id),
                           onLongPress: () => onLongPress(a.id),
+                          // M3e/Q7：右键 + 可见操作按钮（编辑/导出/删除）。
+                          // 按 id 委托给父级（reader_body 反查 annotation）。
+                          onSecondaryTapDown: onSecondaryTapDown == null
+                              ? null
+                              : (globalPos) =>
+                                  onSecondaryTapDown!(a.id, globalPos),
+                          onEdit:
+                              onEdit == null ? null : () => onEdit!(a.id),
+                          onExport: onExport == null
+                              ? null
+                              : () => onExport!(a.id),
+                          onDelete: onDelete == null
+                              ? null
+                              : () => onDelete!(a.id),
                         )),
                   ],
                 );
@@ -119,6 +146,12 @@ class NotesDrawer extends StatelessWidget {
   final ValueChanged<String> onLongPress;
   final VoidCallback onClose;
 
+  /// M3e/Q7：同 NotesDrawerContent 的可选回调，透传。
+  final void Function(String id, Offset globalPosition)? onSecondaryTapDown;
+  final ValueChanged<String>? onEdit;
+  final ValueChanged<String>? onExport;
+  final ValueChanged<String>? onDelete;
+
   const NotesDrawer({
     super.key,
     required this.annotations,
@@ -126,6 +159,10 @@ class NotesDrawer extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     required this.onClose,
+    this.onSecondaryTapDown,
+    this.onEdit,
+    this.onExport,
+    this.onDelete,
   });
 
   @override
@@ -137,6 +174,10 @@ class NotesDrawer extends StatelessWidget {
         onTap: onTap,
         onLongPress: onLongPress,
         onClose: onClose,
+        onSecondaryTapDown: onSecondaryTapDown,
+        onEdit: onEdit,
+        onExport: onExport,
+        onDelete: onDelete,
       ),
     );
   }

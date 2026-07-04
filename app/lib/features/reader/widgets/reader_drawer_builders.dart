@@ -85,11 +85,22 @@ class ReaderNotesDrawerWrapper extends ConsumerWidget {
     required this.chapterTitles,
     required this.onAnnotationTap,
     required this.onAnnotationLongPress,
+    this.onAnnotationSecondaryTapDown,
+    this.onAnnotationEdit,
+    this.onAnnotationExport,
+    this.onAnnotationDelete,
   });
 
   final Map<int, String> chapterTitles;
   final ValueChanged<String> onAnnotationTap;
   final ValueChanged<String> onAnnotationLongPress;
+
+  /// M3e/Q7：摘录右键 + 可见操作按钮（按 id 委托回 reader_body）。
+  final void Function(String id, Offset globalPosition)?
+      onAnnotationSecondaryTapDown;
+  final ValueChanged<String>? onAnnotationEdit;
+  final ValueChanged<String>? onAnnotationExport;
+  final ValueChanged<String>? onAnnotationDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -101,6 +112,10 @@ class ReaderNotesDrawerWrapper extends ConsumerWidget {
         onTap: onAnnotationTap,
         onLongPress: onAnnotationLongPress,
         onClose: () => Navigator.of(context).maybePop(),
+        onSecondaryTapDown: onAnnotationSecondaryTapDown,
+        onEdit: onAnnotationEdit,
+        onExport: onAnnotationExport,
+        onDelete: onAnnotationDelete,
       ),
       loading: () => const LoadingView(),
       error: (e, _) =>

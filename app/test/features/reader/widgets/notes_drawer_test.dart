@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/data/models/annotation.dart';
@@ -67,5 +68,110 @@ void main() {
     )));
     await tester.tap(find.text('qa1'));
     expect(tappedId, 'a1');
+  });
+
+  group('M3e/Q7: right-click + visible action buttons', () {
+    testWidgets('no callbacks → no action buttons / no right-click wiring',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+        body: NotesDrawer(
+          annotations: [_a('a1', 0)],
+          chapterTitles: const {0: 'ch'},
+          onTap: (_) {},
+          onLongPress: (_) {},
+          onClose: () {},
+        ),
+      )));
+      // 旧行为：无可见按钮、无右键（向后兼容）。
+      expect(find.byTooltip('编辑笔记'), findsNothing);
+      expect(find.byTooltip('删除'), findsNothing);
+      expect(find.byTooltip('导出'), findsNothing);
+    });
+
+    testWidgets('providing callbacks renders visible 编辑/导出/删除 buttons',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+        body: NotesDrawer(
+          annotations: [_a('a1', 0)],
+          chapterTitles: const {0: 'ch'},
+          onTap: (_) {},
+          onLongPress: (_) {},
+          onClose: () {},
+          onEdit: (_) {},
+          onExport: (_) {},
+          onDelete: (_) {},
+        ),
+      )));
+      expect(find.byTooltip('编辑笔记'), findsOneWidget);
+      expect(find.byTooltip('导出'), findsOneWidget);
+      expect(find.byTooltip('删除'), findsOneWidget);
+    });
+
+    testWidgets('right-click fires onSecondaryTapDown with id + position',
+        (tester) async {
+      String? clickedId;
+      Offset? clickedPos;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+        body: NotesDrawer(
+          annotations: [_a('a1', 0)],
+          chapterTitles: const {0: 'ch'},
+          onTap: (_) {},
+          onLongPress: (_) {},
+          onClose: () {},
+          onSecondaryTapDown: (id, pos) {
+            clickedId = id;
+            clickedPos = pos;
+          },
+        ),
+      )));
+      // 模拟右键（secondary mouse tap）。
+      final location = tester.getCenter(find.text('qa1'));
+      final gesture = await tester.startGesture(
+        location,
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(clickedId, 'a1');
+      expect(clickedPos, isNotNull);
+    });
+
+    testWidgets('visible 编辑 button fires onEdit with id', (tester) async {
+      String? editedId;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+        body: NotesDrawer(
+          annotations: [_a('a1', 0)],
+          chapterTitles: const {0: 'ch'},
+          onTap: (_) {},
+          onLongPress: (_) {},
+          onClose: () {},
+          onEdit: (id) => editedId = id,
+        ),
+      )));
+      await tester.tap(find.byTooltip('编辑笔记'));
+      expect(editedId, 'a1');
+    });
+
+    testWidgets('visible 删除 button fires onDelete with id', (tester) async {
+      String? deletedId;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+        body: NotesDrawer(
+          annotations: [_a('a1', 0)],
+          chapterTitles: const {0: 'ch'},
+          onTap: (_) {},
+          onLongPress: (_) {},
+          onClose: () {},
+          onDelete: (id) => deletedId = id,
+        ),
+      )));
+      await tester.tap(find.byTooltip('删除'));
+      expect(deletedId, 'a1');
+    });
   });
 }
