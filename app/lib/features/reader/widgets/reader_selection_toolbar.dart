@@ -22,16 +22,35 @@ import 'highlight_selection_controls.dart';
 /// Floating selection toolbar overlay extracted from `reader_body.dart`.
 ///
 /// Renders nothing (`SizedBox.shrink()`) when [selection] is null or its
-/// `plainText` is empty. Otherwise renders [HighlightSelectionControls]
-/// inside a [Positioned] at the top of the parent [Stack].
+/// `plainText` is empty. Otherwise renders [HighlightSelectionControls].
 ///
-/// Caller is responsible for owning the [SelectedContent] state and passing
-/// the 3 tap callbacks (摘录 / 复制 / 可选 AI 点评). This widget has no internal state.
+/// **M3b/任务9：工具条跟随选区定位。**
+/// - 若 [selectionRect]（选区在 reader stack 内的局部 Rect）非空：工具条
+///   优先显示在选区**上方**（`top = rect.top - toolbarHeight - 8`）；若上方
+///   空间不足（< 8px）则翻到选区**下方**（`top = rect.bottom + 8`）；水平方向
+///   以选区中心居中，并 clamp 到 `[8, screenWidth - 8 - toolbarWidth]`，避免
+///   越界。此分支实现 spec D3 的「跟随」语义。
+/// - 若 [selectionRect] 为空（移动端、坐标不可用，或当前 Flutter 版本的
+///   SelectableRegion 不暴露选区坐标）：fallback 到原「顶部居中」定位
+///   （`top:80, left:16, right:16, Center`）。保证不崩（约束 #3）。
+///
+/// Caller 负责持有 [SelectedContent] 状态并传入 3 个回调（摘录 / 复制 /
+/// 可选 AI 点评）。本 widget 无内部状态。
 class ReaderSelectionToolbar extends StatelessWidget {
   final SelectedContent? selection;
   final VoidCallback onExcerpt;
   final VoidCallback onCopy;
   final VoidCallback? onAiComment;
+
+  /// M3b/任务9：选区在父 [Stack] 局部坐标系内的 Rect。非空时工具条跟随
+  /// 选区定位；为空时走 fallback 顶部居中。坐标由 reader_body 通过
+  /// SelectionListenerNotifier（升级版 Flutter）或其它坐标源填充；
+  /// 当前 Flutter 版本不可用时传 null。
+  final Rect? selectionRect;
+
+  /// M3b/任务9：父 Stack（reader 区域）的尺寸，用于水平 clamp。跟随定位
+  /// 模式（[selectionRect] 非空）时必传；fallback 模式可省略。
+  final Size? stackSize;
 
   const ReaderSelectionToolbar({
     super.key,
@@ -39,6 +58,8 @@ class ReaderSelectionToolbar extends StatelessWidget {
     required this.onExcerpt,
     required this.onCopy,
     this.onAiComment,
+    this.selectionRect,
+    this.stackSize,
   });
 
   @override
@@ -47,17 +68,43 @@ class ReaderSelectionToolbar extends StatelessWidget {
     if (sel == null || sel.plainText.isEmpty) {
       return const SizedBox.shrink();
     }
+    final controls = HighlightSelectionControls(
+      onExcerpt: onExcerpt,
+      onCopy: onCopy,
+      onAiComment: onAiComment,
+    );
+
+    final rect = selectionRect;
+    final size = stackSize;
+    // 跟随定位：有选区 rect + 屏幕尺寸 → 按选区上方/下方定位。
+    if (rect != null && size != null) {
+      // 估值常量：与 HighlightSelectionControls 的实际渲染尺寸接近，
+      // 用于定位计算。即使略偏，clamp 与上下方选择逻辑仍能保证可见。
+      const toolbarHeight = 48.0;
+      const toolbarWidth = 220.0;
+      const margin = 8.0;
+
+      double top = rect.top - toolbarHeight - margin;
+      if (top < margin) {
+        // 上方空间不足 → 翻到选区下方。
+        top = rect.bottom + margin;
+      }
+      double left = rect.center.dx - toolbarWidth / 2;
+      final maxLeft = size.width - toolbarWidth - margin;
+      left = left.clamp(margin, maxLeft < margin ? margin : maxLeft);
+      return Positioned(
+        top: top,
+        left: left,
+        child: controls,
+      );
+    }
+
+    // Fallback：顶部居中（原行为，移动端 / 坐标不可用）。
     return Positioned(
       top: 80,
       left: 16,
       right: 16,
-      child: Center(
-        child: HighlightSelectionControls(
-          onExcerpt: onExcerpt,
-          onCopy: onCopy,
-          onAiComment: onAiComment,
-        ),
-      ),
+      child: Center(child: controls),
     );
   }
 }

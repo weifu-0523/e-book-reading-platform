@@ -9,6 +9,34 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M3b — 2026-07-03（阅读交互增强：翻页动画微调/悬停翻页箭头/摘录工具条跟随选区）
+
+用户反馈阅读交互手感 3 项：翻页要左右箭头提示、翻页要有 PPT 式平移过渡、选文字后摘录工具条应跟着选区走（不要老固定屏幕中间顶部）。Spec: `docs/superpowers/specs/2026-07-03-m3b-reading-interaction-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3b-reading-interaction.md`。
+
+#### Changed — 任务 8 翻页动画微调（PPT 式平移）
+
+- **章内程序化翻页 200ms easeOut → 300ms easeInOutCubic**：`reader_engine_epub_view/lib/epubx_renderer.dart` 的 `nextPage()` / `previousPage()`。提取类常量 `_pageAnimDuration`（300ms）/ `_pageAnimCurve`（`Curves.easeInOutCubic`），比原 200ms easeOut 更顺滑、有进出节奏，更接近 PPT 平移观感。
+- **跨章 `jumpToPage`（章末/章首换章路径）保持瞬切不变**：跨章换内容时动画会闪烁，瞬切更稳。
+
+#### Added — 任务 1 左右空白悬停翻页箭头
+
+- 现有翻页点击 zone（`reader_scaffold.dart` 左右 `marginPx` 宽的透明 GestureDetector）无视觉反馈，桌面端用户不知点哪能翻。
+- `_ReaderScaffoldState` 加 `bool _hoverLeft/_hoverRight`；左右 `Positioned` 外层包 `MouseRegion(onEnter/onExit)`，hover 为 true 时在 zone 中央叠 `IgnorePointer(child: 半透明圆形背景 + chevron 箭头)`。
+- **箭头用 IgnorePointer 包裹**，不消费底层 GestureDetector 的 onTapUp（翻页手势正常）。**仅桌面端有效**（移动端无鼠标，onEnter/onExit 永不触发，行为不变）。箭头颜色取 `Theme.of(context).iconTheme.color` + 半透明，暗/亮主题自适应。
+
+#### Added — 任务 9 摘录工具条跟随选区定位逻辑
+
+- 原 `reader_selection_toolbar.dart` 固定 `top:80, left:16, right:16, Center`，与选区位置无关。
+- **新增 `selectionRect` + `stackSize` 参数**：非空时工具条优先显示在选区**上方**（`top = rect.top - toolbarHeight - 8`）；上方空间不足（< 8px）则翻到选区**下方**（`top = rect.bottom + 8`）；水平以选区中心居中并 clamp 到 `[8, screenWidth - 8 - toolbarWidth]`，避免越界。实现 spec D3 的「跟随」语义。
+- **fallback 分支保留**（约束 #3）：`selectionRect` 为空时回退原「顶部居中」定位，保证不崩。`reader_body.dart` 加 `_selectionRect`（当前始终 null）+ `_stackKey`（GlobalKey，供坐标转换预留）。
+- **API 兼容说明（重要偏离）**：spec/plan 假设的 `SelectableRegion.selectionNotifier` 参数 + `SelectionDetails.selectionStartCoords/EndCoords` 字段**在当前 Flutter 3.44.4 不存在**（属于更新版本 API）。实测：`SelectableRegion` 构造函数无 `selectionNotifier` 参数；`SelectionDetails` 只有 `range`/`status`，无坐标字段；`SelectionListenerNotifier` 也未从 `widgets.dart`/`material.dart` 公开导出（仅在 `selectable_region.dart` 私有定义，且配合独立的 `SelectionListener` widget，无法挂到 SelectableRegion）。故当前版本 `_selectionRect` 暂时始终为 null，工具条走 fallback。**跟随定位逻辑与全套测试已 ready-to-use**，待 Flutter 升级提供坐标 API 后，只需在 `reader_body._onSelectionChanged` 填充 `_selectionRect` 即可立即生效，无需改动工具条。
+
+#### 测试
+
+- `reader_engine_epub_view/test/`：翻页动画相关测试（`epubx_renderer_cross_chapter_back_page_test.dart` / `epubx_renderer_setters_emit_state_test.dart`）全过（走 jumpToPage 瞬切路径，不依赖动画时长，无需改断言）。
+- `app/test/features/reader/widgets/reader_scaffold_hover_test.dart`（新）：hover 左/右 zone 显示对应 chevron 箭头；hover 退出箭头消失；箭头在 IgnorePointer 子树内且点击仍翻页。4 测试全过。
+- `app/test/features/reader/widgets/reader_selection_toolbar_test.dart`（扩）：跟随定位（上方/下方/clamp 左/clamp 右/null fallback）5 测试全过，用直接传入 Rect 验证 Positioned 逻辑（不依赖真实 selection）。
+
 ### M3a — 2026-07-04（排版基线增强：默认值/段落缩进/末页对齐/常用字体）
 
 用户 2026-07-03 提交 10 项体验优化清单，本里程碑处理其中与「文字排版观感」直接相关的 4 项（任务 7/2/4/5）。Spec: `docs/superpowers/specs/2026-07-03-m3a-typography-baseline-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3a-typography-baseline.md`。

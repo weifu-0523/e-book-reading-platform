@@ -131,6 +131,12 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
   /// 点击后能 [_reclaimFocus] 重新获焦，避免 ESC/F11/方向键被按钮节点吞掉。
   late final FocusNode _focusNode;
 
+  /// M3b/任务1：鼠标悬停左/右翻页 zone 时显示半透明箭头提示。
+  ///
+  /// 移动端无鼠标，onEnter/onExit 永不触发，箭头不显示，行为不变。
+  bool _hoverLeft = false;
+  bool _hoverRight = false;
+
   @override
   void initState() {
     super.initState();
@@ -191,30 +197,60 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
             widget.content,
 
             // T9 左空白边：tap = prev；水平拖拽同。
+            // M3b/任务1：外层 MouseRegion 检测桌面端鼠标 hover，显示翻页箭头提示。
             if (zoneWidth > 0)
               Positioned(
                 left: 0,
                 top: 0,
                 bottom: 0,
                 width: zoneWidth.toDouble(),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapUp: (_) => widget.onTapPrev(),
-                  onHorizontalDragEnd: _handleDragEnd,
+                child: MouseRegion(
+                  onEnter: (_) => setState(() => _hoverLeft = true),
+                  onExit: (_) => setState(() => _hoverLeft = false),
+                  child: Stack(
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (_) => widget.onTapPrev(),
+                        onHorizontalDragEnd: _handleDragEnd,
+                      ),
+                      if (_hoverLeft)
+                        IgnorePointer(
+                          child: Center(
+                            child: _buildHoverArrow(Icons.chevron_left),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
 
             // T9 右空白边：tap = next；水平拖拽同。
+            // M3b/任务1：外层 MouseRegion 检测桌面端鼠标 hover，显示翻页箭头提示。
             if (zoneWidth > 0)
               Positioned(
                 right: 0,
                 top: 0,
                 bottom: 0,
                 width: zoneWidth.toDouble(),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapUp: (_) => widget.onTapNext(),
-                  onHorizontalDragEnd: _handleDragEnd,
+                child: MouseRegion(
+                  onEnter: (_) => setState(() => _hoverRight = true),
+                  onExit: (_) => setState(() => _hoverRight = false),
+                  child: Stack(
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (_) => widget.onTapNext(),
+                        onHorizontalDragEnd: _handleDragEnd,
+                      ),
+                      if (_hoverRight)
+                        IgnorePointer(
+                          child: Center(
+                            child: _buildHoverArrow(Icons.chevron_right),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
 
@@ -462,5 +498,24 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     } else if (v > ReaderScaffold.dragVelocityThreshold) {
       widget.onTapPrev();
     }
+  }
+
+  /// M3b/任务1：构建半透明翻页箭头（桌面端鼠标 hover 时显示）。
+  ///
+  /// 圆形半透明背景 + chevron icon，颜色取自当前主题 [IconTheme]，
+  /// 暗/亮主题自适应。整个 widget 由调用方用 [IgnorePointer] 包裹，
+  /// 不消费底层 [GestureDetector] 的 tap，确保翻页手势正常。
+  Widget _buildHoverArrow(IconData icon) {
+    final iconColor = IconTheme.of(context).color ?? Colors.white;
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.black.withValues(alpha: 0.28),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, color: iconColor.withValues(alpha: 0.7), size: 32),
+    );
   }
 }

@@ -124,6 +124,19 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   SelectedContent? _selection;
   Locator? _currentLocation;
 
+  // M3b/任务9：选区在 reader stack 局部坐标系内的 Rect，用于驱动摘录工具条
+  // 跟随选区定位。当前 Flutter 3.44.4 的 SelectableRegion 不暴露选区坐标
+  // （无 selectionNotifier 参数，SelectionDetails 无 coords 字段），故此字段
+  // 暂时始终为 null → 工具条走 fallback 顶部居中（与原行为一致，不崩）。
+  // 待 Flutter 升级提供坐标 API 后，在 _onSelectionChanged 中填充本字段，
+  // 工具条跟随逻辑（reader_selection_toolbar.dart）即可立即生效。
+  Rect? _selectionRect;
+
+  // M3b/任务9：reader 主 Stack 的 GlobalKey，供选区坐标全局→局部转换
+  // （RenderBox.globalToLocal）。当前未填充 _selectionRect，但保留以备
+  // Flutter 升级后使用。
+  final GlobalKey _stackKey = GlobalKey();
+
   // 章节标题缓存。build 中从 engine.toc 通过 TocTitleResolver 解析得到，
   // 供高亮 locator 的 chapterTitle 字段使用。
   Map<int, String> _chapterTitlesCache = const {};
@@ -437,6 +450,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   Widget _buildReaderStack(ReaderUiState ui) {
     return Builder(
       builder: (innerContext) => Stack(
+        key: _stackKey,
         children: [
           SelectableRegion(
             selectionControls: materialTextSelectionControls,
@@ -524,6 +538,8 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             ),
           ReaderSelectionToolbar(
             selection: _selection,
+            selectionRect: _selectionRect,
+            stackSize: MediaQuery.sizeOf(context),
             onExcerpt: _openExcerptSheet,
             onCopy: _onCopySelection,
             onAiComment: _onAiComment,

@@ -54,6 +54,14 @@ class EpubxRenderer implements EpubRenderer {
   /// "at chapter end" and emits a [ChapterEndEvent].
   static const double _kChapterEndScrollThresholdPx = 64;
 
+  /// M3b/任务8：章内程序化翻页动画时长与曲线。
+  ///
+  /// PPT 式平移过渡：300ms easeInOutCubic 比 200ms easeOut 更顺滑，
+  /// 有进出节奏。跨章 [PageController.jumpToPage] 保持瞬切（见
+  /// [nextPage] 章末换章、[previousPage] 章首换章路径），动画会闪烁。
+  static const Duration _pageAnimDuration = Duration(milliseconds: 300);
+  static const Curve _pageAnimCurve = Curves.easeInOutCubic;
+
   final _stateController = StreamController<ReaderEngineState>.broadcast();
   final _locationController = StreamController<Locator>.broadcast();
   final StreamController<HighlightSelection> _selectionController =
@@ -238,8 +246,8 @@ class EpubxRenderer implements EpubRenderer {
       return _nextChapterIfPossible();
     }
     _pageController.nextPage(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
+      duration: _pageAnimDuration,
+      curve: _pageAnimCurve,
     );
     _maybeEmitChapterEnd();
     return true;
@@ -272,8 +280,8 @@ class EpubxRenderer implements EpubRenderer {
       return switched;
     }
     _pageController.previousPage(
-      duration: const Duration(milliseconds: 200),
-      curve: Curves.easeOut,
+      duration: _pageAnimDuration,
+      curve: _pageAnimCurve,
     );
     return true;
   }
