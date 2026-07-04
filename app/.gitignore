@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# M3a/任务5: 打包字体大文件不入 git（OFL 协议，体积 8-25MB/款）。
+# 由 scripts/download-fonts.sh 获取。pubspec 声明 + assets/fonts/README.md 入 git。
+# 注意：保留 README.md，仅忽略二进制字体文件。
+assets/fonts/*.otf
+assets/fonts/*.ttf
+!assets/fonts/README.md

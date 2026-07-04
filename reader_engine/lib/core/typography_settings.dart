@@ -51,20 +51,35 @@ class TypographySettings {
   final ReadingTheme theme;
   final PageMargin pageMargin;
 
+  /// 段落首行缩进（em 单位）。M3a/任务2：中文书籍标准排版 2em 首行缩进。
+  /// 由 [TypographyStyleInjector] 在 HTML 头注入 `<style>p{ text-indent: Nem; }`
+  /// 实现（TextStyle 无法表达 text-indent）。见 typography_style_injector.dart。
+  final double paragraphIndentEm;
+
+  /// 是否启用段落首行缩进。false 时 injector 原样返回 HTML（缩进 0）。
+  final bool paragraphIndentEnabled;
+
   const TypographySettings({
     required this.fontSize,
     required this.lineHeight,
     required this.fontFamily,
     required this.theme,
     required this.pageMargin,
+    this.paragraphIndentEm = 2.0,
+    this.paragraphIndentEnabled = true,
   });
 
+  /// M3a/任务7：默认字号 16→18、行距 1.5→1.8（宽松）、页边距 normal→wide（72px）。
+  /// 仅影响"未选预设"的新打开书籍；已保存的 TypographyProfile 是 DB 独立记录，不受影响。
+  /// 默认开启 2em 段落首行缩进（任务2）。
   factory TypographySettings.defaults() => const TypographySettings(
-        fontSize: 16.0,
-        lineHeight: 1.5,
+        fontSize: 18.0,
+        lineHeight: 1.8,
         fontFamily: null, // null = 系统字体
         theme: ReadingTheme.light,
-        pageMargin: PageMargin.normal,
+        pageMargin: PageMargin.wide,
+        paragraphIndentEm: 2.0,
+        paragraphIndentEnabled: true,
       );
 
   /// 序列化为 JSON（用于 drift typography_profiles.settings 列）。
@@ -75,6 +90,8 @@ class TypographySettings {
         'fontFamily': fontFamily,
         'theme': theme.name,
         'pageMargin': pageMargin.name,
+        'paragraphIndentEm': paragraphIndentEm,
+        'paragraphIndentEnabled': paragraphIndentEnabled,
       };
 
   factory TypographySettings.fromJson(Map<String, dynamic> json) {
@@ -84,6 +101,9 @@ class TypographySettings {
       fontFamily: json['fontFamily'] as String?,
       theme: ReadingTheme.values.byName(json['theme'] as String),
       pageMargin: PageMargin.values.byName(json['pageMargin'] as String),
+      // M3a: 缩进字段向后兼容——旧 profile 缺这两个 key 时用默认值。
+      paragraphIndentEm: (json['paragraphIndentEm'] as num?)?.toDouble() ?? 2.0,
+      paragraphIndentEnabled: json['paragraphIndentEnabled'] as bool? ?? true,
     );
   }
 
@@ -97,6 +117,8 @@ class TypographySettings {
     Object? fontFamily = _sentinel,
     ReadingTheme? theme,
     PageMargin? pageMargin,
+    double? paragraphIndentEm,
+    bool? paragraphIndentEnabled,
   }) {
     return TypographySettings(
       fontSize: fontSize ?? this.fontSize,
@@ -106,6 +128,9 @@ class TypographySettings {
           : fontFamily as String?,
       theme: theme ?? this.theme,
       pageMargin: pageMargin ?? this.pageMargin,
+      paragraphIndentEm: paragraphIndentEm ?? this.paragraphIndentEm,
+      paragraphIndentEnabled:
+          paragraphIndentEnabled ?? this.paragraphIndentEnabled,
     );
   }
 
@@ -117,9 +142,18 @@ class TypographySettings {
           lineHeight == other.lineHeight &&
           fontFamily == other.fontFamily &&
           theme == other.theme &&
-          pageMargin == other.pageMargin;
+          pageMargin == other.pageMargin &&
+          paragraphIndentEm == other.paragraphIndentEm &&
+          paragraphIndentEnabled == other.paragraphIndentEnabled;
 
   @override
-  int get hashCode =>
-      Object.hash(fontSize, lineHeight, fontFamily, theme, pageMargin);
+  int get hashCode => Object.hash(
+        fontSize,
+        lineHeight,
+        fontFamily,
+        theme,
+        pageMargin,
+        paragraphIndentEm,
+        paragraphIndentEnabled,
+      );
 }

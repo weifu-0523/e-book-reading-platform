@@ -81,9 +81,13 @@ void main() {
       ..HtmlContent = '<p>hello world</p>';
     final book = EpubBook()..Chapters = [chapter];
     renderer.bookForTesting = book;
+    // M3a/任务2: currentHighlightedHtml 现在在返回前注入段落缩进 CSS。
+    // no-highlights 路径仍含注入的 <style>（默认缩进开启），用 endsWith
+    // 断言原 HTML 完整保留在尾部。
     // ignore: invalid_use_of_protected_member
     expect(renderer.currentHighlightedHtml(),
-        '<p>hello world</p>'); // no highlights
+        endsWith('<p>hello world</p>'));
+    expect(renderer.currentHighlightedHtml(), contains('text-indent'));
     renderer.injectHighlightsSync(const [
       HighlightRange(0, 5, 'rgba(255, 235, 59, 0.4)', chapterIndex: 0),
     ]);

@@ -120,8 +120,9 @@ class TypographyPanel extends StatelessWidget {
               spacing: 8,
               children: [
                 ('系统', null),
-                ('衬线', 'serif'),
-                ('无衬线', 'sans-serif'),
+                ('黑体', 'NotoSansSC'),
+                ('宋体', 'NotoSerifSC'),
+                ('楷体', 'LXGWWenKai'),
                 ...userFonts.map((f) => (f.displayName, f.familyName)),
               ]
                   .map((p) => ChoiceChip(
@@ -129,6 +130,58 @@ class TypographyPanel extends StatelessWidget {
                         selected: current.fontFamily == p.$2,
                         onSelected: (_) =>
                             onChanged(current.copyWith(fontFamily: p.$2)),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 16),
+
+            // M3a/任务5：字体选项说明。'serif'/'sans-serif' 是 CSS 通用字体族名，
+            // Flutter 的 TextStyle.fontFamily 不识别 generic family → 旧"衬线/无衬线"
+            // 选项在 Windows 上几乎无效（fallback 默认无衬线）。改为打包开源 OFL
+            // 字体（思源黑体/宋体、霞鹜文楷），family name 与 pubspec 声明一致。
+            // 字体文件不入 git，首次拉取后跑 scripts/download-fonts.sh 获取。
+            // 用户已导入的字体（userFonts）继续追加显示。
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '黑体/宋体/楷体为打包开源字体，需运行下载脚本获取；'
+                '系统即 Windows 微软雅黑。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            Text('段落', style: Theme.of(context).textTheme.titleSmall),
+            Row(
+              children: [
+                const Text('首行缩进'),
+                const SizedBox(width: 8),
+                Switch(
+                  value: current.paragraphIndentEnabled,
+                  onChanged: (v) => onChanged(
+                      current.copyWith(paragraphIndentEnabled: v)),
+                ),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                ('无', 0.0),
+                ('2字', 2.0),
+                ('4字', 4.0),
+              ]
+                  .map((p) => ChoiceChip(
+                        label: Text(p.$1),
+                        selected:
+                            current.paragraphIndentEnabled &&
+                                (current.paragraphIndentEm - p.$2).abs() < 0.01,
+                        onSelected: (_) => onChanged(current.copyWith(
+                          paragraphIndentEm: p.$2,
+                          // 选"无"(0em) 视为关闭缩进；选正 em 自动开启开关。
+                          paragraphIndentEnabled: p.$2 > 0,
+                        )),
                       ))
                   .toList(),
             ),

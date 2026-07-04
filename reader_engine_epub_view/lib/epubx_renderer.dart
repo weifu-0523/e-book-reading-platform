@@ -37,6 +37,7 @@ import 'html_slicer.dart';
 import 'paginator.dart';
 import 'src/chapter_end_event.dart';
 import 'typography_css.dart';
+import 'typography_style_injector.dart';
 
 /// epubx + flutter_widget_from_html 实现的 [EpubRenderer]。
 ///
@@ -806,7 +807,14 @@ class EpubxRenderer implements EpubRenderer {
     final inChapter = _allHighlights
         .where((h) => h.chapterIndex == _currentChapterIndex)
         .toList();
-    return HtmlHighlightInjector.inject(rawHtml, inChapter);
+    final highlighted = HtmlHighlightInjector.inject(rawHtml, inChapter);
+    // M3a/任务2：注入段落首行缩进 CSS（scroll 模式）。HtmlWidget 渲染整章 HTML，
+    // <style> 注入到头部即对全章所有 <p> 生效。
+    return TypographyStyleInjector.inject(
+      highlighted,
+      indentEm: _typography.paragraphIndentEm,
+      enabled: _typography.paragraphIndentEnabled,
+    );
   }
 
   @override
@@ -950,6 +958,13 @@ class EpubxRenderer implements EpubRenderer {
           if (localHl != null) {
             pageHtml = HtmlHighlightInjector.inject(pageHtml, localHl);
           }
+          // M3a/任务2：注入段落首行缩进 CSS（paged 模式）。highlight inject 后、
+          // HtmlWidget 前调用，<style> 对本页所有 <p> 生效。
+          pageHtml = TypographyStyleInjector.inject(
+            pageHtml,
+            indentEm: _typography.paragraphIndentEm,
+            enabled: _typography.paragraphIndentEnabled,
+          );
           // M2.10/Bug A: 页内容包 SingleChildScrollView(NeverScrollable) 吸收
           // HtmlWidget 与 TextPainter 的高度误差。每个 PageView 页面被赋予固定
           // 高度（= viewport 高度），而 HtmlWidget 渲染出的实际高度与 Paginator
@@ -960,13 +975,23 @@ class EpubxRenderer implements EpubRenderer {
           // 即不滚，溢出可竖向微滚），绝不抛 assertion。
           // NeverScrollableScrollPhysics 确保子页滚动不干扰 PageView 翻页手势。
           // 与 _buildScroll（scroll 模式已用 SingleChildScrollView）模式一致。
+          //
+          // M3a/任务4：末页顶部对齐双保险。SingleChildScrollView 默认 topLeft，
+          // 理论上短内容（末页）应顶部排起。但用户反馈"末页垂直居中很奇怪"——
+          // 可能是 HtmlWidget 内部对短内容的 Block 对齐、或 PageView slot stretch
+          // 下的隐式居中。无论真实根因如何，显式包 Align(topCenter) 强制顶部对齐：
+          // Align 在 SingleChildScrollView 内部，宽度/高度由内容驱动（mainAxisSize
+          // min），顶部锚点显式化，保证末页文字从顶部排起。详见 CHANGELOG 根因结论。
           return SingleChildScrollView(
             physics: const NeverScrollableScrollPhysics(),
-            child: Padding(
-              padding: EdgeInsets.all(margin),
-              child: HtmlWidget(
-                pageHtml,
-                textStyle: style.copyWith(color: fg),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: EdgeInsets.all(margin),
+                child: HtmlWidget(
+                  pageHtml,
+                  textStyle: style.copyWith(color: fg),
+                ),
               ),
             ),
           );

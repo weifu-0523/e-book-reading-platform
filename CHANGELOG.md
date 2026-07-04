@@ -9,6 +9,73 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M3a — 2026-07-04（排版基线增强：默认值/段落缩进/末页对齐/常用字体）
+
+用户 2026-07-03 提交 10 项体验优化清单，本里程碑处理其中与「文字排版观感」直接相关的 4 项（任务 7/2/4/5）。Spec: `docs/superpowers/specs/2026-07-03-m3a-typography-baseline-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3a-typography-baseline.md`。
+
+#### Changed — 任务 7 默认值
+
+- **默认字号 16→18、行距 1.5→1.8（宽松）、页边距 normal→wide（72px）**：`TypographySettings.defaults()`（reader_engine/lib/core/typography_settings.dart）调整。仅影响「未选预设」的新打开书籍；已保存的 TypographyProfile 是 DB 独立记录，不受影响。排版面板档位标签不变（紧凑1.2/标准1.5/宽松1.8、紧凑/标准/宽松/特宽），仅默认选中态随 defaults 变。
+
+#### Added — 任务 2 段落首行缩进（中文书籍标准排版）
+
+- **根因**：pivot 后 `TypographyCss.textStyleFromSettings` 只产出 `TextStyle(fontSize, height, fontFamily)`，而 Flutter 的 `TextStyle` **无法表达 CSS `text-indent`**，所以缩进必须通过 HTML/CSS 注入实现。
+- **TypographySettings 新增字段**：`paragraphIndentEm`（默认 2.0）+ `paragraphIndentEnabled`（默认 true），同步更新构造函数、copyWith、toJson、fromJson（缺 key 向后兼容用默认值）、defaults、equality（== / hashCode）。
+- **新建 `reader_engine_epub_view/lib/typography_style_injector.dart`**：`TypographyStyleInjector.inject(html, indentEm, enabled)` 在 HTML 头 prepend `<style>p{ text-indent: Nem; margin: 0 0 0.5em 0; }</style>`。enabled=false 或 indentEm<=0 原样返回。
+- **接入点**：scroll 模式 `currentHighlightedHtml()`（高亮注入后）、paged 模式 `buildSinglePage`（高亮注入后、HtmlWidget 前）两处调用 inject。`<style>` 是 HtmlWidget 一等公民，对全章/全页所有 `<p>` 生效。
+- **排版面板加「段落」一节**：Switch（首行缩进开关）+ 档位（无 0em / 2字 2em / 4字 4em）。
+
+#### Fixed — 任务 4 章节末页文字顶部对齐
+
+- **现象**：用户反馈章节末页文字「垂直居中很奇怪」。
+- **代码层**：`buildSinglePage`（epubx_renderer.dart）用 `SingleChildScrollView(NeverScrollable)` 包 `Padding>HtmlWidget`，理论上应顶部对齐。
+- **根因实跑结论（widget 测试布局探测）**：构造 600px 高 PageView slot + 短内容（240px），测量渲染后 RichText 实际位置 = **top=72（= margin），center=120**，远在 slot 顶部，**不是居中**（居中应 ~250-300）。即用户反馈的「末页垂直居中」是**视觉错觉**：末页内容少，下方留白大（~360px 空白），主观感觉「居中」，但代码本就是顶部对齐，无 HtmlWidget bug。
+- **修复（双保险）**：`buildSinglePage` 在 SingleChildScrollView 内显式包 `Align(alignment: Alignment.topCenter)`，无论 HtmlWidget 内部行为如何都强制顶部锚点，语义显式化、防御未来回归。scroll 模式本就是顶部对齐，未改。
+
+#### Changed — 任务 5 字体选项改常用名 + 打包开源 OFL 字体
+
+- **根因**：旧字体选项「衬线/无衬线」用 `'serif'`/`'sans-serif'`（CSS 通用字体族名），Flutter 的 `TextStyle.fontFamily` 不识别 generic family → 在 Windows 上几乎无效（fallback 默认无衬线），这是用户觉得「很怪」的技术根因。
+- **打包开源 OFL 字体到 `app/assets/fonts/`**（不入 git，首次拉取后跑 `scripts/download-fonts.sh` 获取）：
+  - 黑体 → `NotoSansSC-Regular.otf`（思源黑体，Google Noto CJK SubsetOTF/SC，8.33 MB）
+  - 宋体 → `NotoSerifSC-Regular.otf`（思源宋体，Google Noto CJK SubsetOTF/SC，11.63 MB）
+  - 楷体 → `LXGWWenKai-Regular.ttf`（霞鹜文楷，LXGW 官方 v1.522，24.42 MB）
+  - **圆体暂未提供**（无完美开源 OFL 圆体；Dubai 不开源，思源无 Round 变体），UI 不显示圆体 chip，用户可选「系统」（Windows 即微软雅黑，本身偏圆）作 fallback。
+- **字体下载**：直连 GitHub（github.com / raw.githubusercontent.com）在大陆被墙；用 jsDelivr CDN（Noto）+ gh-proxy.com 镜像（LXGW release asset，因 jsDelivr 对 >50MB 仓库拒服务）成功下载 3/3 款。下载脚本含多镜像 fallback。
+- **pubspec.yaml fonts 段声明** 3 个 family（逻辑别名 NotoSansSC/NotoSerifSC/LXGWWenKai，与代码 `TextStyle(fontFamily:)` 一致）。fontFamily 别名不必与字体内部 post 表 name（`Noto Sans SC` 等）完全相同——pubspec `family:` 即 Flutter 注册的资源别名。
+- **字体选项 UI**：typography_panel.dart 的 ChoiceChip 改为 系统/黑体/宋体/楷体（+ userFonts 追加），并加说明文字。
+
+#### 体积实测（`flutter build windows --debug`）
+
+| 项 | M2.11 baseline | M3a | 增量 |
+|---|---|---|---|
+| `zhiyue.exe` | 1.01 MB | 1.01 MB | **+0**（字体以 asset 打包，不入二进制）|
+| `flutter_assets/` | 95.65 MB | 139.15 MB | **+43.50 MB**（= 3 款 CJK 字体 43.42 MB + 0.08 MB manifest）|
+
+增量 +43.50 MB 在 spec D3 预算（+40-60MB）内，远低于 80MB「不可接受」阈值。LXGW WenKai（24.42 MB）占大头（无 subset 版，含全 GB 字）；Noto 用 SubsetOTF/SC（仅简体中文字集）比全 CJK OTF（16MB）省一半。若未来需瘦身：subset LXGW（pyftsubset 按 GB2312 常用字裁剪到 ~3MB）可省 ~21MB，留 v2 优化。
+
+#### Tests
+
+- 新增 `typography_style_injector_test.dart`（6 cases）：注入含 `<style>`+`text-indent`、enabled=false 原样返回、indentEm<=0 原样返回、多 `<p>` 全局生效、保留既有 HTML 结构。
+- 新增 `epubx_renderer_top_align_test.dart`（4 cases）：paged 模式每页 SingleChildScrollView 子是 Align(topCenter)（任务4 结构断言）、scroll 模式 currentHighlightedHtml 含/不含注入的 `<style>`。
+- 更新 `typography_settings_test.dart`：默认值断言（18/1.8/wide）+ 缩进字段 toJson/fromJson 往返 + copyWith + 向后兼容 + equality。
+- 更新 `typography_css_test.dart`：默认字号/行距断言 16/1.5 → 18/1.8。
+- 更新 `typography_panel_test.dart`：字号显示 18、字体选项 系统/黑体/宋体/楷体（断言旧 衬线/无衬线 已移除）、黑体→NotoSansSC、font+1=19、含「段落」一节。
+- 更新 `epubx_renderer_test.dart`：currentHighlightedHtml no-highlight 路径断言改为 endsWith（因默认注入缩进 `<style>`）。
+- 全套：reader_engine typography 9 通过；reader_engine_epub_view 143 通过（仅 pre-existing fail = epub_cover_extractor 的 ZipDecoder/EPUB fixture 解析失败，与排版无关）；app reader features 185 通过 / 2 skip / 2 fail（仅 pre-existing fail = reader_page_pdf_integration 的 PDF fixture 缺失，与排版无关）。
+- `dart analyze`（flutter.bat analyze 在本中文路径环境 LSP 协议崩溃——FormatException: Unterminated string，是 Dart analysis server LSP framing 对中文路径 URL-encode 的 bug，非代码问题；改用 dart.bat analyze）：reader_engine / reader_engine_epub_view / app 三包 **0 error**。app 的 custom_lint 插件因同样中文路径 bug（%E7%94%B5... URL 编码失败 pub get）崩溃，临时移除插件后 analyze 0 error，分析完恢复。
+
+#### Decisions 偏离 plan
+
+- **圆体**：spec/plan 列为「实施时确认」。实跑后确认无完美开源 OFL 圆体，按 spec fallback 用前 3 款 + 系统，UI 不显示圆体 chip，README 诚实标注。未凑数加劣质近似款。
+- **字体 family 别名**：spec 示例 family 名用 `NotoSansSC`（无空格），与字体内部 post 表 name（`Noto Sans SC`，有空格）不同。这是正确的——pubspec `family:` 是逻辑别名，代码 `fontFamily:` 与之匹配即可，Flutter 据别名注册 asset。保持 plan 的无空格别名。
+
+#### Lessons
+
+- **TextStyle 无法表达 CSS text-indent**：Flutter 的 TextStyle 只有 fontSize/height/fontFamily/weight 等，没有 first-line-indent。任何需要 CSS-only 属性的排版（缩进、字间距 letter-spacing、首字下沉）都必须走 HTML `<style>` 注入（HtmlWidget 是 HTML 渲染器，`<style>` 是一等公民），不能走 TextStyle。pivot 到 TextStyle-based 渲染后这类需求容易遗漏。
+- **「末页居中」可能是视觉错觉**：实测短内容在固定高度 slot 里**本就是顶部对齐**（RichText top=margin），用户主观感觉「居中」是因为下方留白大。修这类「布局问题」前先实测渲染位置，避免改了半天发现代码本就对——本次 Align 双保险仍有价值（语义显式 + 防回归），但根因诊断要诚实记录。
+- **中文路径 + Dart analysis server LSP 不兼容**：`flutter.bat analyze` / `flutter analyze` 在本工作目录（`H:\projiect\电子书阅读平台`）会让 analysis server 的 LSP framing 崩溃（URL-encode 中文路径成 `%E7%94%B5...` 后 JSON 解析 Unterminated string）。custom_lint 插件同因崩溃（pub get 时 path 解析失败）。解决：用 `dart.bat analyze`（非 LSP 路径）跑核心分析，必要时临时移除 custom_lint 插件。这是本仓库中文路径环境的固有约束，CI 应在英文路径环境跑。
+- **字体下载的多镜像 fallback**：单一 CDN 不可靠（GitHub 被墙、jsDelivr 对 >50MB 仓库拒服务、Gitee raw 需登录）。下载脚本对每款字体配 2-3 个镜像（jsDelivr + gh-proxy.com + ghfast.top），任一成功即停。
+
 ### M2.11 — 2026-07-04（书签页内定位 + 高亮跨章泄漏修复）
 
 M2.10 修完双页回归后用户复测，报告 3 个新问题：①书签只按章节命名、跳转只回章节首页；②旧摘录颜色/跳转错误（新的正常）；③没摘录的页也出现幽灵高亮。代码层追溯发现 ①③ 是两个独立的设计缺陷，② 是 ③ 的副产物。

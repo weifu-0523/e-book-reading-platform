@@ -8,8 +8,9 @@ void main() {
     final style = TypographyCss.textStyleFromSettings(
       TypographySettings.defaults(),
     );
-    expect(style.fontSize, 16);
-    expect(style.height, 1.5);
+    // M3a/任务7: 默认字号 16→18、行距 1.5→1.8。
+    expect(style.fontSize, 18);
+    expect(style.height, 1.8);
   });
 
   test('custom font family is included', () {

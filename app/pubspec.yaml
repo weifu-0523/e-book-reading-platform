@@ -104,3 +104,25 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   generate: true
+
+  # M3a/任务5: 打包开源 OFL 字体（中文阅读常用字体选项）。
+  # 字体文件不入 git（体积大，见 .gitignore + scripts/download-fonts.sh），
+  # 首次拉取后跑 `bash scripts/download-fonts.sh` 获取。
+  # family 名为逻辑别名（与 typography_panel.dart 的 fontFamily 值一致），
+  # 不必与字体内部 post 表 name 完全相同。
+  # 字体来源（OFL 协议）：
+  #   Noto Sans SC（思源黑体）— Google Noto CJK，SubsetOTF/SC 单字重
+  #   Noto Serif SC（思源宋体）— Google Noto CJK，SubsetOTF/SC 单字重
+  #   LXGW WenKai（霞鹜文楷）— LXGW 官方，单字重
+  # 圆体暂未提供（无完美开源 OFL 圆体），UI 不显示圆体选项；用户可选系统字体
+  # （Windows 即微软雅黑）作 fallback。
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Regular.otf
+    - family: NotoSerifSC
+      fonts:
+        - asset: assets/fonts/NotoSerifSC-Regular.otf
+    - family: LXGWWenKai
+      fonts:
+        - asset: assets/fonts/LXGWWenKai-Regular.ttf

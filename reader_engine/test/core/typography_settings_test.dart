@@ -4,11 +4,14 @@ import 'package:reader_engine/core/typography_settings.dart';
 void main() {
   test('defaults returns expected values', () {
     final s = TypographySettings.defaults();
-    expect(s.fontSize, 16.0);
-    expect(s.lineHeight, 1.5);
+    // M3a/任务7: 16→18, 1.5→1.8, normal→wide, 段落缩进默认开启 2em。
+    expect(s.fontSize, 18.0);
+    expect(s.lineHeight, 1.8);
     expect(s.fontFamily, isNull);
     expect(s.theme, ReadingTheme.light);
-    expect(s.pageMargin, PageMargin.normal);
+    expect(s.pageMargin, PageMargin.wide);
+    expect(s.paragraphIndentEm, 2.0);
+    expect(s.paragraphIndentEnabled, isTrue);
   });
 
   test('copyWith preserves unspecified fields', () {
@@ -17,6 +20,8 @@ void main() {
     expect(updated.fontSize, 20.0);
     expect(updated.lineHeight, s.lineHeight);
     expect(updated.theme, s.theme);
+    expect(updated.paragraphIndentEm, s.paragraphIndentEm);
+    expect(updated.paragraphIndentEnabled, s.paragraphIndentEnabled);
   });
 
   test('copyWith fontFamily: null resets to system font', () {
@@ -33,6 +38,43 @@ void main() {
     expect(a.hashCode, b.hashCode);
   });
 
+  // M3a/任务2: 缩进字段序列化往返测试。
+  test('toJson/fromJson round-trips indent fields', () {
+    final s = TypographySettings.defaults().copyWith(
+      paragraphIndentEm: 4.0,
+      paragraphIndentEnabled: false,
+    );
+    final json = s.toJson();
+    expect(json['paragraphIndentEm'], 4.0);
+    expect(json['paragraphIndentEnabled'], false);
+    final restored = TypographySettings.fromJson(json);
+    expect(restored, equals(s));
+    expect(restored.paragraphIndentEm, 4.0);
+    expect(restored.paragraphIndentEnabled, isFalse);
+  });
+
+  test('fromJson defaults indent fields when keys absent (back-compat)', () {
+    // 旧 profile 缺缩进字段 → 用默认值（2em + enabled）。
+    final restored = TypographySettings.fromJson({
+      'fontSize': 18.0,
+      'lineHeight': 1.8,
+      'fontFamily': null,
+      'theme': 'light',
+      'pageMargin': 'wide',
+    });
+    expect(restored.paragraphIndentEm, 2.0);
+    expect(restored.paragraphIndentEnabled, isTrue);
+  });
+
+  test('copyWith updates indent fields', () {
+    final s = TypographySettings.defaults();
+    final updated = s.copyWith(paragraphIndentEnabled: false);
+    expect(updated.paragraphIndentEnabled, isFalse);
+    expect(updated.paragraphIndentEm, 2.0); // unchanged
+    // equality reflects indent change
+    expect(updated == s, isFalse);
+  });
+
   test('PageMargin enum has 4 values with correct pixel mappings', () {
     expect(PageMargin.values, hasLength(4));
     expect(PageMargin.compact.pixelValue, 8);
@@ -47,12 +89,12 @@ void main() {
         reason: 'M2.7 round-3: bumped 64→96 for ultra-wide desktop preference');
   });
 
-  test('TypographySettings.defaults uses PageMargin.normal', () {
-    // Already asserted above, but be explicit post-bump.
+  test('TypographySettings.defaults uses PageMargin.wide', () {
+    // M3a/任务7: 默认页边距 normal→wide（72px）。
     final s = TypographySettings.defaults();
-    expect(s.pageMargin, PageMargin.normal);
-    expect(s.pageMargin.pixelValue, 48,
-        reason: 'M2.7 round-3: default margin should be 48px '
-            '(was 32px M2.6, 24px M2.5, 16px pre-M2.5)');
+    expect(s.pageMargin, PageMargin.wide);
+    expect(s.pageMargin.pixelValue, 72,
+        reason: 'M3a: default margin widened to 72px (was normal/48px) '
+            'for real-book whitespace feel');
   });
 }
