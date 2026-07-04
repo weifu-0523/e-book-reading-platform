@@ -150,6 +150,11 @@ class NotesPage extends ConsumerWidget {
               onLongPress: () => _showContextMenu(context, ref, a),
               onSecondaryTapDown: (globalPos) =>
                   _showContextMenu(context, ref, a, fromDesktop: globalPos),
+              // M3e/Q6：可见操作按钮（编辑/导出/删除），桌面+移动端都可点。
+              // 删除前弹确认对话框。与右键菜单共用 _editAnnotation 等方法。
+              onEdit: () => _editAnnotation(context, ref, a),
+              onExport: () => _exportSingle(context, a),
+              onDelete: () => _confirmDeleteAnnotation(context, ref, a),
             ),
         ],
       ],
@@ -182,23 +187,10 @@ class NotesPage extends ConsumerWidget {
     if (action == null || !context.mounted) return;
     switch (action) {
       case AnnotationContextAction.edit:
-        await showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          builder: (_) => NoteEditorSheet(
-            annotation: a,
-            suggestions: const [],
-            onSave: (note, color) async {
-              await ref.read(notesRepositoryProvider).updateAnnotation(
-                  a.copyWith(note: note, color: color, updatedAt: DateTime.now()));
-            },
-            onDelete: () async {
-              await ref.read(notesRepositoryProvider).deleteAnnotation(a.id);
-            },
-          ),
-        );
+        await _editAnnotation(context, ref, a);
         break;
       case AnnotationContextAction.delete:
+        // 右键删除：直接删（桌面右键已是明确的二次操作）。可见按钮走确认。
         await ref.read(notesRepositoryProvider).deleteAnnotation(a.id);
         break;
       case AnnotationContextAction.copyQuote:
@@ -218,6 +210,52 @@ class NotesPage extends ConsumerWidget {
         await _exportSingle(context, a);
         break;
     }
+  }
+
+  /// M3e/Q6：编辑摘录（可见按钮 + 右键菜单共用）。弹 NoteEditorSheet。
+  Future<void> _editAnnotation(
+      BuildContext context, WidgetRef ref, Annotation a) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => NoteEditorSheet(
+        annotation: a,
+        suggestions: const [],
+        onSave: (note, color) async {
+          await ref.read(notesRepositoryProvider).updateAnnotation(
+              a.copyWith(note: note, color: color, updatedAt: DateTime.now()));
+        },
+        onDelete: () async {
+          await ref.read(notesRepositoryProvider).deleteAnnotation(a.id);
+        },
+      ),
+    );
+  }
+
+  /// M3e/Q6：删除前弹确认对话框（避免误删）。确认后调 repository.deleteAnnotation。
+  Future<void> _confirmDeleteAnnotation(
+      BuildContext context, WidgetRef ref, Annotation a) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除摘录'),
+        content: Text('确定删除这条摘录吗？此操作不可撤销。\n\n'
+            '「${a.quote.length > 40 ? '${a.quote.substring(0, 40)}…' : a.quote}」'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await ref.read(notesRepositoryProvider).deleteAnnotation(a.id);
   }
 
   Future<void> _copyToClipboard(

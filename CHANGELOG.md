@@ -15,14 +15,24 @@ v1.5.1-alpha 之后的新变更将记在此处。
 
 #### Added — Q3 新增 2 款字体（共 5 款 + 系统）
 
-用户反馈现有 系统/黑体/宋体/楷体 不够，希望多几款。新增：
-
 - **阿里巴巴普惠体 `AlibabaPuHuiTi`**（标签「普惠体」）：现代圆润黑体，阿里巴巴全球永久免费商用授权。下载源 `chinayin/fonts-alibaba-puhuiti-regular`（社区镜像官方 Regular 字重，~10MB）。官网 alibabafonts.com。
 - **霞鹜新晰黑 `LXGWNeoXiHei`**（标签「新晰黑」）：LXGW 基于 IPAex ゴシック 衍生的中文黑体字型，OFL 1.1，字形锐利适合屏幕长文。来自 `lxgw/LxgwNeoXiHei` v1.303（~7.5MB）。
 
 下载可行性实测：经 gh-proxy.com / ghfast.top 镜像实测两者均 200 可达，已自动下载验证（9.7MB + 7.5MB，有效 TTF）。**无需手动下载**（用户最初选"需手动下载"是基于我之前不准确的探测结果，实测可自动）。
 
 改动：`app/pubspec.yaml` 加 2 个 family 声明；`scripts/download-fonts.sh` + `.ps1` 各加 2 个下载块（多镜像 fallback，索引 [N/3]→[N/5]）；`app/assets/fonts/README.md` 字体表 +2 行；`typography_panel.dart` 字体 chip 列表 +2 项（普惠体/新晰黑）。测试：`typography_panel_test.dart` +1 case（普惠体 chip → fontFamily）+ 更新字体列表断言（9 cases 全过）。
+
+#### Added — Q6 书签/摘录列表补可见删除/编辑/导出按钮
+
+用户反馈 M3d 的右键菜单桌面端不直观，"删除键找不到"。补可见按钮：
+
+- **书签列表 `reader_bookmark_list.dart`**：每个 ListTile 加 `trailing` 行（编辑/导出/删除 3 个紧凑 IconButton），桌面 + 移动端都可点。删除前弹 `AlertDialog` 确认（避免误删）。右键菜单保留（桌面高效补充），右键删除仍直接删（右键本身是明确二次操作）。提取 `_edit/_export/_delete/_confirmDelete` 私有方法，可见按钮与右键菜单共用。
+- **摘录卡片 `annotation_tile.dart`**：加可选 `onEdit/onExport/onDelete` 回调（nullable，全部 null 时不渲染 actions 行，向后兼容 M3d）。任一非 null 时在卡片底部右对齐渲染 `_ActionsRow`（IconButton）。
+- **摘录页 `notes_page.dart`**：AnnotationTile 传入 onEdit/onExport/onDelete，复用 `_editAnnotation`/`_exportSingle`/`_confirmDeleteAnnotation`（右键菜单也改用同一套方法）。删除前确认。
+
+**范围说明**：阅读器内抽屉（notes_drawer）的摘录 tab 仍走长按 → NoteEditorSheet → 删除（既有路径可用），本次未补可见按钮（需跨 NotesDrawerContent→Wrapper→reader_body 传回调，改动面大，列为后续低成本任务）。
+
+测试：`reader_bookmark_list_test.dart` +6 cases（trailing 按钮存在性/编辑/导出/删除确认取消/删除确认/默认 controller.delete）；`annotation_tile_test.dart` +5 cases（无回调不渲染/3 按钮/部分回调/编辑触发/删除触发）；`notes_page_test.dart` +2 cases（可见按钮渲染/删除确认取消）。共 49 cases 全过（含 M3d 既有右键菜单无回归）。
 
 #### Fixed — Q1+Q2 排版（reader_engine_epub_view 包）
 

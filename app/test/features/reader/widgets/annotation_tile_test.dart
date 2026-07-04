@@ -274,4 +274,64 @@ void main() {
       expect(tapped, isTrue);
     });
   });
+
+  group('visible action buttons (M3e/Q6)', () {
+    testWidgets('no actions callbacks → no action buttons rendered', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: AnnotationTile(annotation: _a())),
+      ));
+      expect(find.byTooltip('编辑笔记'), findsNothing);
+      expect(find.byTooltip('导出'), findsNothing);
+      expect(find.byTooltip('删除'), findsNothing);
+    });
+
+    testWidgets('onEdit/onExport/onDelete render 3 IconButtons', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _a(),
+            onEdit: () {},
+            onExport: () {},
+            onDelete: () {},
+          ),
+        ),
+      ));
+      expect(find.byTooltip('编辑笔记'), findsOneWidget);
+      expect(find.byTooltip('导出'), findsOneWidget);
+      expect(find.byTooltip('删除'), findsOneWidget);
+    });
+
+    testWidgets('partial callbacks render only provided buttons', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(annotation: _a(), onDelete: () {}),
+        ),
+      ));
+      expect(find.byTooltip('编辑笔记'), findsNothing);
+      expect(find.byTooltip('导出'), findsNothing);
+      expect(find.byTooltip('删除'), findsOneWidget);
+    });
+
+    testWidgets('tapping 编辑 fires onEdit', (tester) async {
+      var edited = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(annotation: _a(), onEdit: () => edited = true),
+        ),
+      ));
+      await tester.tap(find.byTooltip('编辑笔记'));
+      expect(edited, isTrue);
+    });
+
+    testWidgets('tapping 删除 fires onDelete', (tester) async {
+      var deleted = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(annotation: _a(), onDelete: () => deleted = true),
+        ),
+      ));
+      await tester.tap(find.byTooltip('删除'));
+      expect(deleted, isTrue);
+    });
+  });
 }

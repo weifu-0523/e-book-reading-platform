@@ -302,6 +302,92 @@ void main() {
       expect(repo.store['bm1']!.note, '新注');
     });
   });
+
+  group('visible action buttons (M3e/Q6)', () {
+    testWidgets('each row renders 编辑/导出/删除 IconButtons in trailing',
+        (tester) async {
+      await _pumpList(tester, initial: [_e()]);
+      expect(find.byTooltip('编辑'), findsOneWidget);
+      expect(find.byTooltip('导出'), findsOneWidget);
+      expect(find.byTooltip('删除'), findsOneWidget);
+    });
+
+    testWidgets('编辑 button dispatches onEdit handler', (tester) async {
+      BookmarkEntry? edited;
+      await _pumpList(tester, initial: [_e()], onEdit: (e) => edited = e);
+      await tester.tap(find.byTooltip('编辑'));
+      await tester.pumpAndSettle();
+      expect(edited, isNotNull);
+      expect(edited!.id, 'bm1');
+    });
+
+    testWidgets('导出 button dispatches onExport handler', (tester) async {
+      BookmarkEntry? exported;
+      await _pumpList(tester, initial: [_e()], onExport: (e) => exported = e);
+      await tester.tap(find.byTooltip('导出'));
+      await tester.pumpAndSettle();
+      expect(exported, isNotNull);
+      expect(exported!.id, 'bm1');
+    });
+
+    testWidgets('删除 button shows confirm dialog; cancel keeps entry',
+        (tester) async {
+      BookmarkEntry? deleted;
+      await _pumpList(tester, initial: [_e()], onDelete: (e) => deleted = e);
+      await tester.tap(find.byTooltip('删除'));
+      await tester.pumpAndSettle();
+      // 确认对话框出现
+      expect(find.text('删除书签'), findsOneWidget);
+      expect(find.text('取消'), findsOneWidget);
+      // 取消 → 不删除
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(deleted, isNull);
+    });
+
+    testWidgets('删除 button → confirm → dispatches onDelete', (tester) async {
+      BookmarkEntry? deleted;
+      await _pumpList(tester, initial: [_e()], onDelete: (e) => deleted = e);
+      await tester.tap(find.byTooltip('删除'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+      expect(deleted, isNotNull);
+      expect(deleted!.id, 'bm1');
+    });
+
+    testWidgets('默认删除（无 onDelete）→ 确认 → controller.delete',
+        (tester) async {
+      final repo = _MemRepo([_e(id: 'bm1'), _e(id: 'bm2', label: '第二')]);
+      final container = ProviderContainer(overrides: [
+        bookmarkRepositoryProvider.overrideWith((_) => repo),
+        currentBookIdProvider.overrideWith((_) => 'b1'),
+      ]);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ReaderBookmarkList(
+              bookId: 'b1',
+              onJump: _noopJump,
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // 2 行各有删除按钮，用 Key 精确定位 bm1 的删除按钮。
+      await tester.tap(find.byKey(const Key('bookmark_delete_bm1')));
+      await tester.pumpAndSettle();
+      expect(find.text('删除书签'), findsOneWidget);
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+
+      expect(repo.store.containsKey('bm1'), isFalse);
+      expect(repo.store.containsKey('bm2'), isTrue);
+    });
+  });
 }
 
 void _noopJump(BookmarkEntry _) {}

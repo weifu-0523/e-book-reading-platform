@@ -23,7 +23,7 @@ import '../../bookmarks/widgets/bookmark_edit_dialog.dart';
 import '../../notes/services/note_file_writer.dart';
 import '../controllers/bookmark_controller.dart';
 
-/// 书签列表 widget（M2.5/T12，M3d 加右键菜单）。
+/// 书签列表 widget（M2.5/T12，M3d 加右键菜单，M3e/Q6 加可见操作按钮）。
 ///
 /// 用在两处：
 /// - **Drawer 书签 tab**：用户在 reader 内打开抽屉时点击书签跳回原位，
@@ -32,12 +32,16 @@ import '../controllers/bookmark_controller.dart';
 /// - **`BookmarksPage`**：独立路由 `/book/:id/bookmarks`，复用同一 widget，
 ///   跳转后由 `BookmarksPage` 自行处理（通常 push 阅读器路由）。
 ///
+/// **可见操作按钮（M3e/Q6）**：每个书签条目右侧有 编辑/导出/删除 3 个
+/// IconButton（紧凑、低视觉权重），桌面 + 移动端都能直接点。删除前弹确认
+/// 对话框避免误删。右键菜单（M3d）保留，作为桌面端的高效补充。
+///
 /// **右键上下文菜单（M3d）**：桌面端在条目上右键弹出 Material [showMenu]
 /// （编辑 / 删除 / 导出）。默认行为自包含（本 widget 持有 `ref`，直接调
 /// [BookmarkController]）：删除调 `controller.delete`（首次接入），编辑弹
 /// [showBookmarkEditDialog]，导出走 [BookmarkMarkdownExporter] +
 /// [NoteFileWriter]。父级可通过 [onDelete] / [onEdit] / [onExport] 注入自定义
-/// 行为覆盖默认。移动端无右键，[onJump]（左键）仍是唯一交互。
+/// 行为覆盖默认。可见按钮与右键菜单共用同一套调度逻辑。
 class ReaderBookmarkList extends ConsumerWidget {
   const ReaderBookmarkList({
     required this.bookId,
@@ -113,6 +117,36 @@ class ReaderBookmarkList extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                       )
                     : null,
+                // M3e/Q6: 可见操作按钮（编辑/导出/删除），桌面+移动端都可点。
+                // 紧凑 IconButton（visualDensity 收紧、icon size 20），
+                // 删除前弹确认对话框。与右键菜单共用 _edit/_export/_delete。
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      key: Key('bookmark_edit_${e.id}'),
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      tooltip: '编辑',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _edit(context, ref, e),
+                    ),
+                    IconButton(
+                      key: Key('bookmark_export_${e.id}'),
+                      icon: const Icon(Icons.download_outlined, size: 20),
+                      tooltip: '导出',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _export(context, e),
+                    ),
+                    IconButton(
+                      key: Key('bookmark_delete_${e.id}'),
+                      icon: const Icon(Icons.delete_outline,
+                          size: 20, color: Colors.redAccent),
+                      tooltip: '删除',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _confirmDelete(context, ref, e),
+                    ),
+                  ],
+                ),
                 onTap: () => onJump(e),
               ),
             );
@@ -152,35 +186,27 @@ class ReaderBookmarkList extends ConsumerWidget {
     if (action == null || !context.mounted) return;
     switch (action) {
       case _BookmarkContextAction.edit:
-        final handler = onEdit;
-        if (handler != null) {
-          handler(entry);
-          return;
-        }
-        await _defaultEdit(context, ref, entry);
+        await _edit(context, ref, entry);
         break;
       case _BookmarkContextAction.delete:
-        final handler = onDelete;
-        if (handler != null) {
-          handler(entry);
-          return;
-        }
-        await ref.read(bookmarkControllerProvider.notifier).delete(entry.id);
+        // 右键删除：直接删（桌面右键已是明确的二次操作）。可见按钮走确认。
+        await _delete(ref, entry);
         break;
       case _BookmarkContextAction.export:
-        final handler = onExport;
-        if (handler != null) {
-          handler(entry);
-          return;
-        }
-        await _defaultExport(context, entry);
+        await _export(context, entry);
         break;
     }
   }
 
-  /// 默认编辑：弹对话框 → 调 controller.updateLabel / updateNote。
-  Future<void> _defaultEdit(
+  /// M3e/Q6：编辑（可见按钮 + 右键菜单共用）。优先用注入的 [onEdit]，
+  /// 否则走默认（弹对话框 → controller.updateLabel/updateNote）。
+  Future<void> _edit(
       BuildContext context, WidgetRef ref, BookmarkEntry entry) async {
+    final handler = onEdit;
+    if (handler != null) {
+      handler(entry);
+      return;
+    }
     final result = await showBookmarkEditDialog(context, entry);
     if (result == null || !context.mounted) return;
     final notifier = ref.read(bookmarkControllerProvider.notifier);
@@ -188,8 +214,14 @@ class ReaderBookmarkList extends ConsumerWidget {
     await notifier.updateNote(entry.id, result.note);
   }
 
-  /// 默认导出：单条 Markdown → 选目录保存。
-  Future<void> _defaultExport(BuildContext context, BookmarkEntry entry) async {
+  /// M3e/Q6：导出（可见按钮 + 右键菜单共用）。优先用注入的 [onExport]，
+  /// 否则走默认（Markdown → 选目录保存）。
+  Future<void> _export(BuildContext context, BookmarkEntry entry) async {
+    final handler = onExport;
+    if (handler != null) {
+      handler(entry);
+      return;
+    }
     final markdown = BookmarkMarkdownExporter.exportSingle(entry);
     final name = NoteFileWriter.sanitizeForFilename(entry.label);
     try {
@@ -207,6 +239,43 @@ class ReaderBookmarkList extends ConsumerWidget {
         SnackBar(content: Text('导出失败：$e')),
       );
     }
+  }
+
+  /// M3e/Q6：删除前弹确认对话框（避免误删）。确认后调 [_delete]。
+  Future<void> _confirmDelete(
+      BuildContext context, WidgetRef ref, BookmarkEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除书签'),
+        content: Text('确定删除书签「${entry.label}」吗？此操作不可撤销。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await _delete(ref, entry);
+  }
+
+  /// M3e/Q6：实际删除（优先注入 [onDelete]，否则 controller.delete）。
+  Future<void> _delete(WidgetRef ref, BookmarkEntry entry) async {
+    final handler = onDelete;
+    if (handler != null) {
+      handler(entry);
+      return;
+    }
+    await ref.read(bookmarkControllerProvider.notifier).delete(entry.id);
   }
 }
 

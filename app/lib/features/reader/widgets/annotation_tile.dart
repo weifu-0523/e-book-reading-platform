@@ -33,6 +33,13 @@ class AnnotationTile extends StatelessWidget {
 
   final bool showMeta;
 
+  /// M3e/Q6：可见操作按钮回调（编辑/导出/删除）。任一非 null 时在卡片底部
+  /// 渲染一行 IconButton。null 的按钮不渲染。全部 null 时不渲染 actions 行
+  /// （与 M3d 行为完全一致，向后兼容）。
+  final VoidCallback? onEdit;
+  final VoidCallback? onExport;
+  final VoidCallback? onDelete;
+
   const AnnotationTile({
     super.key,
     required this.annotation,
@@ -42,6 +49,9 @@ class AnnotationTile extends StatelessWidget {
     this.onLongPress,
     this.onSecondaryTapDown,
     this.showMeta = false,
+    this.onEdit,
+    this.onExport,
+    this.onDelete,
   });
 
   @override
@@ -82,6 +92,18 @@ class AnnotationTile extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
+            // M3e/Q6：可见操作按钮行（编辑/导出/删除）。任一回调非 null 才渲染。
+            if (_hasActions) ...[
+              const SizedBox(height: 2),
+              Align(
+                alignment: Alignment.centerRight,
+                child: _ActionsRow(
+                  onEdit: onEdit,
+                  onExport: onExport,
+                  onDelete: onDelete,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -95,6 +117,8 @@ class AnnotationTile extends StatelessWidget {
     );
   }
 
+  bool get _hasActions => onEdit != null || onExport != null || onDelete != null;
+
   String _metaLine() {
     final parts = <String>[_formatDate(annotation.updatedAt)];
     if (annotation.tags.isNotEmpty) {
@@ -106,4 +130,50 @@ class AnnotationTile extends StatelessWidget {
   static String _formatDate(DateTime d) =>
       '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+/// M3e/Q6：摘录卡片底部的操作按钮行（编辑/导出/删除）。
+/// 仅渲染非 null 回调对应的按钮；全部 null 时父级不挂本 widget。
+/// 紧凑 IconButton（icon size 20 + visualDensity compact），删除按钮染红。
+class _ActionsRow extends StatelessWidget {
+  const _ActionsRow({
+    this.onEdit,
+    this.onExport,
+    this.onDelete,
+  });
+
+  final VoidCallback? onEdit;
+  final VoidCallback? onExport;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onEdit != null)
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            tooltip: '编辑笔记',
+            visualDensity: VisualDensity.compact,
+            onPressed: onEdit,
+          ),
+        if (onExport != null)
+          IconButton(
+            icon: const Icon(Icons.download_outlined, size: 20),
+            tooltip: '导出',
+            visualDensity: VisualDensity.compact,
+            onPressed: onExport,
+          ),
+        if (onDelete != null)
+          IconButton(
+            icon: const Icon(Icons.delete_outline,
+                size: 20, color: Colors.redAccent),
+            tooltip: '删除',
+            visualDensity: VisualDensity.compact,
+            onPressed: onDelete,
+          ),
+      ],
+    );
+  }
 }

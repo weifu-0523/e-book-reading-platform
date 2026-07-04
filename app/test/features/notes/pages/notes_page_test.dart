@@ -229,6 +229,31 @@ void main() {
     expect(find.textContaining('已保存'), findsOneWidget);
     expect(find.text('打开文件夹'), findsOneWidget);
   });
+
+  testWidgets(
+      'M3e/Q6: annotation tiles show visible 编辑/导出/删除 action buttons',
+      (tester) async {
+    await tester.pumpWidget(_harness(annotations));
+    await tester.pumpAndSettle();
+    // 2 条摘录 → 2 套可见操作按钮（每条 tile 各一套）。
+    expect(find.byTooltip('编辑笔记'), findsNWidgets(2));
+    expect(find.byTooltip('导出'), findsNWidgets(2));
+    expect(find.byTooltip('删除'), findsNWidgets(2));
+  });
+
+  testWidgets('M3e/Q6: 删除 button shows confirm dialog; cancel keeps entry',
+      (tester) async {
+    await tester.pumpWidget(_harness(annotations));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('删除').first);
+    await tester.pumpAndSettle();
+    expect(find.text('删除摘录'), findsOneWidget);
+    expect(find.text('取消'), findsOneWidget);
+    // 取消 → 摘录仍在。
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('引用 1'), findsOneWidget);
+  });
 }
 
 Widget _harness(List<Annotation> anns) {
