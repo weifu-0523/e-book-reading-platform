@@ -26,6 +26,18 @@ v1.5.1-alpha 之后的新变更将记在此处。
 - **用户看到居中的真因**：Debug 目录 `zhiyue.exe` 时间戳 `02:11` 早于 Q2 修复 commit（`18:11`），用户运行的是旧版二进制。M3a 曾误包 `Align(topCenter)`（后证实在 SingleChildScrollView 内是 no-op），但更早的版本可能有其它居中来源；不论如何，**当前源码已确认顶部对齐，干净重建后即可生效**。
 - renderer 新增两个 `@visibleForTesting` 入口供坐标测试导航：`pageControllerForTest`（翻末页）、`cachedBreakCountForTest`（取页数）。
 
+##### Q2 真因（第三轮，用户截图确认）— 双页模式 Row 默认 crossAxis center
+
+用户发截图并明确指出「**和左侧对比，右侧居中，上下都有大量留空**」+ 像素分析证实：右页首行 y≈242(22%)、左页首行 y≈81(7%)，差 161px。前两轮只测了**单页模式**，漏了**双页模式**——这才是用户实际看到的场景。
+
+- **根因**：`_buildPaged` 的 `itemBuilder` 双页分支用 `Row(Expanded, SizedBox, Expanded)` 摆左右两页。**`Row` 的 `crossAxisAlignment` 默认是 `center`**，会把高度 < slot 的右页（章节末页只有几行）**垂直居中**在 slot 内。
+- **实测复现**（最小用例 `Row>Expanded>SingleChildScrollView>HtmlWidget` 短内容）：默认 `center` 时首行 top≈49%（居中）；加 `CrossAxisAlignment.start` 后 top≈2%（顶部对齐）。
+- 单页模式 / scroll 模式不在 Row 里，不受影响——所以前两轮坐标测试都正常。
+- **修复**（一行）：双页 `Row` 加 `crossAxisAlignment: CrossAxisAlignment.start`。左右两页都从顶部排起，像真书的双页对开。
+- **回归测试 2 个**（已验证撤销修复后会失败，能抓回归）：双页右页短内容（末页）首行 `top < 25%` viewport；双页左页（满内容对照）首行 `top < 25%`。
+
+
+
 
 
 #### Added — Q7 阅读器内抽屉摘录 tab 补右键菜单 + 可见按钮（修正 Q6「没看到」）
