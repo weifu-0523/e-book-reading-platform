@@ -18,16 +18,38 @@ import 'package:meta/meta.dart';
 
 /// 高亮区间数据（plain text 坐标）。
 /// 由 EpubxRenderer 把 Annotation 适配为此类型，传给 HtmlHighlightInjector。
+///
+/// [startOffset]/[endOffset] 是**章节内** 0-based plain text 偏移（与
+/// `currentChapterPlainText` 同坐标）。它们只在所属章节 [chapterIndex] 的
+/// 坐标空间里有效——跨章渲染时必须用 chapterIndex 过滤，否则不同章的相同
+/// offset 范围会被误匹配，产生"幽灵高亮"（M2.11/问题3 根因）。
 @immutable
 class HighlightRange {
   final int startOffset;
   final int endOffset;
   final String colorRgba;
   final bool hasNote;
+
+  /// M2.11/问题3：此高亮所属的章节索引（0-based flatChapters）。
+  /// 默认 -1 表示"未指定/不分章"（向后兼容旧调用方与 scroll 模式整章注入）。
+  /// paged 模式渲染某章时，只取 chapterIndex == 当前章的高亮，避免跨章泄漏。
+  final int chapterIndex;
   const HighlightRange(
     this.startOffset,
     this.endOffset,
     this.colorRgba, {
     this.hasNote = false,
+    this.chapterIndex = -1,
   });
+
+  /// 复制并改写 chapterIndex（供 localizeHighlights 把全局高亮平移到页面
+  /// 本地坐标时保留所属章信息）。
+  HighlightRange copyWithChapterLocal(int localStart, int localEnd) =>
+      HighlightRange(
+        localStart,
+        localEnd,
+        colorRgba,
+        hasNote: hasNote,
+        chapterIndex: chapterIndex,
+      );
 }

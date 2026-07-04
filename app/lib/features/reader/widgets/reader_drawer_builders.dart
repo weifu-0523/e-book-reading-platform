@@ -57,6 +57,14 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
       chapterIndexResolver: defaultTocChapterIndex,
       onSelect: (entry) async {
         await engine.gotoTocEntry(entry);
+        // M2.10/Bug B2: 双页模式下 rebuild 触发 _buildPaged 的 LayoutBuilder
+        // 重跑算新章分页；若不等 chapterSwitchSettled 就 closeDrawer，drawer
+        // 提前关闭 + PageView 尚未完成新章布局 → TOC 跳转视觉卡住或 spread
+        // 越界。reader_body 的 _awaitChapterSettledAndLayout 同理（它是私有
+        // 方法，wrapper 拿不到，用公开 Future chapterSwitchSettled）。
+        // TOC 跳转不像笔记那样需要 jumpToPage（落在首页即可），故不需
+        // 额外 endOfFrame。
+        await engine.chapterSwitchSettled;
         if (context.mounted) {
           Scaffold.of(context).closeDrawer();
         }

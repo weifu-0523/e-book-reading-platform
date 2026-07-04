@@ -20,10 +20,16 @@ class ReaderBottomBar extends StatelessWidget {
   final String? chapterTitle;
   final double percent;
 
+  /// M2.9: 本章页码文本（如 "3 / 12" 或 "3-4 / 12"）。非 null 时优先于
+  /// 百分比显示在右侧。EPUB paged 模式由 ReaderProgressBar 计算填充；
+  /// PDF / scroll 模式为 null（回退到百分比）。
+  final String? pageInfo;
+
   const ReaderBottomBar({
     super.key,
     required this.chapterTitle,
     required this.percent,
+    this.pageInfo,
   });
 
   @override
@@ -41,8 +47,9 @@ class ReaderBottomBar extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
+          // M2.9: 有 pageInfo 时显示页码，否则回退到百分比。
           Text(
-            '${(percent * 100).round()}%',
+            pageInfo ?? '${(percent * 100).round()}%',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],

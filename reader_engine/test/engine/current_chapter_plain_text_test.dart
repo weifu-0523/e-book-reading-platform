@@ -44,6 +44,15 @@ class _FakeEngine implements ReaderEngine {
   PaginationMode get paginationMode => throw UnimplementedError();
 
   @override
+  bool get dualPageMode => false;
+
+  @override
+  int get currentSpreadCount => 0;
+
+  @override
+  int get currentSpreadIndex => 0;
+
+  @override
   Future<void> open(BookRef book) async {}
 
   @override
@@ -57,6 +66,12 @@ class _FakeEngine implements ReaderEngine {
 
   @override
   Future<void> previousSpine() async {}
+
+  @override
+  bool nextPage() => false;
+
+  @override
+  bool previousPage() => false;
 
   @override
   Future<void> setTypography(TypographySettings settings) async {}

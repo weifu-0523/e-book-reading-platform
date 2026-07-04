@@ -17,7 +17,9 @@
 import 'package:flutter/material.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
+import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 
 import '../widgets/reader_bottom_bar.dart';
 
@@ -81,7 +83,45 @@ class _ReaderProgressBarState extends State<ReaderProgressBar> {
     return ReaderBottomBar(
       chapterTitle: chapterOrPageLabel(_current),
       percent: estimateProgressPercent(_current, pdfPageCount: _pdfPageCount),
+      // M2.9: EPUB paged 模式显示本章页码（当前/总）；双页模式显示范围。
+      // PDF / scroll / breaks 未算出时为 null，ReaderBottomBar 回退到百分比。
+      pageInfo: _epubPageInfo,
     );
+  }
+
+  /// M2.9: EPUB paged 模式的本章页码字符串。
+  ///
+  /// 单页：「3 / 12」（当前页/总页，1-based 显示）。
+  /// 双页：「3-4 / 12」（左右两页，孤页只显左）。
+  ///
+  /// 数据源：`engine.currentSpreadCount`（总）+ `engine.currentSpreadIndex`
+  /// （当前 spread）。这两个值在翻页时由 _emitCurrentLocation 触发的
+  /// currentLocation$ emit → 本 widget setState 刷新（见 _buildState）。
+  String? get _epubPageInfo {
+    final engine = widget.engine;
+    // 仅 EPUB paged 模式有页码；PDF 用「第 N 页」（chapterOrPageLabel 已处理），
+    // scroll 模式无分页概念。
+    if (engine is! ConcreteEpubReaderEngine) return null;
+    if (engine.paginationMode != PaginationMode.paged) return null;
+    final total = engine.currentSpreadCount;
+    if (total <= 0) return null;
+    final spreadIdx = engine.currentSpreadIndex.clamp(0, total - 1);
+    // 单页模式：spreadIdx == pageIdx，显示「当前/总」。
+    if (!engine.dualPageMode) {
+      return '${spreadIdx + 1} / $total';
+    }
+    // 双页模式：spread[i] 含 breaks[i*2] (左) + breaks[i*2+1] (右)。
+    // 左页号 = spreadIdx*2 + 1（1-based），右页号 = 左 + 1。
+    final breaks = engine.currentChapterPageBreaks;
+    final leftPageNo = spreadIdx * 2 + 1;
+    final rightPageNo = leftPageNo + 1;
+    final hasRight = (spreadIdx * 2 + 1) < breaks.length;
+    // 总页数显示 break 总数（列数），不是 spread 数 —— 用户感知的是「页」。
+    final totalCols = breaks.length;
+    if (!hasRight) {
+      return '$leftPageNo / $totalCols';
+    }
+    return '$leftPageNo-$rightPageNo / $totalCols';
   }
 
   /// PDF 总页数（仅 PdfReaderEngine 暴露；EPUB 引擎此值为 null）。

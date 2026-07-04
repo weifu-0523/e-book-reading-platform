@@ -33,21 +33,24 @@ class Paginator {
     required String chapterHtml,
     required Size viewport,
     required TypographySettings typography,
+    double marginPx = 0,
   }) => paginateWithText(
         chapterHtml: chapterHtml,
         viewport: viewport,
         typography: typography,
+        marginPx: marginPx,
       ).breaks;
 
   ({String plainText, List<PageBreak> breaks}) paginateWithText({
     required String chapterHtml,
     required Size viewport,
     required TypographySettings typography,
+    double marginPx = 0,
   }) {
-    final key = _CacheKey(chapterHtml, viewport, typography);
+    final key = _CacheKey(chapterHtml, viewport, typography, marginPx);
     return _textCache.putIfAbsent(
       key,
-      () => _paginateUncached(chapterHtml, viewport, typography),
+      () => _paginateUncached(chapterHtml, viewport, typography, marginPx),
     );
   }
 
@@ -55,6 +58,7 @@ class Paginator {
     String chapterHtml,
     Size viewport,
     TypographySettings typography,
+    double marginPx,
   ) {
     final parsed = HtmlTextUtils.htmlToParagraphs(chapterHtml);
     final plainText = parsed.plainText;
@@ -68,7 +72,12 @@ class Paginator {
     }
 
     final style = _textStyle(typography);
-    final usableHeight = viewport.height;
+    // M2.8/B1 (Bug #8): 测量高度必须扣除上下 margin（渲染时每页包了
+    // EdgeInsets.all(margin)）。原代码按全高度算容量导致每页内容溢出、
+    // "下方还有未显示完的文字"。
+    final usableHeight = viewport.height - 2 * marginPx;
+    // M2.8/B1: 测量宽度也要扣左右 margin，否则换行数算少 → 高度算低 → 溢出。
+    final usableWidth = (viewport.width - 2 * marginPx).clamp(50.0, double.infinity);
 
     final breaks = <PageBreak>[];
     var pageStart = 0;
@@ -77,7 +86,7 @@ class Paginator {
     for (final p in paragraphs) {
       if (p.length == 0) continue;
       final paraText = plainText.substring(p.start, p.end);
-      final paraHeight = _measureHeight(paraText, style, viewport.width);
+      final paraHeight = _measureHeight(paraText, style, usableWidth);
       if (pageHeight + paraHeight > usableHeight && pageHeight > 0) {
         breaks.add(PageBreak(startOffset: pageStart, endOffset: p.start));
         pageStart = p.start;
@@ -112,15 +121,17 @@ class _CacheKey {
   final String html;
   final Size viewport;
   final TypographySettings typography;
-  const _CacheKey(this.html, this.viewport, this.typography);
+  final double marginPx;
+  const _CacheKey(this.html, this.viewport, this.typography, this.marginPx);
 
   @override
   bool operator ==(Object other) =>
       other is _CacheKey &&
       html == other.html &&
       viewport == other.viewport &&
-      typography == other.typography;
+      typography == other.typography &&
+      marginPx == other.marginPx;
 
   @override
-  int get hashCode => Object.hash(html, viewport, typography);
+  int get hashCode => Object.hash(html, viewport, typography, marginPx);
 }

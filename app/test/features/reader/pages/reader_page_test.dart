@@ -11,10 +11,15 @@ import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
+
 import 'package:zhiyue/core/providers.dart';
+import 'package:zhiyue/data/local/database.dart' show BookmarkEntry;
+import 'package:zhiyue/data/repositories/bookmark_repository.dart';
+import 'package:zhiyue/features/reader/controllers/bookmark_controller.dart';
 import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_page.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
+import 'package:zhiyue/features/reader/providers/notes_controller.dart';
 import 'package:zhiyue/features/reader/widgets/reader_error_view.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
@@ -80,6 +85,15 @@ class FakeReaderEngine implements ReaderEngine {
   PaginationMode get paginationMode => PaginationMode.paged;
 
   @override
+  bool get dualPageMode => false;
+
+  @override
+  int get currentSpreadCount => 0;
+
+  @override
+  int get currentSpreadIndex => 0;
+
+  @override
   Future<void> open(BookRef book) async {}
 
   @override
@@ -93,6 +107,12 @@ class FakeReaderEngine implements ReaderEngine {
 
   @override
   Future<void> previousSpine() async {}
+
+  @override
+  bool nextPage() => false;
+
+  @override
+  bool previousPage() => false;
 
   @override
   Future<void> setPaginationMode(PaginationMode mode) async {}
@@ -282,4 +302,66 @@ void main() {
     // NotesDrawer header text should now be visible.
     expect(find.text('本书高亮与笔记'), findsOneWidget);
   });
+
+  // M2.10/Bug C2 regression: reader_page 的 ProviderScope.overrides 必须同时
+  // 覆盖 bookmarkControllerProvider（它 ref.watch(currentBookIdProvider)），
+  // 否则 reader 子树内 ReaderBookmarkList 读它时触发 Riverpod
+  // "dependency overridden but the provider is not" 断言 → 红屏黄字。
+  //
+  // 用 provider 级测试验证 Riverpod 契约：在同一 scope 同时 override
+  // currentBookIdProvider + bookmarkControllerProvider 后读
+  // bookmarkControllerProvider 不应断言。pre-fix（漏 override
+  // bookmarkControllerProvider）会抛 "dependency overridden" 断言。
+  // （不用 widget 测试：ReaderPage 的 ProgressPersister 定时器让
+  // pumpAndSettle 永不 settle，与本次回归无关。）
+  test('bookmarkControllerProvider override contract (Bug C2)', () async {
+    final container = ProviderContainer(overrides: [
+      currentBookIdProvider.overrideWith((_) => 'fake'),
+      // Mirror reader_page.dart: 同 scope override 消费方 provider。
+      bookmarkControllerProvider.overrideWith(
+        (ref) => BookmarkController(
+          bookId: 'fake',
+          repository: _EmptyBookmarkRepository(),
+        ),
+      ),
+    ]);
+    addTearDown(container.dispose);
+
+    // Reading the provider must NOT throw a Riverpod assertion. Pre-fix,
+    // omitting the bookmarkControllerProvider override while overriding
+    // currentBookIdProvider threw: "Tried to read ... from a place where one
+    // of its dependencies were overridden but the provider is not."
+    //
+    // The mere act of reading without throwing IS the regression assertion —
+    // pre-fix this `read` triggered the assertion synchronously. We don't
+    // assert on loading vs data (the watchForBook async* yield needs a frame
+    // loop to settle, which a pure ProviderContainer test lacks; that's
+    // irrelevant to the override-contract regression).
+    final async = container.read(bookmarkControllerProvider);
+    // Drain any pending microtasks so a deferred assertion (if any) surfaces.
+    await Future<void>.delayed(Duration.zero);
+    expect(async, isA<AsyncValue<BookmarkState>>(),
+        reason: 'reading bookmarkControllerProvider must not throw a Riverpod '
+            '"dependency overridden" assertion (Bug C2)');
+  });
+}
+
+/// Fake bookmark repo that always reports an empty bookmark list.
+class _EmptyBookmarkRepository implements BookmarkRepository {
+  @override
+  Future<void> add(BookmarkEntry entry) async {}
+  @override
+  Future<BookmarkEntry?> get(String id) async => null;
+  @override
+  Future<List<BookmarkEntry>> listForBook(String bookId) async => const [];
+  @override
+  Future<void> updateLabel({required String id, required String label}) async {}
+  @override
+  Future<void> updateNote({required String id, String? note}) async {}
+  @override
+  Future<void> delete(String id) async {}
+  @override
+  Stream<List<BookmarkEntry>> watchForBook(String bookId) async* {
+    yield const [];
+  }
 }

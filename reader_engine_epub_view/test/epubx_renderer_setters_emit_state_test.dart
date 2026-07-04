@@ -116,5 +116,43 @@ void main() {
       await sub.cancel();
       await r.dispose();
     });
+
+    // M2.8/B2 regression (Bug #6 cross-chapter paging): setChapter must emit
+    // ReaderEngineReady. nextPage()/previousPage() in paged mode call
+    // setChapter on chapter-end fallthrough (via _nextChapterIfPossible).
+    // Pre-fix, setChapter updated _currentChapterIndex + reset _cachedBreaks +
+    // jumpToPage(0) but emitted NO state — so reader_body's state$.listen never
+    // fired → no setState → no rebuild → _buildPaged's LayoutBuilder never
+    // re-paginated → PageView kept rendering the OLD chapter's pages while the
+    // controller sat at page 0. User saw "回到本章首页", then the next nextPage
+    // saw _cachedBreaks == null and fell into the fallback换章 branch,
+    // silently advancing the chapter index on every tap → "跨章节乱翻" +
+    // eventual UI stall. gotoLocator's CFI branch (test above) already emitted;
+    // setChapter was the missing one.
+    test('setChapter emits ReaderEngineReady (Bug #6 cross-chapter paging)',
+        () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithThreeChapters();
+      final states = <ReaderEngineState>[];
+      final sub = r.state$.listen(states.add);
+      await Future<void>.delayed(Duration.zero);
+      states.clear();
+
+      r.setChapter(1);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(r.currentChapterIndex, 1, reason: 'setChapter must switch chapter');
+      final readyStates = states.whereType<ReaderEngineReady>().toList();
+      expect(readyStates, isNotEmpty,
+          reason: 'Bug #6 regression: setChapter must emit ReaderEngineReady '
+              'so reader_body rebuilds and re-paginates the new chapter. '
+              'Without emission, the PageView continues rendering the previous '
+              'chapter and the next nextPage() sees null _cachedBreaks → falls '
+              'into the fallback换章 branch → silent cross-chapter skips. '
+              'gotoLocator (CFI) and injectHighlights already emit; setChapter '
+              'was the lone chapter-mutating path that did not.');
+      await sub.cancel();
+      await r.dispose();
+    });
   });
 }

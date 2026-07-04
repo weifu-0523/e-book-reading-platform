@@ -33,14 +33,33 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 /// `ReaderEngine.currentChapterPlainText` (post-T0 unification).
 class ScrollToOffsetService {
   static Future<void> scrollToCharacterOffset({
-    required ScrollableState scrollable,
+    // M2.10/Bug B1（真根因）：paged 分支只用 pageController + pageBreaks，
+    // 根本不读 scrollable。scrollable 只在 scroll 分支（_scrollInScrollView）
+    // 需要。原 `required` 签名迫使调用方传一个非空 ScrollableState，但
+    // reader_body 的 context 拿不到 PageView/SingleChildScrollView 的
+    // Scrollable（它们是 engine.build() 内的后代，Scrollable.maybeOf 往上
+    // 找祖先返回 null）→ 旧调用方 `if (scrollable == null) return;` 总提前
+    // 退出 → 跳转从未执行。改为可选：paged 模式可不传；scroll 模式必须传。
     required int targetOffset,
     required PaginationMode paginationMode,
+    ScrollableState? scrollable,
     List<PageBreak> pageBreaks = const [],
     PageController? pageController,
+    // M2.10/Bug B1: 双页模式下 PageController.page 是 spread 索引（PageView
+    // 的 itemCount = (breaks.length + 1) ~/ 2），而 _findPageForOffset 返回的
+    // 是 break 索引（单页模式下 = 页号）。不换算则 jumpToPage(breakIdx) 在
+    // breakIdx >= spreadCount 时抛 'PageController.page cannot be greater than
+    // itemCount' assertion → 笔记/摘录跳转崩溃，即使不越界也会跳错 spread。
+    // 调用方从 engine.dualPageMode 读取传入。默认 false 保持旧契约不破。
+    bool dualPageMode = false,
     Duration duration = const Duration(milliseconds: 300),
   }) async {
     if (paginationMode == PaginationMode.scroll) {
+      // scroll 分支必须传 scrollable。
+      if (scrollable == null) {
+        throw ArgumentError(
+            'scrollable is required when paginationMode is scroll');
+      }
       await _scrollInScrollView(
         scrollable: scrollable,
         targetOffset: targetOffset,
@@ -56,8 +75,11 @@ class ScrollToOffsetService {
     }
     if (pageBreaks.isEmpty) return;
 
-    final pageIdx = _findPageForOffset(pageBreaks, targetOffset);
-    pageController.jumpToPage(pageIdx);
+    final breakIdx = _findPageForOffset(pageBreaks, targetOffset);
+    // M2.10/Bug B1: 双页模式下 spread[i] = breaks[i*2] (左) + breaks[i*2+1] (右)，
+    // 反推 spread 索引 = breakIdx ~/ 2。单页模式 spread 索引 = breakIdx 本身。
+    final targetPage = dualPageMode ? breakIdx ~/ 2 : breakIdx;
+    pageController.jumpToPage(targetPage);
   }
 
   static int _findPageForOffset(List<PageBreak> breaks, int offset) {

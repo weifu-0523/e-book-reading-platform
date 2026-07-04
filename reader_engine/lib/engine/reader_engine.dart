@@ -70,11 +70,34 @@ abstract interface class ReaderEngine {
   TypographySettings get typography;
   PaginationMode get paginationMode;
 
+  /// M2.9: 是否处于双页（书脊式左右两页）模式。
+  /// EPUB paged 宽屏时为 true；PDF 由用户 toggle；scroll 模式恒 false。
+  bool get dualPageMode;
+
+  /// M2.9: 当前 spread/page 总数（双页模式 = spread 数，单页 = page 数）。
+  /// 供页码显示。非 paged / breaks 未算出返回 0。
+  int get currentSpreadCount;
+
+  /// M2.9: 当前 spread/page 索引（0-based）。PageController 未挂载返回 0。
+  int get currentSpreadIndex;
+
   Future<void> open(BookRef book);
   Future<void> gotoLocator(Locator locator);
   Future<void> gotoTocEntry(TocEntry entry);
   Future<void> nextSpine();
   Future<void> previousSpine();
+
+  /// M2.8/B1: 翻到下一页（章内分页）；章末则换到下一章首页。
+  ///
+  /// 与 [nextSpine] 的区别：nextSpine 无条件换章，nextPage 先尝试章内翻页，
+  /// 只在章末才 fallthrough 到换章。paged 模式下 tap zone / 键盘 / 滚轮
+  /// 都应调用此方法，避免"点一下翻页区域直接跳章"的体验问题。
+  /// scroll 模式下等价于 nextSpine（scroll 没有章内分页）。
+  bool nextPage();
+
+  /// M2.8/B1: 翻到上一页；章首则换到上一章。
+  bool previousPage();
+
   Future<void> setTypography(TypographySettings settings);
   Future<void> setPaginationMode(PaginationMode mode);
   Future<void> close();

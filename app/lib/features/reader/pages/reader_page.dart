@@ -21,6 +21,7 @@ import 'package:reader_engine/engine/reader_engine.dart';
 
 import '../../../core/providers.dart';
 import '../../../core/widgets/loading_view.dart';
+import '../controllers/bookmark_controller.dart';
 import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
 import '../services/progress_persister.dart';
@@ -78,9 +79,11 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
           _ensureProgressPersister(engine);
           // 用本地 ProviderScope 覆盖 currentBookIdProvider，让 NotesController
           // 拿到当前 bookId（仅作用于本书的子树）。
-          // notesControllerProvider 是 autoDispose — 同作用域覆盖依赖时必须
-          // 同步覆盖消费方 provider，否则 riverpod 抛 "dependency overridden"
-          // 断言。
+          // notesControllerProvider / bookmarkControllerProvider 都是 autoDispose
+          // 且 ref.watch(currentBookIdProvider) — 同作用域覆盖依赖时必须同步
+          // 覆盖所有消费方 provider，否则 riverpod 抛 "dependency overridden
+          // but the provider is not" 断言（M2.10/Bug C2：漏了
+          // bookmarkControllerProvider → 书签 tab 红屏黄字）。
           return ProviderScope(
             overrides: [
               currentBookIdProvider.overrideWith((_) => widget.bookId),
@@ -88,6 +91,15 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
                 (ref) => NotesController(
                   bookId: widget.bookId,
                   repository: ref.watch(notesRepositoryProvider),
+                ),
+              ),
+              // M2.10/Bug C2: bookmarkControllerProvider 同样依赖
+              // currentBookIdProvider，必须一起 override，否则 reader 子树内
+              // ReaderBookmarkList 读它时触发 Riverpod 断言红屏。
+              bookmarkControllerProvider.overrideWith(
+                (ref) => BookmarkController(
+                  bookId: widget.bookId,
+                  repository: ref.watch(bookmarkRepositoryProvider),
                 ),
               ),
             ],

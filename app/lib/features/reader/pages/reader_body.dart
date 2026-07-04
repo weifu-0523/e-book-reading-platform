@@ -26,6 +26,7 @@ import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
@@ -184,23 +185,52 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     if (loc == null || _initialLocatorHandled) return;
     _initialLocatorHandled = true;
     await engine.gotoLocator(loc);
-    // Wait for the chapter switch (if any) to settle so
-    // `currentChapterPageBreaks` reflects the new chapter before
-    // ScrollToOffsetService reads it. Same-chapter locators return an
-    // already-completed future, so this is cheap in the common case.
-    await engine.chapterSwitchSettled;
+    // M2.8/B4 (Bug #2): 等章节切换 + 多一帧让 PageView 完成布局后再读
+    // pageBreaks / jumpToPage，消除「跳转延迟/跳错页」。
+    await _awaitChapterSettledAndLayout();
     if (!mounted) return;
-    final scrollable = Scrollable.maybeOf(context);
-    if (scrollable == null) return;
-    if (loc is EpubRangeLocator) {
-      await ScrollToOffsetService.scrollToCharacterOffset(
-        scrollable: scrollable,
-        targetOffset: loc.startOffset,
-        paginationMode: engine.paginationMode,
-        pageBreaks: engine.currentChapterPageBreaks,
-        pageController: engine.pageController,
-      );
+    if (loc is! EpubRangeLocator) return;
+    final isPaged = engine.paginationMode == PaginationMode.paged;
+    // M2.10/Bug B1（真根因）：Scrollable.maybeOf(context) 从 ReaderBody context
+    // 往上找祖先，但 PageView（paged）/ SingleChildScrollView（scroll）都在
+    // engine.build() 里、是 ReaderBody 的**后代**，所以永远返回 null → 旧代码
+    // `if (scrollable == null) return;` 总提前退出 → 跳转从未执行（用户看到
+    // "没反应" 或停在首页）。paged 分支只用 pageController + pageBreaks（不用
+    // scrollable），所以 paged 模式直接跳过 scrollable 查找；只在 scroll
+    // 模式（真正需要 SingleChildScrollView 的 Scrollable）才查找。
+    ScrollableState? scrollable;
+    if (!isPaged) {
+      scrollable = Scrollable.maybeOf(context);
+      if (scrollable == null) return;
     }
+    await ScrollToOffsetService.scrollToCharacterOffset(
+      scrollable: scrollable,
+      targetOffset: loc.startOffset,
+      paginationMode: engine.paginationMode,
+      pageBreaks: engine.currentChapterPageBreaks,
+      pageController: engine.pageController,
+      // M2.10/Bug B1: 双页模式下 PageController.page 是 spread 索引，
+      // service 内部需 ~/2 换算，否则 jumpToPage 越界 assertion 崩溃。
+      dualPageMode: engine is ConcreteEpubReaderEngine && engine.dualPageMode,
+    );
+  }
+
+  /// M2.8/B4 (Bug #2): 跳转到 locator 后，等待章节切换 + 多一帧让
+  /// `_cachedBreaks` 被重新填充、PageView 重新挂载。
+  ///
+  /// **为何需要多一帧**：`chapterSwitchSettled` 的 completer 在「下一帧
+  /// post-frame callback」里 resolve。但同一帧里 `_buildPaged` 的
+  /// LayoutBuilder 虽然重跑了、写入了 `_cachedBreaks`，PageView 也 rebuild
+  /// 了——可是 PageView 的 PageController 此时可能还没真正「挂载新页」，
+  /// `ScrollToOffsetService` 紧接着读 `currentChapterPageBreaks` 会拿到
+  /// 刚填充的 breaks（OK），但 `pageController.jumpToPage` 在 PageView 尚未
+  /// 完成布局时调用会被吞或跳错页 → 用户看到「点击笔记要等一会才跳」。
+  /// 额外 `endOfFrame` 让 PageView 完成布局后再 jumpToPage，消除延迟。
+  /// 同章 locator（chapterSwitchSettled 立即 resolve）也只多一帧，可接受。
+  Future<void> _awaitChapterSettledAndLayout() async {
+    await engine.chapterSwitchSettled;
+    // 多等一帧让 PageView/SingleChildScrollView 完成布局。
+    await WidgetsBinding.instance.endOfFrame;
   }
 
   void _onSelectionChanged(SelectedContent? content) {
@@ -234,6 +264,9 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             loc.endOffset,
             _highlightColorToRgba(a.color),
             hasNote: a.hasNote,
+            // M2.11/问题3：标明所属章，engine 渲染当前章时按 chapterIndex 过滤，
+            // 避免别的章的高亮用相同 0-based offset 误染到当前章（幽灵高亮）。
+            chapterIndex: loc.chapterIndex,
           ));
         }
         e.injectHighlights(ranges);
@@ -269,12 +302,15 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 1100;
-        // M2.6/T2 (Bug #4): PDF 双页布局改为用户-driven 独立 toggle，不再
-        // 根据宽度自动启用。原 M2.5/T13 自动触发逻辑（>=1200px 且非扫描件）
-        // 在 window_manager 全屏切换 + isScanned FutureBuilder 解析之间存在
-        // race condition，用户报告"全屏下没有分为左右两页"。
-        //
-        // EPUB 双页渲染推到 v1.6（M2.5/T14 API surface），此处不再 wire。
+        // M2.9 (Bug #4 EPUB 双页): EPUB paged 模式 + 宽屏 → 自动启用双页
+        // （书脊式左右两页）。窄屏或 scroll 模式 → 单页。setDualPageMode 内部
+        // 会去重（值不变直接 return），所以每次 rebuild 调用是廉价的。
+        // 不影响 PDF（PDF 走自己的 dualPageMode toggle，不经此路径）。
+        final e = engine;
+        if (e is ConcreteEpubReaderEngine &&
+            e.paginationMode == PaginationMode.paged) {
+          e.setDualPageMode(isWide);
+        }
         if (isWide) {
           return _buildWideReaderTree(ui);
         }
@@ -408,8 +444,23 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             child: ReaderScaffold(
               content: engine.build(innerContext),
               title: _bookTitle(),
-              onTapPrev: () => engine.previousSpine(),
-              onTapNext: () => engine.nextSpine(),
+              // M2.8/B1: paged 模式走 nextPage（章内翻页，章末才换章），
+              // scroll 模式走 nextSpine（scroll 无章内分页，tap 即换章）。
+              // 修复 Bug #6: 原 tap zone 无条件换章 → "点一下直接跳章"。
+              onTapPrev: () {
+                if (engine.paginationMode == PaginationMode.paged) {
+                  engine.previousPage();
+                } else {
+                  engine.previousSpine();
+                }
+              },
+              onTapNext: () {
+                if (engine.paginationMode == PaginationMode.paged) {
+                  engine.nextPage();
+                } else {
+                  engine.nextSpine();
+                }
+              },
               // M2.6/T9: 边距像素值同时作为翻页 tap zone 宽度。
               marginPx: engine.typography.pageMargin.pixelValue,
               // M2.6/T2 (Bug #4): PDF 双页独立 toggle。仅 PDF 引擎提供回调；
@@ -484,6 +535,23 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             bottom: 0,
             child: ReaderProgressBar(engine: engine),
           ),
+          // M2.10/Bug C1: chrome 隐藏（全屏 / 用户切换）时 AppBar 消失，添加
+          // 书签的唯一入口（AppBar 里的 IconButton）也消失，用户找不到添加入口。
+          // 补一个右下 FAB，仅 !chromeVisible 时显示（chrome 可见时不渲染，
+          // 避免与 AppBar 按钮重复）。复用 _onAddBookmark。FAB 放在
+          // _buildReaderStack 的 Stack（窄宽屏共用），宽屏路径下落在 Expanded
+          // 内的右下，不跨 sidebar。
+          if (!ui.chromeVisible)
+            Positioned(
+              bottom: 56, // 避让底部进度条（~36px）+ 间距
+              right: 16,
+              child: FloatingActionButton(
+                heroTag: 'readerAddBookmark',
+                onPressed: _onAddBookmark,
+                tooltip: '添加书签',
+                child: const Icon(Icons.bookmark_add_outlined),
+              ),
+            ),
           // typography 面板的触发器（不可见 listener）。
           ReaderTypographyPanelTrigger(engine: engine),
         ],
@@ -503,10 +571,11 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         .firstWhere((a) => a?.id == id, orElse: () => null);
     if (ann == null) return;
     await engine.gotoLocator(ann.locator);
-    // Wait for the chapter switch (if any) to settle so
-    // `currentChapterPageBreaks` reflects the new chapter before
-    // ScrollToOffsetService reads it.
-    await engine.chapterSwitchSettled;
+    // M2.8/B4 (Bug #2): 等章节切换 + 多一帧让 PageView 完成布局，再读
+    // pageBreaks / jumpToPage。原仅 await chapterSwitchSettled，PageView
+    // 在同帧刚 rebuild 但未完成布局，jumpToPage 被吞或跳错页 →
+    // 用户感觉「点击笔记要等一会才跳」。
+    await _awaitChapterSettledAndLayout();
     if (!mounted) return;
     // M2.5/T7 重构后抽屉是 Scaffold.drawer，不再是 endDrawer。
     // 窄屏 maybePop() 会 pop 整个 reader route（Bug #2），必须只在窄屏调。
@@ -515,18 +584,30 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       unawaited(Navigator.of(context).maybePop());
     }
     if (!mounted) return;
-    final scrollable = Scrollable.maybeOf(context);
-    if (scrollable == null) return;
     final loc = ann.locator;
-    if (loc is EpubRangeLocator) {
-      await ScrollToOffsetService.scrollToCharacterOffset(
-        scrollable: scrollable,
-        targetOffset: loc.startOffset,
-        paginationMode: engine.paginationMode,
-        pageBreaks: engine.currentChapterPageBreaks,
-        pageController: engine.pageController,
-      );
+    if (loc is! EpubRangeLocator) return;
+    final isPaged = engine.paginationMode == PaginationMode.paged;
+    // M2.10/Bug B1（真根因）：Scrollable.maybeOf(context) 从 ReaderBody context
+    // 往上找祖先，但 PageView（paged）/ SingleChildScrollView（scroll）都在
+    // engine.build() 里、是 ReaderBody 的**后代**，所以永远返回 null → 旧代码
+    // `if (scrollable == null) return;` 总提前退出 → 笔记跳转从未执行（用户
+    // "没反应" 或停在换章后的首页）。paged 分支只用 pageController + pageBreaks，
+    // 直接跳过 scrollable 查找；与 _maybeHandleInitialLocator 同修法。
+    ScrollableState? scrollable;
+    if (!isPaged) {
+      scrollable = Scrollable.maybeOf(context);
+      if (scrollable == null) return;
     }
+    await ScrollToOffsetService.scrollToCharacterOffset(
+      scrollable: scrollable,
+      targetOffset: loc.startOffset,
+      paginationMode: engine.paginationMode,
+      pageBreaks: engine.currentChapterPageBreaks,
+      pageController: engine.pageController,
+      // M2.10/Bug B1: 双页模式下 PageController.page 是 spread 索引，
+      // service 内部需 ~/2 换算，否则 jumpToPage 越界 assertion 崩溃。
+      dualPageMode: engine is ConcreteEpubReaderEngine && engine.dualPageMode,
+    );
   }
 
   Future<void> _onAnnotationLongPress(String id) async {
@@ -748,7 +829,8 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       return;
     }
     await engine.gotoTocEntry(target);
-    await engine.chapterSwitchSettled;
+    // M2.8/B4 (Bug #2): 同 _onAnnotationTap / _onBookmarkJump，多等一帧。
+    await _awaitChapterSettledAndLayout();
   }
 
   void _showInvalidChapterSnackBar() {
@@ -811,13 +893,20 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       );
       return;
     }
-    // M2.6/T8 (Bug #1 防御性修复)：gotoLocator 可能因 locator 类型不匹配、
+    // M2.6/T8 (Bug #1 修复)：gotoLocator 可能因 locator 类型不匹配、
     // flatChapters 越界、engine 未 ready 等原因抛异常，导致 Flutter 红屏。
-    // 防御性 try-catch + SnackBar 防止 UX 灾难；待用户复现提供 stack trace
-    // 后再做精准修复。
+    // 防御性 try-catch + SnackBar 防止 UX 灾难。M2.8/B4 进一步把
+    // gotoLocator 内部的 post-frame callback 也包了 try-catch（epubx_renderer
+    // 里），双重保险。
     try {
       await engine.gotoLocator(locator);
-      await engine.chapterSwitchSettled;
+      // M2.8/B4 (Bug #2): 与 _onAnnotationTap 同模式，等章节切换 + 多一帧
+      // 让 PageView 完成布局。书签通常是 EpubCfiLocator（跨章跳转常见），
+      // gotoLocator CFI 分支只改 _currentChapterIndex + emit state，不调
+      // setChapter（不会 jumpToPage(0)）。若 PageView 仍停在旧章的某页，
+      // rebuild 后 itemCount 变了但 controller.page 可能越界 → 多等一帧
+      // 让 PageView 自然 clamp 到合法页。
+      await _awaitChapterSettledAndLayout();
     } catch (e, st) {
       debugPrint('Bookmark jump failed: $e\n$st');
       if (!mounted) return;
@@ -834,16 +923,21 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     }
   }
 
-  /// 根据 locator 类型推导默认书签 label。EPUB 用「第 N 章」，
-  /// PDF 用「第 N 页」，无法识别时 fallback 到「当前位置」。
+  /// 根据 locator 类型推导默认书签 label。
+  ///
+  /// M2.11/问题1：EPUB paged 模式加页码（「第 N 章 · 第 M 页」），让书签像
+  /// Kindle 一样精确定位到页，而非只到章。页号来自 engine 的 currentSpreadIndex
+  /// （1-based 显示）。scroll 模式无分页，只显示章。
   String _defaultBookmarkLabel(Locator locator) {
     if (locator is EpubCfiLocator) {
       final idx = locator.chapterIndex + 1;
-      return '第 $idx 章';
+      final pagePart = _epubPagedLabel();
+      return pagePart == null ? '第 $idx 章' : '第 $idx 章 · $pagePart';
     }
     if (locator is EpubRangeLocator) {
       final idx = locator.chapterIndex + 1;
-      return '第 $idx 章';
+      final pagePart = _epubPagedLabel();
+      return pagePart == null ? '第 $idx 章' : '第 $idx 章 · $pagePart';
     }
     if (locator is PdfPageLocator) {
       return '第 ${locator.page} 页';
@@ -852,6 +946,18 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       return '第 ${locator.page} 页';
     }
     return '当前位置';
+  }
+
+  /// M2.11/问题1：EPUB paged 模式的页号片段（如「第 3 页」），供书签 label 拼接。
+  /// 非 EPUB paged 模式（scroll / PDF）返回 null（只显示章或 PDF 页）。
+  String? _epubPagedLabel() {
+    final e = engine;
+    if (e is! ConcreteEpubReaderEngine) return null;
+    if (e.paginationMode != PaginationMode.paged) return null;
+    final total = e.currentSpreadCount;
+    if (total <= 0) return null;
+    final page = (e.currentSpreadIndex + 1).clamp(1, total);
+    return '第 $page 页';
   }
 
   /// 异步刷新 [_cachedBook]。每次 build 触发一次 fire-and-forget 拉取，

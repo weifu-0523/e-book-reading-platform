@@ -85,7 +85,7 @@ void main() {
     expect(renderer.currentHighlightedHtml(),
         '<p>hello world</p>'); // no highlights
     renderer.injectHighlightsSync(const [
-      HighlightRange(0, 5, 'rgba(255, 235, 59, 0.4)'),
+      HighlightRange(0, 5, 'rgba(255, 235, 59, 0.4)', chapterIndex: 0),
     ]);
     expect(renderer.currentHighlightedHtml(),
         contains('<span style="background-color: rgba(255, 235, 59, 0.4)">'));
@@ -99,8 +99,8 @@ void main() {
     final book = EpubBook()..Chapters = [chapter];
     renderer.bookForTesting = book;
     renderer.injectHighlightsSync(const [
-      HighlightRange(0, 3, 'rgba(255, 235, 59, 0.4)'),
-      HighlightRange(4, 7, 'rgba(33, 150, 243, 0.4)'),
+      HighlightRange(0, 3, 'rgba(255, 235, 59, 0.4)', chapterIndex: 0),
+      HighlightRange(4, 7, 'rgba(33, 150, 243, 0.4)', chapterIndex: 0),
     ]);
     final html = renderer.currentHighlightedHtml();
     expect(html, contains('rgba(255, 235, 59'));

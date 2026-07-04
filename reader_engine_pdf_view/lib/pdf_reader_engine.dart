@@ -75,6 +75,20 @@ class PdfReaderEngine implements ReaderEngine {
     _renderer.setPage(_renderer.currentPage - step);
   }
 
+  // M2.8/B1: PDF 是 scroll mode + Page-as-Chapter，没有"章内分页"概念，
+  // nextPage/previousPage 等价于 nextSpine/previousSpine（翻页即翻 PDF 页）。
+  @override
+  bool nextPage() {
+    nextSpine();
+    return true;
+  }
+
+  @override
+  bool previousPage() {
+    previousSpine();
+    return true;
+  }
+
   @override
   Future<void> setTypography(TypographySettings settings) async {
     _typography = settings;
@@ -146,6 +160,15 @@ class PdfReaderEngine implements ReaderEngine {
 
   @override
   PaginationMode get paginationMode => PaginationMode.scroll;
+
+  /// M2.9: PDF 自有 dualPageMode（用户 toggle）。scroll 模式下 spread 计数
+  /// 不适用（PDF 用 pageCount / currentPage 自管页码），返回 0 让
+  /// ReaderProgressBar 走 PDF 自己的「第 N 页」分支。
+  @override
+  int get currentSpreadCount => 0;
+
+  @override
+  int get currentSpreadIndex => 0;
 
   // ----- Selection forwarding (EpubxRenderer pattern) -----
   //

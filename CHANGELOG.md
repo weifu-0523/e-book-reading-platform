@@ -9,6 +9,113 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M2.11 — 2026-07-04（书签页内定位 + 高亮跨章泄漏修复）
+
+M2.10 修完双页回归后用户复测，报告 3 个新问题：①书签只按章节命名、跳转只回章节首页；②旧摘录颜色/跳转错误（新的正常）；③没摘录的页也出现幽灵高亮。代码层追溯发现 ①③ 是两个独立的设计缺陷，② 是 ③ 的副产物。
+
+#### Fixed
+
+- **问题1 书签只到章节首页（paged 模式页位置未编码）**：根因是 `_emitCurrentLocation`（epubx_renderer.dart）在 paged 模式下用 `_scrollController.offset` 算 charOffset，但 `_scrollController` 在 paged 模式**没有 client**（用 PageView）→ charOffset **恒为 0** → 书签 cfi 永远是 `"<chapter>:0"`。`gotoLocator` CFI 分支的 post-frame 重定位也只走 scroll（paged 下 no-op），永远 `jumpToPage(0)`。修复：①`_emitCurrentLocation` paged 模式改用当前页 break 的 `startOffset` 作 charOffset（编码真实页位置）；②`gotoLocator` CFI 分支 post-frame paged 模式用 charOffset 反查 break → `jumpToPage`（双页换算 spread `~/2`）；③`_defaultBookmarkLabel` EPUB paged 模式加页码"第 N 章 · 第 M 页"（M 来自 currentSpreadIndex）。
+- **问题3 没摘录的页也有高亮（跨章泄漏）**：根因是 `reader_body.dart` 把**全书所有 annotation** 灌进 `engine.injectHighlights`，**丢弃了 `chapterIndex`**。`_allHighlights` 不分章，渲染当前章时把别的章的高亮用各自章内 0-based offset 去 match 当前章页范围 → offset 范围恰好重叠的页冒出幽灵高亮。`localizeHighlights` 的交集数学是对的，错在被喂了错误坐标空间的 offset。修复（方案B，长期稳定）：`HighlightRange` 加 `chapterIndex` 字段（默认 -1 向后兼容），`_buildPaged` 与 `currentHighlightedHtml` 渲染时按 `chapterIndex == _currentChapterIndex` 过滤，`reader_body` bridge 传入 `loc.chapterIndex`。
+- **问题2 旧摘录颜色/跳转错误**：是问题3跨章泄漏的副产物——旧摘录的 offset 数据本身是对的，但被别章高亮污染导致显示错位/颜色异常。修问题3后自动正确，无需数据迁移。
+
+#### Tests
+
+- 更新 `epubx_renderer_paged_highlight_test.dart`：注入高亮加 `chapterIndex: 0`（反映新契约）；新增跨章泄漏防护 case（注入两章高亮，验证切换章节后只显示当前章的、不串内容）。
+- 更新 `epubx_renderer_test.dart`：`currentHighlightedHtml` 两个 case 的高亮加 `chapterIndex: 0`。
+- 全套：epub_view 134 通过（+1 新），app reader 184 通过，仅 pre-existing fail（epub_cover_extractor / PDF fixtures）。
+
+#### Lessons
+
+- **CFI 编解码必须覆盖所有渲染模式**：`_emitCurrentLocation` 与 `gotoLocator` 是一对 round-trip，但 paged 模式下编码侧（emit）用 scroll controller、解码侧（goto）也用 scroll——两端都假设 scroll 模式，paged 模式静默失效（charOffset 恒 0、重定位 no-op）。任何"位置"概念跨渲染模式传递时，编解码两端都必须处理所有模式，否则会"看起来对但数据是空的"。
+- **每章独立 0-based offset 是高亮泄漏的温床**：不同章的相同 offset 范围在各自的坐标空间里指向完全不同的文字。任何按 offset 匹配的逻辑（高亮、定位）都必须显式带章归属（chapterIndex），否则跨章数据混在一起时会产生"幽灵匹配"。这是 per-chapter coordinate design 的固有约束。
+
+### M2.10 — 2026-07-04（M2.9 双页功能回归修复）
+
+M2.9 交付后用户上手测试（Windows 宽屏 ≥1100px，命中自动双页分支），报告 3 个新回归。代码层追溯发现**全部由 M2.9 双页渲染分支 + 现有 measurement gap 共同触发**，窄屏单页模式不出现。第一轮修了 Bug A（溢出）+ B2（目录跳转）+ C1（书签入口 FAB），用户复测后 B1 笔记跳转、C2 书签页报错仍存在——Round 2 找到**真根因**（首轮误判）。本次纯回归修复。
+
+#### Fixed
+
+- **Bug A 底部黄黑斑马线 / "bottom overflowed by 14 pixels"**：`_buildPaged`（epubx_renderer.dart）每页在固定高度 PageView slot 里渲染 `Padding>HtmlWidget`。`HtmlWidget`（flutter_widget_from_html）渲染高度与 `Paginator`（TextPainter 测量）存在系统性误差（line-height/font-metrics 偏差，代码注释已自认误差 < 1 行）。双页模式宽度 halve 放大换行误差，某页真实高度 > slot 固定高度 → RenderFlex cross-axis 溢出 → 斑马线 + overflow 文字。修复：`buildSinglePage` 把 `Padding>HtmlWidget` 包进 `SingleChildScrollView(physics: NeverScrollableScrollPhysics())`，误差自然吸收（不溢出即不滚，溢出可竖向微滚），绝不抛 assertion。NeverScrollable 防止子页滚动与 PageView 翻页手势冲突。与 `_buildScroll`（scroll 模式已用 SingleChildScrollView）模式一致。
+- **Bug B1 笔记/摘录跳转（首轮误判 + Round 2 真根因）**：首轮以为是双页 spread 索引换算错（service 加 `dualPageMode ~/2`），但用户复测"跳到完全错误的地方或没反应"。Round 2 追到真根因：`Scrollable.maybeOf(context)` 从 `_ReaderBodyState.context` 往**上**找祖先，但 PageView（paged）/ SingleChildScrollView（scroll）都在 `engine.build()` 里、是 ReaderBody 的**后代**，所以**永远返回 null** → `_onAnnotationTap`/`_maybeHandleInitialLocator` 的 `if (scrollable == null) return;` 总提前退出 → 跳转从未执行（同章"没反应"，跨章停在 `gotoLocator` 的 jumpToPage(0) 首页）。修复：`scrollable` 参数改可选（paged 分支根本不读它，只用 pageController + pageBreaks）；调用方仅 scroll 模式才查找 scrollable，paged 模式直接调 `scrollToCharacterOffset`。首轮的 `dualPageMode ~/2` 换算保留（双页下仍需正确）。注：scroll 模式的 in-page 滚动定位此前也未工作（同因），本次未修（保持现状，不引入新回归），留 v1.6。
+- **Bug B2 目录跳转失效**：`ReaderTocDrawerWrapper.onSelect`（reader_drawer_builders.dart）调 `gotoTocEntry` 后没 `await chapterSwitchSettled` 就 `closeDrawer`，双页模式下 rebuild 触发 `_buildPaged` LayoutBuilder 重算分页，drawer 提前关 + PageView 未完成新章布局 → TOC 卡住或 spread 越界。修复：onSelect 改为 `await gotoTocEntry; await chapterSwitchSettled; if (context.mounted) closeDrawer()`（chapterSwitchSettled 是公开 Future，wrapper 可访问）。
+- **Bug C1 chrome 隐藏时无添加书签入口**：添加书签唯一入口在 `_buildChrome` 的 AppBar，被 `if (ui.chromeVisible)` gate；全屏/chrome 隐藏时按钮消失，无 FAB/快捷键 fallback → "没有地方来添加书签"。修复：`_buildReaderStack` 的 Stack 加一个 `Positioned(bottom:56, right:16)` 的 `FloatingActionButton(Icons.bookmark_add_outlined)`，仅 `!ui.chromeVisible` 时显示（chrome 可见时不重复）。复用 `_onAddBookmark`。
+- **Bug C2 书签页红屏报错（Riverpod 断言，Round 2 真根因）**：用户报告书签 tab 红屏黄字，错误是 Riverpod `"Tried to read ... from a place where one of its dependencies were overridden but the provider is not"`。根因：`reader_page.dart` 的 `ProviderScope.overrides` 覆盖了 `currentBookIdProvider` + `notesControllerProvider`，但**漏了 `bookmarkControllerProvider`**——它也 `ref.watch(currentBookIdProvider)`，依赖被覆盖但消费方没覆盖 → 断言红屏。修复：overrides 列表补 `bookmarkControllerProvider.overrideWith((ref) => BookmarkController(bookId: widget.bookId, repository: ref.watch(bookmarkRepositoryProvider)))`，与 notesControllerProvider 同模式。全代码库仅这两个 provider 依赖 currentBookIdProvider，已全部覆盖。
+- **Bug B2 目录跳转失效**：`ReaderTocDrawerWrapper.onSelect`（reader_drawer_builders.dart）调 `gotoTocEntry` 后没 `await chapterSwitchSettled` 就 `closeDrawer`，双页模式下 rebuild 触发 `_buildPaged` LayoutBuilder 重算分页，drawer 提前关 + PageView 未完成新章布局 → TOC 卡住或 spread 越界。修复：onSelect 改为 `await gotoTocEntry; await chapterSwitchSettled; if (context.mounted) closeDrawer()`（chapterSwitchSettled 是公开 Future，wrapper 可访问）。
+- **Bug C1 chrome 隐藏时无添加书签入口**：添加书签唯一入口在 `_buildChrome` 的 AppBar，被 `if (ui.chromeVisible)` gate；全屏/chrome 隐藏时按钮消失，无 FAB/快捷键 fallback → "没有地方来添加书签"。修复：`_buildReaderStack` 的 Stack 加一个 `Positioned(bottom:56, right:16)` 的 `FloatingActionButton(Icons.bookmark_add_outlined)`，仅 `!ui.chromeVisible` 时显示（chrome 可见时不重复）。复用 `_onAddBookmark`。
+
+#### Tests
+
+- 新增 `epubx_renderer_paged_overflow_test.dart`（4 cases）：单页/双页临界高度 HTML 无 overflow；遍历每个 spread 无 overflow；结构断言 SingleChildScrollView 存在。
+- 扩展 `scroll_to_offset_test.dart`（+5 cases）：dualPageMode=true 时 break3→spread1、break4(orphan)→spread2、dualPageMode=false 保持 break 索引（无回归）；Round 2 加 paged 模式不传 scrollable 也能 jumpToPage、scroll 模式缺 scrollable 抛 ArgumentError（B1 真根因）。
+- 新增 `reader_toc_drawer_settle_test.dart`（1 case）：onSelect 在 chapterSwitchSettled resolve 前不关 drawer，resolve 后关。
+- 新增 `reader_body_bookmark_fab_test.dart`（3 cases）：chrome 隐藏时 FAB 存在、chrome 可见时 FAB 不存在、点击 FAB 弹 add-bookmark dialog。
+- 扩展 `reader_page_test.dart`（+1 case）：同 scope override currentBookIdProvider + bookmarkControllerProvider 后读 provider 不抛 Riverpod 断言（C2 真根因）。
+- 更新 `epubx_renderer_widget_test.dart`：paged 模式断言从"无 SingleChildScrollView"改为"有 SingleChildScrollView 且 controller 为 null"（Bug A 修复改变契约）。
+
+**总数**：epub_view 133 通过 + 1 pre-existing fail（epub_cover_extractor，patched epubx）；app reader 184 通过 + 2 pre-existing fail（PDF fixtures 未 git-sync）。`dart.bat analyze` 全绿。
+
+#### Lessons
+
+- **分页测量与渲染的固有误差是设计层面的**：TextPainter 与 HtmlWidget 的 line-height/font-metrics 永远有微小偏差，分页边界本就是近似。工业阅读器（readium 等）都允许页面小幅内部滚动兜底，而非追求测量 100% 精确。把 overflow 当"可吸收误差"而非"必须消除的 bug"是更稳健的工程选择。
+- **双页模式是一次"坐标空间分裂"**：单页模式下 page index、break index、spread index 三者重合；双页模式下 spread index = break index ~/ 2。所有读 PageController.page 的代码（service、页码显示、章末判定）都必须显式区分这两套坐标。M2.9 引入双页时漏了 ScrollToOffsetService 这条路径。
+
+### M2.9 — 2026-07-04（EPUB 双页布局 + 每页页码）
+
+用户需求："页面足够大时像书一样分左右两页显示；每页下方显示页码"。M2.5/T14 早留了 `dualPageMode` API surface 但渲染层推到 v1.6，本次实现真正渲染。设计决策（用户确认）：宽屏（≥1100px）自动触发；页码显示"本章 当前/总"。
+
+#### Added
+
+- **EPUB 双页布局（Bug #4 EPUB 部分）**：宽屏（≥1100px）+ paged 模式时自动启用书脊式左右两页。`EpubxRenderer._buildPaged` 渲染单 PageView，每 item（spread）是 `Row(Expanded左页, SizedBox(24px书脊), Expanded右页)`。Paginator 按半宽测量（`(width-24)/2`），每 break = 一列内容；spread[i] = breaks[i*2] + breaks[i*2+1]。孤页（breaks 奇数）右侧 `SizedBox.shrink()`。窄屏自动回单页。
+- **每页页码**：底栏显示本章页码 `当前 / 总`（如 `3 / 12`），双页模式 `3-4 / 12`（孤页只显左）。新增 `ReaderEngine.currentSpreadCount`/`currentSpreadIndex` 接口；`ReaderBottomBar` 加 `pageInfo` 字段；`ReaderProgressBar._epubPageInfo` 计算。PDF/scroll 模式回退到原百分比。
+
+#### Changed
+
+- **翻页时位置流 emit**：`_buildPaged` 的 `onPageChanged` 旧实现只调 `_maybeEmitChapterEnd()`，翻页时 `currentLocation$` 不 emit → 页码不刷新。改为同时调 `_emitCurrentLocation()`。
+- **dualPageMode 改 private + setter**：`_dualPageMode` private，通过 `setDualPageMode(value)` 设置（清缓存 + jumpToPage(0) + emit state），避免窗口缩放时 page 索引越新 itemCount 界。
+- **ReaderEngine 接口扩展**：加 `dualPageMode`/`currentSpreadCount`/`currentSpreadIndex` 三个 getter；PDF 中性实现（spread 返回 0，走自己的 pageCount）；7 个 test fake 更新。
+
+#### Tests
+
+新增/重写 `epubx_renderer_dual_page_test.dart`（10 cases）：双页渲染 Row+2 HtmlWidget、单页 1 HtmlWidget、spreadCount halving、孤页不崩、setDualPageMode reset page、idempotent。
+
+**总数：125 epub_view + 103 reader 通过**（baseline 115+94 + 新增）。
+
+### M2.8 — 2026-07-04（v1.5.1-alpha 用户复测反馈 #3：9 bug 分 4 批修复）
+
+v1.5.1-alpha 交付后用户复测报告 9 个 bug，其中 #3/#7 在 M2.7 已修，本次处理剩余 #1/#2/#5b/#6/#8/#9，分 4 个批次逐个修复 + 用户验收。
+
+#### Batch 1 (B1)：翻页 + 分页 + 键盘 + ESC
+
+- **Fixed Bug #6 翻页乱翻/延迟**：tap zone 无条件调 `nextSpine`（章末才换章，章内不分页）→ 改为按 paginationMode 路由：paged → `engine.nextPage()`/`previousPage()`（章内分页，章末换章）；scroll → `nextSpine`/`previousSpine`。新增 `ReaderEngine.nextPage()`/`previousPage()` 接口。
+- **Fixed Bug #8 文字溢出**：`Paginator` 测量不扣 margin 导致每页内容溢出 → `usableHeight = viewport.height - 2*marginPx`，`usableWidth = (viewport.width - 2*marginPx).clamp(50, inf)`，`_CacheKey` 加 marginPx。
+- **Fixed Bug #9 ESC 退全屏**：SelectableRegion 抢焦导致 ReaderScaffold Focus 收不到键盘事件 → `initState` 加 `HardwareKeyboard.instance.addHandler`（全局单例，绕过焦点树），Focus.onKeyEvent 移除（避免双重派发）。
+
+#### Batch 2 (B2)：跨章翻页修复
+
+- **Fixed Bug #6 跨章乱翻**：`setChapter()` 改了 `_currentChapterIndex` 但**不 emit state** → reader_body 不 rebuild → PageView 继续渲染旧章页面，而 controller 已 jumpToPage(0) → 用户看到"回到本章首页"，下一次 nextPage 读到 `_cachedBreaks==null` 走 fallback 换章 → 章节号无声推进 → "跨章节乱翻"。补 `_stateController.add(const ReaderEngineReady())`（gotoLocator CFI 分支早有，setChapter 漏了）。
+- **Added 章首左翻换上一章末页（Kindle 行为）**：`previousPage()` 章首分支 arm `_pendingJumpToLastPage`，下一帧 `_cachedBreaks` 填充后 `_maybeApplyPendingLastPageJump` jumpToPage 到末页（one-shot）。setChapter 清零 flag（仅 previousPage 重新 arm）。
+
+#### Batch 3 (B3)：高亮渲染（paged 模式）
+
+- **Fixed Bug #5b 高亮不显示**：`_buildPaged` 用 `Text(plain.substring(start,end))` 渲染每页，丢掉了 `HtmlHighlightInjector` 注入的 `<span>`。新增 `HtmlSlicer`（`sliceByPlainRange` DOM 遍历裁剪 + `localizeHighlights` 全局→页面本地坐标），`_buildPaged` 改为每页 sliceByPlainRange → 高亮注入 → HtmlWidget。副带收益：paged 模式恢复富文本格式（粗体/标题/段落）。
+- **Bug #5 淡化底色**：0.4 alpha 早已在 `reader_body._highlightColorRgba` 满足，只是 span 进不了渲染。B3 修复后自然显现。
+
+#### Batch 4 (B4)：书签红屏 + 笔记延迟
+
+- **Fixed Bug #1 书签点击红屏**：`gotoLocator` 内部 `addPostFrameCallback` 跑在调用方 `_onBookmarkJump` 的 try-catch **之外**，书签跨章跳转触发 rebuild，rebuild 期间 ScrollController 可能短暂 detach，`.position` 访问抛出 → 未捕获 → 红屏。三重防御：(1) post-frame callback 全包 try-catch；(2) build/currentChapterPlainText/currentHighlightedHtml 全部加 `_currentChapterIndex >= chapters.length` 越界保护（book-switch race）；(3) gotoLocator 跨章分支补 `jumpToPage(0)`（之前只有 setChapter 有），避免旧 page index 超新 itemCount assertion。
+- **Fixed Bug #2 笔记点击延迟**：`_onAnnotationTap` 只 `await chapterSwitchSettled`，同帧 PageView 刚 rebuild 还没完成布局，紧接着 jumpToPage 被吞 → "等一会才跳"。新增 `_awaitChapterSettledAndLayout()` helper：`chapterSwitchSettled` 后多等一帧（`endOfFrame`）让 PageView 完成布局。统一应用到 _onAnnotationTap / _onBookmarkJump / _maybeHandleInitialLocator / _jumpToChapter。
+
+#### Tests
+
+新增 `epubx_renderer_cross_chapter_back_page_test.dart`（3 cases）、`html_slicer_test.dart`（18 cases）、`epubx_renderer_paged_highlight_test.dart`（3 cases）、`epubx_renderer_bounds_guard_test.dart`（5 cases）；`epubx_renderer_setters_emit_state_test.dart` 加 setChapter emit 用例。
+
+#### Lessons
+
+- **setChapter 是唯一漏 emit 的章节切换路径**：gotoLocator CFI/EpubRangeLocator 分支、injectHighlights、setTypography、setPaginationMode 都 emit，唯独 setChapter 漏。这类"看着对、consumer 收不到"的 silent failure 是 adapter pattern 常见陷阱——每个 mutation 路径都得有自己的 notification pipeline。
+- **post-frame callback 在调用方 try-catch 之外**：`addPostFrameCallback` 调度后立即 return，callback 在后续帧执行，完全脱离调用方的 try-catch。任何可能抛的 callback（尤其是访问 ScrollController.position / pageController.page 的）必须自带 try-catch。
+- **LayoutBuilder 与 PageController 的帧时序**：`chapterSwitchSettled` 的 completer 在 post-frame resolve，但同帧 PageView 刚 rebuild 尚未完成布局，紧接着 jumpToPage 会被吞。多等一帧 `endOfFrame` 是稳妥的修复模式。
+
 ### M2.7 Round 3 — 2026-07-03（v1.5.1-alpha 用户复测反馈 #2）
 
 Round 2 修复后用户报告 "排版页点击很多次才变动一点点，边距有改善但仍需更宽"。代码层追溯发现 Round 2 修复**完全没生效**：emit 调用加在了 `EpubxRenderer._stateController`，但 `ConcreteEpubReaderEngine.state$` 返回的是 adapter 自己的 `_stateController.stream` —— renderer 的 emission **从未转发到 adapter**，所以 `reader_body.dart:144` 的 listen 永远收不到事件。用户感受到的"一点点变化"只是 M2.6/T4 enum pixel value bump（normal 24→32）造成的视觉初值差异，跟排版切换无关。

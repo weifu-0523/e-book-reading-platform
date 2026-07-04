@@ -97,6 +97,20 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   @override
   PaginationMode get paginationMode => PaginationMode.paged;
 
+  /// M2.9: 双页模式透传给 renderer。读取用本 getter；切换用
+  /// [setDualPageMode]（reader_body 的 LayoutBuilder 在宽屏时调用）。
+  @override
+  bool get dualPageMode => _renderer.dualPageMode;
+
+  /// M2.9: 切换双页模式。透传给 renderer，触发 rebuild。
+  void setDualPageMode(bool value) => _renderer.setDualPageMode(value);
+
+  @override
+  int get currentSpreadCount => _renderer.currentSpreadCount;
+
+  @override
+  int get currentSpreadIndex => _renderer.currentSpreadIndex;
+
   @override
   Future<void> open(BookRef book) async {
     _setState(const ReaderEngineLoading());
@@ -160,6 +174,12 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
     }
     // At start of book: no-op
   }
+
+  @override
+  bool nextPage() => _renderer.nextPage();
+
+  @override
+  bool previousPage() => _renderer.previousPage();
 
   @override
   Future<void> setTypography(TypographySettings settings) =>

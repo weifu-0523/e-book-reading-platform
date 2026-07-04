@@ -138,10 +138,13 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
     });
+    // M2.8/B1-fix: 全局键盘兜底监听，绕过 SelectableRegion 焦点抢占。
+    HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     _focusNode.dispose();
     super.dispose();
   }
@@ -150,6 +153,18 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
   /// 把焦点从按钮拉回到 ReaderScaffold，确保后续键盘事件可达。
   void _reclaimFocus() {
     if (mounted) _focusNode.requestFocus();
+  }
+
+  /// M2.8/B1-fix：HardwareKeyboard 全局处理器（绕过 SelectableRegion 焦点）。
+  ///
+  /// 返回 true 表示已处理该键（阻止其他监听器重复响应）。
+  /// 仅处理 KeyDownEvent，忽略 KeyRepeatEvent（避免按住不放狂翻页）。
+  bool _handleHardwareKeyEvent(KeyEvent event) {
+    if (!mounted) return false;
+    if (event is! KeyDownEvent) return false;
+    final result = _handleKeyEvent(event);
+    // handled → 返回 true 阻止 Focus 树重复处理；ignored → false 让其继续
+    return result == KeyEventResult.handled;
   }
 
   @override
@@ -163,7 +178,11 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     return Focus(
       focusNode: _focusNode,
       autofocus: true,
-      onKeyEvent: (node, event) => _handleKeyEvent(event),
+      // M2.8/B1-fix: 键盘事件改由 HardwareKeyboard.instance 全局监听统一处理
+      // （见 _handleHardwareKeyEvent），不在此处 onKeyEvent 重复派发。原因：
+      // EPUB 内容区 SelectableRegion 会夺取焦点，Focus.onKeyEvent 在用户
+      // 做过文字选择后收不到事件，导致键盘翻页/ESC 失效。HardwareKeyboard
+      // 是全局单例，不受焦点树影响。Focus 节点保留仅为持有焦点上下文。
       child: Listener(
         onPointerSignal: _handlePointerSignal,
         child: Stack(
