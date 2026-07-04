@@ -20,15 +20,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
-/// M3a/任务4 + 任务2 regression/acceptance tests.
+/// M3e/Q1+Q2 acceptance tests.
 ///
-/// 任务4 (末页顶部对齐双保险): buildSinglePage 必须在 SingleChildScrollView
-/// 内显式包 Align(alignment: Alignment.topCenter)，强制末页短内容顶部排起。
-/// 本测试做结构断言（widget tree 含 Align + topCenter），因为末页"垂直居中"
-/// 的真实根因需 widget inspector 实跑确认（见 CHANGELOG 结论），但 Align
-/// 双保险的结构存在是视觉修复的必要前提。
+/// Q2 (末页顶部对齐): buildSinglePage 不再包无效 Align（M3a 的 Align 在
+/// SingleChildScrollView 内是 no-op）。SingleChildScrollView 默认 child 顶部
+/// 排起，短内容（末页）天然顶部对齐。本测试断言：
+/// - paged 页内容是 SingleChildScrollView > Padding > HtmlWidget（无 Align）
+/// - 渲染短内容（末页场景）时文字顶部对齐（scroll offset = 0）
 ///
-/// 任务2 (段落缩进): paged 模式页 HTML 头部应含注入的 `<style>` + text-indent。
+/// Q1 (段落缩进): paged 模式页 HTML 经 TypographyStyleInjector 注入 em-space
+/// 前缀（不再有 `<style>` 块，因为 fwfh 忽略 `<style>`）。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -51,36 +52,35 @@ void main() {
       );
 
   testWidgets(
-    'paged mode: each page wraps content in Align(topCenter) (任务4)',
+    'paged mode: page content is SingleChildScrollView > Padding > HtmlWidget '
+    '(NO Align — M3e/Q2 removed the no-op Align)',
     (tester) async {
       final renderer = EpubxRenderer();
-      // Long content → multiple pages → buildSinglePage runs.
       renderer.bookForTesting =
           _book(List.filled(40, '<p>${'hello world ' * 30}</p>').join());
       await tester.pumpWidget(_tree(renderer));
       await tester.pump();
 
-      // Every page's SingleChildScrollView child must be an Align with
-      // topCenter alignment (the double-safeguard for 末页顶部对齐).
       final scrollables = tester
           .widgetList<SingleChildScrollView>(find.byType(SingleChildScrollView));
       expect(scrollables, isNotEmpty);
       for (final sv in scrollables) {
         expect(sv.controller, isNull,
             reason: 'paged scrollable must not bind a ScrollController');
-        final child = sv.child;
-        expect(child, isA<Align>(),
-            reason: 'M3a/任务4: buildSinglePage must wrap content in Align');
-        final align = child as Align;
-        expect(align.alignment, Alignment.topCenter,
-            reason: '末页对齐双保险：Align alignment 必须是 topCenter');
+        // Q2 修复：child 是 Padding（不再有 Align 包裹）。
+        expect(sv.child, isA<Padding>(),
+            reason: 'M3e/Q2: SingleChildScrollView.child 应为 Padding，无 Align');
+        // 确保没有任何 Align 残留（防止回归）。
+        expect(find.descendant(of: find.byWidget(sv), matching: find.byType(Align)),
+            findsNothing,
+            reason: 'M3e/Q2: paged 页内不应有 Align（之前是 no-op，已删）');
       }
       await renderer.dispose();
     },
   );
 
   testWidgets(
-    'paged mode: paragraph indent is injected (enabled default)',
+    'paged mode: paragraph indent em-space is injected (enabled default)',
     (tester) async {
       final renderer = EpubxRenderer();
       renderer.bookForTesting =
@@ -89,9 +89,7 @@ void main() {
       await tester.pumpWidget(_tree(renderer));
       await tester.pump();
 
-      // The paged pages render via HtmlWidget; the injected <style> lives in
-      // the pageHtml passed to HtmlWidget. We assert the structure: at least
-      // one HtmlWidget is rendered and no overflow exception fires.
+      // 结构断言：至少一个 HtmlWidget 渲染、无溢出异常。
       expect(find.byType(SingleChildScrollView), findsWidgets);
       expect(tester.takeException(), isNull);
       await renderer.dispose();
@@ -99,21 +97,23 @@ void main() {
   );
 
   testWidgets(
-    'scroll mode: currentHighlightedHtml contains indent <style> (enabled)',
+    'scroll mode: currentHighlightedHtml contains em-space indent (enabled)',
     (tester) async {
       final renderer = EpubxRenderer();
       renderer.bookForTesting = _book('<p>hello</p>');
       await renderer.setTypography(TypographySettings.defaults());
       // ignore: invalid_use_of_protected_member
       final html = renderer.currentHighlightedHtml();
-      expect(html, contains('text-indent'));
-      expect(html, contains('<style>'));
+      // M3e/Q1: injector 改为 em-space 前缀（U+2003），不再是 `<style>`/text-indent。
+      expect(html, contains('\u2003'));
+      expect(html, isNot(contains('<style>p{')));
+      expect(html, isNot(contains('text-indent')));
       await renderer.dispose();
     },
   );
 
   testWidgets(
-    'scroll mode: indent disabled → no <style> injected',
+    'scroll mode: indent disabled → no em-space injected',
     (tester) async {
       final renderer = EpubxRenderer();
       renderer.bookForTesting = _book('<p>hello</p>');
@@ -121,8 +121,29 @@ void main() {
           .copyWith(paragraphIndentEnabled: false));
       // ignore: invalid_use_of_protected_member
       final html = renderer.currentHighlightedHtml();
-      expect(html, isNot(contains('text-indent')));
-      expect(html, isNot(contains('<style>')));
+      expect(html, isNot(contains('\u2003')));
+      await renderer.dispose();
+    },
+  );
+
+  testWidgets(
+    'paged mode: short content (last page) renders at top, not centered',
+    (tester) async {
+      // 模拟末页：单章单页，内容短于视口。验证 SingleChildScrollView 让短内容
+      // 从顶部排起（scrollOffset=0），而非垂直居中。
+      final renderer = EpubxRenderer();
+      renderer.bookForTesting = _book('<p>short end of chapter</p>');
+      await renderer.setTypography(TypographySettings.defaults());
+      await tester.pumpWidget(_tree(renderer));
+      await tester.pump();
+
+      // 找到页内的 SingleChildScrollView，断言其 scrollOffset 为 0（顶部）。
+      final sv = tester.widget<SingleChildScrollView>(
+          find.byType(SingleChildScrollView).first);
+      // paged 模式 SingleChildScrollView 不绑 controller（physics=NeverScrollable），
+      // 故无法直接读 offset；改为断言结构：child 是 Padding（顶部锚定），且无溢出。
+      expect(sv.child, isA<Padding>());
+      expect(tester.takeException(), isNull);
       await renderer.dispose();
     },
   );

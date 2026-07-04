@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
@@ -875,9 +876,24 @@ class EpubxRenderer implements EpubRenderer {
         child: HtmlWidget(
           html,
           textStyle: style.copyWith(color: fg),
+          // M3e/Q1: 段落统一 margin（fwfh 支持 margin，见 style_margin.dart）。
+          // 首行缩进由 TypographyStyleInjector 在 HTML 层用 em-space 注入
+          // （fwfh 不支持 text-indent，详见 injector 文档）。
+          customStylesBuilder: _paragraphMarginBuilder,
         ),
       ),
     );
+  }
+
+  /// M3e/Q1: 给每个 `<p>` 注入统一段落间距 margin（替代被 fwfh 忽略的
+  /// `<style>` 块）。fwfh 的 `customStylesBuilder` 返回的 Map 作为内联样式应用，
+  /// margin 是 fwfh 支持的属性（`internal/ops/style_margin.dart`）。
+  /// 首行缩进不在此处理（fwfh 不支持 text-indent），由 injector 的 em-space 完成。
+  Map<String, String>? _paragraphMarginBuilder(dom.Element element) {
+    if (element.localName != 'p') return null;
+    return const <String, String>{
+      'margin': '0 0 0.5em 0',
+    };
   }
 
   /// paged 模式：Paginator 把章节切成多页，PageView 左右翻页。
@@ -966,8 +982,9 @@ class EpubxRenderer implements EpubRenderer {
           if (localHl != null) {
             pageHtml = HtmlHighlightInjector.inject(pageHtml, localHl);
           }
-          // M3a/任务2：注入段落首行缩进 CSS（paged 模式）。highlight inject 后、
-          // HtmlWidget 前调用，<style> 对本页所有 <p> 生效。
+          // M3e/Q1（重写 M3a/任务2）：注入段落首行缩进。injector 现在用 HTML
+          // 预处理（em-space），不再用被 fwfh 忽略的 `<style>`。highlight inject
+          // 后、HtmlWidget 前调用，em-space 前缀对本页所有 <p> 生效。
           pageHtml = TypographyStyleInjector.inject(
             pageHtml,
             indentEm: _typography.paragraphIndentEm,
@@ -984,22 +1001,22 @@ class EpubxRenderer implements EpubRenderer {
           // NeverScrollableScrollPhysics 确保子页滚动不干扰 PageView 翻页手势。
           // 与 _buildScroll（scroll 模式已用 SingleChildScrollView）模式一致。
           //
-          // M3a/任务4：末页顶部对齐双保险。SingleChildScrollView 默认 topLeft，
-          // 理论上短内容（末页）应顶部排起。但用户反馈"末页垂直居中很奇怪"——
-          // 可能是 HtmlWidget 内部对短内容的 Block 对齐、或 PageView slot stretch
-          // 下的隐式居中。无论真实根因如何，显式包 Align(topCenter) 强制顶部对齐：
-          // Align 在 SingleChildScrollView 内部，宽度/高度由内容驱动（mainAxisSize
-          // min），顶部锚点显式化，保证末页文字从顶部排起。详见 CHANGELOG 根因结论。
+          // M3e/Q2（修正 M3a/任务4 误判）：M3a 曾在此包 Align(topCenter) 作为
+          // "末页顶部对齐双保险"，但 **Align 在 SingleChildScrollView 内部是
+          // no-op** —— scroll view 给子 widget 无限高度约束，Align 没有多余空间
+          // 可对齐，被强制收缩成子大小，对齐逻辑完全不生效（等于没写）。
+          // SingleChildScrollView 默认 child 从顶部排（scrollOffset=0），短内容
+          // （末页）天然顶部对齐，无需额外 Align。删除无效 Align 后行为不变
+          // （M3a 之前就是这个结构且本就顶部对齐）。
           return SingleChildScrollView(
             physics: const NeverScrollableScrollPhysics(),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: EdgeInsets.all(margin),
-                child: HtmlWidget(
-                  pageHtml,
-                  textStyle: style.copyWith(color: fg),
-                ),
+            child: Padding(
+              padding: EdgeInsets.all(margin),
+              child: HtmlWidget(
+                pageHtml,
+                textStyle: style.copyWith(color: fg),
+                // M3e/Q1: 段落统一 margin（fwfh 支持 margin）。缩进走 injector。
+                customStylesBuilder: _paragraphMarginBuilder,
               ),
             ),
           );

@@ -81,13 +81,13 @@ void main() {
       ..HtmlContent = '<p>hello world</p>';
     final book = EpubBook()..Chapters = [chapter];
     renderer.bookForTesting = book;
-    // M3a/任务2: currentHighlightedHtml 现在在返回前注入段落缩进 CSS。
-    // no-highlights 路径仍含注入的 <style>（默认缩进开启），用 endsWith
-    // 断言原 HTML 完整保留在尾部。
+    // M3e/Q1（重写 M3a/任务2）: currentHighlightedHtml 现在注入 em-space 首行缩进
+    // （U+2003 × indentEm）到每个 <p> 首个文本前，不再用被 fwfh 忽略的 <style>。
+    // endsWith 断言原 HTML 结构完整保留在尾部（仅 <p> 内文本多了 em 前缀）。
     // ignore: invalid_use_of_protected_member
     expect(renderer.currentHighlightedHtml(),
-        endsWith('<p>hello world</p>'));
-    expect(renderer.currentHighlightedHtml(), contains('text-indent'));
+        endsWith('<p>\u2003\u2003hello world</p>'));
+    expect(renderer.currentHighlightedHtml(), contains('\u2003'));
     renderer.injectHighlightsSync(const [
       HighlightRange(0, 5, 'rgba(255, 235, 59, 0.4)', chapterIndex: 0),
     ]);

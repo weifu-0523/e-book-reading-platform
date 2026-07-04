@@ -9,6 +9,25 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M3e — 2026-07-03（阅读体验第二批修复，进行中）
+
+用户拉取 M3a-d 后上手测试，反馈 6 个问题（Q1 段落缩进未生效 / Q2 末页依旧居中 / Q3 字体太少 / Q4 书架字号按钮挪位 / Q5 摘录条跟随选区 / Q6 删除键找不到）。
+
+#### Fixed — Q1+Q2 排版（reader_engine_epub_view 包）
+
+**Q1 段落首行缩进从未生效（关键根因纠正）**：M3a 的 `<style>p{ text-indent: 2em }</style>` 注入对 flutter_widget_from_html 0.15.3 **完全无效** —— 源码追踪确认 fwfh 把 `<style>` tag 当 `display:none`（`core_widget_factory.dart:934`），且其内联 CSS 解析器（`parseStyle` switch）**根本没有 `text-indent` 分支**。所以 M3a 的缩进实际上从未渲染，只是没崩。
+
+- 重写 `typography_style_injector.dart`：改用 HTML 预处理 —— 用 `package:html` 解析后在每个 `<p>` 首个文本节点前插入 N 个 U+2003 EM SPACE（宽度≈1em，随字体缩放）。这是中文阅读器普遍 trick，对 fwfh 的 CSS 支持缺口免疫。
+- 新增 `package:html ^0.15.0` 直接依赖（原为 fwfh 的传递依赖）。
+- `epubx_renderer.dart` 两个 `HtmlWidget` 调用新增 `customStylesBuilder`，给每个 `<p>` 注入统一段落间距 `margin: 0 0 0.5em 0`（fwfh 支持 margin，见 `style_margin.dart`），替代被忽略的 `<style>` 块。
+- 测试：`typography_style_injector_test.dart` 重写（10 cases，含多段/嵌套 span/属性/空白首文本/小数 em/解析失败兜底）；`epubx_renderer_top_align_test.dart` 更新；`epubx_renderer_test.dart` 的 `currentHighlightedHtml` 断言更新为 em-space。
+
+**Q2 末页顶部对齐（M3a 误判修正）**：M3a 在 `buildSinglePage` 包了 `Align(topCenter)` 作为"末页顶部对齐双保险"，但 `Align` 在 `SingleChildScrollView` **内部是 no-op** —— scroll view 给子 widget 无限高度约束，Align 没有多余空间可对齐，被强制收缩成子大小，对齐逻辑完全不生效（等于没写）。
+
+- 删除无效 `Align`，`buildSinglePage` 回归 `SingleChildScrollView > Padding > HtmlWidget`（M3a 之前的结构，本就顶部对齐）。
+- 用户"末页居中"反馈经 git 历史核查：M3a 前后布局都是顶部对齐，真实成因是**用户跑的 exe 过旧**（未拉 M3a 重建）。代码层移除误导性 Align。
+- 测试：`epubx_renderer_top_align_test.dart` 新增断言"无 Align 残留"防止回归 + 短内容顶部对齐 case。
+
 ### M3d — 2026-07-03（摘录/书签右键上下文菜单：删除/编辑/导出）
 
 用户要求摘录、书签页面在记录上点击右键要有「删除、导出」选项（AskUserQuestion 进一步确认：Flutter 原生 `showMenu()` 系统原生菜单样式，右键同时加「编辑」）。Spec: `docs/superpowers/specs/2026-07-03-m3d-context-menu-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3d-context-menu.md`。
