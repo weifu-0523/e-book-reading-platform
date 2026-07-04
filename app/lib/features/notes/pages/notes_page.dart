@@ -17,6 +17,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -147,23 +148,40 @@ class NotesPage extends ConsumerWidget {
               showMeta: true,
               onTap: () => context.push('/book/$bookId', extra: a.locator),
               onLongPress: () => _showContextMenu(context, ref, a),
+              onSecondaryTapDown: (globalPos) =>
+                  _showContextMenu(context, ref, a, fromDesktop: globalPos),
             ),
         ],
       ],
     );
   }
 
+  /// 摘录上下文菜单统一调度入口。
+  ///
+  /// - [fromDesktop] == null：移动端长按路径，弹 [showAnnotationContextSheet]
+  ///   （bottom sheet），复制类操作在 sheet 内部完成。
+  /// - [fromDesktop] != null：桌面右键路径，[fromDesktop] 为右键全局坐标，
+  ///   弹 [showAnnotationContextMenu]（Material showMenu，原生右键观感）。
+  ///
+  /// 两条路径共用同一枚举与同一 dispatch（edit/delete/export + copy），仅在
+  /// 「获取 action」与「复制类是否已在 UI 内完成」上不同：bottom sheet 版本
+  /// 的 copyQuote/copyMarkdown 在 sheet 内部直接写剪贴板；桌面 showMenu 版本
+  /// 只 pop 枚举，复制在这里完成。
   Future<void> _showContextMenu(
-      BuildContext context, WidgetRef ref, Annotation a) async {
-    final action = await showAnnotationContextSheet(
-      context,
-      a,
-      chapterTitle: null,
-    );
-    if (action == null) return;
+    BuildContext context,
+    WidgetRef ref,
+    Annotation a, {
+    Offset? fromDesktop,
+  }) async {
+    final AnnotationContextAction? action;
+    if (fromDesktop == null) {
+      action = await showAnnotationContextSheet(context, a, chapterTitle: null);
+    } else {
+      action = await showAnnotationContextMenu(context, fromDesktop);
+    }
+    if (action == null || !context.mounted) return;
     switch (action) {
       case AnnotationContextAction.edit:
-        if (!context.mounted) return;
         await showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,
@@ -184,9 +202,55 @@ class NotesPage extends ConsumerWidget {
         await ref.read(notesRepositoryProvider).deleteAnnotation(a.id);
         break;
       case AnnotationContextAction.copyQuote:
-      case AnnotationContextAction.copyMarkdown:
-        // Clipboard 已经在 sheet 内部处理。
+        if (fromDesktop != null) {
+          await _copyToClipboard(context, a.quote, '已复制');
+        }
+        // bottom sheet 版本已在内部复制。
         break;
+      case AnnotationContextAction.copyMarkdown:
+        if (fromDesktop != null) {
+          await _copyToClipboard(
+              context, MarkdownExporter.exportSingle(a), '已复制 Markdown 片段');
+        }
+        // bottom sheet 版本已在内部复制。
+        break;
+      case AnnotationContextAction.export:
+        await _exportSingle(context, a);
+        break;
+    }
+  }
+
+  Future<void> _copyToClipboard(
+      BuildContext context, String text, String toast) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(toast)));
+  }
+
+  /// 导出单条摘录为 Markdown 文件。
+  Future<void> _exportSingle(BuildContext context, Annotation a) async {
+    final markdown = MarkdownExporter.exportSingle(a);
+    final name = NoteFileWriter.sanitizeForFilename(a.quote);
+    try {
+      final path = await NoteFileWriter.saveMarkdownFile(
+        content: markdown,
+        suggestedName: name,
+      );
+      if (!context.mounted || path == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已保存：$path'),
+          action: SnackBarAction(
+            label: '打开文件夹',
+            onPressed: () => _openFolder(path),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败：$e')),
+      );
     }
   }
 

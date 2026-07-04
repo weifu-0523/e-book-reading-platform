@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/data/models/annotation.dart';
@@ -208,6 +209,69 @@ void main() {
       ));
       await tester.longPress(find.byType(AnnotationTile));
       expect(longPressed, isTrue);
+    });
+  });
+
+  group('onSecondaryTapDown (desktop right-click)', () {
+    testWidgets('right-click fires onSecondaryTapDown with global position',
+        (tester) async {
+      Offset? received;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _a(),
+            onSecondaryTapDown: (pos) => received = pos,
+          ),
+        ),
+      ));
+      final center = tester.getCenter(find.byType(AnnotationTile));
+      final gesture = await tester.startGesture(
+        center,
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.up();
+      await tester.pump();
+      expect(received, isNotNull);
+    });
+
+    testWidgets('right-click does not fire onTap (no conflict)', (tester) async {
+      var tapped = false;
+      var rightClicked = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _a(),
+            onTap: () => tapped = true,
+            onSecondaryTapDown: (_) => rightClicked = true,
+          ),
+        ),
+      ));
+      final center = tester.getCenter(find.byType(AnnotationTile));
+      final gesture = await tester.startGesture(
+        center,
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.up();
+      await tester.pump();
+      expect(rightClicked, isTrue);
+      expect(tapped, isFalse);
+    });
+
+    testWidgets('without onSecondaryTapDown, left tap still works',
+        (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AnnotationTile(
+            annotation: _a(),
+            onTap: () => tapped = true,
+          ),
+        ),
+      ));
+      await tester.tap(find.byType(AnnotationTile));
+      expect(tapped, isTrue);
     });
   });
 }

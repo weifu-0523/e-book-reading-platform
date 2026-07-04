@@ -26,6 +26,11 @@ class AnnotationTile extends StatelessWidget {
   final String? chapterTitle;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// 桌面右键回调。收到右键点击的全局坐标（[TapDownDetails.globalPosition]），
+  /// 由父级决定弹什么菜单。移动端无右键不触发；长按仍走 [onLongPress]。
+  final ValueChanged<Offset>? onSecondaryTapDown;
+
   final bool showMeta;
 
   const AnnotationTile({
@@ -35,13 +40,18 @@ class AnnotationTile extends StatelessWidget {
     this.chapterTitle,
     this.onTap,
     this.onLongPress,
+    this.onSecondaryTapDown,
     this.showMeta = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final color = annotation.color.swatch;
-    return InkWell(
+    // InkWell 外层包一层 GestureDetector 仅接 onSecondaryTapDown。
+    // onSecondary（右键）与 primary（左键 onTap / onLongPress）互不干扰：
+    // GestureDetector 不会消费 primary tap，InkWell 的涟漪/点击仍生效。
+    // onSecondaryTapDown == null 时不包 GestureDetector，行为与原先完全一致。
+    final tile = InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
       child: Container(
@@ -75,6 +85,13 @@ class AnnotationTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+    final onSecondary = onSecondaryTapDown;
+    if (onSecondary == null) return tile;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onSecondaryTapDown: (details) => onSecondary(details.globalPosition),
+      child: tile,
     );
   }
 

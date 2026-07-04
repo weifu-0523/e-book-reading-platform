@@ -9,6 +9,48 @@
 
 v1.5.1-alpha 之后的新变更将记在此处。
 
+### M3d — 2026-07-03（摘录/书签右键上下文菜单：删除/编辑/导出）
+
+用户要求摘录、书签页面在记录上点击右键要有「删除、导出」选项（AskUserQuestion 进一步确认：Flutter 原生 `showMenu()` 系统原生菜单样式，右键同时加「编辑」）。Spec: `docs/superpowers/specs/2026-07-03-m3d-context-menu-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3d-context-menu.md`。
+
+#### Added — 摘录右键菜单（T1，复用现有 API）
+
+- `AnnotationContextAction` 枚举加 `export` 项（原 edit/delete/copyQuote/copyMarkdown）；该枚举仅 `notes_page.dart` 一处 switch，已补 `export` 分支。
+- 新增 `showAnnotationContextMenu(BuildContext, Offset globalPosition)`（`annotation_context_sheet.dart`）：用 Material `showMenu` 在右键位置弹原生菜单（编辑笔记/删除/复制摘录/复制 Markdown 片段/导出 5 项），与移动端 `showAnnotationContextSheet`（bottom sheet）共用枚举，互不替代。
+- `AnnotationTile` 加 nullable `onSecondaryTapDown` 回调参数：InkWell 外层包 `GestureDetector(behavior: translucent)` 仅接 `onSecondaryTapDown`（与 primary onTap/onLongPress 互不干扰）；回调为 null 时行为与原先完全一致。
+- `notes_page.dart` 摘录条目接入 `onSecondaryTapDown`；`_showContextMenu` 重构为统一入口（长按→bottom sheet / 右键→showMenu），dispatch 补 `export` 分支（单条导出 Markdown 文件）+ 桌面路径的 copyQuote/copyMarkdown（写剪贴板 + SnackBar）。
+
+#### Added — 书签 Markdown 导出器（T2，新基础设施）
+
+- 新建 `app/lib/features/bookmarks/services/bookmark_markdown_exporter.dart`：纯函数 `exportSingle(BookmarkEntry)` → `# label\n\nnote\n\n> 创建于 YYYY-MM-DD`（note 空省略段）；`exportAll(List, {bookTitle})` 按创建时间升序 + `---` 分隔 + 可选总标题。复用 `markdown_exporter` 的 ISO 日期格式。
+
+#### Added — 书签编辑对话框（T3，新）
+
+- 新建 `app/lib/features/bookmarks/widgets/bookmark_edit_dialog.dart`：`showBookmarkEditDialog(BuildContext, BookmarkEntry)` → AlertDialog（label/note 两 TextField，预填现有值，label 必填，空 note 归一化为 null）。返回 `BookmarkEditResult`（保存）或 null（取消），调用方据此调 `controller.updateLabel/updateNote`。
+
+#### Added — 书签右键菜单（T4，组合 T2/T3）
+
+- `reader_bookmark_list.dart`：ListTile 外层包 `GestureDetector(onSecondaryTapDown)`，右键弹 `showMenu`（编辑/删除/导出 3 项）。新增 nullable 回调参数 `onDelete/onEdit/onExport`（父级可覆盖）；为 null 时走默认自包含行为（本 widget 持 `ref`）：
+  - 删除 → `bookmarkControllerProvider.notifier.delete(id)`（**首次接入**，原 controller.delete 零调用）。
+  - 编辑 → `showBookmarkEditDialog` → `controller.updateLabel/updateNote`。
+  - 导出 → `BookmarkMarkdownExporter.exportSingle` → `NoteFileWriter.saveMarkdownFile`。
+- 更新文档注释：删原 "删除走 long-press 菜单，T13+" 占位说明，改为「右键上下文菜单（M3d）」。
+- 因 `ReaderBookmarkList` 是 drawer 书签 tab 与独立 `BookmarksPage` 的共用 widget，改一处两处生效。
+
+#### 探查结论
+
+- `BookmarksPage` **未** override `bookmarkControllerProvider`（与 ReaderPage 不同）；独立页的 controller 依赖全局 `currentBookIdProvider`（默认 null）——这是 M2.5 既有的「独立书签页列表来源」限制，非本任务范围。reader 抽屉（ReaderPage）内 controller 已被 ReaderPage 正确 override，右键删除/编辑/导出在抽屉上下文完全可用。
+- `BookmarkController.delete` 首次接入 UI，现由 `ReaderBookmarkList` 默认删除路径调用。
+
+#### 测试
+
+- `annotation_context_sheet_test.dart`（新，7 测试）：`showAnnotationContextMenu` 渲染 5 项 + 各 value 正确 + 取消返回 null。
+- `annotation_tile_test.dart`（扩，+3 测试）：`onSecondaryTapDown` 右键触发回调（`PointerDeviceKind.mouse` + `kSecondaryMouseButton` 模拟）；右键不误触发 onTap；无回调时左键仍正常。
+- `bookmark_markdown_exporter_test.dart`（新，9 测试）：exportSingle 含/空 note 格式；exportAll 升序 + `---` 分隔 + 总标题 + 空列表。
+- `bookmark_edit_dialog_test.dart`（新，5 测试）：预填值 + 保存返回新值 + 取消返回 null + label 空禁用 + 空 note 归一化 null。
+- `reader_bookmark_list_test.dart`（新，8 测试）：右键弹 3 项菜单 + 各动作调度 onDelete/onEdit/onExport 回调 + 默认删除走 controller.delete（断言 repo 状态变化）+ 默认编辑走对话框改 controller.updateLabel/updateNote。
+- 现有 reader/notes/bookmarks/search 测试全过（+131）；analyze 三包（app / reader_engine / reader_engine_epub_view）0 issue；`flutter build windows --debug` 成功。
+
 ### M3c — 2026-07-03（顶栏增强：实时时钟/字号±快捷键/书架弹窗）
 
 用户希望顶栏信息更密：中间显示实时时间，加字号±快捷按钮，加书架入口（弹出书架对话框选新书直接切换阅读）。Spec: `docs/superpowers/specs/2026-07-03-m3c-topbar-bookshelf-design.md`，Plan: `docs/superpowers/plans/2026-07-03-m3c-topbar-bookshelf.md`。
