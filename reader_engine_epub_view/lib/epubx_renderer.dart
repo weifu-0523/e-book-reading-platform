@@ -1049,7 +1049,14 @@ class EpubxRenderer implements EpubRenderer {
             final leftIdx = i * 2;
             final rightIdx = leftIdx + 1;
             final hasRight = rightIdx < breaks.length;
+            // M3e/Q2（真正根因）: Row 的 crossAxisAlignment 默认 center，会把
+            // 高度小于 slot 的子页（末页/孤页只有几行）**垂直居中**在 slot 内，
+            // 视觉上"几行字浮在屏幕中间"。实测：默认 center 时右页短内容 top≈49%，
+            // 改 start 后 top≈2%（顶部对齐）。这是用户反复反馈"末页居中"的真因
+            // ——不在 buildSinglePage（单页模式本就顶部对齐），而在双页 Row 的
+            // cross-axis 对齐。强制 start 让左右两页都从顶部排起，像真书。
             return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: buildSinglePage(leftIdx)),
                 SizedBox(width: gutterPx),

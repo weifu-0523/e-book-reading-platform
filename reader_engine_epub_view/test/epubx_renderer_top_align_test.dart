@@ -233,4 +233,89 @@ void main() {
       await renderer.dispose();
     },
   );
+
+  // ── Q2 真正根因回归：双页模式末页（右页短内容）必须顶部对齐 ──────────
+  //
+  // 根因（M3e 第三轮才定位到）：双页模式 itemBuilder 用 Row(Expanded, Expanded)
+  // 摆左右两页，**Row 的 crossAxisAlignment 默认 center**，会把高度 < slot 的
+  // 右页（章节末页只有几行）**垂直居中**——实测默认 center 时右页首行 top≈49%，
+  // 视觉上"几行字浮在屏幕中间"。这是用户截图确认、反复反馈"末页居中"的真因。
+  // 单页模式 / scroll 模式不受影响（它们不在 Row 里）。修复：Row 加
+  // crossAxisAlignment: CrossAxisAlignment.start。
+  testWidgets(
+    'Q2 dual-page: right page SHORT content (chapter end) top-aligned, '
+    'NOT vertically centered (Row crossAxisAlignment bug)',
+    (tester) async {
+      // 宽屏 + 双页模式，复现用户截图场景。
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      final renderer = EpubxRenderer();
+      renderer.setDualPageMode(true);
+      // 内容跨多页，末页（最后一个 break）只有几行 → 落在最后 spread 的右页。
+      final buf = StringBuffer();
+      for (var i = 0; i < 25; i++) {
+        buf.write('<p>左页填充段 $i 用来占满左半屏。</p>');
+      }
+      buf.write('<p>右页第一行末页内容。</p>');
+      buf.write('<p>右页第二行。</p>');
+      renderer.bookForTesting = _book(buf.toString());
+      await renderer.setTypography(TypographySettings.defaults());
+      await tester.pumpWidget(_treeSized(renderer, 1600, 900));
+      await tester.pump();
+      await tester.pump();
+
+      // 找右半屏 (x >= 800) 的 RichText，断言首行 top 在顶部区 (< 25% = 225px)。
+      // 修复前（center）：rightTop ≈ 373-455 (41-51%)；修复后（start）：≈ 72 (8%)。
+      final rts = find.byType(RichText);
+      final rightTops = <double>[];
+      for (final w in rts.evaluate()) {
+        final rect = tester.getRect(find.byWidget(w.widget));
+        if (rect.left >= 800) rightTops.add(rect.top);
+      }
+      expect(rightTops, isNotEmpty,
+          reason: '右页应有内容（末页残页落在右页）');
+      final rightFirstTop = rightTops.reduce((a, b) => a < b ? a : b);
+      // viewport 900，中线 450。顶部对齐 → < 225 (25%)；
+      // 居中 → ≈ 370-450 (41-50%)。阈值 225 严格区分。
+      expect(rightFirstTop, lessThan(225),
+          reason: '双页模式右页短内容（末页）应顶部对齐 (top<225)，'
+              '实际 top=$rightFirstTop；若 ≥225 说明 Row crossAxisAlignment '
+              '又回到 center（居中 bug 回归）');
+      expect(tester.takeException(), isNull);
+      await renderer.dispose();
+    },
+  );
+
+  testWidgets(
+    'Q2 dual-page: left page also top-aligned (full content page)',
+    (tester) async {
+      // 对照：左页（满内容）始终顶部对齐，确认修复不破坏左页。
+      tester.view.physicalSize = const Size(1600, 900);
+      tester.view.devicePixelRatio = 1.0;
+      final renderer = EpubxRenderer();
+      renderer.setDualPageMode(true);
+      final buf = StringBuffer();
+      for (var i = 0; i < 25; i++) {
+        buf.write('<p>左页填充段 $i。</p>');
+      }
+      renderer.bookForTesting = _book(buf.toString());
+      await renderer.setTypography(TypographySettings.defaults());
+      await tester.pumpWidget(_treeSized(renderer, 1600, 900));
+      await tester.pump();
+      await tester.pump();
+
+      final rts = find.byType(RichText);
+      double? leftFirstTop;
+      for (final w in rts.evaluate()) {
+        final rect = tester.getRect(find.byWidget(w.widget));
+        if (rect.left < 800) {
+          leftFirstTop ??= rect.top;
+        }
+      }
+      expect(leftFirstTop, isNotNull);
+      expect(leftFirstTop!, lessThan(225),
+          reason: '左页首行应顶部对齐，实际 top=$leftFirstTop');
+      await renderer.dispose();
+    },
+  );
 }
