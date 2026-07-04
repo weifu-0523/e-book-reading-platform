@@ -317,26 +317,60 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
             // _buildChrome 不调用，ReaderClock 不挂载，Timer 不启动。
             title: const ReaderClock(),
             centerTitle: true,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                (widget.onBack ?? () => Navigator.maybePop(context))();
-                _reclaimFocus();
-              },
+            // M3e/Q4：书架 + 字号± 按钮挪到时钟左边（leading 区）。
+            // 原 M3c 全放在右侧 actions，用户反馈希望挪到时间左边更顺手。
+            // leading 作为 Row 容纳 4 个按钮：返回 / 书架 / 字号- / 字号+。
+            // leadingWidth 放宽到容纳 4 个 48px 图标（AppBar 默认 leadingWidth=56）。
+            leadingWidth: 192,
+            leading: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    (widget.onBack ?? () => Navigator.maybePop(context))();
+                    _reclaimFocus();
+                  },
+                ),
+                // M3c/任务 6b：书架入口。点击弹出书架对话框选书切换。
+                IconButton(
+                  key: const Key('reader_open_bookshelf'),
+                  icon: const Icon(Icons.collections_bookmark_outlined),
+                  tooltip: '书架',
+                  onPressed: widget.onOpenBookshelf == null
+                      ? null
+                      : () {
+                          widget.onOpenBookshelf!.call();
+                          _reclaimFocus();
+                        },
+                ),
+                // M3c/任务 6a：字号减小。与排版面板同 clamp 范围（12-32）。
+                IconButton(
+                  key: const Key('reader_font_decrease'),
+                  icon: const Icon(Icons.text_decrease),
+                  tooltip: '字号减小',
+                  onPressed: widget.onFontDecrease == null
+                      ? null
+                      : () {
+                          widget.onFontDecrease!();
+                          _reclaimFocus();
+                        },
+                ),
+                // M3c/任务 6a：字号增大。
+                IconButton(
+                  key: const Key('reader_font_increase'),
+                  icon: const Icon(Icons.text_increase),
+                  tooltip: '字号增大',
+                  onPressed: widget.onFontIncrease == null
+                      ? null
+                      : () {
+                          widget.onFontIncrease!();
+                          _reclaimFocus();
+                        },
+                ),
+              ],
             ),
             actions: [
-              // M3c/任务 6b：书架入口。点击弹出书架对话框选书切换。
-              IconButton(
-                key: const Key('reader_open_bookshelf'),
-                icon: const Icon(Icons.collections_bookmark_outlined),
-                tooltip: '书架',
-                onPressed: widget.onOpenBookshelf == null
-                    ? null
-                    : () {
-                        widget.onOpenBookshelf!.call();
-                        _reclaimFocus();
-                      },
-              ),
               IconButton(
                 icon: const Icon(Icons.list),
                 tooltip: '目录',
@@ -347,19 +381,6 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                         _reclaimFocus();
                       },
               ),
-              // M3c/任务 6a：字号减小。与排版面板同 clamp 范围（12-32），
-              // 仅改内存值，不写预设/DB（与排版面板即时改值一致）。
-              IconButton(
-                key: const Key('reader_font_decrease'),
-                icon: const Icon(Icons.text_decrease),
-                tooltip: '字号减小',
-                onPressed: widget.onFontDecrease == null
-                    ? null
-                    : () {
-                        widget.onFontDecrease!();
-                        _reclaimFocus();
-                      },
-              ),
               IconButton(
                 icon: const Icon(Icons.text_fields),
                 tooltip: '排版',
@@ -367,18 +388,6 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                     ? null
                     : () {
                         widget.onOpenTypography!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              // M3c/任务 6a：字号增大。
-              IconButton(
-                key: const Key('reader_font_increase'),
-                icon: const Icon(Icons.text_increase),
-                tooltip: '字号增大',
-                onPressed: widget.onFontIncrease == null
-                    ? null
-                    : () {
-                        widget.onFontIncrease!();
                         _reclaimFocus();
                       },
               ),

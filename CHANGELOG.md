@@ -34,6 +34,14 @@ v1.5.1-alpha 之后的新变更将记在此处。
 
 测试：`reader_bookmark_list_test.dart` +6 cases（trailing 按钮存在性/编辑/导出/删除确认取消/删除确认/默认 controller.delete）；`annotation_tile_test.dart` +5 cases（无回调不渲染/3 按钮/部分回调/编辑触发/删除触发）；`notes_page_test.dart` +2 cases（可见按钮渲染/删除确认取消）。共 49 cases 全过（含 M3d 既有右键菜单无回归）。
 
+#### Changed — Q4 书架/字号按钮挪到时钟左边
+
+用户反馈希望书架 + 字号按钮挪到时间显示左边（更顺手）。原 M3c 全放在右侧 actions。
+
+- `reader_scaffold.dart` `_buildChrome`：`leading` 由单个返回 IconButton 改为 `Row`（返回 + 书架 + 字号- + 字号+），`leadingWidth` 放宽到 192 容纳 4 按钮。时钟保持 `title: ReaderClock()` + `centerTitle: true`。右侧 actions 精简为 目录/排版/笔记/书签/AI/问答/全屏/（双页）/（回顾）。
+- 3 个按钮的 Key 不变（`reader_open_bookshelf` / `reader_font_decrease` / `reader_font_increase`），基于 Key 的测试 finder 不受位置影响。
+- 测试：`reader_scaffold_test.dart` +1 case（断言 leading 是含 4 按钮的 Row、3 个 Key 在 leading 内、leadingWidth≥160、时钟仍在 title）。10 cases 全过。
+
 #### Fixed — Q1+Q2 排版（reader_engine_epub_view 包）
 
 **Q1 段落首行缩进从未生效（关键根因纠正）**：M3a 的 `<style>p{ text-indent: 2em }</style>` 注入对 flutter_widget_from_html 0.15.3 **完全无效** —— 源码追踪确认 fwfh 把 `<style>` tag 当 `display:none`（`core_widget_factory.dart:934`），且其内联 CSS 解析器（`parseStyle` switch）**根本没有 `text-indent` 分支**。所以 M3a 的缩进实际上从未渲染，只是没崩。

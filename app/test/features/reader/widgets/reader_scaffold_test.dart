@@ -263,6 +263,52 @@ void main() {
 
     expect(bookshelfOpened, isTrue);
   });
+
+  testWidgets(
+      'M3e/Q4: bookshelf + font± buttons are in the AppBar leading region '
+      '(left of clock)', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: ReaderScaffold(
+            content: const Center(child: Text('book')),
+            title: 't',
+            paginationMode: PaginationMode.paged,
+            onTapPrev: nil,
+            onTapNext: nil,
+            onOpenBookshelf: () {},
+            onFontDecrease: () {},
+            onFontIncrease: () {},
+          ),
+        ),
+      ),
+    );
+    container.read(readerUiControllerProvider.notifier).toggleChrome();
+    await tester.pumpAndSettle();
+
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    // leading 不再是单个 IconButton，而是含 4 个按钮的 Row。
+    expect(appBar.leading, isA<Row>(),
+        reason: 'M3e/Q4: leading 应为 Row（返回 + 书架 + 字号±）');
+    final leadingRow = appBar.leading! as Row;
+    expect(leadingRow.children.length, 4,
+        reason: 'leading Row 含 4 个 IconButton');
+    // 3 个关键按钮（书架/字号-/字号+）确实在 leading Row 内。
+    final leadingKeys = leadingRow.children
+        .whereType<IconButton>()
+        .map((b) => b.key)
+        .toSet();
+    expect(leadingKeys, contains(const Key('reader_open_bookshelf')));
+    expect(leadingKeys, contains(const Key('reader_font_decrease')));
+    expect(leadingKeys, contains(const Key('reader_font_increase')));
+    // leadingWidth 放宽到容纳 4 按钮。
+    expect(appBar.leadingWidth, greaterThanOrEqualTo(160));
+    // 时钟仍在 title。
+    expect(find.byType(ReaderClock), findsOneWidget);
+  });
 }
 
 void nil() {}
