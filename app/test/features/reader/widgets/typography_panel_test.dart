@@ -49,16 +49,28 @@ void main() {
     expect(captured!.lineHeight, 1.8);
   });
 
-  testWidgets('font options are 系统/黑体/宋体/楷体 (M3a/任务5)',
+  testWidgets('font options are 系统/黑体/宋体/楷体/普惠体/新晰黑 (M3e/Q3)',
       (tester) async {
     await pumpPanel(tester, TypographySettings.defaults(), (_) {});
     expect(find.text('系统'), findsOneWidget);
     expect(find.text('黑体'), findsOneWidget);
     expect(find.text('宋体'), findsOneWidget);
     expect(find.text('楷体'), findsOneWidget);
+    // M3e/Q3: 新增 2 款字体
+    expect(find.text('普惠体'), findsOneWidget);
+    expect(find.text('新晰黑'), findsOneWidget);
     // old generic-family labels removed
     expect(find.text('衬线'), findsNothing);
     expect(find.text('无衬线'), findsNothing);
+  });
+
+  testWidgets('tapping 普惠体 chip emits fontFamily AlibabaPuHuiTi (M3e/Q3)',
+      (tester) async {
+    TypographySettings? captured;
+    await pumpPanel(tester, TypographySettings.defaults(), (s) => captured = s);
+    await tester.tap(find.text('普惠体'));
+    await tester.pump();
+    expect(captured?.fontFamily, 'AlibabaPuHuiTi');
   });
 
   testWidgets('tapping 黑体 chip emits fontFamily NotoSansSC', (tester) async {

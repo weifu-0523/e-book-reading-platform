@@ -105,17 +105,17 @@ flutter:
   uses-material-design: true
   generate: true
 
-  # M3a/任务5: 打包开源 OFL 字体（中文阅读常用字体选项）。
+  # M3a/任务5 + M3e/Q3: 打包开源/免费商用中文字体。
   # 字体文件不入 git（体积大，见 .gitignore + scripts/download-fonts.sh），
   # 首次拉取后跑 `bash scripts/download-fonts.sh` 获取。
   # family 名为逻辑别名（与 typography_panel.dart 的 fontFamily 值一致），
   # 不必与字体内部 post 表 name 完全相同。
-  # 字体来源（OFL 协议）：
-  #   Noto Sans SC（思源黑体）— Google Noto CJK，SubsetOTF/SC 单字重
-  #   Noto Serif SC（思源宋体）— Google Noto CJK，SubsetOTF/SC 单字重
-  #   LXGW WenKai（霞鹜文楷）— LXGW 官方，单字重
-  # 圆体暂未提供（无完美开源 OFL 圆体），UI 不显示圆体选项；用户可选系统字体
-  # （Windows 即微软雅黑）作 fallback。
+  # 字体来源（OFL 或免费商用协议）：
+  #   Noto Sans SC（思源黑体）— Google Noto CJK，SubsetOTF/SC 单字重（OFL 1.1）
+  #   Noto Serif SC（思源宋体）— Google Noto CJK，SubsetOTF/SC 单字重（OFL 1.1）
+  #   LXGW WenKai（霞鹜文楷）— LXGW 官方，单字重（OFL 1.1）
+  #   Alibaba PuHuiTi（阿里巴巴普惠体）— 阿里巴巴，全球永久免费商用（M3e/Q3 新增）
+  #   LXGW Neo XiHei（霞鹜新晰黑）— LXGW，IPA 衍生（OFL 1.1）（M3e/Q3 新增）
   fonts:
     - family: NotoSansSC
       fonts:
@@ -126,3 +126,9 @@ flutter:
     - family: LXGWWenKai
       fonts:
         - asset: assets/fonts/LXGWWenKai-Regular.ttf
+    - family: AlibabaPuHuiTi
+      fonts:
+        - asset: assets/fonts/Alibaba-PuHuiTi-Regular.ttf
+    - family: LXGWNeoXiHei
+      fonts:
+        - asset: assets/fonts/LXGWNeoXiHei.ttf

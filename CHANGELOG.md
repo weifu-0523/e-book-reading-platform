@@ -13,6 +13,17 @@ v1.5.1-alpha 之后的新变更将记在此处。
 
 用户拉取 M3a-d 后上手测试，反馈 6 个问题（Q1 段落缩进未生效 / Q2 末页依旧居中 / Q3 字体太少 / Q4 书架字号按钮挪位 / Q5 摘录条跟随选区 / Q6 删除键找不到）。
 
+#### Added — Q3 新增 2 款字体（共 5 款 + 系统）
+
+用户反馈现有 系统/黑体/宋体/楷体 不够，希望多几款。新增：
+
+- **阿里巴巴普惠体 `AlibabaPuHuiTi`**（标签「普惠体」）：现代圆润黑体，阿里巴巴全球永久免费商用授权。下载源 `chinayin/fonts-alibaba-puhuiti-regular`（社区镜像官方 Regular 字重，~10MB）。官网 alibabafonts.com。
+- **霞鹜新晰黑 `LXGWNeoXiHei`**（标签「新晰黑」）：LXGW 基于 IPAex ゴシック 衍生的中文黑体字型，OFL 1.1，字形锐利适合屏幕长文。来自 `lxgw/LxgwNeoXiHei` v1.303（~7.5MB）。
+
+下载可行性实测：经 gh-proxy.com / ghfast.top 镜像实测两者均 200 可达，已自动下载验证（9.7MB + 7.5MB，有效 TTF）。**无需手动下载**（用户最初选"需手动下载"是基于我之前不准确的探测结果，实测可自动）。
+
+改动：`app/pubspec.yaml` 加 2 个 family 声明；`scripts/download-fonts.sh` + `.ps1` 各加 2 个下载块（多镜像 fallback，索引 [N/3]→[N/5]）；`app/assets/fonts/README.md` 字体表 +2 行；`typography_panel.dart` 字体 chip 列表 +2 项（普惠体/新晰黑）。测试：`typography_panel_test.dart` +1 case（普惠体 chip → fontFamily）+ 更新字体列表断言（9 cases 全过）。
+
 #### Fixed — Q1+Q2 排版（reader_engine_epub_view 包）
 
 **Q1 段落首行缩进从未生效（关键根因纠正）**：M3a 的 `<style>p{ text-indent: 2em }</style>` 注入对 flutter_widget_from_html 0.15.3 **完全无效** —— 源码追踪确认 fwfh 把 `<style>` tag 当 `display:none`（`core_widget_factory.dart:934`），且其内联 CSS 解析器（`parseStyle` switch）**根本没有 `text-indent` 分支**。所以 M3a 的缩进实际上从未渲染，只是没崩。

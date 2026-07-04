@@ -123,6 +123,8 @@ class TypographyPanel extends StatelessWidget {
                 ('黑体', 'NotoSansSC'),
                 ('宋体', 'NotoSerifSC'),
                 ('楷体', 'LXGWWenKai'),
+                ('普惠体', 'AlibabaPuHuiTi'),
+                ('新晰黑', 'LXGWNeoXiHei'),
                 ...userFonts.map((f) => (f.displayName, f.familyName)),
               ]
                   .map((p) => ChoiceChip(
@@ -135,16 +137,17 @@ class TypographyPanel extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // M3a/任务5：字体选项说明。'serif'/'sans-serif' 是 CSS 通用字体族名，
+            // M3a/任务5 + M3e/Q3：字体选项说明。'serif'/'sans-serif' 是 CSS 通用字体族名，
             // Flutter 的 TextStyle.fontFamily 不识别 generic family → 旧"衬线/无衬线"
-            // 选项在 Windows 上几乎无效（fallback 默认无衬线）。改为打包开源 OFL
-            // 字体（思源黑体/宋体、霞鹜文楷），family name 与 pubspec 声明一致。
-            // 字体文件不入 git，首次拉取后跑 scripts/download-fonts.sh 获取。
-            // 用户已导入的字体（userFonts）继续追加显示。
+            // 选项在 Windows 上几乎无效（fallback 默认无衬线）。改为打包开源/免费商用
+            // 字体（思源黑体/宋体、霞鹜文楷、阿里巴巴普惠体、霞鹜新晰黑），family name
+            // 与 pubspec 声明一致。字体文件不入 git，首次拉取后跑
+            // scripts/download-fonts.sh 获取（5 款字体）。用户已导入的字体（userFonts）
+            // 继续追加显示。
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                '黑体/宋体/楷体为打包开源字体，需运行下载脚本获取；'
+                '黑体/宋体/楷体/普惠体/新晰黑为打包字体，需运行下载脚本获取；'
                 '系统即 Windows 微软雅黑。',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
