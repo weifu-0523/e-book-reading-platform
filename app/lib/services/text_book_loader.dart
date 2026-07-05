@@ -25,8 +25,8 @@ import 'package:reader_engine_epub_view/html_chapter_source.dart';
 /// **切章规则**：整篇作为单章（用户已确认 M4.5 范围）。长 TXT 靠分页翻页
 /// 阅读，目录 tab 显示单条「全文」。
 ///
-/// **分段**：按空行分段，每段包 `<p>...</p>`；连续空行合并。行内换行
-/// 保留为 `<br>`（保留原文排版）。
+/// **分段（M4.6 启发式）**：每行独立成 `<p>`（兼容中文小说"每行一段"
+/// 格式 + 有空行分隔的正常文本）。空行作分隔符跳过。HTML 实体转义。
 ///
 /// **编码**：默认 UTF-8，解码失败降级 latin1。
 ///
@@ -55,23 +55,31 @@ class TextBookLoader {
     )];
   }
 
-  /// 把纯文本转成 HTML（分段包 `<p>` + 转义 + 行内 `<br>`）。
+  /// 把纯文本转成 HTML（M4.6 启发式分段）。
+  ///
+  /// M4.6 (#6) 修复：原实现按 `\n\s*\n` 空行切分，中文小说常见连续行无空行
+  /// 时整篇当一个 `<p>`，导致 Paginator 退化、内容溢出屏幕。
+  ///
+  /// 新规则（spec A5）：
+  /// - 空行作分隔符，跳过不输出 `<p>`
+  /// - 长行 / 短行每行独立成 `<p>`（杜绝超长单段，保证 Paginator 正常分页）
+  ///
   /// 公开供测试直接调。
   static String parseText(String text) {
-    // 按连续空行分段。空白文件 → 单空段落（保持至少一个 <p>，HtmlWidget 不空）。
-    final rawBlocks = text.split(RegExp(r'\n\s*\n'));
-    final blocks = rawBlocks.where((b) => b.trim().isNotEmpty).toList();
-    if (blocks.isEmpty) {
-      return '<p></p>';
-    }
+    if (text.trim().isEmpty) return '<p></p>';
+
+    final lines = text.split('\n');
     final buf = StringBuffer();
-    for (final block in blocks) {
-      // 行内换行 → <br>；首尾空白裁掉；HTML 实体转义。
-      final lines = block.trim().split('\n');
-      final escaped = lines.map(_escapeHtml).join('<br>');
-      buf.write('<p>$escaped</p>');
+
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue; // 空行作分隔符
+      // 每行独立成 <p>（中文小说每行一段事实标准；杜绝超长单段）
+      buf.write('<p>${_escapeHtml(line)}</p>');
     }
-    return buf.toString();
+
+    final result = buf.toString();
+    return result.isEmpty ? '<p></p>' : result;
   }
 
   static String _decodeText(List<int> bytes) {

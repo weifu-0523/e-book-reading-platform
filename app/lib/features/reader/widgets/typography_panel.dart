@@ -311,6 +311,8 @@ class TypographyPanel extends StatelessWidget {
         return '黄';
       case ReadingTheme.eInk:
         return '墨';
+      case ReadingTheme.green:
+        return '绿';
     }
   }
 

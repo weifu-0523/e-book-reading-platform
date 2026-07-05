@@ -68,6 +68,15 @@ class PdfTheme {
           ]),
           child: child,
         );
+      case ReadingTheme.green:
+        // M4.6: 浅艾绿半透明叠加（仿 sepia 模式）。
+        return ColorFiltered(
+          colorFilter: const ColorFilter.mode(
+            Color(0x40E3EDD7),
+            BlendMode.dstATop,
+          ),
+          child: child,
+        );
     }
   }
 }

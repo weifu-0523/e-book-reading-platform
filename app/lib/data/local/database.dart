@@ -89,7 +89,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration {
@@ -208,6 +208,21 @@ class AppDatabase extends _$AppDatabase {
           await m.database.customStatement(
             'CREATE INDEX IF NOT EXISTS idx_bookmarks_book '
             'ON bookmarks(book_id)',
+          );
+        }
+        if (from < 11) {
+          // M4.6 (#4): 老用户排版预设迁移——fontFamily 嵌在 typography_profiles
+          // 的 settings JSON 里（非独立列），M4.6 把 TypographySettings.defaults()
+          // 的 fontFamily 从 null 改为 'LXGWNeoXiHei'，只影响新用户。
+          // 这里把老用户 profile 里 fontFamily 为 null 的记录回填为新晰黑，
+          // 使老用户也能感知新默认字体。幂等：仅过滤 fontFamily IS NULL 的行，
+          // json_valid 守卫防止极少数脏数据让整条 migration 报错。sqlite3_flutter_libs
+          // 自带 SQLite ≥3.39，JSON1 默认开启。
+          await m.database.customStatement(
+            'UPDATE typography_profiles '
+            "SET settings = json_set(settings, '\$.fontFamily', 'LXGWNeoXiHei') "
+            'WHERE json_valid(settings) = 1 '
+            "AND json_extract(settings, '\$.fontFamily') IS NULL",
           );
         }
       },

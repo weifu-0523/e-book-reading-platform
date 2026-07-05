@@ -16,7 +16,7 @@
 
 import 'package:meta/meta.dart';
 
-enum ReadingTheme { light, dark, sepia, eInk }
+enum ReadingTheme { light, dark, sepia, eInk, green }
 
 /// Page margin in CSS pixels. Pre-M2.5: compact=8, normal=16, wide=24.
 /// M2.5 bumped normal→24 and wide→32 for real-book whitespace feel, and
@@ -75,7 +75,7 @@ class TypographySettings {
   factory TypographySettings.defaults() => const TypographySettings(
         fontSize: 18.0,
         lineHeight: 1.8,
-        fontFamily: null, // null = 系统字体
+        fontFamily: 'LXGWNeoXiHei', // M4.6: 默认字体改新晰黑
         theme: ReadingTheme.light,
         pageMargin: PageMargin.wide,
         paragraphIndentEm: 2.0,

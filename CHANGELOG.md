@@ -65,6 +65,69 @@ Q8 修完溢出后，用户连续反馈 4 个 paged 模式排版/性能问题，
 - 实测：翻页从 50-100ms 降到 4-11ms。
 - 回归测试：`epubx_renderer_paged_overflow_test.dart` 加「翻到中间页渲染内容正确」用例，验证预计算没丢内容。
 
+### M4.6 — 2026-07-05（阅读器打磨包：PDF 双页/缩略图 + 淡绿主题 + 新晰黑默认 + MD/TXT 渲染修复）
+
+用户测试 M4.5 后反馈 6 个问题，本里程碑一次交付：4 项功能增强 + 2 项 M4.5 引入的回归修复。
+
+#### Added — 淡绿色主题（#3）
+
+- 新增 `ReadingTheme.green`（浅艾绿 `#E3EDD7` 背景 + 深褐 `#3A4A2D` 文字，WCAG AA 对比度）。
+- 4 处同步：reader_engine 枚举 / EPUB `themeColors` fg-bg / PDF `applyTheme` ColorFilter（半透明叠加）/ typography_panel UI 标签「绿」。EPUB/PDF/MD/TXT 四格式生效。
+- 枚举是 exhaustive switch，编译器强制 4 处都改对。
+
+#### Added — PDF 无目录时缩略图导航（#2）
+
+- PDF 无内嵌目录时，目录 tab 原显示「本书无目录」文案，现改为页面缩略图 grid。
+- 新 widget `pdf_thumbnail_grid.dart`：pdfrx `PdfPage.render()` 异步渲染，内存 LRU 缓存 32 张（约 6MB），`GridView.builder` 只构建可视区，post-frame callback 触发渲染避免 build 中 setState。当前页 primary 色边框高亮，点击跳页。
+- pdfrx 2.4.4 实际 API：`render(fullWidth:, fullHeight:)` 返回 `PdfImage`，需 `createImage()` 转 `ui.Image`，渲染后 `dispose()` 释放原生资源。
+
+#### Added — PDF 宽屏自动双页（#1）
+
+- PDF 原有手动 toggle 双页（工具栏按钮），现对齐 EPUB：窗口 ≥1100px 自动双页，缩窗回单页。
+- 在 `reader_body.dart` LayoutBuilder 加 PDF 分支：`e.dualPageMode = isWide && !e.rendererRef.isScanned`。
+- 扫描件（isScanned）仍维持单页（双页会让扫描页缩太小看不清）。isScanned 同步 getter，未解析时保守返回 false，解析完成后下次 rebuild 自动切双页，无崩溃风险。
+
+#### Changed — 默认字体改新晰黑（#4）
+
+- `TypographySettings.defaults()` 的 `fontFamily` 从 `null`（系统字体）改为 `'LXGWNeoXiHei'`（新晰黑，已打包注册）。
+- 仅影响全新用户/全新 DB；老用户预设是 DB 独立记录。
+
+#### Changed — DB schema v10→v11 老用户字体迁移（#4）
+
+- `typography_profiles` 表的 fontFamily 嵌在 `settings` JSON 列（非独立列），migration 用 SQLite JSON1 函数 `json_set` 回填。
+- schema v11 onUpgrade：`UPDATE typography_profiles SET settings = json_set(settings, '$.fontFamily', 'LXGWNeoXiHei') WHERE json_valid(settings) AND json_extract(settings, '$.fontFamily') IS NULL`。
+- 幂等（WHERE 严格过滤 NULL），不动已自定义字体的预设。
+
+#### Fixed — Markdown 段落堆叠（M4.5 回归 #5）
+
+- **现象**：原 MD 文档分段一行一行，阅读器打开后段落堆叠，没还原换行。
+- **根因**：markdown 包（7.3.1）按 CommonMark 规范，段落内单个 `\n`（soft break）渲染时折叠成空格（不是 `<br>`），导致连续行堆成一行。
+- **修复**：调 `markdownToHtml` 前预处理——给每个非空、非围栏代码块、非已有 hard break 的行尾补两空格，强制 markdown 视为 hard break（两空格+换行 → `<br>`）。围栏代码块（` ``` `/`~~~`）内行原样保留，标题行（`#`）不加。
+- 注：`LineSplitExtension` 在 markdown 7.x 不存在（已核对 export），故用预处理方案。
+
+#### Fixed — TXT 内容溢出屏幕（M4.5 回归 #6）
+
+- **现象**：TXT 文档打开后内容都跑到屏幕外。
+- **根因**：`parseText` 用 `text.split(RegExp(r'\n\s*\n'))` 按空行切。中文小说常见连续行无空行（每行一段），导致整篇当一个 `<p>`，Paginator 退化（单段超长无法分页），内容溢出视口。
+- **修复（智能启发式）**：重写 `parseText`——按 `\n` 逐行处理，每行 trim 后非空则独立成 `<p>`（中文小说每行一段事实标准），空行作分隔符跳过。杜绝超长单段，保证 Paginator 正常分页。
+
+#### Non-Goals
+
+- PDF 双页的文本选区/高亮（pdfrx 限制，已知缺陷，本次不做）。
+- EPUB/PDF 双页抽象统一（R1 风险，本次不重构）。
+- LineSplitExtension 之外的 GFM 扩展（表格/删除线，避免引入未测试行为）。
+
+#### 测试
+
+- `markdown_book_loader_test.dart` 加 M4.6 用例：soft break 转 `<br>`（2 个）、代码块回归保护、TXT 连续行每行独立 `<p>`。共 21 测试全过。
+- `database_test.dart` / `migration_v10_test.dart` schemaVersion 断言更新到 11。
+- dart analyze 4 包（reader_engine / epub_view / pdf_view / app）全过。
+- 3 个 DB 测试失败是预存问题（FTS5 测试 helper 缺陷，git stash 验证 M4.6 前后一致），与本次无关。
+
+#### Lessons
+
+- **并行 subagent 同仓库文件竞态**：首次尝试 6 个 subagent 并行执行，T1/T2/T3/T4 的改动被互相覆盖丢失。教训：同一仓库的文件修改必须串行（或确保文件集完全不重叠 + 无共享读取）。改为主 agent 串行重做后一次通过。
+
 ### M4.5 — 2026-07-05（新增 Markdown / 纯文本格式支持）
 
 用户要求新增 `.md` / `.txt` 书籍格式支持。MD/TXT 复用 EPUB 的 HTML 渲染管道（md→html / txt→`<p>` → fwfh HtmlWidget），行为与 EPUB 一致（分页、高亮、双页、主题、AI 伴读）。

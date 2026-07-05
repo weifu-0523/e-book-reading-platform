@@ -90,16 +90,70 @@ class MarkdownBookLoader {
       final single = text.trim().isEmpty ? '' : text;
       return [HtmlChapterSource(
         title: fallbackTitle.isEmpty ? '正文' : fallbackTitle,
-        html: md.markdownToHtml(single),
+        html: _markdownToHtml(single),
       )];
     }
 
     return chapters
         .map((c) => HtmlChapterSource(
               title: c.title.isEmpty ? '(无标题)' : c.title,
-              html: md.markdownToHtml(c.body.toString()),
+              html: _markdownToHtml(c.body.toString()),
             ))
         .toList();
+  }
+
+  /// M4.6 (#5): Markdown 转 HTML，保留段落内可见换行。
+  ///
+  /// **根因**：markdown 包（7.3.1）按 CommonMark 规范，段落内单个 `\n`（soft
+  /// break）渲染时折叠成空格（不是 `<br>`），导致连续行堆叠成一行。只有
+  /// 行尾两个空格或反斜杠才是 hard break → `<br>`。
+  ///
+  /// **修复**：调 `markdownToHtml` 前预处理——给每个非空、非代码块、非已有
+  /// hard break 的行尾补两个空格，强制 markdown 视为 hard break。代码块
+  /// （` ``` `/`~~~` 围栏）内行原样保留，避免破坏代码格式。
+  ///
+  /// `LineSplitExtension` 在 markdown 7.x 不存在（已核对 export），故用
+  /// 预处理方案。
+  static String _markdownToHtml(String body) {
+    return md.markdownToHtml(_preserveLineBreaks(body));
+  }
+
+  /// 给 body 的每行尾部补两空格，强制 hard break。跳过：
+  /// - 空行（保留原样）
+  /// - 围栏代码块内的行（` ``` ` 或 `~~~` 包裹区域）
+  /// - 已有 hard break 的行（行尾已有 ≥2 空格或反斜杠）
+  static String _preserveLineBreaks(String body) {
+    final lines = body.split('\n');
+    bool inFence = false;
+    String? fenceMarker;
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmedRight = line.replaceFirst(RegExp(r'\s*$'), '');
+      // 围栏检测：行首（允许最多 3 空格缩进）后跟 ``` 或 ~~~
+      final fenceMatch = RegExp(r'^\s{0,3}(```|~~~)').firstMatch(trimmedRight);
+      if (fenceMatch != null) {
+        final marker = fenceMatch.group(1)!;
+        if (!inFence) {
+          inFence = true;
+          fenceMarker = marker;
+        } else if (marker == fenceMarker) {
+          inFence = false;
+          fenceMarker = null;
+        }
+        // 围栏行本身不加空格
+        continue;
+      }
+      if (inFence) continue; // 代码块内行原样
+      if (trimmedRight.isEmpty) continue; // 空行
+      // 已有 hard break（≥2 尾空格 或 反斜杠结尾）
+      if (RegExp(r' {2,}$').hasMatch(line)) continue;
+      if (trimmedRight.endsWith(r'\')) continue;
+      // 标题行（# 开头）不加（标题不换行）
+      if (RegExp(r'^#{1,6}\s').hasMatch(trimmedRight)) continue;
+      // 补两空格
+      lines[i] = '$trimmedRight  ';
+    }
+    return lines.join('\n');
   }
 
   static String _decodeText(List<int> bytes) {

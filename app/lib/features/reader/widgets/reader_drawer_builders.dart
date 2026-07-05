@@ -16,7 +16,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 
 import '../../../core/widgets/error_view.dart';
 import '../../../core/widgets/loading_view.dart';
@@ -24,6 +26,7 @@ import '../../../gen_l10n/app_localizations.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../providers/notes_controller.dart';
 import 'notes_drawer.dart';
+import 'pdf_thumbnail_grid.dart';
 import 'toc_drawer.dart' show TocDrawer, defaultTocChapterIndex;
 
 /// 注：T7 (M2.5) 起，抽屉由 [ReaderDrawer] 统一容器提供 `Drawer(...)` 外壳，
@@ -51,6 +54,35 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
       return const LoadingView();
     }
     final preprocess = ref.watch(bookPreprocessControllerProvider(bookId));
+
+    // M4.6/T5：PDF 无目录时改用缩略图 grid 导航（替代「本书无目录」空文案）。
+    // 仅当 engine 是 PdfReaderEngine、TOC 为空且 doc 已打开时构造；
+    // EPUB / PDF 有目录场景保持 null，沿用原 ListView 目录渲染。
+    Widget? pdfThumbnails;
+    if (engine is PdfReaderEngine && toc.entries.isEmpty) {
+      final pdfEngine = engine as PdfReaderEngine;
+      final doc = pdfEngine.rendererRef.doc;
+      if (doc != null) {
+        pdfThumbnails = PdfThumbnailGrid(
+          document: doc,
+          currentPage: pdfEngine.rendererRef.currentPage,
+          onPageSelected: (idx) async {
+            // idx 是 0-based；PdfPageLocator.page 是 1-based（pdfrx 约定）。
+            await pdfEngine.gotoLocator(PdfPageLocator(
+              page: idx + 1,
+              offsetX: 0,
+              offsetY: 0,
+            ));
+            // 对齐 onSelect 行为：跳转后关闭抽屉。PDF 无 chapterSwitchSettled
+            // 语义（setPage 同步），无需 await。
+            if (context.mounted) {
+              Scaffold.of(context).closeDrawer();
+            }
+          },
+        );
+      }
+    }
+
     return TocDrawer(
       toc: toc,
       preprocessState: preprocess,
@@ -70,6 +102,7 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
         }
       },
       onReviewChapter: onReviewChapter,
+      pdfThumbnails: pdfThumbnails,
     );
   }
 }

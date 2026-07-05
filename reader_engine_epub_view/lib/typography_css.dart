@@ -47,6 +47,9 @@ class TypographyCss {
         return (const Color(0xFF5B4636), const Color(0xFFF4ECD8));
       case ReadingTheme.eInk:
         return (const Color(0xFF000000), const Color(0xFFE8E8E8));
+      case ReadingTheme.green:
+        // M4.6: 浅艾绿背景 + 深褐文字（WCAG AA）。
+        return (const Color(0xFF3A4A2D), const Color(0xFFE3EDD7));
     }
   }
 }

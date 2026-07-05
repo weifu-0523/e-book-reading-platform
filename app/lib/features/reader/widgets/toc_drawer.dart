@@ -43,6 +43,12 @@ class TocDrawer extends StatelessWidget {
   /// [chapterIndexResolver]）。为 null 时不渲染按钮。
   final ValueChanged<int>? onReviewChapter;
 
+  /// M4.6/T5 (#2)：PDF 无目录时的缩略图导航 widget。
+  /// 调用方（reader_drawer_builders）在 PDF + 空 TOC 时构造 [PdfThumbnailGrid]
+  /// 传入。非 null 且 [toc].entries 为空时显示此 widget 替代「本书无目录」文案。
+  /// EPUB 或 PDF 有目录场景保持 null，沿用原有 ListView 目录渲染。
+  final Widget? pdfThumbnails;
+
   const TocDrawer({
     super.key,
     required this.toc,
@@ -50,11 +56,14 @@ class TocDrawer extends StatelessWidget {
     this.preprocessState,
     this.chapterIndexResolver,
     this.onReviewChapter,
+    this.pdfThumbnails,
   });
 
   @override
   Widget build(BuildContext context) {
     if (toc.entries.isEmpty) {
+      // M4.6/T5：PDF 无目录时若有缩略图 widget 则显示之（替代空文案）。
+      if (pdfThumbnails != null) return pdfThumbnails!;
       return const Center(child: Text('本书无目录'));
     }
     return ListView.builder(

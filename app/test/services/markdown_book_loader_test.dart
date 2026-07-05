@@ -85,6 +85,31 @@ void main() {
       expect(chapters[0].html, contains('<li>item1</li>'));
       expect(chapters[0].html, contains('<strong>bold</strong>'));
     });
+
+    test('M4.6 (#5) 段落内 soft break 转 <br>，连续行不堆叠', () {
+      // 根因：markdown 包按 CommonMark 把单 \n 折叠成空格。
+      // 修复：调 markdownToHtml 前预处理，行尾补两空格强制 hard break。
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '第一行\n第二行\n第三行',
+        fallbackTitle: 't',
+      );
+      expect(chapters.length, 1);
+      expect(chapters[0].html, contains('<br'));
+      expect(chapters[0].html, contains('第一行'));
+      expect(chapters[0].html, contains('第二行'));
+      expect(chapters[0].html, contains('第三行'));
+    });
+
+    test('M4.6 (#5) 代码块内换行不被破坏', () {
+      // 预处理跳过围栏代码块，行尾不补空格，代码块内格式保持原样。
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '```\nline1\nline2\n```',
+        fallbackTitle: 't',
+      );
+      expect(chapters[0].html, contains('<pre>'));
+      expect(chapters[0].html, contains('line1'));
+      expect(chapters[0].html, contains('line2'));
+    });
   });
 
   group('MarkdownBookLoader.load (字节 + 编码)', () {
@@ -115,9 +140,10 @@ void main() {
       expect(html, '<p>第一段</p><p>第二段</p><p>第三段</p>');
     });
 
-    test('段内换行转 <br>', () {
+    test('段内换行 → 每行独立 <p>', () {
+      // M4.6 (#6): 启发式分段，每行独立成 <p>（杜绝超长单段导致 Paginator 退化）。
       final html = TextBookLoader.parseText('第一行\n第二行');
-      expect(html, '<p>第一行<br>第二行</p>');
+      expect(html, '<p>第一行</p><p>第二行</p>');
     });
 
     test('连续空行合并', () {
@@ -140,6 +166,13 @@ void main() {
       final html = TextBookLoader.parseText('   \n\n  \n  ');
       expect(html, '<p></p>');
     });
+
+    test('M4.6 (#6) 连续行无空行每行独立 <p>', () {
+      // 中文小说常见格式：连续行无空行，每行一段。
+      // 旧实现按 \n\s*\n 切会整篇当一个 <p>，导致 Paginator 退化。
+      final html = TextBookLoader.parseText('第一回\n第二回\n第三回');
+      expect(html, '<p>第一回</p><p>第二回</p><p>第三回</p>');
+    });
   });
 
   group('TextBookLoader.load', () {
@@ -158,7 +191,9 @@ void main() {
         utf8.encode('第一章\n回来'),
         title: 't',
       );
-      expect(chapters[0].html, contains('第一章<br>回来'));
+      // M4.6: 每行独立 <p>
+      expect(chapters[0].html, contains('<p>第一章</p>'));
+      expect(chapters[0].html, contains('<p>回来</p>'));
     });
   });
 

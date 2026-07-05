@@ -29,8 +29,9 @@ void main() {
 
     tearDown(() async => db.close());
 
-    test('schemaVersion is 10', () {
-      expect(db.schemaVersion, 10);
+    test('schemaVersion is at least 10', () {
+      // M4.6 bump 到 11；v10 的 bookmarks 表结构测试仍然有效。
+      expect(db.schemaVersion, greaterThanOrEqualTo(10));
     });
 
     test('bookmarks table exists with correct columns', () async {

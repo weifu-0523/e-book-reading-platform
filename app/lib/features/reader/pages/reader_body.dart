@@ -388,11 +388,18 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         // M2.9 (Bug #4 EPUB 双页): EPUB paged 模式 + 宽屏 → 自动启用双页
         // （书脊式左右两页）。窄屏或 scroll 模式 → 单页。setDualPageMode 内部
         // 会去重（值不变直接 return），所以每次 rebuild 调用是廉价的。
-        // 不影响 PDF（PDF 走自己的 dualPageMode toggle，不经此路径）。
+        // M4.6 (#1): PDF 也加入此路径——宽屏自动双页，对齐 EPUB 行为。
         final e = engine;
         if (e is ConcreteEpubReaderEngine &&
             e.paginationMode == PaginationMode.paged) {
           e.setDualPageMode(isWide);
+        }
+        // M4.6 (#1): PDF 宽屏自动双页。扫描件 (isScanned) 仍维持单页
+        // （扫描件双页会让页面缩太小看不清）。isScanned 是同步 getter，
+        // 未解析时返回 false（保守降级单页），解析完成后下次 rebuild
+        // 自动切双页，无崩溃风险。
+        if (e is PdfReaderEngine) {
+          e.dualPageMode = isWide && !e.rendererRef.isScanned;
         }
         if (isWide) {
           return _buildWideReaderTree(ui);
