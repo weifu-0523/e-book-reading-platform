@@ -374,6 +374,13 @@ class EpubxRenderer implements EpubRenderer {
   /// 当前持有的书 —— Task 12+ 用，外部只读访问。
   EpubBook? get book => _book;
 
+  /// M4.6-fix2: 是否为 MD/TXT 模式（openChapters 路径，无 epubx book）。
+  /// true 表示当前内容由 [openChapters] 注入（Markdown / 纯文本），
+  /// false 表示真 EPUB（[openFile] 解析 epubx book）。
+  /// reader_body 据此跳过自动双页——MD/TXT 的短段落结构不适合双页 spread
+  /// （段落会被错位分配到左右页，超长段还会溢出右页边界）。
+  bool get isHtmlChaptersMode => _book == null;
+
   /// 当前章节索引 —— Task 12+ 用。
   int get currentChapterIndex => _currentChapterIndex;
 

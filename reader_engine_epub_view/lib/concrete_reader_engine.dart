@@ -103,6 +103,10 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   @override
   bool get dualPageMode => _renderer.dualPageMode;
 
+  /// M4.6-fix2: 是否为 MD/TXT 模式（openChapters 路径）。
+  /// reader_body 据此跳过自动双页（MD/TXT 短段落不适合双页 spread）。
+  bool get isHtmlChaptersMode => _renderer.isHtmlChaptersMode;
+
   /// M2.9: 切换双页模式。透传给 renderer，触发 rebuild。
   void setDualPageMode(bool value) => _renderer.setDualPageMode(value);
 

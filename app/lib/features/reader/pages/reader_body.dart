@@ -392,7 +392,11 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         final e = engine;
         if (e is ConcreteEpubReaderEngine &&
             e.paginationMode == PaginationMode.paged) {
-          e.setDualPageMode(isWide);
+          // M4.6-fix2: MD/TXT (isHtmlChaptersMode) 不自动启用双页——
+          // 其短段落结构不适合双页 spread（段落被错位分配到左右页，
+          // 超长段还会溢出右页边界，表现为"第一段左上、第二段右下超出边界"）。
+          // 仅真 EPUB（openFile 路径，_book != null）才自动双页。
+          e.setDualPageMode(isWide && !e.isHtmlChaptersMode);
         }
         // M4.6 (#1): PDF 宽屏自动双页。扫描件 (isScanned) 仍维持单页
         // （扫描件双页会让页面缩太小看不清）。isScanned 是同步 getter，
