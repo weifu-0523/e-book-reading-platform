@@ -86,15 +86,17 @@ void main() {
       expect(chapters[0].html, contains('<strong>bold</strong>'));
     });
 
-    test('M4.6 (#5) 段落内 soft break 转 <br>，连续行不堆叠', () {
-      // 根因：markdown 包按 CommonMark 把单 \n 折叠成空格。
-      // 修复：调 markdownToHtml 前预处理，行尾补两空格强制 hard break。
+    test('M4.6-fix4 段落内 soft break 按 CommonMark 合并（不强制 <br>）', () {
+      // 历史根因：M4.6 (#5) 曾强制行尾补两空格让 markdown 视为 hard break，
+      // 违反 CommonMark 语义导致 fwfh 段落断行堆叠。M4.6-fix4 删除强制 hard
+      // break，回归标准合并行为：段内单换行渲染时合并为同一段连续流。
       final chapters = MarkdownBookLoader.parseMarkdown(
         '第一行\n第二行\n第三行',
         fallbackTitle: 't',
       );
       expect(chapters.length, 1);
-      expect(chapters[0].html, contains('<br'));
+      // CommonMark：段内单换行合并，不产生 <br>
+      expect(chapters[0].html, isNot(contains('<br')));
       expect(chapters[0].html, contains('第一行'));
       expect(chapters[0].html, contains('第二行'));
       expect(chapters[0].html, contains('第三行'));
@@ -137,13 +139,14 @@ void main() {
       expect(html, isNot(contains('<br')));
     });
 
-    test('M4.6-fix (#3) 普通段落 soft break 仍转 <br>', () {
-      // 确保跳过规则扩展后，普通段落换行仍然生效。
+    test('M4.6-fix4 普通段落 soft break 合并（不再强制 <br>）', () {
+      // M4.6-fix4：删除 _preserveLineBreaks，段内换行按 CommonMark 合并。
+      // 用户显式 hard break 需在源码里写行尾两空格或反斜杠。
       final chapters = MarkdownBookLoader.parseMarkdown(
         '段落第一行\n段落第二行',
         fallbackTitle: 't',
       );
-      expect(chapters[0].html, contains('<br'));
+      expect(chapters[0].html, isNot(contains('<br')));
       expect(chapters[0].html, contains('段落第一行'));
       expect(chapters[0].html, contains('段落第二行'));
     });

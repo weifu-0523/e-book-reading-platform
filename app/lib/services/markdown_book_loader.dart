@@ -102,90 +102,48 @@ class MarkdownBookLoader {
         .toList();
   }
 
-  /// M4.6 (#5): Markdown 转 HTML，保留段落内可见换行。
+  /// M4.6-fix4: Markdown 转 HTML，按 CommonMark 标准合并段内换行 +
+  /// 移除图片语法（避免 fwfh 网络占位）。
   ///
-  /// **根因**：markdown 包（7.3.1）按 CommonMark 规范，段落内单个 `\n`（soft
-  /// break）渲染时折叠成空格（不是 `<br>`），导致连续行堆叠成一行。只有
-  /// 行尾两个空格或反斜杠才是 hard break → `<br>`。
+  /// **历史**：M4.6 (#5) 曾用 `_preserveLineBreaks` 给每行尾部强制补两空格
+  /// 让 markdown 视为 hard break → `<br>`。这违反 CommonMark 语义（段内
+  /// 单换行渲染时应合并为同段连续流），导致 fwfh 把段落切成断行堆叠 →
+  /// 用户看到"第一段在左上、第二段在右下、超出边界"。
   ///
-  /// **修复**：调 `markdownToHtml` 前预处理——给每个非空、非代码块、非已有
-  /// hard break 的行尾补两个空格，强制 markdown 视为 hard break。代码块
-  /// （` ``` `/`~~~` 围栏）内行原样保留，避免破坏代码格式。
+  /// **修复**：直接走 `markdown.markdownToHtml`，让标准库按 CommonMark 处理：
+  /// - 段内单换行 → 合并（源码可读性，渲染合并）
+  /// - 行尾两空格 / 反斜杠 → hard break（用户显式意图，标准库识别）
+  /// - 空行 → 段落分隔
+  /// - 标题/列表/引用/代码块 → 结构正确渲染
   ///
-  /// `LineSplitExtension` 在 markdown 7.x 不存在（已核对 export），故用
-  /// 预处理方案。
+  /// 图片移除：fwfh HtmlWidget 默认渲染 `<img>`，但 MD 无 base URL 时 src
+  /// 当网络 URL，会显示 loading 占位/异常图标（用户报告"第二章标题变图片"）。
+  /// MD 阅读场景无网络/相对路径解析能力，移除 `<img>` 保留 alt 文本是合理
+  /// trade-off（让读者知道这里有图但不尝试加载）。
   static String _markdownToHtml(String body) {
-    return md.markdownToHtml(_preserveLineBreaks(body));
+    final raw = md.markdownToHtml(body);
+    return _stripImages(raw);
   }
 
-  /// 给 body 的每行尾部补两空格，强制 hard break。跳过：
-  /// - 空行（保留原样）
-  /// - 围栏代码块内的行（` ``` ` 或 `~~~` 包裹区域）
-  /// - 缩进式代码块（行首 ≥4 空格）
-  /// - 已有 hard break 的行（行尾已有 ≥2 空格或反斜杠）
-  /// - 标题行（`#` ~ `######`）
-  /// - 列表项（`- ` / `* ` / `+ ` / `1. `）
-  /// - 引用块（`> `）
-  /// - HTML 块（行首 `<`）
-  /// - 水平分割线（`---` / `***` / `___`）
+  /// M4.6-fix4: 移除 HTML 中所有 `<img>` 标签，保留 alt 文本作为占位。
   ///
-  /// M4.6-fix (#3)：原跳过规则过窄，列表项/引用块等结构行被补两空格后，
-  /// markdown 在 `<li>`/`<blockquote>` 内生成多余 `<br>`，破坏排版。
-  static String _preserveLineBreaks(String body) {
-    final lines = body.split('\n');
-    bool inFence = false;
-    String? fenceMarker;
-    for (var i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      final trimmedRight = line.replaceFirst(RegExp(r'\s*$'), '');
-      // 围栏检测：行首（允许最多 3 空格缩进）后跟 ``` 或 ~~~
-      final fenceMatch = RegExp(r'^\s{0,3}(```|~~~)').firstMatch(trimmedRight);
-      if (fenceMatch != null) {
-        final marker = fenceMatch.group(1)!;
-        if (!inFence) {
-          inFence = true;
-          fenceMarker = marker;
-        } else if (marker == fenceMarker) {
-          inFence = false;
-          fenceMarker = null;
-        }
-        // 围栏行本身不加空格
-        continue;
-      }
-      if (inFence) continue; // 围栏代码块内行原样
-      if (trimmedRight.isEmpty) continue; // 空行
-      // 已有 hard break（≥2 尾空格 或 反斜杠结尾）
-      if (RegExp(r' {2,}$').hasMatch(line)) continue;
-      if (trimmedRight.endsWith(r'\')) continue;
-      // M4.6-fix: 跳过所有 markdown 结构行（补两空格会破坏它们的渲染）
-      if (_isStructuralLine(trimmedRight)) continue;
-      // 补两空格（仅普通段落正文行）
-      lines[i] = '$trimmedRight  ';
-    }
-    return lines.join('\n');
-  }
-
-  /// M4.6-fix (#3): 判断是否为 markdown 结构行（不应补两空格）。
-  /// 这些行的 inline 内容补两空格后，markdown 会在 `<li>`/`<blockquote>`
-  /// 等容器内生成多余 `<br>`，破坏排版。
-  static bool _isStructuralLine(String trimmedRight) {
-    // 标题（# ~ ######）
-    if (RegExp(r'^#{1,6}\s').hasMatch(trimmedRight)) return true;
-    // 缩进式代码块（行首 ≥4 空格）
-    if (RegExp(r'^    ').hasMatch(trimmedRight)) return true;
-    // 列表项：`- ` / `* ` / `+ ` / `1. `（允许最多 3 空格缩进）
-    if (RegExp(r'^\s{0,3}([-*+]\s|\d+\.\s)').hasMatch(trimmedRight)) return true;
-    // 引用块：`> ` / `>`（允许最多 3 空格缩进）
-    if (RegExp(r'^\s{0,3}>').hasMatch(trimmedRight)) return true;
-    // HTML 块（行首 <，如 <div> <img> <!--）
-    if (RegExp(r'^\s*<').hasMatch(trimmedRight)) return true;
-    // 水平分割线：`---` / `***` / `___`（≥3 个相同字符，允许最多 3 空格缩进）
-    if (RegExp(r'^\s{0,3}([-]{3,}|[*]{3,}|[_]{3,})\s*$').hasMatch(trimmedRight)) {
-      return true;
-    }
-    // 参考式链接定义：`[id]: url`
-    if (RegExp(r'^\[([^\]]+)\]:\s').hasMatch(trimmedRight)) return true;
-    return false;
+  /// markdown 标准库生成的 `<img alt="xxx" src="..." />` 形式固定，
+  /// 用正则匹配 `alt="..."` 提取 alt 文本，整张图替换为 `[alt]` 纯文本。
+  /// 无 alt（`alt=""`）则替换为空串（不留下占位符干扰排版）。
+  ///
+  /// 用正则而非 html parser：app 包不直接依赖 `html` 包（仅
+  /// flutter_widget_from_html 间接引入），加直接依赖仅为移除 img 太重；
+  /// markdown 标准库的 img 输出格式稳定，正则足够。
+  static String _stripImages(String html) {
+    // 匹配 <img ... alt="xxx" ... /> 或 <img ... />（HTML5 自闭合/非自闭合均覆盖）
+    // alt 属性值用 [^"]* 匹配（不处理转义引号，markdown 生成的 alt 不含"）
+    return html.replaceAllMapped(
+      RegExp(r'<img\b[^>]*?\balt="([^"]*)"[^>]*>'),
+      (m) {
+        final alt = m.group(1) ?? '';
+        return alt.isEmpty ? '' : '[$alt]';
+      },
+    );
   }
 
   static String _decodeText(List<int> bytes) {

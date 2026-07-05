@@ -93,8 +93,16 @@ class PdfRenderer {
   /// `FPDF_LoadMemDocument` 内存加载路径，绕过文件路径/句柄相关问题。
   Uint8List? _bytes;
 
-  /// 缓存的「扫描件判定」Future。每次 [openFile] 切书时清空，重新计算。
-  /// 避免每次 [build] 都跑 3 次 pdfrx loadText（昂贵且异步）。
+  /// M4.6-fix4: 缓存的「扫描件判定」Future + 同步缓存。
+  ///
+  /// 重构前：每次 [build] 用 `FutureBuilder(future: _scannedFuture)`，导致
+  /// 父级 rebuild 时 FutureBuilder 重建 → Column 重建 → PdfViewer 重建 →
+  /// pdfrx 频繁 reload，翻 N 页后内存压力导致 loading 卡死。
+  ///
+  /// 重构后：[openFile] 启动 scanned 判定 Future，完成回调里写 [_scannedCache]
+  /// + setState 让 [build] 用同步路径走 [_buildMain] / [_buildDualPage]。
+  /// Future 仅触发一次 setState，之后 build 走同步分支，PdfViewer widget
+  /// tree 不再被 FutureBuilder 包裹反复重建。
   Future<bool>? _scannedFuture;
 
   final _stateController = StreamController<ReaderEngineState>.broadcast();
@@ -150,6 +158,10 @@ class PdfRenderer {
   /// [PdfDocument.openFile]，以绕过 pdfrx 在 Windows Debug build 上的
   /// `FPDF_LoadDocument` 兼容性问题（espresso3389/pdfrx#166）。读字节
   /// 失败（文件不存在/权限问题）会被外层 catch 捕获并转 [ReaderEngineError]。
+  ///
+  /// M4.6-fix4：扫描件判定 Future 在此启动（而非 build 时 ??=），完成回调
+  /// 写 [_scannedCache] + setState。build 走同步路径，避免 FutureBuilder
+  /// 包裹 PdfViewer 导致频繁重建。
   Future<void> openFile(String path) async {
     _setState(const ReaderEngineLoading());
     try {
@@ -157,7 +169,8 @@ class PdfRenderer {
       _doc = await PdfDocument.openData(_bytes!)
           .timeout(const Duration(seconds: 30));
       _currentPage = 0;
-      _scannedFuture = null; // 切书清空缓存，下次 build 重新判定
+      _scannedCache = null; // 切书清空，重新判定
+      _startScannedDetection();
       _setState(const ReaderEngineReady());
     } on TimeoutException catch (e) {
       _setState(ReaderEngineError(
@@ -169,6 +182,26 @@ class PdfRenderer {
       debugPrint('PdfRenderer.openFile failed: $path\n$e\n$st');
       _setState(ReaderEngineError(message: '$e', cause: e));
     }
+  }
+
+  /// M4.6-fix4: 启动扫描件判定，完成后 setState 让 build 走同步路径。
+  ///
+  /// 移除了 build 中的 FutureBuilder，因此必须通过 setState 通知 widget tree
+  /// scanned 判定完成。本方法只在 [openFile] 调用一次（_scannedFuture 已在
+  /// openFile 重置为 null 前清空），完成后 _scannedFuture 仍保留引用避免
+  /// 重复触发。
+  void _startScannedDetection() {
+    final doc = _doc;
+    if (doc == null) return;
+    _scannedFuture = PdfScannedDetector.isLikelyScanned(doc);
+    _scannedFuture!.then((result) {
+      _scannedCache = result;
+      _setState(const ReaderEngineReady());
+    }).catchError((e) {
+      debugPrint('PdfRenderer scanned detection failed: $e');
+      _scannedCache = false; // 失败保守降级为非扫描件
+      _setState(const ReaderEngineReady());
+    });
   }
 
   /// 切到指定页（0-based）。未打开 / 越界时静默 no-op。
@@ -259,71 +292,77 @@ class PdfRenderer {
 
   /// 阅读区 widget。doc 未加载时返回 SizedBox.shrink。
   ///
-  /// T7：根据 [_typography.theme] 用 [PdfTheme.applyTheme] 包装 PdfViewer，
-  /// 实现 sepia / night / eInk 主题适配（pdfrx 原生不支持）。
-  ///
-  /// T8：在 [PdfViewerParams] 挂 `buildContextMenu` 钩子；用户拖选文本后
-  /// pdfrx 调起该 builder，里面异步取选中文本 + 从 anchor 拿页码，
-  /// 通过 [_PdfHighlightMenuButton] 渲染「高亮」按钮；点击调
-  /// [emitSelection]，把 [HighlightSelection] 推到 [selection$] 流。
-  ///
-  /// T9：在 reader 顶部条件渲染 [PdfScannedBanner]。判定走
-  /// [PdfScannedDetector.isLikelyScanned]（前 3 页累计文本字符数 < 100），
-  /// 结果缓存在 [_scannedFuture]（openFile 时重置），用 [FutureBuilder]
-  /// 异步驱动，避免阻塞首次 build。扫描件场景同时显式禁用文本选区
-  /// （pdfrx 内部本就不工作，显式禁更清晰，避免空选区错误上下文）。
+  /// M4.6-fix4 稳定化重构：
+  /// - 移除 FutureBuilder（scanned 判定结果已由 [openFile] 异步写入
+  ///   [_scannedCache] 后 setState，build 走同步路径）。父级 rebuild 不再
+  ///   触发 PdfViewer 重建链。
+  /// - 加 [RepaintBoundary] 把 PDF 阅读区与父级 reader_body 隔离，避免
+  ///   跨区域 paint 影响引发 pdfrx reload。
+  /// - PdfViewer 加 [ValueKey]（按 sourceName）：同书 State 复用稳定，
+  ///   切书 sourceName 变 → 干净重建。
   Widget build(BuildContext context) {
     final doc = _doc;
     final bytes = _bytes;
     if (doc == null || bytes == null) return const SizedBox.shrink();
-    _scannedFuture ??= PdfScannedDetector.isLikelyScanned(doc);
-    return FutureBuilder<bool>(
-      future: _scannedFuture,
-      builder: (context, snap) {
-        // T13: 缓存解析结果，让 reader_body 同步读到 isScanned 决定是否
-        // 启用 dualPageMode。snap.data == null 表示 loading，沿用上次值。
-        if (snap.hasData) _scannedCache = snap.data;
-        final showBanner = _scannedCache == true;
-        if (dualPageMode && !showBanner) {
-          return _buildDualPage(doc, bytes, showBanner: false);
-        }
-        return Column(
-          children: [
-            if (showBanner) const PdfScannedBanner(),
-            Expanded(
-              child: PdfTheme.applyTheme(
-                theme: _typography.theme,
-                child: PdfViewer.data(
-                  bytes,
-                  sourceName: doc.sourceName,
-                  // M4.6-fix3: 用 initialPageNumber 设初始页（恢复进度），
-                  // 不传 controller（让 PdfViewer 自管，避免跨书复用导致加载失败）。
-                  // onViewerReady 只存 controller 引用供 setPage 跳转用，不调
-                  // goToPage（避免 rebuild 循环）。
-                  initialPageNumber: _currentPage + 1,
-                  params: PdfViewerParams(
-                    textSelectionParams: PdfTextSelectionParams(
-                      enabled: !showBanner,
-                    ),
-                    errorBannerBuilder: (context, error, _, __) =>
-                        PdfErrorBanner(error: error),
-                    onViewerReady: (pdfDoc, controller) {
-                      // M4.6-fix3: 存 controller 引用，setPage 用它 goToPage。
-                      _mainController = controller;
-                    },
-                    buildContextMenu: (context, params) {
-                      if (!params.isTextSelectionEnabled) return null;
-                      return _PdfHighlightMenuButton(
-                        params: params,
-                        onHighlight: emitSelection,
-                        fallbackPage: _currentPage + 1,
-                      );
-                    },
-                  ),
-                ),
-              ),
+    final showBanner = _scannedCache == true;
+    return RepaintBoundary(
+      child: dualPageMode && !showBanner
+          ? _buildDualPage(doc, bytes, showBanner: false)
+          : _buildMain(doc, bytes, showBanner: showBanner),
+    );
+  }
+
+  /// M4.6-fix4: 单页模式渲染分支（从 build 抽出，去 FutureBuilder）。
+  Widget _buildMain(PdfDocument doc, Uint8List bytes,
+      {required bool showBanner}) {
+    return Column(
+      children: [
+        if (showBanner) const PdfScannedBanner(),
+        Expanded(
+          child: PdfTheme.applyTheme(
+            theme: _typography.theme,
+            child: PdfViewer.data(
+              bytes,
+              key: ValueKey('pdf-main-${doc.sourceName}'),
+              sourceName: doc.sourceName,
+              // M4.6-fix3: 用 initialPageNumber 设初始页（恢复进度），
+              // 不传 controller（让 PdfViewer 自管，避免跨书复用导致加载失败）。
+              // onViewerReady 只存 controller 引用供 setPage 跳转用，不调
+              // goToPage（避免 rebuild 循环）。
+              initialPageNumber: _currentPage + 1,
+              params: _buildMainParams(showBanner: showBanner),
             ),
-          ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// M4.6-fix4: 单页模式 PdfViewerParams 构造。
+  ///
+  /// 单独抽出便于未来按需 cache（当前每次 build 调用都 new 一个 PdfViewerParams
+  /// 实例，但 pdfrx `doChangesRequireReload` 对函数字段比对为引用相等，相同
+  /// 闭包不触发 reload；此处 showBanner 变化时 textSelectionParams.enabled
+  /// 变化是预期的 reload 触发点）。
+  PdfViewerParams _buildMainParams({required bool showBanner}) {
+    return PdfViewerParams(
+      textSelectionParams: PdfTextSelectionParams(
+        enabled: !showBanner,
+      ),
+      errorBannerBuilder: (context, error, _, __) =>
+          PdfErrorBanner(error: error),
+      onViewerReady: (pdfDoc, controller) {
+        // M4.6-fix3: 存 controller 引用，setPage 用它 goToPage。
+        _mainController = controller;
+      },
+      buildContextMenu: (context, params) {
+        if (!params.isTextSelectionEnabled) return null;
+        return _PdfHighlightMenuButton(
+          params: params,
+          onHighlight: emitSelection,
+          // M4.6-fix4: fallback 用 pdfrx 自带的 anchor pageNumber（context
+          // menu 触发时必有 anchor）；这里仅极端边界 fallback 用 1。
+          fallbackPage: params.a?.page.pageNumber ?? 1,
         );
       },
     );
@@ -353,6 +392,7 @@ class PdfRenderer {
             theme: _typography.theme,
             child: PdfViewer.data(
               bytes,
+              key: ValueKey('pdf-left-$leftSourceName'),
               sourceName: leftSourceName,
               controller: _leftController,
               params: PdfViewerParams(
@@ -373,6 +413,7 @@ class PdfRenderer {
                   theme: _typography.theme,
                   child: PdfViewer.data(
                     bytes,
+                    key: ValueKey('pdf-right-$rightSourceName'),
                     sourceName: rightSourceName,
                     controller: _rightController,
                     params: PdfViewerParams(
