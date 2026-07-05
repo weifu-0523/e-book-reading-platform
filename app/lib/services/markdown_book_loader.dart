@@ -102,27 +102,103 @@ class MarkdownBookLoader {
         .toList();
   }
 
-  /// M4.6-fix4: Markdown 转 HTML，按 CommonMark 标准合并段内换行 +
+  /// M4.6-fix7: Markdown 转 HTML，保留段内每行可见换行（源码即所见）+
   /// 移除图片语法（避免 fwfh 网络占位）。
   ///
-  /// **历史**：M4.6 (#5) 曾用 `_preserveLineBreaks` 给每行尾部强制补两空格
-  /// 让 markdown 视为 hard break → `<br>`。这违反 CommonMark 语义（段内
-  /// 单换行渲染时应合并为同段连续流），导致 fwfh 把段落切成断行堆叠 →
-  /// 用户看到"第一段在左上、第二段在右下、超出边界"。
+  /// **用户需求**（fix7 重新理解）：MD 文档源码里的换行都应该是可见的
+  /// 视觉换行——「一段原格式有很多行」期望每行都独立显示，不是合并成
+  /// 一行。这与 CommonMark 默认（段内单换行渲染时合并为空格）相反。
   ///
-  /// **修复**：直接走 `markdown.markdownToHtml`，让标准库按 CommonMark 处理：
-  /// - 段内单换行 → 合并（源码可读性，渲染合并）
-  /// - 行尾两空格 / 反斜杠 → hard break（用户显式意图，标准库识别）
-  /// - 空行 → 段落分隔
-  /// - 标题/列表/引用/代码块 → 结构正确渲染
+  /// **历史反复**：
+  /// - M4.6 (#5)：加 `_preserveLineBreaks` 强制 hard break，但跳过规则
+  ///   过窄（列表/引用等结构行被误处理），排版乱。
+  /// - M4.6-fix4：误以为应回归 CommonMark 标准，删除强制 break。结果
+  ///   段内多行被合并成一行，违反用户期望。
+  /// - M4.6-fix7（本版）：保留每行可见，但**简化**预处理——所有非空、
+  ///   非结构行（标题/代码块围栏）都补两空格强制 hard break。结构行
+  ///   （列表/引用/标题/HR）的内部换行由 markdown 标准库自管，不干预。
   ///
-  /// 图片移除：fwfh HtmlWidget 默认渲染 `<img>`，但 MD 无 base URL 时 src
-  /// 当网络 URL，会显示 loading 占位/异常图标（用户报告"第二章标题变图片"）。
-  /// MD 阅读场景无网络/相对路径解析能力，移除 `<img>` 保留 alt 文本是合理
-  /// trade-off（让读者知道这里有图但不尝试加载）。
+  /// **关键洞察**：M4.6 (#5) 失败不是「保留换行」错了，而是跳过规则不
+  /// 完整导致结构行被破坏。fix7 简化：只对**纯文本段内行**补两空格，
+  /// 不动任何 markdown 结构语法行。
   static String _markdownToHtml(String body) {
-    final raw = md.markdownToHtml(body);
+    final raw = md.markdownToHtml(_forceVisibleLineBreaks(body));
     return _stripImages(raw);
+  }
+
+  /// M4.6-fix7: 给段内每个非空非结构行的尾部补两空格，强制 markdown 视为
+  /// hard break → `<br>`。
+  ///
+  /// 跳过规则（这些行不补两空格，由 markdown 标准库处理）：
+  /// - 空行（段落分隔）
+  /// - 围栏代码块内的行（` ``` ` / `~~~` 包裹区域）
+  /// - 围栏代码块本身（行首 0-3 空格 + 围栏标记）
+  /// - 标题行（`#` ~ `######`）
+  /// - 缩进式代码块（行首 ≥4 空格）
+  /// - 列表项（`- ` / `* ` / `+ ` / `1. `）
+  /// - 引用块（`> `）
+  /// - HTML 块（行首 `<`）
+  /// - 水平分割线（`---` / `***` / `___`）
+  /// - 参考式链接定义（`[id]: url`）
+  /// - 已有 hard break 的行（行尾已 ≥2 空格或反斜杠）
+  ///
+  /// 普通段落正文行：补两空格 → markdown 视为 hard break → `<br>`。
+  /// 这样「一段五行」会渲染成 5 个可见行（4 个 `<br>`），符合用户期望。
+  static String _forceVisibleLineBreaks(String body) {
+    final lines = body.split('\n');
+    bool inFence = false;
+    String? fenceMarker;
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmedRight = line.replaceFirst(RegExp(r'\s*$'), '');
+      // 围栏代码块：检测进入/退出
+      final fenceMatch =
+          RegExp(r'^\s{0,3}(```|~~~)').firstMatch(trimmedRight);
+      if (fenceMatch != null) {
+        final marker = fenceMatch.group(1)!;
+        if (!inFence) {
+          inFence = true;
+          fenceMarker = marker;
+        } else if (marker == fenceMarker) {
+          inFence = false;
+          fenceMarker = null;
+        }
+        continue; // 围栏行本身不补空格
+      }
+      if (inFence) continue; // 围栏内行原样
+      if (trimmedRight.isEmpty) continue; // 空行
+      // 已有 hard break
+      if (RegExp(r' {2,}$').hasMatch(line)) continue;
+      if (trimmedRight.endsWith(r'\')) continue;
+      // 结构行不补（让 markdown 标准库处理）
+      if (_isStructuralLine(trimmedRight)) continue;
+      // 普通段落正文行：补两空格强制 hard break
+      lines[i] = '$trimmedRight  ';
+    }
+    return lines.join('\n');
+  }
+
+  /// M4.6-fix7: 判断是否为 markdown 结构行（不应补两空格）。
+  /// 这些行的语义由 markdown 标准库解析，补两空格会破坏它们的渲染。
+  static bool _isStructuralLine(String trimmedRight) {
+    // 标题（# ~ ######）
+    if (RegExp(r'^#{1,6}\s').hasMatch(trimmedRight)) return true;
+    // 缩进式代码块（行首 ≥4 空格）
+    if (RegExp(r'^    ').hasMatch(trimmedRight)) return true;
+    // 列表项
+    if (RegExp(r'^\s{0,3}([-*+]\s|\d+\.\s)').hasMatch(trimmedRight)) return true;
+    // 引用块
+    if (RegExp(r'^\s{0,3}>').hasMatch(trimmedRight)) return true;
+    // HTML 块
+    if (RegExp(r'^\s*<').hasMatch(trimmedRight)) return true;
+    // 水平分割线
+    if (RegExp(r'^\s{0,3}([-]{3,}|[*]{3,}|[_]{3,})\s*$')
+        .hasMatch(trimmedRight)) {
+      return true;
+    }
+    // 参考式链接定义
+    if (RegExp(r'^\[([^\]]+)\]:\s').hasMatch(trimmedRight)) return true;
+    return false;
   }
 
   /// M4.6-fix4: 移除 HTML 中所有 `<img>` 标签，保留 alt 文本作为占位。
