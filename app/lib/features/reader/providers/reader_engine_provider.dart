@@ -17,6 +17,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/book_ref.dart' as re;
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
@@ -75,31 +76,46 @@ final readerEngineForBookProvider =
     );
     return engine;
   }
-  // M4.5: Markdown / TXT routing — 复用 EPUB 的 HTML 渲染管道。
+  // M4.5/M4.6-fix9: Markdown / TXT routing — 复用 EPUB 的 HTML 渲染管道。
   // 加载器把文件转成 List<HtmlChapterSource>（md→html / txt→<p>），喂给
-  // ConcreteEpubReaderEngine.openChapters。复用同一引擎类型 → reader_body
-  // 的 `is ConcreteEpubReaderEngine` 检查对 md/txt 也成立，双页/高亮/
-  // 章节摘录等能力自动继承，零改 UI。
-  if (bookRef.format == re.BookFormat.markdown ||
-      bookRef.format == re.BookFormat.text) {
+  // ConcreteEpubReaderEngine.openChapters。
+  //
+  // **M4.6-fix9 关键分流**：MD 强制走 scroll 模式，TXT 保持 paged 模式。
+  // 原因：EPUB 的 Paginator 按 plain text 偏移机械分页，对 MD 的 <br>
+  // 强制换行（_forceVisibleLineBreaks）测量不准，导致段落被切到页中、
+  // 内容溢出页面边界（fix2/3/5/7 共 4 次失败）。MD 走 scroll 后用
+  // 既有 _buildScroll（SingleChildScrollView + HtmlWidget），段落完整、
+  // 不溢出。TXT 段落是纯文本流，paged 模式正常工作（用户确认 TXT 正常），
+  // 保持 paged + 双页。
+  //
+  // MD 不做双页（scroll 模式无双页）：fwfh 不支持 CSS column-count，
+  // 双栏需自定义 RenderObject，收益低。MD 内容通常是技术文档/笔记，
+  // 单列滚动阅读可接受（GitHub/VS Code 预览均单列）。
+  if (bookRef.format == re.BookFormat.markdown) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
     final lastProgress = await progressRepo.get(bookId);
-    final sources = bookRef.format == re.BookFormat.markdown
-        ? await MarkdownBookLoader.loadFile(book.filePath, title: book.title)
-        : await TextBookLoader.loadFile(book.filePath, title: book.title);
+    final sources =
+        await MarkdownBookLoader.loadFile(book.filePath, title: book.title);
     await engine.openChapters(
       sources,
       title: book.title,
       lastLocator: lastProgress?.locator,
     );
-    // M4.6-fix5: MD/TXT 走 paged 模式（与 EPUB 一致）。
-    // 之前 fix3 误改为 scroll 模式以规避 paged + 双页 spread 的段落错位，
-    // 但用户实测反馈 MD/TXT 也期望「类 EPUB 双页 + 段落流式」体验。
-    // PaginationMode 默认即 paged（EpubxRenderer 字段初值），不显式 set
-    // 即走 paged。Paginator 按 plain text 机械分页（与 EPUB 同款），宽屏
-    // 双页 spread 取相邻两页配对，行为与 EPUB 完全一致。段落被切到页中
-    // 是 paged 模式固有限制（EPUB 也有），用户接受。
-    // 不再调 setPaginationMode(scroll)。
+    // M4.6-fix9: MD 强制 scroll，跳过 Paginator。
+    await engine.setPaginationMode(PaginationMode.scroll);
+    return engine;
+  }
+  if (bookRef.format == re.BookFormat.text) {
+    final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+    final lastProgress = await progressRepo.get(bookId);
+    final sources =
+        await TextBookLoader.loadFile(book.filePath, title: book.title);
+    await engine.openChapters(
+      sources,
+      title: book.title,
+      lastLocator: lastProgress?.locator,
+    );
+    // TXT 保持默认 paged + 双页（用户确认 TXT 正常，不改动）。
     return engine;
   }
   // 防御性兜底：未来新增格式若忘了在此路由，明确报错而非静默走 PDF。

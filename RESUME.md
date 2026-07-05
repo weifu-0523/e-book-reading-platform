@@ -27,8 +27,10 @@
 - **PDF 死锁**：旧双页实现用两个 `PdfViewer.data()` + `sourceName#L/#R` → pdfium 加载两份 29MB → `_doc.dispose()` 永远不返回 → 进程僵尸 → 持有 named mutex → exe 二次启动失败
 - **MD 分段**：MD 复用 EPUB 的 `Paginator`（按 plain text 偏移机械分页），`<br>` 强制换行打破"连续字符流"假设 → 段落被切到页中、溢出
 
-### 方案（已与用户确认，spec §4）
-- **PDF 方案 A**：单 `PdfViewer` 主区 + `PdfPage.render()` 副页位图预览。一份 PdfDocument，dispose 干净
+### 方案（已与用户确认，spec §4）⚠️ 重要：方案已修正
+- **PDF 方案 A''（修正后）**：双 `PdfViewer.data()` **相同 sourceName** → pdfrx CanonicalizedMap 共享一份 PdfDocument（第 18/78/92-97 行官方机制）。两 viewer 各 `NeverScrollableScrollPhysics` 锁定到各自页，翻页 step=2 用 ValueKey 重建。
+  - **为什么不是方案 A（主页+位图预览）**：用户敏锐指出该方案有 2-3 页错位风险 + 主页可滚动导致不同步 + 副页不能交互。已被推翻。
+  - **死锁根除机制**：相同 sourceName → 共享 PdfDocument → 只一份 → dispose 干净
 - **PDF dispose 安全网**：`_doc.dispose()` 加 3s timeout
 - **MD**：强制 `PaginationMode.scroll`（复用既有 `_buildScroll`），无双页
 - **TXT**：保持 paged + 双页，零改动
@@ -36,18 +38,37 @@
 
 ---
 
-## 📊 当前进度（真实状态，2026-07-05 22:15）
+## 📊 当前进度（真实状态，2026-07-05 22:35 更新）
 
 | Task | 状态 | 说明 |
 |------|------|------|
 | spec + plan | ✅ 完成 | commit `3761f84` |
-| Task 3: MD scroll 管线 | ✅ **代码已改完，未提交** | `reader_engine_provider.dart` 已改：MD 调 `setPaginationMode(scroll)`，TXT 不调 |
-| Task 1: PDF 单 PdfViewer + 副页位图 | 🔧 **进行中（~30%）** | `pdf_renderer.dart` 已删除 `_leftController`/`_rightController`，新增副页状态字段；**还没重写 `_buildDualPage`，没写 `_renderDualPreview`，没删 `_goToDualPageSpread`** |
-| Task 2: PDF dispose timeout | ⏳ 未开始 | |
-| Task 4: reader_body gate 验证 | ⏳ 未开始 | |
-| Task 5: 测试 | ⏳ 未开始 | |
-| Task 6: 构建 exe + 端到端验证 | ⏳ 未开始 | |
-| Task 7: CHANGELOG + 提交 | ⏳ 未开始 | |
+| Task 3: MD scroll 管线 | ✅ 完成 | `reader_engine_provider.dart`：MD 调 `setPaginationMode(scroll)`，TXT 不调 |
+| Task 1: PDF 双 viewer 共享 PdfDocument | ✅ 完成 | `pdf_renderer.dart`：双 PdfViewer 相同 sourceName + NeverScrollableScrollPhysics + ValueKey 重建 |
+| Task 2: PDF dispose timeout | ✅ 完成 | `_doc.dispose().timeout(3s)` 安全网 |
+| Task 4: reader_body gate | ✅ 完成 | 注释更新，MD scroll 自动跳过双页 gate |
+| Task 5: 测试 | ✅ 完成 | 29 (MD/TXT) + 10 (PDF) + 245 (reader) 全过，2 失败是无关的 PDF fixture 缺失 |
+| Task 6: 构建 exe | ✅ 完成 | exe 已生成，启动测试通过（PID 38800） |
+| Task 7: CHANGELOG + 提交 | 🔧 进行中 | CHANGELOG 已写，待提交 |
+
+### ⚠️ 待用户端到端验证（SC1-SC9）
+代码 + 测试 + 构建都过了，但 **PDF 死锁修复和 MD 段落修复需要用户实测确认**：
+- SC1: PDF 加载并显示
+- SC2: PDF 双页显示（主页 + 副页，无 2-3 错位）
+- SC3: dispose < 5s（日志 `dispose done`）
+- SC4: exe 双击 → 关闭 → 再双击能启动
+- SC5: MD 段落完整不溢出
+- SC6: MD 段内每行保留换行
+- SC7: MD 无双页（scroll 单列）
+- SC8: TXT 不回归（仍 paged + 双页）
+- SC9: EPUB 不回归
+
+**验证方法**：双击 `H:\projiect\电子书阅读平台\app\build\windows\x64\runner\Debug\zhiyue.exe`，分别测试 PDF/MD/TXT/EPUB 四种书，关闭后再次双击验证 exe 循环。
+
+### 如果验证发现问题
+- PDF 仍死锁：查 `%TEMP%\zhiyue_pdf.log` 的 `dispose` 段
+- MD 仍溢出：确认 `reader_engine_provider.dart` 里 MD 分支调了 `setPaginationMode(scroll)`
+- exe 仍无法二次启动：查 `%TEMP%\zhiyue_runner.log`
 
 ### git 当前状态
 ```

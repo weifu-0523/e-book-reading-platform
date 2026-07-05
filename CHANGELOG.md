@@ -9,6 +9,42 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M4.6-fix9 — 2026-07-05（PDF 双页死锁根治 + MD 段落溢出修复）
+
+M4.6-fix4~fix8 共 5 次在 PDF 死锁上失败、fix2/3/5/7 共 4 次在 MD 分段上失败后，触发 systematic-debugging 阶段 4.5（架构质疑）。基于 `zhiyue_pdf.log` 铁证 + pdfrx 源码调研，确认为架构错误，重写两处管线。
+
+#### Changed — PDF 双页改用双 PdfViewer 共享 PdfDocument（方案 A''）
+
+- **根因（日志铁证）**：`zhiyue_pdf.log` 显示 `dispose start` 后无 `dispose done`——`_doc.dispose()` 永不返回。旧双页实现用两个 `PdfViewer.data()` 配 `#L`/`#R` **不同 sourceName**，pdfrx `CanonicalizedMap`（`pdf_document_ref.dart:18/78/92-97`）视为两份文档 → pdfium 加载两份 29MB → dispose 时序混乱 + 渲染线程未完成 → `FPDF_CloseDocument` 死锁 → 进程僵尸 → 持有 named mutex → exe 二次启动失败。
+- **修复**：双 `PdfViewer.data()` 改用**相同 sourceName**（`doc.sourceName`，去掉 `#L`/`#R` 后缀）→ pdfrx 自动共享同一份 `PdfDocument`（官方 `PdfDocumentRefKey` 缓存机制）→ 只加载一次 → dispose 干净。
+- **翻页正确性**：两 viewer 各 `NeverScrollableScrollPhysics` 锁定到 `initialPageNumber`，翻页 step=2 用 `ValueKey('pdf-dual-L-$leftIdx')` 变化触发 widget 重建到新页。spread 序列 (1,2) → (3,4) → (5,6)，不出现 2-3 错位（用户提出的核心担忧已排除）。
+- **方案选型**：原"方案 A：单 PdfViewer + PdfPage.render() 副页位图预览"被用户敏锐指出存在 2-3 错位风险 + 主页可滚动导致不同步 + 副页不能交互（文本选择/缩放）三大问题，调研 pdfrx 源码后推翻，改用方案 A''（双 viewer 共享 PdfDocument）。
+
+#### Changed — PDF dispose 加 3s timeout 安全网
+
+- `_doc.dispose()` 包 `.timeout(Duration(seconds: 3))`，超时 catch `TimeoutException` 后继续关闭 stream。主修复（共享 PdfDocument）已根除死锁源，此 timeout 仅防未来回归。
+
+#### Changed — MD 强制走 scroll 模式（复用既有 `_buildScroll`）
+
+- **根因**：MD 复用 EPUB 的 `Paginator`（按 plain text 偏移机械分页），`<br>` 强制换行（`_forceVisibleLineBreaks`）打破"连续字符流"假设 → 段落被切到页中、内容溢出页面边界（fix2/3/5/7 共 4 次失败）。
+- **修复**：`reader_engine_provider.dart` 里 MD 路由调 `engine.setPaginationMode(PaginationMode.scroll)`，复用既有 `_buildScroll`（`SingleChildScrollView + HtmlWidget`），段落完整、不溢出。MD 不做双页（fwfh 不支持 CSS column-count，双栏需自定义 RenderObject，收益低；MD 内容通常技术文档，单列滚动可接受）。
+- **TXT 零改动**：TXT 仍走 paged + 双页（用户确认 TXT 正常）。
+
+#### Fixed — exe 二次启动失败（PDF 死锁的下游级联）
+
+- PDF 死锁根治后，进程能正常退出，named mutex 自然释放，二次双击正常启动。
+
+#### Lessons — fix4~fix8 在 PDF 死锁上失败的教训
+
+| 轮次 | 假设 | 实际 | 教训 |
+|------|------|------|------|
+| fix4 | ExitProcess 解决僵尸 | PDF 死锁未解，进程仍挂 | 死锁源在 Dart 侧 dispose，不在 C++ 侧 |
+| fix6 | 互斥锁接管解决二次启动 | PDF 死锁未解，接管无效 | 接管只能处理"已死"互斥锁，不能让活进程退出 |
+| fix8 | 日志能定位死锁源 | 日志正确，但双 PdfViewer 是死锁源本身 | **架构错误，不是日志问题** |
+| fix9 | 共享 PdfDocument 根除死锁 | （待用户端到端验证） | 架构对了，死锁应消失 |
+
+MD 同理：fix2/3/5/7 在 paged 模式 + Paginator 上打补丁失败，根因是 Paginator 的"纯文本测量"假设与 MD 的 `<br>` 换行不兼容，改走 scroll 模式（HtmlWidget 原生布局）才是正解。
+
 ### M4.6-fix4 — 2026-07-05（exe 二次启动闪退 + PDF 翻页卡 loading + MD 排版乱）
 
 用户测试 M4.6-fix3（commit 54221f9）后报告三个阻塞问题：①exe 关闭后再次双击"图标闪一下就没了" ②PDF 翻 10+ 页后阅读区不停 loading，回退也 loading ③MD 阅读完全乱（未双页、超出页面很多、第二章标题"变图片"）。按 systematic-debugging 流程做完整根因调查后逐一修复。

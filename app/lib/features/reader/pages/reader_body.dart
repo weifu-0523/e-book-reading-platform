@@ -392,12 +392,11 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         final e = engine;
         if (e is ConcreteEpubReaderEngine &&
             e.paginationMode == PaginationMode.paged) {
-          // M4.6-fix5: MD/TXT (isHtmlChaptersMode) 也启用双页——之前 fix2/fix3
-          // 误以为 MD/TXT 短段落不适合双页而排除，但用户实测反馈 MD/TXT 也
-          // 期望宽屏双页（类 EPUB 体验）。MD/TXT 走 paged 模式后 Paginator
-          // 按 plain text 机械分页（与 EPUB 同款），双页 spread 取相邻两页
-          // 配对，行为与 EPUB 一致。段落被切到页中是 paged 模式固有限制
-          // （EPUB 也有），用户接受。
+          // M4.6-fix9: 仅 EPUB 与 TXT 走此分支（paged 模式）。
+          // MD 在 reader_engine_provider 里强制走 scroll 模式（避免 Paginator
+          // 机械分页把段落切到页中），所以 MD 的 paginationMode != paged，
+          // 此 gate 自动跳过 MD → MD 无双页（单列滚动，段落完整不溢出）。
+          // TXT 保持 paged（用户确认正常），仍启用双页。
           e.setDualPageMode(isWide);
         }
         // M4.6 (#1): PDF 宽屏自动双页。扫描件 (isScanned) 仍维持单页

@@ -121,12 +121,6 @@ class PdfRenderer {
   /// `isScanned` 用（决定是否启用 dualPageMode）。null 表示尚未解析过。
   bool? _scannedCache;
 
-  /// T13: 双页布局下两侧 PdfViewer 的 controller，用于在 onViewerReady
-  /// 回调里 `goToPage` 到目标页。同一 PdfRenderer 实例下复用，避免每次
-  /// build 都创建新 controller 导致 pdfrx 状态丢失。
-  final PdfViewerController _leftController = PdfViewerController();
-  final PdfViewerController _rightController = PdfViewerController();
-
   /// M4.6-fix: 单页模式的 controller。PdfViewer 首次 onViewerReady 时赋值，
   /// 之后用它在 setPage（缩略图跳转/翻页）时 goToPage 滚动 viewer。
   /// 不作为 PdfViewer.data 的 controller 参数传入——那样会让 controller
@@ -134,6 +128,24 @@ class PdfRenderer {
   /// 表现为"阅读区不加载"。改为让 PdfViewer 自管 controller，ready 时回调
   /// 把引用交给我们，既能跳转又不干扰加载。
   PdfViewerController? _mainController;
+
+  /// M4.6-fix9: 双页模式的左右 controller。
+  ///
+  /// **方案 A''（用户确认）**：双 PdfViewer + **相同 sourceName** → pdfrx
+  /// CanonicalizedMap（pdf_document_ref.dart 第 18/78/92-97 行）共享同一份
+  /// PdfDocument。这是 fix4~fix8 死锁的根治方案。
+  ///
+  /// 旧实现死锁链：
+  /// 1. 旧实现 sourceName 加 `#L`/`#R` 后缀 → pdfrx 视为两份文档
+  /// 2. 两份 PdfDocument 各 29MB → 内存翻倍
+  /// 3. dispose 时序混乱 + pdfium 渲染线程未完成 → FPDF_CloseDocument 死锁
+  /// 4. 进程不退出 → 持有 named mutex → exe 二次启动失败
+  ///
+  /// fix9：相同 sourceName → 共享 → 只一份 PdfDocument → dispose 干净。
+  /// 翻页用 ValueKey 含 leftIdx 触发 widget 重建到新 initialPageNumber，
+  /// 配合 NeverScrollableScrollPhysics 锁定到各自页，避免滚动错位。
+  final PdfViewerController _dualLeftController = PdfViewerController();
+  final PdfViewerController _dualRightController = PdfViewerController();
 
   /// 缓存最近一次成功读取的 PDF 字节，供 [PdfViewer.data] 复用。
   ///
@@ -282,9 +294,15 @@ class PdfRenderer {
       if (target.isOdd) target -= 1;
       if (target < 0) target = 0;
       if (target >= doc.pages.length) target = doc.pages.length - 1;
+      pdfDiagLog('setPage($page) dual → target=$target, '
+          'leftPn=${target + 1} rightPn=${target + 2}');
       _currentPage = target;
       _emitLocation();
-      _goToDualPageSpread(target);
+      // M4.6-fix9: 不调 goToPage（旧 _goToDualPageSpread 已删）。
+      // 双页翻页通过 ValueKey('pdf-dual-L-$target') 变化触发 widget
+      // 重建到新 initialPageNumber（target+1 / target+2）。
+      // PdfViewer.data 用相同 sourceName → 共享 PdfDocument → 不重复加载。
+      _setState(const ReaderEngineReady());
       return;
     }
     if (page < 0 || page >= doc.pages.length) {
@@ -311,32 +329,6 @@ class PdfRenderer {
         c.goToPage(pageNumber: pn);
       } catch (e, st) {
         pdfDiagLog('_goToMainPage goToPage THREW: $e\n$st');
-        _pdfDiagFlush();
-      }
-    }
-  }
-
-  /// M4.6-fix: 双页模式滚动左右 controller 到 spread（leftIdx 0-based 偶数）。
-  void _goToDualPageSpread(int leftIdx) {
-    final leftPn = leftIdx + 1;
-    final rightPn = leftIdx + 2;
-    pdfDiagLog('_goToDualPageSpread(leftIdx=$leftIdx) '
-        'leftPn=$leftPn rightPn=$rightPn '
-        'leftReady=${_leftController.isReady} rightReady=${_rightController.isReady}');
-    _pdfDiagFlush();
-    if (_leftController.isReady) {
-      try {
-        _leftController.goToPage(pageNumber: leftPn);
-      } catch (e, st) {
-        pdfDiagLog('_goToDualPageSpread left goToPage THREW: $e\n$st');
-        _pdfDiagFlush();
-      }
-    }
-    if (_rightController.isReady) {
-      try {
-        _rightController.goToPage(pageNumber: rightPn);
-      } catch (e, st) {
-        pdfDiagLog('_goToDualPageSpread right goToPage THREW: $e\n$st');
         _pdfDiagFlush();
       }
     }
@@ -480,14 +472,23 @@ class PdfRenderer {
     if (leftIdx < 0) return const SizedBox.shrink();
     final rightIdx = leftIdx + 1;
     final hasRight = rightIdx < doc.pages.length;
-    // M4.6-fix: 左右 PdfViewer 必须用不同 sourceName，否则 pdfrx 按
-    // PdfDocumentRefKey(sourceName) 复用同一个 PdfDocumentListenable，
-    // 导致两个 _PdfViewerState 的 _attach 竞态、controller 互相覆盖，
-    // 表现为左右显示同页或错位。加 #L/#R 后缀让两侧独立加载。
-    final leftSourceName = '${doc.sourceName}#L';
-    final rightSourceName = '${doc.sourceName}#R';
+    // M4.6-fix9: 左右 PdfViewer **必须用相同 sourceName**（不加 #L/#R 后缀）。
+    //
+    // 旧实现（fix4~fix8）误以为相同 sourceName 会导致 _PdfViewerState 竞态，
+    // 加了 #L/#R 后缀 → pdfrx CanonicalizedMap 视为两份文档 → 加载两份
+    // 29MB PdfDocument → dispose 死锁（zhiyue_pdf.log 铁证：dispose start
+    // 后无 dispose done）→ 进程僵尸 → exe 二次启动失败。
+    //
+    // 实际 pdfrx 官方机制（pdf_document_ref.dart 第 18/78/92-97 行）：
+    // 相同 sourceName 的 PdfDocumentRef 共享同一个 PdfDocumentListenable，
+    // 从而共享同一份 PdfDocument。引用计数（_additionalRefs）管理 dispose。
+    // 这正是双页共享 PdfDocument 的正确做法，pdfium 只加载一次。
+    //
+    // 翻页正确性：leftIdx 永远偶数（setPage 已 snap），spread 序列
+    // (1,2) → (3,4) → (5,6)，不会出现 2-3 错位（用户担忧已排除）。
+    final sourceName = doc.sourceName;
     pdfDiagLog('_buildDualPage: leftIdx=$leftIdx rightIdx=$rightIdx '
-        'hasRight=$hasRight currentPage=$_currentPage');
+        'hasRight=$hasRight currentPage=$_currentPage sourceName=$sourceName');
     return Row(
       children: [
         Expanded(
@@ -495,22 +496,13 @@ class PdfRenderer {
             theme: _typography.theme,
             child: PdfViewer.data(
               bytes,
-              key: ValueKey('pdf-left-$leftSourceName'),
-              sourceName: leftSourceName,
-              controller: _leftController,
-              params: PdfViewerParams(
-                textSelectionParams:
-                    PdfTextSelectionParams(enabled: !showBanner),
-                errorBannerBuilder: (context, error, _, __) {
-                  pdfDiagLog('dual LEFT errorBanner: $error');
-                  return PdfErrorBanner(error: error);
-                },
-                onViewerReady: (pdfDoc, controller) {
-                  pdfDiagLog('onViewerReady(LEFT): ready=${controller.isReady}, '
-                      'goToPage(${leftIdx + 1})');
-                  controller.goToPage(pageNumber: leftIdx + 1);
-                },
-              ),
+              // ValueKey 含 leftIdx：翻页时 key 变化 → PdfViewer 重建到新
+              // initialPageNumber。这是双页翻页的核心机制（不依赖 goToPage）。
+              key: ValueKey('pdf-dual-L-$leftIdx'),
+              sourceName: sourceName,
+              controller: _dualLeftController,
+              initialPageNumber: leftIdx + 1,
+              params: _buildDualParams(showBanner: showBanner, side: 'L'),
             ),
           ),
         ),
@@ -520,22 +512,11 @@ class PdfRenderer {
                   theme: _typography.theme,
                   child: PdfViewer.data(
                     bytes,
-                    key: ValueKey('pdf-right-$rightSourceName'),
-                    sourceName: rightSourceName,
-                    controller: _rightController,
-                    params: PdfViewerParams(
-                      textSelectionParams:
-                          PdfTextSelectionParams(enabled: !showBanner),
-                      errorBannerBuilder: (context, error, _, __) {
-                        pdfDiagLog('dual RIGHT errorBanner: $error');
-                        return PdfErrorBanner(error: error);
-                      },
-                      onViewerReady: (pdfDoc, controller) {
-                        pdfDiagLog('onViewerReady(RIGHT): ready=${controller.isReady}, '
-                            'goToPage(${rightIdx + 1})');
-                        controller.goToPage(pageNumber: rightIdx + 1);
-                      },
-                    ),
+                    key: ValueKey('pdf-dual-R-$rightIdx'),
+                    sourceName: sourceName,
+                    controller: _dualRightController,
+                    initialPageNumber: rightIdx + 1,
+                    params: _buildDualParams(showBanner: showBanner, side: 'R'),
                   ),
                 )
               : const SizedBox.shrink(),
@@ -544,7 +525,38 @@ class PdfRenderer {
     );
   }
 
+  /// M4.6-fix9: 双页模式两侧 PdfViewer 的共用 params。
+  ///
+  /// - **scrollPhysics: NeverScrollableScrollPhysics()** —— 锁定到
+  ///   initialPageNumber 指定的页，不允许用户在单个 viewer 内滚动（避免
+  ///   主页滚到 N+1 与副页 N+2 错位）。双页模式下翻页通过外层 ReaderScaffold
+  ///   的 tap zone / 键盘 / 拖拽触发，step=2。
+  /// - **textSelection 关闭**（双页选择有歧义，与现状一致）。
+  /// - **errorBannerBuilder** 保留诊断。
+  PdfViewerParams _buildDualParams({
+    required bool showBanner,
+    required String side,
+  }) {
+    return PdfViewerParams(
+      scrollPhysics: const NeverScrollableScrollPhysics(),
+      textSelectionParams: PdfTextSelectionParams(enabled: !showBanner),
+      errorBannerBuilder: (context, error, _, __) {
+        pdfDiagLog('dual $side errorBanner: $error');
+        return PdfErrorBanner(error: error);
+      },
+      onViewerReady: (pdfDoc, controller) {
+        pdfDiagLog('onViewerReady(dual-$side): pages=${pdfDoc.pages.length}, '
+            'ready=${controller.isReady}');
+      },
+    );
+  }
+
   /// 释放 pdfrx 文档与所有 StreamController。
+  ///
+  /// M4.6-fix9: 给 `_doc.dispose()` 加 3 秒 timeout 作为安全网。
+  /// 主修复（Task 1 双 viewer 共享 PdfDocument）已根除死锁源，此 timeout
+  /// 仅防止未来回归：即使 pdfium 内部因某种原因卡住，Dart 侧 dispose 也能
+  /// 在 3 秒后继续关闭 stream，不阻塞进程退出 → exe 不变僵尸 → 二次启动正常。
   ///
   /// T13: PdfViewerController 自身不持有 native 资源（pdfrx 文档由
   /// PdfViewer 管理生命周期），无需 dispose；这里仅关闭文档与流。
@@ -554,7 +566,10 @@ class PdfRenderer {
     _memMonitor?.cancel();
     _memMonitor = null;
     try {
-      await _doc?.dispose();
+      await _doc?.dispose().timeout(const Duration(seconds: 3));
+    } on TimeoutException {
+      pdfDiagLog('dispose doc.dispose TIMEOUT (3s) — ignored, '
+          'force continuing to close streams');
     } catch (e, st) {
       pdfDiagLog('dispose doc.dispose THREW: $e\n$st');
     }
@@ -562,6 +577,7 @@ class PdfRenderer {
     await _locationController.close();
     await _selectionController.close();
     pdfDiagLog('dispose done');
+    _pdfDiagFlush();
   }
 }
 
