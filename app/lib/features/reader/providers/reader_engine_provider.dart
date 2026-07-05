@@ -17,6 +17,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/book_ref.dart' as re;
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
@@ -92,6 +93,13 @@ final readerEngineForBookProvider =
       title: book.title,
       lastLocator: lastProgress?.locator,
     );
+    // M4.6-fix3: MD/TXT 强制 scroll 模式。
+    // 默认 paged 模式适合 EPUB 的连续字符流（机械分页成等高页），但 MD/TXT
+    // 的段落结构（独立 <p>，长度差异大）不适合机械分页——短段被拉成空白、
+    // 超长段溢出、段落顺序错乱到不同页（表现为"第一段左上、第二段右下
+    // 超出边界"）。MD/TXT 本质是文档不是电子书，scroll 连续滚动更自然，
+    // 也彻底规避 paged+双页 spread 的错位问题。
+    await engine.setPaginationMode(PaginationMode.scroll);
     return engine;
   }
   // 防御性兜底：未来新增格式若忘了在此路由，明确报错而非静默走 PDF。

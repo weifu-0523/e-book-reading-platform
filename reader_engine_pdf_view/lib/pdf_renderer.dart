@@ -77,9 +77,13 @@ class PdfRenderer {
   final PdfViewerController _leftController = PdfViewerController();
   final PdfViewerController _rightController = PdfViewerController();
 
-  /// M4.6-fix: 单页模式的 controller。setPage 后用它 goToPage 滚动，
-  /// 否则 PdfViewer 不知道 _currentPage 变了（缩略图跳转/翻页都失效）。
-  final PdfViewerController _mainController = PdfViewerController();
+  /// M4.6-fix: 单页模式的 controller。PdfViewer 首次 onViewerReady 时赋值，
+  /// 之后用它在 setPage（缩略图跳转/翻页）时 goToPage 滚动 viewer。
+  /// 不作为 PdfViewer.data 的 controller 参数传入——那样会让 controller
+  /// 跨书/跨 widget 重建复用，导致新文档加载时 controller 还附着旧 state，
+  /// 表现为"阅读区不加载"。改为让 PdfViewer 自管 controller，ready 时回调
+  /// 把引用交给我们，既能跳转又不干扰加载。
+  PdfViewerController? _mainController;
 
   /// 缓存最近一次成功读取的 PDF 字节，供 [PdfViewer.data] 复用。
   ///
@@ -199,8 +203,11 @@ class PdfRenderer {
   /// M4.6-fix: 单页模式滚动 _mainController 到指定 0-based 页。
   void _goToMainPage(int page0) {
     final pn = page0 + 1;
-    if (_mainController.isReady) {
-      _mainController.goToPage(pageNumber: pn);
+    final c = _mainController;
+    // M4.6-fix3: controller 在 onViewerReady 才赋值，未 ready 时跳过
+    // （下次 viewer ready 会用 initialPageNumber 跳到正确页）。
+    if (c != null && c.isReady) {
+      c.goToPage(pageNumber: pn);
     }
   }
 
@@ -289,12 +296,10 @@ class PdfRenderer {
                 child: PdfViewer.data(
                   bytes,
                   sourceName: doc.sourceName,
-                  controller: _mainController,
-                  // M4.6-fix: 用 initialPageNumber 而非 onViewerReady+goToPage
-                  // 设定初始页。onViewerReady 里调 goToPage 会触发矩阵变化→
-                  // rebuild→PdfViewer 重建→controller 重 attach，形成无限循环，
-                  // 表现为"一直加载"。initialPageNumber 只在首次创建生效，
-                  // 后续翻页/缩略图跳转由 setPage → _mainController.goToPage 处理。
+                  // M4.6-fix3: 用 initialPageNumber 设初始页（恢复进度），
+                  // 不传 controller（让 PdfViewer 自管，避免跨书复用导致加载失败）。
+                  // onViewerReady 只存 controller 引用供 setPage 跳转用，不调
+                  // goToPage（避免 rebuild 循环）。
                   initialPageNumber: _currentPage + 1,
                   params: PdfViewerParams(
                     textSelectionParams: PdfTextSelectionParams(
@@ -302,6 +307,10 @@ class PdfRenderer {
                     ),
                     errorBannerBuilder: (context, error, _, __) =>
                         PdfErrorBanner(error: error),
+                    onViewerReady: (pdfDoc, controller) {
+                      // M4.6-fix3: 存 controller 引用，setPage 用它 goToPage。
+                      _mainController = controller;
+                    },
                     buildContextMenu: (context, params) {
                       if (!params.isTextSelectionEnabled) return null;
                       return _PdfHighlightMenuButton(
