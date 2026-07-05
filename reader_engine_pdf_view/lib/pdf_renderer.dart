@@ -32,6 +32,36 @@ import 'pdf_scanned_detector.dart';
 import 'pdf_selection_bridge.dart';
 import 'pdf_theme.dart';
 
+/// M4.6-fix6: 文件日志辅助（[PDF-DIAG] 同时写到 stdout + %TEMP%\zhiyue_pdf.log）。
+///
+/// 用户从 PowerShell 启动 exe 时 Dart debugPrint 输出可能不显示在终端
+/// （Flutter GUI app 的 stdout 在某些启动方式下被重定向）。改用文件日志
+/// 让用户能直接贴文件内容回来，定位"PDF 翻 N 页卡死"的真因。
+///
+/// 日志文件路径：`%TEMP%\zhiyue_pdf.log`（与 zhiyue_runner.log 同目录）。
+IOSink? _pdfLogSink;
+late final String _pdfLogPath =
+    '${Directory.systemTemp.path}${Platform.pathSeparator}zhiyue_pdf.log';
+
+void pdfDiagLog(String msg) {
+  final line = '[PDF-DIAG] $msg';
+  debugPrint(line);
+  try {
+    _pdfLogSink ??=
+        File(_pdfLogPath).openWrite(mode: FileMode.append);
+    _pdfLogSink!.writeln('${DateTime.now().toIso8601String()} $line');
+  } catch (e) {
+    // 文件写失败不影响主流程
+  }
+}
+
+/// 强制 flush 日志（用于关键事件如 setPage / goToPage 后）。
+void _pdfDiagFlush() {
+  try {
+    _pdfLogSink?.flush();
+  } catch (_) {}
+}
+
 /// pdfrx 适配层 —— PDF 等价于 [EpubxRenderer]。
 ///
 /// 持有 [PdfDocument]，自管 [ReaderEngineState] 状态机。
@@ -62,7 +92,7 @@ class PdfRenderer {
   bool _dualPageMode = false;
   bool get dualPageMode => _dualPageMode;
   set dualPageMode(bool value) {
-    debugPrint('[PDF-DIAG] dualPageMode set: $_dualPageMode → $value');
+    pdfDiagLog('dualPageMode set: $_dualPageMode → $value');
     if (_dualPageMode == value) return;
     _dualPageMode = value;
     if (value) setPage(_currentPage);
@@ -80,7 +110,7 @@ class PdfRenderer {
     _memMonitor = Timer.periodic(const Duration(seconds: 3), (_) {
       final rss = ProcessInfo.currentRss;
       final maxRss = ProcessInfo.maxRss;
-      debugPrint('[PDF-DIAG] mem sample: rss=${_mb(rss)}MB '
+      pdfDiagLog('mem sample: rss=${_mb(rss)}MB '
           'maxRss=${_mb(maxRss)}MB builds=$_buildCount');
     });
   }
@@ -183,14 +213,16 @@ class PdfRenderer {
   /// 写 [_scannedCache] + setState。build 走同步路径，避免 FutureBuilder
   /// 包裹 PdfViewer 导致频繁重建。
   Future<void> openFile(String path) async {
-    debugPrint('[PDF-DIAG] openFile start: $path');
+    pdfDiagLog('=== openFile start: $path ===');
+    pdfDiagLog('log file path: $_pdfLogPath');
+    _pdfDiagFlush();
     _setState(const ReaderEngineLoading());
     try {
       _bytes = await File(path).readAsBytes();
-      debugPrint('[PDF-DIAG] openFile bytes read: ${_bytes!.length} bytes');
+      pdfDiagLog('openFile bytes read: ${_bytes!.length} bytes');
       _doc = await PdfDocument.openData(_bytes!)
           .timeout(const Duration(seconds: 30));
-      debugPrint('[PDF-DIAG] openFile success: pages=${_doc!.pages.length}, '
+      pdfDiagLog('openFile success: pages=${_doc!.pages.length}, '
           'sourceName=${_doc!.sourceName}');
       _currentPage = 0;
       _scannedCache = null; // 切书清空，重新判定
@@ -198,13 +230,13 @@ class PdfRenderer {
       _startMemMonitor(); // M4.6-fix5: 诊断 PDF 卡死
       _setState(const ReaderEngineReady());
     } on TimeoutException catch (e) {
-      debugPrint('[PDF-DIAG] openFile TIMEOUT: $path ($e)');
+      pdfDiagLog('openFile TIMEOUT: $path ($e)');
       _setState(ReaderEngineError(
         message: 'PDF 打开超时（30秒），文件可能损坏',
         cause: TimeoutException('PDF open timeout: $path'),
       ));
     } catch (e, st) {
-      debugPrint('[PDF-DIAG] openFile ERROR: $path\n  $e\n$st');
+      pdfDiagLog('openFile ERROR: $path\n  $e\n$st');
       _setState(ReaderEngineError(message: '$e', cause: e));
     }
   }
@@ -242,7 +274,7 @@ class PdfRenderer {
   void setPage(int page) {
     final doc = _doc;
     if (doc == null) {
-      debugPrint('[PDF-DIAG] setPage($page) no-op: doc null');
+      pdfDiagLog('setPage($page) no-op: doc null');
       return;
     }
     if (dualPageMode) {
@@ -256,7 +288,7 @@ class PdfRenderer {
       return;
     }
     if (page < 0 || page >= doc.pages.length) {
-      debugPrint('[PDF-DIAG] setPage($page) out of range 0..${doc.pages.length - 1}');
+      pdfDiagLog('setPage($page) out of range 0..${doc.pages.length - 1}');
       return;
     }
     _currentPage = page;
@@ -269,15 +301,17 @@ class PdfRenderer {
     final pn = page0 + 1;
     final c = _mainController;
     final ready = c?.isReady ?? false;
-    debugPrint('[PDF-DIAG] _goToMainPage($page0) → pn=$pn, '
+    pdfDiagLog('_goToMainPage($page0) → pn=$pn, '
         'controller=${c == null ? "null" : "set"}, ready=$ready');
+    _pdfDiagFlush();
     // M4.6-fix3: controller 在 onViewerReady 才赋值，未 ready 时跳过
     // （下次 viewer ready 会用 initialPageNumber 跳到正确页）。
     if (c != null && ready) {
       try {
         c.goToPage(pageNumber: pn);
       } catch (e, st) {
-        debugPrint('[PDF-DIAG] _goToMainPage goToPage THREW: $e\n$st');
+        pdfDiagLog('_goToMainPage goToPage THREW: $e\n$st');
+        _pdfDiagFlush();
       }
     }
   }
@@ -286,21 +320,24 @@ class PdfRenderer {
   void _goToDualPageSpread(int leftIdx) {
     final leftPn = leftIdx + 1;
     final rightPn = leftIdx + 2;
-    debugPrint('[PDF-DIAG] _goToDualPageSpread(leftIdx=$leftIdx) '
+    pdfDiagLog('_goToDualPageSpread(leftIdx=$leftIdx) '
         'leftPn=$leftPn rightPn=$rightPn '
         'leftReady=${_leftController.isReady} rightReady=${_rightController.isReady}');
+    _pdfDiagFlush();
     if (_leftController.isReady) {
       try {
         _leftController.goToPage(pageNumber: leftPn);
       } catch (e, st) {
-        debugPrint('[PDF-DIAG] _goToDualPageSpread left goToPage THREW: $e\n$st');
+        pdfDiagLog('_goToDualPageSpread left goToPage THREW: $e\n$st');
+        _pdfDiagFlush();
       }
     }
     if (_rightController.isReady) {
       try {
         _rightController.goToPage(pageNumber: rightPn);
       } catch (e, st) {
-        debugPrint('[PDF-DIAG] _goToDualPageSpread right goToPage THREW: $e\n$st');
+        pdfDiagLog('_goToDualPageSpread right goToPage THREW: $e\n$st');
+        _pdfDiagFlush();
       }
     }
   }
@@ -354,12 +391,12 @@ class PdfRenderer {
     final doc = _doc;
     final bytes = _bytes;
     if (doc == null || bytes == null) {
-      debugPrint('[PDF-DIAG] build #$_buildCount: doc/bytes null → SizedBox.shrink');
+      pdfDiagLog('build #$_buildCount: doc/bytes null → SizedBox.shrink');
       return const SizedBox.shrink();
     }
     final showBanner = _scannedCache == true;
     final branch = (dualPageMode && !showBanner) ? 'dual' : 'main';
-    debugPrint('[PDF-DIAG] build #$_buildCount: branch=$branch, page=${_currentPage + 1}/'
+    pdfDiagLog('build #$_buildCount: branch=$branch, page=${_currentPage + 1}/'
         '${doc.pages.length}, dualMode=$dualPageMode, scanned=$showBanner, '
         'mainControllerReady=${_mainController?.isReady ?? false}');
     return RepaintBoundary(
@@ -407,17 +444,17 @@ class PdfRenderer {
         enabled: !showBanner,
       ),
       errorBannerBuilder: (context, error, _, __) {
-        debugPrint('[PDF-DIAG] pdfrx errorBanner: $error');
+        pdfDiagLog('pdfrx errorBanner: $error');
         return PdfErrorBanner(error: error);
       },
       onViewerReady: (pdfDoc, controller) {
-        debugPrint('[PDF-DIAG] onViewerReady(main): pages=${pdfDoc.pages.length}, '
+        pdfDiagLog('onViewerReady(main): pages=${pdfDoc.pages.length}, '
             'controllerReady=${controller.isReady}, currentPage=${controller.pageNumber}');
         // M4.6-fix3: 存 controller 引用，setPage 用它 goToPage。
         _mainController = controller;
       },
       onDocumentChanged: (pdfDoc) {
-        debugPrint('[PDF-DIAG] onDocumentChanged: ${pdfDoc?.pages.length ?? 0} pages');
+        pdfDiagLog('onDocumentChanged: ${pdfDoc?.pages.length ?? 0} pages');
       },
       buildContextMenu: (context, params) {
         if (!params.isTextSelectionEnabled) return null;
@@ -449,7 +486,7 @@ class PdfRenderer {
     // 表现为左右显示同页或错位。加 #L/#R 后缀让两侧独立加载。
     final leftSourceName = '${doc.sourceName}#L';
     final rightSourceName = '${doc.sourceName}#R';
-    debugPrint('[PDF-DIAG] _buildDualPage: leftIdx=$leftIdx rightIdx=$rightIdx '
+    pdfDiagLog('_buildDualPage: leftIdx=$leftIdx rightIdx=$rightIdx '
         'hasRight=$hasRight currentPage=$_currentPage');
     return Row(
       children: [
@@ -465,11 +502,11 @@ class PdfRenderer {
                 textSelectionParams:
                     PdfTextSelectionParams(enabled: !showBanner),
                 errorBannerBuilder: (context, error, _, __) {
-                  debugPrint('[PDF-DIAG] dual LEFT errorBanner: $error');
+                  pdfDiagLog('dual LEFT errorBanner: $error');
                   return PdfErrorBanner(error: error);
                 },
                 onViewerReady: (pdfDoc, controller) {
-                  debugPrint('[PDF-DIAG] onViewerReady(LEFT): ready=${controller.isReady}, '
+                  pdfDiagLog('onViewerReady(LEFT): ready=${controller.isReady}, '
                       'goToPage(${leftIdx + 1})');
                   controller.goToPage(pageNumber: leftIdx + 1);
                 },
@@ -490,11 +527,11 @@ class PdfRenderer {
                       textSelectionParams:
                           PdfTextSelectionParams(enabled: !showBanner),
                       errorBannerBuilder: (context, error, _, __) {
-                        debugPrint('[PDF-DIAG] dual RIGHT errorBanner: $error');
+                        pdfDiagLog('dual RIGHT errorBanner: $error');
                         return PdfErrorBanner(error: error);
                       },
                       onViewerReady: (pdfDoc, controller) {
-                        debugPrint('[PDF-DIAG] onViewerReady(RIGHT): ready=${controller.isReady}, '
+                        pdfDiagLog('onViewerReady(RIGHT): ready=${controller.isReady}, '
                             'goToPage(${rightIdx + 1})');
                         controller.goToPage(pageNumber: rightIdx + 1);
                       },
@@ -512,19 +549,19 @@ class PdfRenderer {
   /// T13: PdfViewerController 自身不持有 native 资源（pdfrx 文档由
   /// PdfViewer 管理生命周期），无需 dispose；这里仅关闭文档与流。
   Future<void> dispose() async {
-    debugPrint('[PDF-DIAG] dispose start: doc=${_doc != null}, '
+    pdfDiagLog('dispose start: doc=${_doc != null}, '
         'mainController=${_mainController != null}');
     _memMonitor?.cancel();
     _memMonitor = null;
     try {
       await _doc?.dispose();
     } catch (e, st) {
-      debugPrint('[PDF-DIAG] dispose doc.dispose THREW: $e\n$st');
+      pdfDiagLog('dispose doc.dispose THREW: $e\n$st');
     }
     await _stateController.close();
     await _locationController.close();
     await _selectionController.close();
-    debugPrint('[PDF-DIAG] dispose done');
+    pdfDiagLog('dispose done');
   }
 }
 
