@@ -77,6 +77,10 @@ class PdfRenderer {
   final PdfViewerController _leftController = PdfViewerController();
   final PdfViewerController _rightController = PdfViewerController();
 
+  /// M4.6-fix: 单页模式的 controller。setPage 后用它 goToPage 滚动，
+  /// 否则 PdfViewer 不知道 _currentPage 变了（缩略图跳转/翻页都失效）。
+  final PdfViewerController _mainController = PdfViewerController();
+
   /// 缓存最近一次成功读取的 PDF 字节，供 [PdfViewer.data] 复用。
   ///
   /// pdfrx 在 Windows Debug build 下用 [PdfViewer.file] 重新打开同一文件时
@@ -169,6 +173,10 @@ class PdfRenderer {
   /// T13：[dualPageMode] 为 true 时把目标页 snap 到偶数（左页），并 clamp
   /// 到 `pages.length - 2`（保证左右页都存在；末页若是单独一页直接保留
   /// 单页呈现，由 build 兜底 SizedBox.shrink 右半边）。
+  ///
+  /// M4.6-fix (#1/#2)：setPage 后调 controller.goToPage 滚动 PdfViewer。
+  /// 修复前单页 PdfViewer 无 controller，缩略图点击只改 _currentPage 不滚动；
+  /// 双页 onViewerReady 只在首次 init 触发，翻页/跳转后 viewer 不更新。
   void setPage(int page) {
     final doc = _doc;
     if (doc == null) return;
@@ -177,15 +185,35 @@ class PdfRenderer {
       if (target.isOdd) target -= 1;
       if (target < 0) target = 0;
       if (target >= doc.pages.length) target = doc.pages.length - 1;
-      // 若 snap 到的偶数索引已经是末页（孤页），保留它；build 会渲染
-      // 左侧 PdfViewer + 右侧 SizedBox.shrink。
       _currentPage = target;
       _emitLocation();
+      _goToDualPageSpread(target);
       return;
     }
     if (page < 0 || page >= doc.pages.length) return;
     _currentPage = page;
     _emitLocation();
+    _goToMainPage(page);
+  }
+
+  /// M4.6-fix: 单页模式滚动 _mainController 到指定 0-based 页。
+  void _goToMainPage(int page0) {
+    final pn = page0 + 1;
+    if (_mainController.isReady) {
+      _mainController.goToPage(pageNumber: pn);
+    }
+  }
+
+  /// M4.6-fix: 双页模式滚动左右 controller 到 spread（leftIdx 0-based 偶数）。
+  void _goToDualPageSpread(int leftIdx) {
+    final leftPn = leftIdx + 1;
+    final rightPn = leftIdx + 2;
+    if (_leftController.isReady) {
+      _leftController.goToPage(pageNumber: leftPn);
+    }
+    if (_rightController.isReady) {
+      _rightController.goToPage(pageNumber: rightPn);
+    }
   }
 
   /// 由 [PdfReaderEngine.gotoLocator] 调用，跳转到 [PdfPageLocator] 指定页。
@@ -261,12 +289,17 @@ class PdfRenderer {
                 child: PdfViewer.data(
                   bytes,
                   sourceName: doc.sourceName,
+                  controller: _mainController,
                   params: PdfViewerParams(
                     textSelectionParams: PdfTextSelectionParams(
                       enabled: !showBanner,
                     ),
                     errorBannerBuilder: (context, error, _, __) =>
                         PdfErrorBanner(error: error),
+                    onViewerReady: (pdfDoc, controller) {
+                      // M4.6-fix: viewer ready 后跳到当前页（缩略图跳转/恢复进度）。
+                      controller.goToPage(pageNumber: _currentPage + 1);
+                    },
                     buildContextMenu: (context, params) {
                       if (!params.isTextSelectionEnabled) return null;
                       return _PdfHighlightMenuButton(
@@ -296,6 +329,12 @@ class PdfRenderer {
     if (leftIdx < 0) return const SizedBox.shrink();
     final rightIdx = leftIdx + 1;
     final hasRight = rightIdx < doc.pages.length;
+    // M4.6-fix: 左右 PdfViewer 必须用不同 sourceName，否则 pdfrx 按
+    // PdfDocumentRefKey(sourceName) 复用同一个 PdfDocumentListenable，
+    // 导致两个 _PdfViewerState 的 _attach 竞态、controller 互相覆盖，
+    // 表现为左右显示同页或错位。加 #L/#R 后缀让两侧独立加载。
+    final leftSourceName = '${doc.sourceName}#L';
+    final rightSourceName = '${doc.sourceName}#R';
     return Row(
       children: [
         Expanded(
@@ -303,7 +342,7 @@ class PdfRenderer {
             theme: _typography.theme,
             child: PdfViewer.data(
               bytes,
-              sourceName: doc.sourceName,
+              sourceName: leftSourceName,
               controller: _leftController,
               params: PdfViewerParams(
                 textSelectionParams:
@@ -311,8 +350,6 @@ class PdfRenderer {
                 errorBannerBuilder: (context, error, _, __) =>
                     PdfErrorBanner(error: error),
                 onViewerReady: (pdfDoc, controller) {
-                  // 跳到 leftIdx + 1 (pdfrx 1-based)。onViewerReady 在
-                  // viewer 准备好交互后触发，是 goToPage 的安全调用点。
                   controller.goToPage(pageNumber: leftIdx + 1);
                 },
               ),
@@ -325,7 +362,7 @@ class PdfRenderer {
                   theme: _typography.theme,
                   child: PdfViewer.data(
                     bytes,
-                    sourceName: doc.sourceName,
+                    sourceName: rightSourceName,
                     controller: _rightController,
                     params: PdfViewerParams(
                       textSelectionParams:

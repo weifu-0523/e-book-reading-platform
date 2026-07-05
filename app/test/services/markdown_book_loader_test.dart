@@ -110,6 +110,43 @@ void main() {
       expect(chapters[0].html, contains('line1'));
       expect(chapters[0].html, contains('line2'));
     });
+
+    test('M4.6-fix (#3) 列表项不被补两空格（无多余 <br>）', () {
+      // 列表项行是结构行，不应补两空格，否则 <li> 内多挂 <br> 破坏排版。
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '- 列表项1\n- 列表项2\n- 列表项3',
+        fallbackTitle: 't',
+      );
+      final html = chapters[0].html;
+      expect(html, contains('<li>列表项1</li>'));
+      expect(html, contains('<li>列表项2</li>'));
+      expect(html, contains('<li>列表项3</li>'));
+      // 列表项内不应有 <br>（补两空格的副作用）
+      expect(html, isNot(contains('<br')));
+    });
+
+    test('M4.6-fix (#3) 引用块行不被补两空格', () {
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '> 引用第一行\n> 引用第二行',
+        fallbackTitle: 't',
+      );
+      final html = chapters[0].html;
+      expect(html, contains('引用第一行'));
+      expect(html, contains('引用第二行'));
+      // 引用块末尾不应有 <br>
+      expect(html, isNot(contains('<br')));
+    });
+
+    test('M4.6-fix (#3) 普通段落 soft break 仍转 <br>', () {
+      // 确保跳过规则扩展后，普通段落换行仍然生效。
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '段落第一行\n段落第二行',
+        fallbackTitle: 't',
+      );
+      expect(chapters[0].html, contains('<br'));
+      expect(chapters[0].html, contains('段落第一行'));
+      expect(chapters[0].html, contains('段落第二行'));
+    });
   });
 
   group('MarkdownBookLoader.load (字节 + 编码)', () {

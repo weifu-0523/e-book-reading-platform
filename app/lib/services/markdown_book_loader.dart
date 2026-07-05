@@ -121,7 +121,16 @@ class MarkdownBookLoader {
   /// 给 body 的每行尾部补两空格，强制 hard break。跳过：
   /// - 空行（保留原样）
   /// - 围栏代码块内的行（` ``` ` 或 `~~~` 包裹区域）
+  /// - 缩进式代码块（行首 ≥4 空格）
   /// - 已有 hard break 的行（行尾已有 ≥2 空格或反斜杠）
+  /// - 标题行（`#` ~ `######`）
+  /// - 列表项（`- ` / `* ` / `+ ` / `1. `）
+  /// - 引用块（`> `）
+  /// - HTML 块（行首 `<`）
+  /// - 水平分割线（`---` / `***` / `___`）
+  ///
+  /// M4.6-fix (#3)：原跳过规则过窄，列表项/引用块等结构行被补两空格后，
+  /// markdown 在 `<li>`/`<blockquote>` 内生成多余 `<br>`，破坏排版。
   static String _preserveLineBreaks(String body) {
     final lines = body.split('\n');
     bool inFence = false;
@@ -143,17 +152,40 @@ class MarkdownBookLoader {
         // 围栏行本身不加空格
         continue;
       }
-      if (inFence) continue; // 代码块内行原样
+      if (inFence) continue; // 围栏代码块内行原样
       if (trimmedRight.isEmpty) continue; // 空行
       // 已有 hard break（≥2 尾空格 或 反斜杠结尾）
       if (RegExp(r' {2,}$').hasMatch(line)) continue;
       if (trimmedRight.endsWith(r'\')) continue;
-      // 标题行（# 开头）不加（标题不换行）
-      if (RegExp(r'^#{1,6}\s').hasMatch(trimmedRight)) continue;
-      // 补两空格
+      // M4.6-fix: 跳过所有 markdown 结构行（补两空格会破坏它们的渲染）
+      if (_isStructuralLine(trimmedRight)) continue;
+      // 补两空格（仅普通段落正文行）
       lines[i] = '$trimmedRight  ';
     }
     return lines.join('\n');
+  }
+
+  /// M4.6-fix (#3): 判断是否为 markdown 结构行（不应补两空格）。
+  /// 这些行的 inline 内容补两空格后，markdown 会在 `<li>`/`<blockquote>`
+  /// 等容器内生成多余 `<br>`，破坏排版。
+  static bool _isStructuralLine(String trimmedRight) {
+    // 标题（# ~ ######）
+    if (RegExp(r'^#{1,6}\s').hasMatch(trimmedRight)) return true;
+    // 缩进式代码块（行首 ≥4 空格）
+    if (RegExp(r'^    ').hasMatch(trimmedRight)) return true;
+    // 列表项：`- ` / `* ` / `+ ` / `1. `（允许最多 3 空格缩进）
+    if (RegExp(r'^\s{0,3}([-*+]\s|\d+\.\s)').hasMatch(trimmedRight)) return true;
+    // 引用块：`> ` / `>`（允许最多 3 空格缩进）
+    if (RegExp(r'^\s{0,3}>').hasMatch(trimmedRight)) return true;
+    // HTML 块（行首 <，如 <div> <img> <!--）
+    if (RegExp(r'^\s*<').hasMatch(trimmedRight)) return true;
+    // 水平分割线：`---` / `***` / `___`（≥3 个相同字符，允许最多 3 空格缩进）
+    if (RegExp(r'^\s{0,3}([-]{3,}|[*]{3,}|[_]{3,})\s*$').hasMatch(trimmedRight)) {
+      return true;
+    }
+    // 参考式链接定义：`[id]: url`
+    if (RegExp(r'^\[([^\]]+)\]:\s').hasMatch(trimmedRight)) return true;
+    return false;
   }
 
   static String _decodeText(List<int> bytes) {
