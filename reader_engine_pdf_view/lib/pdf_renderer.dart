@@ -290,16 +290,18 @@ class PdfRenderer {
                   bytes,
                   sourceName: doc.sourceName,
                   controller: _mainController,
+                  // M4.6-fix: 用 initialPageNumber 而非 onViewerReady+goToPage
+                  // 设定初始页。onViewerReady 里调 goToPage 会触发矩阵变化→
+                  // rebuild→PdfViewer 重建→controller 重 attach，形成无限循环，
+                  // 表现为"一直加载"。initialPageNumber 只在首次创建生效，
+                  // 后续翻页/缩略图跳转由 setPage → _mainController.goToPage 处理。
+                  initialPageNumber: _currentPage + 1,
                   params: PdfViewerParams(
                     textSelectionParams: PdfTextSelectionParams(
                       enabled: !showBanner,
                     ),
                     errorBannerBuilder: (context, error, _, __) =>
                         PdfErrorBanner(error: error),
-                    onViewerReady: (pdfDoc, controller) {
-                      // M4.6-fix: viewer ready 后跳到当前页（缩略图跳转/恢复进度）。
-                      controller.goToPage(pageNumber: _currentPage + 1);
-                    },
                     buildContextMenu: (context, params) {
                       if (!params.isTextSelectionEnabled) return null;
                       return _PdfHighlightMenuButton(
