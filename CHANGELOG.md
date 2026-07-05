@@ -9,7 +9,47 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
-### M3e/Q8 — 2026-07-03（分页文字溢出底部修复）
+### M4.6-fix4 — 2026-07-05（exe 二次启动闪退 + PDF 翻页卡 loading + MD 排版乱）
+
+用户测试 M4.6-fix3（commit 54221f9）后报告三个阻塞问题：①exe 关闭后再次双击"图标闪一下就没了" ②PDF 翻 10+ 页后阅读区不停 loading，回退也 loading ③MD 阅读完全乱（未双页、超出页面很多、第二章标题"变图片"）。按 systematic-debugging 流程做完整根因调查后逐一修复。
+
+#### Fixed — exe 二次启动闪退（main.cpp named mutex + 进程残留）
+
+- **根因**：`tasklist` 显示用户"关掉"窗口后 zhiyue.exe 进程仍残留（PID 2932, 656MB），named mutex `Local\\ZhiYueApp` 永远 `ERROR_ALREADY_EXISTS` → 第二实例 `is_first_instance = false` → argv 空（桌面图标双击启动无参数）→ 直接 `return EXIT_SUCCESS` → 用户看到"图标闪一下就没了"。进程残留源于 Flutter engine 关窗时若 native plugin（pdfrx PDFium / window_manager）持有未释放资源，message loop 的 `GetMessage` 链可能挂在某个消息处理里出不来。
+- **修复 1（兜底）**：`wWinMain` 末尾 message loop 退出后强制 `::ExitProcess(EXIT_SUCCESS)`——跳过 Dart dispose / C++ 析构，但 kernel mutex / COM 资源由 OS 回收，确保下次启动拿到 fresh 状态。drift WAL 模式下已提交事务不会丢。
+- **修复 2（体验）**：第二实例发现已有窗口时**无论 argv 是否为空都 SetForegroundWindow + SW_RESTORE**（之前仅 argv 非空时转发，桌面图标双击启动 argv 空 → 无反应）。用户从桌面图标二次启动最期望的是已有窗口前置，不是无反应退出。
+
+#### Fixed — PDF 翻 N 页后无限 loading（pdf_renderer widget tree 稳定化）
+
+- **根因**：`PdfRenderer.build` 用 `FutureBuilder<bool>` 包裹 `PdfViewer`，每次父级 rebuild（窗口尺寸变化/翻页 setState/typography 变化）都重建 widget tree → pdfrx `_PdfViewerState.didUpdateWidget` 触发 reload path → `loadPagesProgressively` 重启 → pageImage 缓存累积（pdfrx 2.4.4 `PdfViewerParams` 无 maxPinPages 上限）→ 内存压力 → 后续 page render 阻塞 → loading banner 一直显示。`PdfViewerParams` 每次 build 都 new 一个新实例（函数字段比对引用相等），闭包重建触发 `doChangesRequireReload`。
+- **修复**（`pdf_renderer.dart`）：
+  - **移除 FutureBuilder**：scanned 判定改走 `openFile` 时启动 Future + `then` 回调写 `_scannedCache` + setState，build 走同步路径。
+  - **加 RepaintBoundary**：build 顶层包 `RepaintBoundary` 把 PDF 阅读区与父级 reader_body 隔离。
+  - **PdfViewer 加 ValueKey**：`ValueKey('pdf-main-${doc.sourceName}')`，同书 State 复用稳定，切书 sourceName 变 → 干净重建。
+  - **PdfViewerParams 方法化**：`_buildMainParams()` 单独抽出，buildContextMenu fallback 用 pdfrx 自带的 `params.a?.page.pageNumber` 而非闭包捕获的 `_currentPage`（避免 stale 值）。
+
+#### Fixed — MD 排版完全乱（删 _preserveLineBreaks 回归 CommonMark + 移除 img）
+
+- **根因（排版乱）**：M4.6 (#5) 的 `_preserveLineBreaks` 给每行尾部强制补两空格让 markdown 视为 hard break → 段内换行被强制 `<br>` → fwfh 把段落切成断行堆叠，**违反 CommonMark 段内合并语义**（CommonMark 规定段内单换行渲染时合并为同段连续流，行尾两空格或反斜杠才是 hard break）。原始 MD 文档的"一行一段/一句"只是源码可读性，渲染时本就该合并。表现为"第一段在左上、第二段在右下、超出边界"。
+- **根因（标题变图片）**：fwfh `HtmlWidget` 默认渲染 `<img>`，MD 无 base URL 时 src 当网络 URL，显示 loading 占位/异常图标。用户报告"第二章标题变图片"很可能就是 `# ![icon](...)` 在 fwfh 里渲染成了图片占位。
+- **修复**（`markdown_book_loader.dart`）：
+  - **删除 `_preserveLineBreaks` 全部逻辑**，`_markdownToHtml` 直接走 `md.markdownToHtml(body)`。CommonMark 标准库已正确处理段内合并 / 显式 hard break / 空行分段 / 标题列表引用代码块结构。
+  - **新增 `_stripImages`**：用正则匹配 `<img alt="..." ...>` 移除 `<img>` 标签，保留 alt 文本作 `[alt]` 占位（让读者知道这里有图但不尝试加载）。MD 阅读场景无网络/相对路径解析能力，移除是合理 trade-off。
+- **测试**：新增 `markdown_book_loader_no_force_break_test.dart`（9 cases：段内合并、显式 hard break 保留、列表/引用不受影响、独立图片移除、标题内图片移除、多图片移除、无 alt 不崩溃）。更新 `markdown_book_loader_test.dart` 2 个旧测试反映 CommonMark 新语义。共 33 个 MD 测试 + 51 个 PDF 测试 + 2 个 MD scroll 集成测试全 pass。
+
+#### Fixed — main.cpp 加 UTF-8 BOM（MSVC C4819 警告被视错误）
+
+- M4.6-fix4 main.cpp 加了中文修复说明注释，MSVC 在中文系统代码页 936 (GBK) 下报 C4819 警告被项目视为错误，导致 `flutter build windows` 失败。
+- 加 UTF-8 BOM (`EF BB BF`) 后 MSVC 自动识别源文件为 UTF-8 编码，C4819 消失。原 `L"智阅"` 窗口标题字面量此前能编译是因当时文件全英文（仅 ASCII），不受代码页影响；本次新增中文注释触发了潜伏的编码问题。
+
+#### Lessons
+
+- **systematic-debugging 铁律生效**：本次三个问题都先完整跑 Phase 1（根因调查）+ Phase 2（pattern 对比）才动代码。问题 1 通过 `tasklist` 发现进程残留；问题 2 通过读 pdfrx 2.4.4 源码定位 FutureBuilder 重建链；问题 3 通过读 CommonMark spec + 跑 markdown 标准库验证段内合并语义。无猜测式修复，无"再试一次"。
+- **MD 排版的 CommonMark 误区**：曾以为 MD"一行一句"是渲染应保留的语义，实际 CommonMark 明确规定段内单换行渲染合并。原始文档的分行只是源码可读性约定（类似代码格式化）。修复方向是删除强制 hard break 而非扩展跳过规则——之前 M4.6-fix (#3) 试图用 `_isStructuralLine` 跳过结构行，但永远跳不完所有边界（图片、表格、脚注、定义列表…）。回归标准才是正解。
+- **PDF 不能 headless 测试**：pdfrx 需要 PDFium native binary，flutter test headless runner 不支持。PDF 修复只能通过读 pdfrx 源码 + 推理 + 用户实测验证。本次修复的回归测试是 widget-level（key 稳定性、FutureBuilder 移除），不能验证实际 PDF 渲染。
+- **MSVC C4819 潜伏陷阱**：项目 `Treat Warnings As Errors` 开启时，任何含非 ASCII 字符的源文件都需要 UTF-8 BOM 才能在非 UTF-8 系统代码页编译。今后 Windows runner 任何 .cpp/.h 加中文必须先加 BOM。
+
+
 
 用户反馈"部分页面文字比较多的时候下方文字会超出页面下底线，导致部分数据看不到"。
 
