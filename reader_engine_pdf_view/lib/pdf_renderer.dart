@@ -62,10 +62,30 @@ class PdfRenderer {
   bool _dualPageMode = false;
   bool get dualPageMode => _dualPageMode;
   set dualPageMode(bool value) {
+    debugPrint('[PDF-DIAG] dualPageMode set: $_dualPageMode → $value');
     if (_dualPageMode == value) return;
     _dualPageMode = value;
     if (value) setPage(_currentPage);
   }
+
+  /// M4.6-fix5: build 计数 + 内存采样 Timer（诊断 PDF 翻 N 页卡死用）。
+  /// build 频率反映 widget tree 是否被频繁重建（pdfrx 频繁 reload 嫌疑）。
+  /// Timer 周期采样进程私有内存，定位是否内存累积导致 PDFium 阻塞。
+  int _buildCount = 0;
+  Timer? _memMonitor;
+
+  /// 启动周期内存采样（每 3 秒一次）。openFile 成功后调。
+  void _startMemMonitor() {
+    _memMonitor?.cancel();
+    _memMonitor = Timer.periodic(const Duration(seconds: 3), (_) {
+      final rss = ProcessInfo.currentRss;
+      final maxRss = ProcessInfo.maxRss;
+      debugPrint('[PDF-DIAG] mem sample: rss=${_mb(rss)}MB '
+          'maxRss=${_mb(maxRss)}MB builds=$_buildCount');
+    });
+  }
+
+  static String _mb(int bytes) => (bytes / (1024 * 1024)).toStringAsFixed(1);
 
   /// T13: 缓存 [_scannedFuture] 的最新解析结果，供 reader_body 同步判断
   /// `isScanned` 用（决定是否启用 dualPageMode）。null 表示尚未解析过。
@@ -163,23 +183,28 @@ class PdfRenderer {
   /// 写 [_scannedCache] + setState。build 走同步路径，避免 FutureBuilder
   /// 包裹 PdfViewer 导致频繁重建。
   Future<void> openFile(String path) async {
+    debugPrint('[PDF-DIAG] openFile start: $path');
     _setState(const ReaderEngineLoading());
     try {
       _bytes = await File(path).readAsBytes();
+      debugPrint('[PDF-DIAG] openFile bytes read: ${_bytes!.length} bytes');
       _doc = await PdfDocument.openData(_bytes!)
           .timeout(const Duration(seconds: 30));
+      debugPrint('[PDF-DIAG] openFile success: pages=${_doc!.pages.length}, '
+          'sourceName=${_doc!.sourceName}');
       _currentPage = 0;
       _scannedCache = null; // 切书清空，重新判定
       _startScannedDetection();
+      _startMemMonitor(); // M4.6-fix5: 诊断 PDF 卡死
       _setState(const ReaderEngineReady());
     } on TimeoutException catch (e) {
+      debugPrint('[PDF-DIAG] openFile TIMEOUT: $path ($e)');
       _setState(ReaderEngineError(
         message: 'PDF 打开超时（30秒），文件可能损坏',
         cause: TimeoutException('PDF open timeout: $path'),
       ));
-      debugPrint('PdfRenderer.openFile timeout: $path\n$e');
     } catch (e, st) {
-      debugPrint('PdfRenderer.openFile failed: $path\n$e\n$st');
+      debugPrint('[PDF-DIAG] openFile ERROR: $path\n  $e\n$st');
       _setState(ReaderEngineError(message: '$e', cause: e));
     }
   }
@@ -216,7 +241,10 @@ class PdfRenderer {
   /// 双页 onViewerReady 只在首次 init 触发，翻页/跳转后 viewer 不更新。
   void setPage(int page) {
     final doc = _doc;
-    if (doc == null) return;
+    if (doc == null) {
+      debugPrint('[PDF-DIAG] setPage($page) no-op: doc null');
+      return;
+    }
     if (dualPageMode) {
       int target = page;
       if (target.isOdd) target -= 1;
@@ -227,7 +255,10 @@ class PdfRenderer {
       _goToDualPageSpread(target);
       return;
     }
-    if (page < 0 || page >= doc.pages.length) return;
+    if (page < 0 || page >= doc.pages.length) {
+      debugPrint('[PDF-DIAG] setPage($page) out of range 0..${doc.pages.length - 1}');
+      return;
+    }
     _currentPage = page;
     _emitLocation();
     _goToMainPage(page);
@@ -237,10 +268,17 @@ class PdfRenderer {
   void _goToMainPage(int page0) {
     final pn = page0 + 1;
     final c = _mainController;
+    final ready = c?.isReady ?? false;
+    debugPrint('[PDF-DIAG] _goToMainPage($page0) → pn=$pn, '
+        'controller=${c == null ? "null" : "set"}, ready=$ready');
     // M4.6-fix3: controller 在 onViewerReady 才赋值，未 ready 时跳过
     // （下次 viewer ready 会用 initialPageNumber 跳到正确页）。
-    if (c != null && c.isReady) {
-      c.goToPage(pageNumber: pn);
+    if (c != null && ready) {
+      try {
+        c.goToPage(pageNumber: pn);
+      } catch (e, st) {
+        debugPrint('[PDF-DIAG] _goToMainPage goToPage THREW: $e\n$st');
+      }
     }
   }
 
@@ -248,11 +286,22 @@ class PdfRenderer {
   void _goToDualPageSpread(int leftIdx) {
     final leftPn = leftIdx + 1;
     final rightPn = leftIdx + 2;
+    debugPrint('[PDF-DIAG] _goToDualPageSpread(leftIdx=$leftIdx) '
+        'leftPn=$leftPn rightPn=$rightPn '
+        'leftReady=${_leftController.isReady} rightReady=${_rightController.isReady}');
     if (_leftController.isReady) {
-      _leftController.goToPage(pageNumber: leftPn);
+      try {
+        _leftController.goToPage(pageNumber: leftPn);
+      } catch (e, st) {
+        debugPrint('[PDF-DIAG] _goToDualPageSpread left goToPage THREW: $e\n$st');
+      }
     }
     if (_rightController.isReady) {
-      _rightController.goToPage(pageNumber: rightPn);
+      try {
+        _rightController.goToPage(pageNumber: rightPn);
+      } catch (e, st) {
+        debugPrint('[PDF-DIAG] _goToDualPageSpread right goToPage THREW: $e\n$st');
+      }
     }
   }
 
@@ -301,10 +350,18 @@ class PdfRenderer {
   /// - PdfViewer 加 [ValueKey]（按 sourceName）：同书 State 复用稳定，
   ///   切书 sourceName 变 → 干净重建。
   Widget build(BuildContext context) {
+    _buildCount++;
     final doc = _doc;
     final bytes = _bytes;
-    if (doc == null || bytes == null) return const SizedBox.shrink();
+    if (doc == null || bytes == null) {
+      debugPrint('[PDF-DIAG] build #$_buildCount: doc/bytes null → SizedBox.shrink');
+      return const SizedBox.shrink();
+    }
     final showBanner = _scannedCache == true;
+    final branch = (dualPageMode && !showBanner) ? 'dual' : 'main';
+    debugPrint('[PDF-DIAG] build #$_buildCount: branch=$branch, page=${_currentPage + 1}/'
+        '${doc.pages.length}, dualMode=$dualPageMode, scanned=$showBanner, '
+        'mainControllerReady=${_mainController?.isReady ?? false}');
     return RepaintBoundary(
       child: dualPageMode && !showBanner
           ? _buildDualPage(doc, bytes, showBanner: false)
@@ -349,11 +406,18 @@ class PdfRenderer {
       textSelectionParams: PdfTextSelectionParams(
         enabled: !showBanner,
       ),
-      errorBannerBuilder: (context, error, _, __) =>
-          PdfErrorBanner(error: error),
+      errorBannerBuilder: (context, error, _, __) {
+        debugPrint('[PDF-DIAG] pdfrx errorBanner: $error');
+        return PdfErrorBanner(error: error);
+      },
       onViewerReady: (pdfDoc, controller) {
+        debugPrint('[PDF-DIAG] onViewerReady(main): pages=${pdfDoc.pages.length}, '
+            'controllerReady=${controller.isReady}, currentPage=${controller.pageNumber}');
         // M4.6-fix3: 存 controller 引用，setPage 用它 goToPage。
         _mainController = controller;
+      },
+      onDocumentChanged: (pdfDoc) {
+        debugPrint('[PDF-DIAG] onDocumentChanged: ${pdfDoc?.pages.length ?? 0} pages');
       },
       buildContextMenu: (context, params) {
         if (!params.isTextSelectionEnabled) return null;
@@ -385,6 +449,8 @@ class PdfRenderer {
     // 表现为左右显示同页或错位。加 #L/#R 后缀让两侧独立加载。
     final leftSourceName = '${doc.sourceName}#L';
     final rightSourceName = '${doc.sourceName}#R';
+    debugPrint('[PDF-DIAG] _buildDualPage: leftIdx=$leftIdx rightIdx=$rightIdx '
+        'hasRight=$hasRight currentPage=$_currentPage');
     return Row(
       children: [
         Expanded(
@@ -398,9 +464,13 @@ class PdfRenderer {
               params: PdfViewerParams(
                 textSelectionParams:
                     PdfTextSelectionParams(enabled: !showBanner),
-                errorBannerBuilder: (context, error, _, __) =>
-                    PdfErrorBanner(error: error),
+                errorBannerBuilder: (context, error, _, __) {
+                  debugPrint('[PDF-DIAG] dual LEFT errorBanner: $error');
+                  return PdfErrorBanner(error: error);
+                },
                 onViewerReady: (pdfDoc, controller) {
+                  debugPrint('[PDF-DIAG] onViewerReady(LEFT): ready=${controller.isReady}, '
+                      'goToPage(${leftIdx + 1})');
                   controller.goToPage(pageNumber: leftIdx + 1);
                 },
               ),
@@ -419,9 +489,13 @@ class PdfRenderer {
                     params: PdfViewerParams(
                       textSelectionParams:
                           PdfTextSelectionParams(enabled: !showBanner),
-                      errorBannerBuilder: (context, error, _, __) =>
-                          PdfErrorBanner(error: error),
+                      errorBannerBuilder: (context, error, _, __) {
+                        debugPrint('[PDF-DIAG] dual RIGHT errorBanner: $error');
+                        return PdfErrorBanner(error: error);
+                      },
                       onViewerReady: (pdfDoc, controller) {
+                        debugPrint('[PDF-DIAG] onViewerReady(RIGHT): ready=${controller.isReady}, '
+                            'goToPage(${rightIdx + 1})');
                         controller.goToPage(pageNumber: rightIdx + 1);
                       },
                     ),
@@ -438,10 +512,19 @@ class PdfRenderer {
   /// T13: PdfViewerController 自身不持有 native 资源（pdfrx 文档由
   /// PdfViewer 管理生命周期），无需 dispose；这里仅关闭文档与流。
   Future<void> dispose() async {
-    await _doc?.dispose();
+    debugPrint('[PDF-DIAG] dispose start: doc=${_doc != null}, '
+        'mainController=${_mainController != null}');
+    _memMonitor?.cancel();
+    _memMonitor = null;
+    try {
+      await _doc?.dispose();
+    } catch (e, st) {
+      debugPrint('[PDF-DIAG] dispose doc.dispose THREW: $e\n$st');
+    }
     await _stateController.close();
     await _locationController.close();
     await _selectionController.close();
+    debugPrint('[PDF-DIAG] dispose done');
   }
 }
 
