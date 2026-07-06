@@ -9,6 +9,59 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M4.7b — 2026-07-07（EPUB 滚动模式调研：第二套方案 + 重大代码盘点发现）
+
+**性质**：M4.7 的补充调研，无代码改动。聚焦用户提出的"第二套方案——单页滚动浏览模式"。
+
+**用户洞察**：*"双页翻页模式适合纯阅读，滚动单页模式在 AI 功能上线后使用率很高——左右抽屉展开后中间单页滚动体验更好。"*
+
+**核心发现（重大）**：通过 grep 调查发现，智阅的 `reader_engine_epub_view` 包**已经完整实现了 PaginationMode.scroll 滚动模式的整个底层链路**——`_buildScroll`（SingleChildScrollView + HtmlWidget）、章末检测（滚到 64px 内）、tap zone 换章分支、滚动位重定位全部就位，但 **UI 层没有任何切换入口**（`setPaginationMode` 在 app/lib 下零调用）。也就是说，滚动模式被"冰封"了——代码写了、测试过了，但用户永远访问不到。
+
+**关键技术洞察**：M4.6-fix20 锁定的 fwfh 分页死结（widget height 只能在渲染后得知，事前测高不可能）**只在分页模式下存在**。滚动模式用 `SingleChildScrollView + HtmlWidget`，根本不需要事前测高——fwfh 在 `RenderMode.column` 默认下于无限高度约束中一次性渲染整章，Flutter viewport 自动按可见部分构建 RenderObject。**fwfh 路线在分页已死，但在滚动完全可用**。
+
+#### Added — 滚动模式调研汇报（spec）
+
+- **新文档**：`docs/superpowers/specs/2026-07-07-m4.7b-epub-scroll-mode-research-design.md`（约 11k 字）
+- **覆盖范围**：
+  - **规范层**：EPUB 3 / W3C 把 `rendition:flow` 定义为四种值（paginated / scrolled-continuous / scrolled-doc / auto），滚动模式是规范一等公民
+  - **业界共识**：Neat Reader（"Choose Page or Scroll mode"）/ Apple Books（4 种翻页含 Scroll）/ 微信读书 / Readium / Calibre / Foliate **全部双模式并存**
+  - **fwfh 可用性判定**：滚动模式下不需要事前测高，drift 问题不存在，fwfh 完全可用
+  - **智阅代码盘点**：列出已实现的 7 项能力（模式枚举 / API / 渲染分支 / 章末检测 / tap zone / scrollController / Locator 重定位），证据精确到文件:行号
+  - **AI 场景契合度分析**：scroll 模式下展开左右抽屉时内容自动 reflow，paged+双页会被挤压错位——这是 Neat Reader / 微信读书在 AI 场景下都用滚动的根本原因
+  - **风险与防御**：4 个风险点（长章节性能 / Locator 精度 / 与 M4.8 关系 / 双页互斥）
+
+#### Key Findings（关键发现）
+
+- **滚动模式 95% 已实现**：底层链路全部就位，只缺 UI 切换按钮 + 持久化。1-2 天工作量即可上线。
+- **fwfh 在滚动模式完全可用**：分页死结（事前测高不可行）只在分页模式存在，滚动模式用 `SingleChildScrollView` 绕过整个问题。
+- **业界标配双模式**：所有主流 EPUB 阅读器（Neat Reader / Apple Books / 微信读书 / Readium）都同时支持翻页 + 滚动，不是二选一。
+- **EPUB 3 规范一等公民**：`scrolled-continuous` 是 W3C 明确定义的 flow 模式，不是 hack。
+
+#### Decision Summary（决策摘要）
+
+| 决策 | 内容 | 理由 |
+|---|---|---|
+| **AD1** | 立即实施滚动模式（M4.7b 快速跟进） | 底层 95% 已实现 + 绕过分页死结 + AI 场景刚需 |
+| **AD2** | 滚动模式不替代分页，而是并存 | 用户已识别场景分层：纯阅读 paged，AI 辅助 scroll |
+| **AD3** | M4.8 引擎切换降级为长期优化 | 滚动模式上线后底部溢出痛点已解，可从容做引擎切换 |
+
+#### Lessons
+
+- **grep 是发现"冰封功能"的最强工具**：在判断"要不要做某功能"之前，先 grep 一下现有代码。智阅的滚动模式 95% 已实现却无人知晓，是因为 M3.4 时代写了但 UI 没接。这种"沉没的功能"在长迭代项目里很常见。
+- **架构性死结往往是模式相关的**：fwfh 的事前测高死结只在分页模式存在。换一个模式（滚动）可能完全绕过死结，不需要换库。**在决定"换引擎"之前，先评估"换模式"是否可行**——成本低几个数量级。
+- **用户的场景洞察往往直指架构**：用户说"AI 场景用滚动更好"，本质是识别了"paged 模式 + 抽屉挤压 = 翻页错位"的架构问题。这种来自使用场景的洞察比纯技术分析更直接。
+
+#### Next Steps（M4.7b plan 的 Pre-flight Checklist）
+
+- [ ] UI 入口设计（复用字体/主题面板，加"阅读模式"二选一）
+- [ ] SharedPreferences 持久化
+- [ ] 切换时状态过渡（清 `_cachedBreaks` / 重新分页）
+- [ ] 进度条百分比适配
+- [ ] tap zone UX 验证
+- [ ] 抽屉联动测试
+- [ ] 回归测试（现有 paged 模式不受影响）
+- [ ] 双页模式互斥（切 scroll 自动关双页）
+
 ### M4.7 — 2026-07-07（EPUB 渲染引擎切换调研：开源全景 + Neat Reader 拆解）
 
 **性质**：调研型 spec，无代码改动。作为下一轮（M4.8）EPUB 引擎切换的设计依据。
