@@ -23,6 +23,13 @@ import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 
 import '../widgets/reader_bottom_bar.dart';
 
+/// ReaderProgressBar 估算高度（vertical:8 padding + bodyMedium ~16 行高 + 8）。
+///
+/// 用于 reader_body 的 Stack 给 SelectableRegion 让出底部空间，避免 EPUB
+/// Paginator 按完整 viewport 切页后底部文字被不透明 progress bar 遮住
+/// （M2.11 回归修复）。
+const double kReaderProgressBarHeight = 32.0;
+
 /// Extracted from reader_page.dart on T8 (2026-06-30).
 ///
 /// ReaderBottomBar 的章节/页标题 fallback。PDF 用「第 N 页」取代章节标题。

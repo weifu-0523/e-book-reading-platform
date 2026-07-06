@@ -77,8 +77,11 @@ class BookImportService {
     }
 
     // Store file（extension 在 null 检查后取，effectiveFormat 此处非空）
-    final stored = await _fileStorage.storeLibraryFile(
-      source: source,
+    // M4.6-fix11: 走 bytes 路径而非 source.copy，避免 Windows + Sync
+    // 目录（坚果云等）的 reparse point 异常导致 PathNotFoundException。
+    // bytes 已在 line 60 读出，这里复用零额外 I/O。
+    final stored = await _fileStorage.storeLibraryFileFromBytes(
+      bytes: bytes,
       fileHash: hash,
       extension: effectiveFormat.fileExtension,
     );

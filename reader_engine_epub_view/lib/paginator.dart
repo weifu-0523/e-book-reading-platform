@@ -54,6 +54,76 @@ class Paginator {
     );
   }
 
+  /// M4.6-fix16: 实际高度驱动的分页（替代 [_paginateUncached] 的 TextPainter
+  /// 估算）。
+  ///
+  /// **设计意图**：旧 [_paginateUncached] 用 TextPainter 估算文字 + fix15 的
+  /// 图片高度估算，与实际 fwfh 渲染存在 drift（line-height/font-metrics/
+  /// 图片真实尺寸不匹配），累积一页可达数行误差 → 分页塞过多内容 → 溢出可见。
+  /// fix12-15 多次调容差都没根治，根因是" Paginator 用 TextPainter，渲染用
+  /// fwfh"的双测量系统。
+  ///
+  /// 本方法接收**实际测量**得到的每段高度（由调用方的 RenderedHtmlMeasurer
+  /// 用 fwfh 渲染拿到），纯算法累积高度算 page breaks。测量和实际渲染用同一
+  /// 引擎 → drift 归零 → 溢出根治。
+  ///
+  /// 输入 [paragraphHeights] 必须与 `HtmlTextUtils.htmlToParagraphs(html)`
+  /// 输出的 `paragraphs` 列表**同长度、同顺序**——第 i 项是第 i 段的实测高度。
+  ///
+  /// 安全冗余：仍扣 `marginPx` × 2（与实际 Padding EdgeInsets.all(margin) 一致），
+  /// 再加 0.3 行 safetyMargin（覆盖 fwfh 不同次 layout 间极小漂移，<2px）。
+  /// 实测高度本身已含段间距/图片真实尺寸，无需估算。
+  ///
+  /// 返回与 [paginateWithText] 同结构（plainText + breaks），可无缝替换。
+  ({String plainText, List<PageBreak> breaks}) paginateFromActualHeights({
+    required String chapterHtml,
+    required Size viewport,
+    required double marginPx,
+    required double lineHeight,
+    required List<double> paragraphHeights,
+  }) {
+    final parsed = HtmlTextUtils.htmlToParagraphs(chapterHtml);
+    final plainText = parsed.plainText;
+    final paragraphs = parsed.paragraphs;
+
+    if (plainText.isEmpty) {
+      return (
+        plainText: '',
+        breaks: const [PageBreak(startOffset: 0, endOffset: 0)],
+      );
+    }
+
+    final usableHeight = viewport.height - 2 * marginPx;
+    // 0.3 行 safetyMargin：覆盖 fwfh 跨次 layout 的极小漂移（< 2px）。
+    // 注意：实测高度本身已是真实值，不像旧 _paginateUncached 需要大 safetyMargin
+    // 来吸收 TextPainter/HtmlWidget drift——这里只是防御性微冗余。
+    final safetyMargin = 0.3 * lineHeight;
+
+    final breaks = <PageBreak>[];
+    var pageStart = 0;
+    var pageHeight = 0.0;
+
+    for (var i = 0; i < paragraphs.length; i++) {
+      final p = paragraphs[i];
+      if (p.length == 0) continue;
+      final h = i < paragraphHeights.length ? paragraphHeights[i] : 0.0;
+      if (h <= 0) continue;
+
+      if (pageHeight + h > usableHeight - safetyMargin && pageHeight > 0) {
+        breaks.add(PageBreak(startOffset: pageStart, endOffset: p.start));
+        pageStart = p.start;
+        pageHeight = h;
+      } else {
+        if (pageHeight == 0) {
+          pageStart = p.start;
+        }
+        pageHeight += h;
+      }
+    }
+    breaks.add(PageBreak(startOffset: pageStart, endOffset: plainText.length));
+    return (plainText: plainText, breaks: breaks);
+  }
+
   ({String plainText, List<PageBreak> breaks}) _paginateUncached(
     String chapterHtml,
     Size viewport,
@@ -63,8 +133,11 @@ class Paginator {
     final parsed = HtmlTextUtils.htmlToParagraphs(chapterHtml);
     final plainText = parsed.plainText;
     final paragraphs = parsed.paragraphs;
+    final paragraphImages = parsed.paragraphImages;
 
-    if (plainText.isEmpty) {
+    // M4.6-fix15: 章节完全无文本但有图片（罕见，如纯绘本章节）——plainText 空
+    // 但 paragraphImages 有内容。原早返回逻辑会丢失图片分页，这里允许继续。
+    if (plainText.isEmpty && paragraphImages.isEmpty) {
       return (
         plainText: '',
         breaks: const [PageBreak(startOffset: 0, endOffset: 0)],
@@ -111,15 +184,41 @@ class Paginator {
     var pageHeight = 0.0;
     var isFirstParaOnPage = true;
 
-    for (final p in paragraphs) {
-      if (p.length == 0) continue;
+    for (var i = 0; i < paragraphs.length; i++) {
+      final p = paragraphs[i];
+      // M4.6-fix15: 空文本段（pure-image 段）若含图片仍需参与分页；
+      // 只有既无文本又无图片才跳过。
+      final imgs = paragraphImages[i] ?? const <ParagraphImage>[];
+      if (p.length == 0 && imgs.isEmpty) continue;
+
       final paraText = plainText.substring(p.start, p.end);
       // (a)+(b): 缩进前缀让首行换行正确；段间距只在非页首段累加（页首段上方
       // 无前一段，不该加 gap）。
       final measuredText = indentPrefix.isEmpty ? paraText : '$indentPrefix$paraText';
-      final paraHeight = _measureHeight(measuredText, style, usableWidth);
+      final paraHeight = measuredText.isEmpty
+          ? 0.0
+          : _measureHeight(measuredText, style, usableWidth);
+
+      // M4.6-fix15: 图片高度估算。fwfh 渲染 <img> 时按图片原始宽高比 + 容器
+      // 宽度算高度（与 TextPainter 完全无关），paginator 之前完全忽略 →
+      // 有图片章节实际渲染高度 >> 测量高度 → 底部严重溢出（用户报告
+      // "有图片的地方溢出更厉害"）。
+      //
+      // 估算：图片有 width/height 属性 → aspectRatio × usableWidth。
+      // 无尺寸声明 → fallback = 0.3 × usableHeight（覆盖大多数 book figure）。
+      // 每张图额外加 8px 上下 margin（fwfh block 渲染默认）。
+      var imgHeight = 0.0;
+      for (final img in imgs) {
+        if (img.width > 0 && img.height > 0) {
+          imgHeight += usableWidth * img.height / img.width;
+        } else {
+          imgHeight += usableHeight * 0.3;
+        }
+        imgHeight += 8.0; // img block margin (fwfh 默认)
+      }
+
       final gap = isFirstParaOnPage ? 0.0 : paraGap;
-      final totalAdd = paraHeight + gap;
+      final totalAdd = paraHeight + gap + imgHeight;
       // (c): safetyMargin 让临界页提前换页。
       if (pageHeight + totalAdd > usableHeight - safetyMargin && pageHeight > 0) {
         breaks.add(PageBreak(startOffset: pageStart, endOffset: p.start));
@@ -127,7 +226,7 @@ class Paginator {
         pageHeight = 0;
         isFirstParaOnPage = true;
         // 页首段不加 gap（重置后第一段）。
-        pageHeight += paraHeight;
+        pageHeight += paraHeight + imgHeight;
       } else {
         if (pageHeight == 0) {
           pageStart = p.start;

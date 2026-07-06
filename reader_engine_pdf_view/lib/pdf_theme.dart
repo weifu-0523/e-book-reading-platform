@@ -26,6 +26,13 @@ import 'package:reader_engine/core/typography_settings.dart';
 /// - [ReadingTheme.sepia]：米黄半透明叠加（pdfrx 没有 sepia 模式）
 /// - [ReadingTheme.dark]：颜色反相矩阵（夜间模式，与 EPUB night 等价）
 /// - [ReadingTheme.eInk]：灰度矩阵（墨水屏优化，去除彩色噪点）
+///
+/// **M4.6-fix14: 强制背景色**。pdfrx 渲染的 PDF 页面默认透明背景（PDF 规范
+/// 不强制白底），用户报告"PDF 正文区空白"——根因是 dark 模式下 ColorFilter
+/// 反相后，透明区域仍透明（alpha 不变），白色文字画在透明上 = 看不见。
+/// sepia/green 模式的 BlendMode.dstATop 同理：只在 dst 不透明区显示 src，
+/// 透明区域 src 被丢弃。修复：每个主题给一个 [backgroundColor]，用
+/// [ColoredBox] 包 [child]，让 PdfViewer 始终有一个不透明底色供滤镜作用。
 class PdfTheme {
   /// 给定 [theme] 与 [child]，返回包装后的 widget。
   ///
@@ -35,6 +42,34 @@ class PdfTheme {
     required ReadingTheme theme,
     required Widget child,
   }) {
+    final bgColor = backgroundColorFor(theme);
+    return ColoredBox(
+      color: bgColor,
+      child: _wrapWithFilter(theme, child),
+    );
+  }
+
+  /// 返回主题对应的背景色。
+  ///
+  /// dark 模式黑底（反相后白字可见）；sepia/green 暖底；light/eInk 白底。
+  /// 调用方（如 reader_body 的选区容器）也可调用此方法获取匹配的 Scaffold
+  /// 背景色，保证 PdfViewer 区域与周边 UI 视觉一致。
+  static Color backgroundColorFor(ReadingTheme theme) {
+    switch (theme) {
+      case ReadingTheme.light:
+        return const Color(0xFFFFFFFF);
+      case ReadingTheme.sepia:
+        return const Color(0xFFF5DEB3); // 米黄
+      case ReadingTheme.dark:
+        return const Color(0xFF000000); // 黑
+      case ReadingTheme.eInk:
+        return const Color(0xFFFFFFFF);
+      case ReadingTheme.green:
+        return const Color(0xFFE3EDD7); // 浅艾绿
+    }
+  }
+
+  static Widget _wrapWithFilter(ReadingTheme theme, Widget child) {
     switch (theme) {
       case ReadingTheme.light:
         return child;

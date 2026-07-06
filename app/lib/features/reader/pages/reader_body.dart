@@ -46,6 +46,7 @@ import '../../../features/ai/widgets/review_preview_sheet.dart';
 import '../controllers/bookmark_controller.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
+import '../providers/reader_engine_provider.dart';
 import '../services/scroll_to_offset.dart';
 import '../services/toc_title_resolver.dart';
 import '../widgets/highlight_color_picker_dialog.dart';
@@ -372,6 +373,13 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     if (_engineState is ReaderEngineError) {
       return ReaderErrorView(
         message: (_engineState as ReaderEngineError).message,
+        // M4.6-fix15: 加重试按钮。pdfium native 状态污染下，第一次 openFile
+        // 可能 30s 超时；用户点重试让 provider 重新跑（旧 PdfDocument 实例
+        // 被 GC，新 PdfReaderEngine 重新 openFile）。retry 未必每次都成功
+        // （pdfium 上游 bug），但给用户一个不退出 exe 的尝试选项。
+        onRetry: () {
+          ref.invalidate(readerEngineForBookProvider(widget.bookId));
+        },
         onBack: () => Navigator.of(context).maybePop(),
       );
     }
@@ -556,12 +564,21 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       builder: (innerContext) => Stack(
         key: _stackKey,
         children: [
-          SelectableRegion(
-            key: _selectableRegionKey,
-            selectionControls: materialTextSelectionControls,
-            onSelectionChanged: _onSelectionChanged,
-            child: ReaderScaffold(
-              content: engine.build(innerContext),
+          // M2.11 回归修复：ReaderProgressBar 自 M2.11 起在 Stack 顶层
+          // Positioned(bottom: 0) 始终可见，但 EPUB Paginator 用 Stack 完整
+          // 高度切页 → 底部 ~32px 文字被 progress bar 不透明背景遮住。
+          // 给 SelectableRegion 包 Padding 让出底栏高度，EPUB LayoutBuilder
+          // 收到的 constraints.maxHeight 就是扣除 progress bar 的剩余高度，
+          // Paginator 分页正确，文字不再被遮。PDF 走 pdfrx 整页缩放，剩余
+          // 高度减小只会让页略缩小，不会被遮挡，反而更准确。
+          Padding(
+            padding: const EdgeInsets.only(bottom: kReaderProgressBarHeight),
+            child: SelectableRegion(
+              key: _selectableRegionKey,
+              selectionControls: materialTextSelectionControls,
+              onSelectionChanged: _onSelectionChanged,
+              child: ReaderScaffold(
+                content: engine.build(innerContext),
               title: _bookTitle(),
               // M2.8/B1: paged 模式走 nextPage（章内翻页，章末才换章），
               // scroll 模式走 nextSpine（scroll 无章内分页，tap 即换章）。
@@ -644,6 +661,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               ),
             ),
           ),
+          ), // Padding close (M2.11 回归修复)
           if (engine is ConcreteEpubReaderEngine)
             ReaderChapterEndPrompt(
               engine: engine as ConcreteEpubReaderEngine,

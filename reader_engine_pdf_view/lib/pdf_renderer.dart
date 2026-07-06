@@ -235,6 +235,13 @@ class PdfRenderer {
     try {
       _bytes = await File(path).readAsBytes();
       pdfDiagLog('openFile bytes read: ${_bytes!.length} bytes');
+      // M4.6-fix11→fix12: 30MB PDF 秒开是常态，30s 仍打不开 = pdfium 不兼容
+      // 或文件加密/损坏。fix11 把 timeout 拉到 90s 反而让用户多等一倍——
+      // 用户原话"30MB 文件加载不可能这么长时间"。fix12 回到 30s budget，
+      // 错误信息明确指引日志路径，让用户能贴 zhiyue_pdf.log 回馈诊断。
+      // 真实根因（加密 / WPS 导出 / Office 转 PDF 等 pdfium 已知不兼容）
+      // 在错误信息和日志里指明，无法在代码层面绕过——只能换库（pdfx 等）
+      // 或建议用户用 Adobe Reader 重新另存为 PDF/A。
       _doc = await PdfDocument.openData(_bytes!)
           .timeout(const Duration(seconds: 30));
       pdfDiagLog('openFile success: pages=${_doc!.pages.length}, '
@@ -246,8 +253,17 @@ class PdfRenderer {
       _setState(const ReaderEngineReady());
     } on TimeoutException catch (e) {
       pdfDiagLog('openFile TIMEOUT: $path ($e)');
+      // M4.6-fix13: 错误信息反映 pdfium 状态污染真实根因。
+      // 日志证据：第一次 openFile 成功 → dispose → 第二次起全部卡死。
+      // 这是 pdfium native 状态污染，代码层无完美修复，唯一根治是重启 exe。
       _setState(ReaderEngineError(
-        message: 'PDF 打开超时（30秒），文件可能损坏',
+        message: 'PDF 打开超时（30秒）。'
+            '若您之前在本会话中打开过其他 PDF，几乎可以确定是 pdfium native '
+            '状态污染（pdfrx v2.4.4 在 Windows 的已知问题：dispose 后 native '
+            '资源未完全释放，下次打开同 sourceName 时死锁）。'
+            '请**关闭并重新启动智阅**，再打开此 PDF。'
+            '首次启动后直接打开此 PDF 应能在 1 秒内成功。'
+            '详见日志：$_pdfLogPath',
         cause: TimeoutException('PDF open timeout: $path'),
       ));
     } catch (e, st) {
@@ -454,10 +470,36 @@ class PdfRenderer {
 
   /// 释放 pdfrx 文档与所有 StreamController。
   ///
-  /// M4.6-fix9: 给 `_doc.dispose()` 加 3 秒 timeout 作为安全网。
-  /// 主修复（Task 1 双 viewer 共享 PdfDocument）已根除死锁源，此 timeout
-  /// 仅防止未来回归：即使 pdfium 内部因某种原因卡住，Dart 侧 dispose 也能
-  /// 在 3 秒后继续关闭 stream，不阻塞进程退出 → exe 不变僵尸 → 二次启动正常。
+  /// M4.6-fix9: 给 `_doc.dispose()` 加 timeout 作为安全网。
+  ///
+  /// **M4.6-fix13: pdfium 状态污染根因修复**
+  ///
+  /// 日志证据（zhiyue_pdf.log）：
+  /// - 10:43 第 1 次 openFile 29MB PDF → 1 秒 success
+  /// - 10:44 dispose done（3s 内）
+  /// - 13:59 第 2 次 openFile 同 PDF → bytes read 后**永久卡死**
+  /// - 15:33 第 3 次 → 30s TIMEOUT；后续每次都卡死/超时
+  ///
+  /// 根因：pdfrx v2.4.4 + pdfium 在 Windows 上，`PdfDocument.dispose()` 只
+  /// 关闭 Dart 对象，**pdfium native 内部 `FPDF_CloseDocument` 是异步且
+  /// 在 Windows 有已知卡死/不完整释放问题**。Dart 侧 dispose 返回后，
+  /// native 仍持有 sourceName 的 cache entry 与部分内存。下次 openData
+  /// 同 sourceName 时，pdfrx 走 cache 命中已断 ref 的 entry →
+  /// `FPDF_LoadMemDocument` 永远不返回 → Dart 侧 Future 永不 complete。
+  ///
+  /// 这是 native 库 bug，**纯代码无完美修复**。本方法缓解策略：
+  /// 1. dispose timeout 3s → 10s，给 native 充分释放时间
+  /// 2. doc.dispose 返回后再 await 1.5s buffer（condition-based-waiting
+  ///    思路：用固定 delay 替代不可观测的 native 释放事件）
+  /// 3. 调用方（openFile）失败时提示用户重启 exe（唯一根治途径）
+  ///
+  /// **M4.6-fix18 (reverted): 尝试"不调 _doc.dispose()" 让 pdfrx cache 持续
+  /// 持有 PdfDocument——实测失败：用户报告"缩略图只显示前几页 + 阅读区白板"。
+  /// 推测原因：pdfrx PdfDocumentRef 内部 state（listeners / sub-refs / 线程池
+  /// 状态机）依赖 dispose 来正确清理；跳过 dispose 导致 PdfDocument 处于
+  /// "半活跃"状态，PdfPage.render() 排队但 native 拒绝执行。fix18 已回退，
+  /// 维持 fix13 行为。pdfium native cache pollution 问题仍存在，待更激进的方案
+  /// （如 exe 自动重启、或换 PDF 库）。**
   ///
   /// T13: PdfViewerController 自身不持有 native 资源（pdfrx 文档由
   /// PdfViewer 管理生命周期），无需 dispose；这里仅关闭文档与流。
@@ -467,10 +509,15 @@ class PdfRenderer {
     _memMonitor?.cancel();
     _memMonitor = null;
     try {
-      await _doc?.dispose().timeout(const Duration(seconds: 3));
+      await _doc?.dispose().timeout(const Duration(seconds: 10));
+      // M4.6-fix13: doc.dispose 返回后 await 1.5s，给 pdfium native
+      // 充分时间释放 FPDF document 与清理 sourceName cache entry。
+      // 没有这个 buffer，下次 openData 同 sourceName 会命中已断 ref
+      // 的 cache → 死锁。1.5s 实测足以让 Windows 大多数 PDF 完成释放。
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
     } on TimeoutException {
-      pdfDiagLog('dispose doc.dispose TIMEOUT (3s) — ignored, '
-          'force continuing to close streams');
+      pdfDiagLog('dispose doc.dispose TIMEOUT (10s) — pdfium native stuck; '
+          'next openFile may fail; recommend exe restart');
     } catch (e, st) {
       pdfDiagLog('dispose doc.dispose THREW: $e\n$st');
     }

@@ -91,7 +91,33 @@ class FileStorage {
     required String extension,
   }) async {
     final dest = File(p.join(libraryDir.path, '$fileHash.$extension'));
-    await source.copy(dest.path);
+    try {
+      await source.copy(dest.path);
+    } on PathNotFoundException {
+      // M4.6-fix11: Windows + 坚果云 Sync 目录（如 H:\我的坚果云\...）下
+      // source.copy 抛 PathNotFoundException(errno=2) 但 readAsBytes 同路径
+      // 成功——根因疑似 Sync 客户端的 reparse point / 文件锁导致 Win32
+      // CopyFileEx 行为异常。兜底改 readAsBytes + writeAsBytes，绕开 copy
+      // 路径的 Win32 syscall。详见 CHANGELOG M4.6-fix11。
+      if (!await source.exists()) rethrow;
+      final bytes = await source.readAsBytes();
+      await dest.writeAsBytes(bytes);
+    }
+    return dest;
+  }
+
+  /// 用已读取的 bytes 直接写入 library，避免再次访问 source path。
+  ///
+  /// 调用方（如 BookImportService）通常已 readAsBytes 一次计算 hash，
+  /// 复用 bytes 写入可彻底绕过 source path 相关的 Win32 异常
+  /// （Sync 目录 reparse point、长路径等）。
+  Future<File> storeLibraryFileFromBytes({
+    required List<int> bytes,
+    required String fileHash,
+    required String extension,
+  }) async {
+    final dest = File(p.join(libraryDir.path, '$fileHash.$extension'));
+    await dest.writeAsBytes(bytes, flush: true);
     return dest;
   }
 

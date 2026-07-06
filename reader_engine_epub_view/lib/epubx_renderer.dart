@@ -35,10 +35,12 @@ import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
 import 'cfi_codec.dart';
+import 'epub_image_inliner.dart';
 import 'html_chapter_source.dart';
 import 'html_highlight_injector.dart';
 import 'html_slicer.dart';
 import 'paginator.dart';
+import 'rendered_html_measurer.dart';
 import 'src/chapter_end_event.dart';
 import 'typography_css.dart';
 import 'typography_style_injector.dart';
@@ -75,6 +77,11 @@ class EpubxRenderer implements EpubRenderer {
   final Paginator _paginator = Paginator();
 
   EpubBook? _book;
+
+  /// M4.6-fix14: EPUB 图片资源 inliner，由 [openFile] / [bookForTesting]
+  /// 在 _book 赋值时同步构建。EPUB 路径专用（MD/TXT 路径走 openChapters，
+  /// 不构造 inliner）。null 表示无图片资源或非 EPUB 路径。
+  EpubImageInliner? _imageInliner;
   int _currentChapterIndex = 0;
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
   PaginationMode _paginationMode = PaginationMode.paged;
@@ -153,6 +160,16 @@ class EpubxRenderer implements EpubRenderer {
   /// Cached page breaks for the current chapter in paged mode.
   /// Reset to null on chapter change / book switch / pagination mode change.
   List<PageBreak>? _cachedBreaks;
+
+  /// M4.6-fix16: 当前章节每段实际渲染高度（由 [RenderedHtmlMeasurer] 测出）。
+  /// null 表示尚未测量或已失效。LayoutBuilder 重跑时若 key 不匹配则重新测量。
+  /// 重测量期间旧值不可用（drift），故清空而非渐进更新。
+  List<double>? _measuredHeights;
+
+  /// M4.6-fix16: 上次测量时的参数指纹（html + viewport + typography + margin）。
+  /// LayoutBuilder 重跑时与当前参数比较：匹配则复用 [_measuredHeights]，
+  /// 不匹配则触发重测量。避免窗口 resize / 排版变更后用 stale heights 算 breaks。
+  _MeasurementKey? _measurementKey;
 
   /// M2.8/B2 (Bug #6 cross-chapter back-paging): 章首左翻换上一章时，应停
   /// 在上一章**末页**而不是首页（与 Kindle / 微信读书等标准阅读器一致）。
@@ -457,6 +474,7 @@ class EpubxRenderer implements EpubRenderer {
     _cachedBreaks = null;
     _pendingJumpToLastPage = false;
     _book = book;
+    _imageInliner = book == null ? null : EpubImageInliner(book);
     // M4.5: 与 openFile 同步填充 _chapters，让走 bookForTesting 的测试也覆盖
     // 格式无关数据源路径（渲染逻辑只读 _chapters）。
     _chapters = book == null
@@ -464,7 +482,10 @@ class EpubxRenderer implements EpubRenderer {
         : _flattenChapters(book.Chapters ?? const [])
             .map((c) => HtmlChapterSource(
                   title: c.Title ?? '',
-                  html: c.HtmlContent ?? '',
+                  html: _imageInliner!.inline(
+                    c.HtmlContent ?? '',
+                    chapterContentFileName: c.ContentFileName,
+                  ),
                 ))
             .toList();
     _currentChapterIndex = 0;
@@ -510,13 +531,20 @@ class EpubxRenderer implements EpubRenderer {
       _cachedBreaks = null;
       _pendingJumpToLastPage = false;
       _book = book;
+      // M4.6-fix14: 构建 EPUB 图片资源映射，用于章节 HTML 中 <img src> 内联。
+      // 见 [EpubImageInliner] —— 用户报告"EPUB 看不到任何插图"，根因是 fwfh
+      // 不知道怎么解析 EPUB 内部相对路径，把 src 内联成 data URI 让 fwfh 直接解码。
+      _imageInliner = EpubImageInliner(book);
       // M4.5: 同步填充格式无关数据源（扁平化 epubx 章节 → HtmlChapterSource），
       // 让渲染/分页/高亮/TOC 走统一路径。EPUB 路径 toc getter 仍读 _book 以
       // 保留嵌套 SubChapters 树（flatChapters 只展平、不丢层级信息给 TOC）。
       _chapters = _flattenChapters(book.Chapters ?? const [])
           .map((c) => HtmlChapterSource(
                 title: c.Title ?? '',
-                html: c.HtmlContent ?? '',
+                html: _imageInliner!.inline(
+                  c.HtmlContent ?? '',
+                  chapterContentFileName: c.ContentFileName,
+                ),
               ))
           .toList();
       _currentChapterIndex = 0;
@@ -1010,19 +1038,31 @@ class EpubxRenderer implements EpubRenderer {
 
   /// scroll 模式：单章 SingleChildScrollView + 富文本 HtmlWidget。
   Widget _buildScroll(TextStyle style, Color fg, String html, double margin) {
-    return SingleChildScrollView(
-      controller: _scrollController,
-      child: Padding(
-        padding: EdgeInsets.all(margin),
-        child: HtmlWidget(
-          html,
-          textStyle: style.copyWith(color: fg),
-          // M3e/Q1: 段落统一 margin（fwfh 支持 margin，见 style_margin.dart）。
-          // 首行缩进由 TypographyStyleInjector 在 HTML 层用 em-space 注入
-          // （fwfh 不支持 text-indent，详见 injector 文档）。
-          customStylesBuilder: _paragraphMarginBuilder,
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // M4.6-fix15: scroll 模式图片 max-height 限制为视高度 70%。
+        // scroll 模式无分页（图片撑开滚动），但超大图（如折页地图）仍可能
+        // 占满整屏不利阅读。70% 留 30% 给上下文文字。
+        final maxH = constraints.maxHeight.isFinite
+            ? constraints.maxHeight * 0.7
+            : 600.0 * 0.7;
+        return SingleChildScrollView(
+          controller: _scrollController,
+          child: Padding(
+            padding: EdgeInsets.all(margin),
+            child: HtmlWidget(
+              html,
+              textStyle: style.copyWith(color: fg),
+              // M3e/Q1: 段落统一 margin（fwfh 支持 margin，见 style_margin.dart）。
+              // 首行缩进由 TypographyStyleInjector 在 HTML 层用 em-space 注入
+              // （fwfh 不支持 text-indent，详见 injector 文档）。
+              // M4.6-fix15: img max-height 防止单图占满视口（closure 捕获 maxH）。
+              customStylesBuilder: (element) =>
+                  _elementStyles(element, maxH),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1030,11 +1070,23 @@ class EpubxRenderer implements EpubRenderer {
   /// `<style>` 块）。fwfh 的 `customStylesBuilder` 返回的 Map 作为内联样式应用，
   /// margin 是 fwfh 支持的属性（`internal/ops/style_margin.dart`）。
   /// 首行缩进不在此处理（fwfh 不支持 text-indent），由 injector 的 em-space 完成。
-  Map<String, String>? _paragraphMarginBuilder(dom.Element element) {
-    if (element.localName != 'p') return null;
-    return const <String, String>{
-      'margin': '0 0 0.5em 0',
-    };
+  ///
+  /// M4.6-fix15: 同时处理 `<img>` 的 max-height。`maxImgHeightPx` 由调用方
+  /// 在 LayoutBuilder 内根据视高度算出后传入（scroll=70%, paged=60%）。
+  /// fwfh 支持 max-height + height: auto（保持宽高比缩放），让大图自动缩小
+  /// 不撑爆视口。返回 null 让 fwfh 走默认分支（保留原行为）。
+  Map<String, String>? _elementStyles(dom.Element element, double maxImgHeightPx) {
+    final tag = element.localName;
+    if (tag == 'p') {
+      return const <String, String>{'margin': '0 0 0.5em 0'};
+    }
+    if (tag == 'img') {
+      return <String, String>{
+        'max-height': '${maxImgHeightPx.round()}px',
+        'height': 'auto',
+      };
+    }
+    return null;
   }
 
   /// paged 模式：Paginator 把章节切成多页，PageView 左右翻页。
@@ -1067,21 +1119,63 @@ class EpubxRenderer implements EpubRenderer {
             constraints.maxHeight.isFinite ? constraints.maxHeight : 600.0;
         final measureWidth =
             _dualPageMode ? (rawWidth - gutterPx) / 2.0 : rawWidth;
-        final viewport = Size(measureWidth, rawHeight);
-        final result = _paginator.paginateWithText(
-          chapterHtml: html,
+        // M4.6-fix16: 不再为双页模式减 4 行容差。fix14 那个容差是为吸收
+        // TextPainter/HtmlWidget drift，现在改用 RenderedHtmlMeasurer 实测高度
+        // （drift 归零），measureHeight = rawHeight 即可。paginator 内部还有
+        // 0.3 行 safetyMargin 防御 fwfh 跨次 layout 微漂移（<2px），足够。
+        final measureHeight = rawHeight;
+        final viewport = Size(measureWidth, measureHeight);
+        final measurementKey = _MeasurementKey(
+          html: html,
           viewport: viewport,
           typography: _typography,
-          // M2.8/B1: 把 margin 传给 Paginator，让它在测量时扣除上下/左右
-          // padding，使分页边界与实际渲染区域一致（修复 Bug #8 文字溢出）。
           marginPx: margin,
         );
+        // M4.6-fix16+fix17: 单阶段渲染——PageView 始终用某种 breaks 渲染，
+        // measurer 同时挂（Offstage 不可见）算实测高度。修复两个问题：
+        //
+        // 1. fix16 漏注入缩进 → 测量高度偏低 → 溢出。fix17 在 measurer 内
+        //    调 TypographyStyleInjector.inject 修复。
+        // 2. fix16 两阶段（cache miss 时只渲染 measurer）→ 测试访问 PageController
+        //    时 PageView 还没建好 → "PageController.page cannot be accessed
+        //    before a PageView is built"。fix17 改单阶段：始终渲染 PageView
+        //    （cache miss 用估算 breaks，cache hit 用实测 breaks），同时挂
+        //    offstage measurer。生产 UX：进入新章节首帧可能略微 repaginate
+        //    （measurer 完成后 breaks 切换），但无空白帧；测试：PageView 始终
+        //    可访问。
+        final needsMeasure =
+            _measurementKey != measurementKey || _measuredHeights == null;
+        final lineHeight = style.fontSize! * (style.height ?? 1.0);
+        final ({String plainText, List<PageBreak> breaks}) result;
+        if (needsMeasure) {
+          // 暂用 TextPainter 估算（旧路径）让 PageView 先有内容可渲染。
+          // 估算有累积误差（高估内容密度 → 每页塞过多），但 measurer 在同帧
+          // offstage 跑，下一帧切换到实测 breaks，误差窗口 < 32ms（2 帧）。
+          result = _paginator.paginateWithText(
+            chapterHtml: html,
+            viewport: viewport,
+            typography: _typography,
+            marginPx: margin,
+          );
+        } else {
+          result = _paginator.paginateFromActualHeights(
+            chapterHtml: html,
+            viewport: viewport,
+            marginPx: margin,
+            lineHeight: lineHeight,
+            paragraphHeights: _measuredHeights!,
+          );
+        }
         final plain = result.plainText;
         final breaks = result.breaks;
         _cachedBreaks = breaks;
         // M2.8/B2: 新章节分页已算出，若 previousPage 章首换章 arm 了末页
-        // 定位，此刻应用（LayoutBuilder 重跑的同一帧，PageView 尚未渲染）。
-        _maybeApplyPendingLastPageJump();
+        // 定位，应用之。fix17 单阶段：放到 post-frame callback，等 PageView
+        // 完全 mount 后再 jumpToPage（build 阶段直接 jump 会被 Stack 子树
+        // reconciliation 覆盖，旧测试"previousPage 章首跳末页"挂了）。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _maybeApplyPendingLastPageJump();
+        });
         // M2.8/B3: 预先把章节全局高亮按页面分组，避免 itemBuilder 每帧
         // 对所有高亮做 localize（highlights 数量通常很小，但仍省一次拷贝）。
         //
@@ -1186,12 +1280,17 @@ class EpubxRenderer implements EpubRenderer {
               pageHtml,
               textStyle: style.copyWith(color: fg),
               // M3e/Q1: 段落统一 margin（fwfh 支持 margin）。缩进走 injector。
-              customStylesBuilder: _paragraphMarginBuilder,
+              // M4.6-fix15: img max-height 限制为视高度 60%，防止单图占满整页
+              // （closure 捕获 rawHeight × 0.6）。paged 模式视高比 scroll 紧
+              // （60% vs 70%）—— 一页 60% 视高 ≈ 15 行文字高度，留 40% 给
+              // 图片上下文文字。
+              customStylesBuilder: (element) =>
+                  _elementStyles(element, rawHeight * 0.6),
             ),
           );
         }
 
-        return PageView.builder(
+        final pageView = PageView.builder(
           controller: _pageController,
           itemCount: itemCount,
           // M2.9 (页码实时更新): 翻页时除了章末检测，还要 emit 当前位置，
@@ -1246,6 +1345,44 @@ class EpubxRenderer implements EpubRenderer {
               ),
             );
           },
+        );
+        // M4.6-fix17: 单阶段渲染——cache miss 时同时挂 PageView（用估算 breaks）
+        // 和 offstage measurer。measurer 完成后 onMeasured → emit Ready →
+        // 下一帧 cache hit 用实测 breaks 重新渲染 PageView。
+        //
+        // 用 Stack + Positioned.fill 让 PageView 填满 LayoutBuilder 给的
+        // 空间；measurer 自带 Offstage，在 Stack 里占 0×0，不影响布局。
+        // 缓存命中时直接返回 PageView，零开销。
+        if (!needsMeasure) {
+          return pageView;
+        }
+        return Stack(
+          children: <Widget>[
+            Positioned.fill(child: pageView),
+            // M4.6-fix17: measurer 包在 Positioned 里（位置无所谓，Offstage 自身
+            // 占 0×0），让 Stack 只看 Positioned 子树——Stack size 完全由
+            // LayoutBuilder 父约束决定，PageView 的 Positioned.fill 才能正确撑满。
+            // 之前 measurer 作为非 Positioned 子树（Offstage size=constraints.smallest）
+            // 让 Stack 的 size 计算被它干扰（非 Positioned 子树参与 Stack 自身 size
+            // 计算），可能导致 PageView 拿不到足够空间 → 不渲染 RichText。
+            Positioned(
+              left: 0,
+              top: 0,
+              child: RenderedHtmlMeasurer(
+                chapterHtml: html,
+                width: measureWidth - 2 * margin,
+                textStyle: style.copyWith(color: fg),
+                imageMaxHeight: measureHeight * 0.6,
+                indentEm: _typography.paragraphIndentEm,
+                indentEnabled: _typography.paragraphIndentEnabled,
+                onMeasured: (heights) {
+                  _measurementKey = measurementKey;
+                  _measuredHeights = heights;
+                  _stateController.add(const ReaderEngineReady());
+                },
+              ),
+            ),
+          ],
         );
       },
     );
@@ -1309,6 +1446,13 @@ class _PageVerticalAligner extends StatelessWidget {
     // 对齐后所有页首行都在同一 y 坐标，像真书版心。满页时内容近乎填满可用区
     // （Q8 后 safetyMargin 仅 0.3 行，余量小），末页顶部对齐（Q2）。
     // 溢出兜底：OverflowBox 让 child 超 usableH 时不抛 assertion。
+    //
+    // M4.6-fix13: 回退 fix12 的 ClipRect。fix12 用 ClipRect 防止"底部超出
+    // 阅读区域"，但实际效果是 Paginator 已分配的内容超出 slot 时被**裁掉**，
+    // 用户报"下半空白 + 中间丢一大段"——内容永久丢失，比"溢出可见"严重得多。
+    // 原设计（OverflowBox 不裁）是有意为之：超 slot 部分画到 SizedBox 外被
+    // 进度条等遮，但完整渲染，用户翻页/调字号后能看到。fix13 配合 _buildPaged
+    // 中 measureHeight 减 2.5 行的保守测量，最大限度减少溢出概率。
     final vMargin = verticalMargin.isNaN ? horizontalMargin : verticalMargin;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1348,6 +1492,9 @@ class _DualSpreadAligner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // M4.6-fix13: 回退 fix12 的 ClipRect（同 _PageVerticalAligner）。
+    // ClipRect 会裁掉 Paginator 已分配但 HtmlWidget 渲染超 slot 的内容，
+    // 导致"丢一大段内容"。原 OverflowBox 不裁是有意为之。
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 600.0;
@@ -1366,5 +1513,32 @@ class _DualSpreadAligner extends StatelessWidget {
       },
     );
   }
+}
+
+/// M4.6-fix16: 测量缓存指纹——保证 [_measuredHeights] 与"上次测量时的参数"
+/// 对齐，参数变化（章节切换 / 排版变更 / 窗口 resize）自动触发重测量。
+class _MeasurementKey {
+  const _MeasurementKey({
+    required this.html,
+    required this.viewport,
+    required this.typography,
+    required this.marginPx,
+  });
+
+  final String html;
+  final Size viewport;
+  final TypographySettings typography;
+  final double marginPx;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _MeasurementKey &&
+      html == other.html &&
+      viewport == other.viewport &&
+      typography == other.typography &&
+      marginPx == other.marginPx;
+
+  @override
+  int get hashCode => Object.hash(html, viewport, typography, marginPx);
 }
 

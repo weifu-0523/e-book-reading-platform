@@ -245,16 +245,32 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   }
 
   Future<void> _importBook() async {
+    debugPrint('[import] _importBook: picker opening');
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['epub', 'pdf', 'md', 'markdown', 'txt'],
     );
-    if (result == null || result.files.single.path == null) return;
+    if (result == null) {
+      debugPrint('[import] picker returned null (user canceled?)');
+      return;
+    }
+    if (result.files.single.path == null) {
+      debugPrint(
+          '[import] picker returned file with null path: ${result.files.single}');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('文件路径无效（path 为空）')),
+      );
+      return;
+    }
     final path = result.files.single.path!;
+    debugPrint('[import] picked path=$path');
     final importService = await ref.read(bookImportServiceProvider.future);
     if (!mounted) return;
     try {
       final importResult = await importService.importFile(File(path));
+      debugPrint(
+          '[import] importFile done: isNew=${importResult.isNew}, id=${importResult.book.id}, format=${importResult.book.format}');
       if (!mounted) return;
       // Kick off background AI preprocessing for new books. Existing
       // duplicates are skipped so we don't redo completed work.
@@ -271,11 +287,21 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               : '已在书库中：${importResult.book.title}'),
         ),
       );
-    } on ArgumentError {
+    } on ArgumentError catch (e, st) {
       // 检测不到 PDF/EPUB magic bytes（可能文件损坏或扩展名被人为篡改）。
+      debugPrint('[import] ArgumentError: $e\n$st');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('暂不支持该文件格式')),
+      );
+    } catch (e, st) {
+      // M4.6 instrument: 之前用户报告"TXT/MD 选完无反应"，原代码只 catch
+      // ArgumentError，其他异常被静默吞掉。加宽 catch 捕获所有异常并打印
+      // stack，下次复现时可通过 debugPrint 输出定位根因。
+      debugPrint('[import] unexpected error: $e\n$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导入失败：$e')),
       );
     }
   }

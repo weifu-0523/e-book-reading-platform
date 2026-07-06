@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -61,6 +62,13 @@ void main(List<String> args) async {
       defaultTargetPlatform == TargetPlatform.macOS ||
       defaultTargetPlatform == TargetPlatform.linux) {
     await windowManager.ensureInitialized();
+    // M4.6-fix14: 拦截窗口关闭，强制 exit(0) 防止 pdfium native 死锁
+    // 阻塞进程退出（用户报告"关闭程序后后台进程残留"）。setPreventClose(true)
+    // 让 onWindowClose 拦截关闭事件，[PdfRenderer.dispose] 即使 native 卡死，
+    // [WindowListener.onWindowClose] 内调 [exit] 直接终止 Dart isolate，
+    // OS 清理所有 native 资源（包括 pdfium 死锁的 FPDF_CloseDocument 线程）。
+    await windowManager.setPreventClose(true);
+    _WindowCloseHandler();
   }
 
   unawaited(pdfrxFlutterInitialize()); // M4: pdfrx 引擎初始化
@@ -110,6 +118,35 @@ void main(List<String> args) async {
     debugPrint('ZhiYue uncaught async error: $error');
     debugPrint(stack.toString());
   }));
+}
+
+/// M4.6-fix14: 窗口关闭拦截器，强制 exit(0) 防止 pdfium native 死锁残留进程。
+///
+/// 用户报告："关闭程序后，后台依旧会因 PDF 的问题保留进程"。根因：当本会话
+/// 打开过 PDF 后，[PdfRenderer.dispose] 内 `PdfDocument.dispose()` 在 Windows
+/// 上有 ~1-10s 概率卡死（pdfrx v2.4.4 + pdfium 已知问题），即使 Dart 侧用
+/// timeout 兜底，进程退出时 native 线程仍持有 mutex / file handle，OS 等其
+/// 释放 → 进程残留（僵尸进程），影响下次启动 + 系统资源占用 → 退到书架看
+/// 其他书卡顿。
+///
+/// 修复：[window_manager.setPreventClose(true)] + 本 listener 拦截关闭事件，
+/// 直接调 [exit] (dart:io) 强制终止 Dart isolate。OS 立即回收所有资源
+/// （包括死锁的 pdfium 线程），不等待 native cleanup。
+///
+/// 注：[exit] 是同步强制终止，会跳过 [dispose] / [StatefulWidget.dispose]
+/// 等正常清理。但桌面 app 关闭时正常清理本来就不可靠（用户可能直接 kill），
+/// 数据持久化已由 SQLite/outbox 在每次写操作时立即落盘，关窗时无未保存状态。
+class _WindowCloseHandler with WindowListener {
+  _WindowCloseHandler() {
+    windowManager.addListener(this);
+  }
+
+  @override
+  void onWindowClose() async {
+    // 强制 exit(0)：不等待 PdfRenderer.dispose（可能卡死）。
+    // exit 是同步操作，调用后 Dart isolate 立即终止。
+    exit(0);
+  }
 }
 
 /// M4.6-fix10/R6: 全局错误占位 widget（替换 Flutter 默认红屏）。
