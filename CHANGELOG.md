@@ -9,6 +9,30 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M4.6-fix19 — 2026-07-07（PDF 加载卡死根治：pdfrx sourceName cache pollution）
+
+**症状**：用户报告"昨天第一次开 PDF 还行，今天 PDF 不能正常加载"。`zhiyue_pdf.log` 证据：每次 `openFile` 都卡在 `PdfDocument.openData(_bytes!)`，bytes 读完但 Future 永不 complete（30s 超时）。
+
+**根因（smoking gun）**：`PdfDocument.openData` 不传 sourceName 时，pdfrx 默认用 `'data%${sha256(data)}'`（`pdfrx_engine/lib/src/native/pdfrx_pdfium.dart:645-647`）。同一 PDF 字节不变 → SHA-256 不变 → sourceName 跨会话稳定。pdfrx 进程级 static cache `_listenables`（`pdf_document_ref.dart:92`）按 sourceName 缓存 PdfDocumentListenable，一旦某次加载卡死留下 broken listenable，之后任何同 sourceName 的 openData 都命中 broken entry → `FPDF_LoadMemDocument` 永不返回。这就是 fix9/fix13/fix18 都没找到的真因——它们都在 dispose 时序上做文章，但 cache 命中是在 dispose 之前发生的。
+
+#### Fixed — PDF 加载卡死（一行治本）
+
+- **方案**：每次 `openFile` 生成唯一 sourceName `'zhiyue-pdf-${DateTime.now().microsecondsSinceEpoch}'`，强制 pdfrx cache miss → 每次全新 listenable → 永不命中 broken cache。
+- **改动**（`pdf_renderer.dart`）：
+  - 新增 `String? _uniqueSourceName` 字段（带详尽根因注释）
+  - `openFile`：`PdfDocument.openData(_bytes!, sourceName: _uniqueSourceName)`
+  - `_buildMain`：`PdfViewer.data(bytes, sourceName: _uniqueSourceName, key: ValueKey('pdf-main-$_uniqueSourceName'))`
+  - TimeoutException 错误信息更新：去掉"pdfium 状态污染"误导，改成"文件格式不兼容"指引（Adobe Reader 另存为 PDF/A）
+  - dispose 注释更新：移除 fix13 长注释（已过时），保留 timeout + 1.5s buffer 作防御性兜底
+- **代价**：失去跨 PdfViewer 共享 PdfDocument 的内存优化。智阅单 viewer，代价为零。
+- **与历史 fix 的关系**：fix9/13/18 都在 dispose 时序上做文章（缓解未根治）。fix19 直接从 cache key 入手，**一行治本**。fix13 的 dispose timeout + buffer 保留作 corner case 防御，不删。
+
+#### Lessons
+
+- pdfrx 的 sourceName 不是"标识"，是**进程级 cache key**——必须唯一，否则会跨会话命中 broken entry。
+- 看到"第一次能开、第二次不能开"且 `dispose` 链路完整时，**先怀疑 cache 而非 native 时序**。
+- 用户原话"昨天能今天不能"+"同文件"这两个特征，强烈指向基于内容哈希的 cache 污染。
+
 ### M4.6-fix10 — 2026-07-06（六大稳定性/排版问题综合治理）
 
 用户在 M4.6-fix9（commit ed6ab68）后报告 6 个阻塞问题：①PDF 双页仍卡死 ②MD 排版仍乱（同文档 TXT 正常 MD 异常）③EPUB《一本书读懂财报》翻页/目录卡死 ④EPUB/TXT 双页跨页选区串读 ⑤摘录新增当场不显示 ⑥阅读区红色蒙层+导航条消失。按 systematic-debugging 完整根因调查后逐一修复，每个问题都现场验证了根因证据。

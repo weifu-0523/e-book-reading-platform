@@ -71,3 +71,7 @@ release/
 app/android/app/keys/*.jks
 app/android/app/keys/*.keystore
 app/android/app/keys/keystore.properties
+
+# M4.6-fix19: 本地构建辅助脚本（含硬编码本地路径 C:\zhiyue / C:\flutter）
+# 仅本机使用，不入库。
+run_build.bat
