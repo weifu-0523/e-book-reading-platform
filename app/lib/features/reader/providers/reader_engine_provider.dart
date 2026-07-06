@@ -17,7 +17,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/book_ref.dart' as re;
 import 'package:reader_engine/engine/reader_engine.dart';
-import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
@@ -76,21 +75,15 @@ final readerEngineForBookProvider =
     );
     return engine;
   }
-  // M4.5/M4.6-fix9: Markdown / TXT routing — 复用 EPUB 的 HTML 渲染管道。
-  // 加载器把文件转成 List<HtmlChapterSource>（md→html / txt→<p>），喂给
-  // ConcreteEpubReaderEngine.openChapters。
+  // M4.5/M4.6-fix10: Markdown / TXT routing — 复用 EPUB 的 HTML 渲染管道。
+  // 加载器把文件转成 List<HtmlChapterSource>（md→每行<p> / txt→每行<p>），
+  // 喂给 ConcreteEpubReaderEngine.openChapters。
   //
-  // **M4.6-fix9 关键分流**：MD 强制走 scroll 模式，TXT 保持 paged 模式。
-  // 原因：EPUB 的 Paginator 按 plain text 偏移机械分页，对 MD 的 <br>
-  // 强制换行（_forceVisibleLineBreaks）测量不准，导致段落被切到页中、
-  // 内容溢出页面边界（fix2/3/5/7 共 4 次失败）。MD 走 scroll 后用
-  // 既有 _buildScroll（SingleChildScrollView + HtmlWidget），段落完整、
-  // 不溢出。TXT 段落是纯文本流，paged 模式正常工作（用户确认 TXT 正常），
-  // 保持 paged + 双页。
-  //
-  // MD 不做双页（scroll 模式无双页）：fwfh 不支持 CSS column-count，
-  // 双栏需自定义 RenderObject，收益低。MD 内容通常是技术文档/笔记，
-  // 单列滚动阅读可接受（GitHub/VS Code 预览均单列）。
+  // **M4.6-fix10/A2: MD 与 TXT 完全同构**——两者都走默认 paged + 双页。
+  // MD 的 _markdownBodyToHtml 改为仿 TextBookLoader：每行独立成 `<p>`，
+  // 无 `<br>`，Paginator 按 plain text 偏移测高精准（与 TXT 一致）。
+  // 历史：fix2/3/5/7/9 共 5 次失败的根因是 markdown 标准库产 `<br>`，
+  // fix10 用"仿 TXT 每行成 `<p>`"彻底绕开。详见 markdown_book_loader.dart。
   if (bookRef.format == re.BookFormat.markdown) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
     final lastProgress = await progressRepo.get(bookId);
@@ -101,8 +94,9 @@ final readerEngineForBookProvider =
       title: book.title,
       lastLocator: lastProgress?.locator,
     );
-    // M4.6-fix9: MD 强制 scroll，跳过 Paginator。
-    await engine.setPaginationMode(PaginationMode.scroll);
+    // M4.6-fix10: 删除 setPaginationMode(scroll)——MD 走默认 paged + 双页，
+    // 与 TXT 完全一致。章节切分（# / ##）仍由 MarkdownBookLoader 处理，
+    // TOC 自动生成，章节跳转/高亮全部继承。
     return engine;
   }
   if (bookRef.format == re.BookFormat.text) {

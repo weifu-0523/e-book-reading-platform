@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 ZhiYue Open Source contributors.
 //
-// Markdown / TXT 加载器单元测试（M4.5）。
+// Markdown / TXT 加载器单元测试（M4.5 / M4.6-fix10 重写）。
+//
+// M4.6-fix10/A2: MD body 不再用 markdown 标准库，改为仿 TXT 每行成 `<p>`。
+// 测试断言从旧 `<ul>/<li>/<pre>/<br>` 改为 `<p>每行</p>` 同构产出。
 
 import 'dart:convert';
 
@@ -42,7 +45,7 @@ void main() {
       );
       expect(chapters.length, 1);
       expect(chapters[0].title, '章');
-      // ### 在 body 内，转 html 后是 <h3>
+      // ### 在 body 内，fix10 每行成 <p>（标题文本保留，但 <p> 包裹）
       expect(chapters[0].html, contains('小节'));
     });
 
@@ -64,6 +67,7 @@ void main() {
       );
       expect(chapters.length, 1);
       expect(chapters[0].title, '我的笔记');
+      // fix10: 行内 **粗体** 保留为 <strong>
       expect(chapters[0].html, contains('<strong>粗体</strong>'));
     });
 
@@ -75,79 +79,122 @@ void main() {
       expect(chapters.length, 1);
       expect(chapters[0].title, 'empty');
     });
+  });
 
-    test('MD body 转 HTML（标题/列表/粗体）', () {
+  group('M4.6-fix10/A2: MD body 仿 TXT 每行成 <p>', () {
+    test('连续多行（无空行）→ 每行独立 <p>（与 TXT 同构）', () {
+      // 根因证据：4 行连续输入应产出 4 个独立 <p>，而非 1 个 <p> + 3 个 <br>
       final chapters = MarkdownBookLoader.parseMarkdown(
-        '# T\n\n- item1\n- item2\n\n**bold**',
+        '第一点内容\n第二点内容\n第三点内容\n第四点内容',
+        fallbackTitle: 't',
+      );
+      final html = chapters.first.html;
+      // 期望：4 个独立 <p>，0 个 <br>
+      expect('<p>'.allMatches(html).length, 4,
+          reason: '4 行应产出 4 个 <p>，实际：$html');
+      expect(html.contains('<br'), isFalse,
+          reason: 'fix10 不应再产出 <br>，实际：$html');
+      expect(html, contains('第一点内容'));
+      expect(html, contains('第四点内容'));
+    });
+
+    test('空行分隔的两段：两个独立 <p>', () {
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '# T\n\n第一段\n\n第二段',
         fallbackTitle: 'b',
       );
-      expect(chapters[0].html, contains('<ul>'));
-      expect(chapters[0].html, contains('<li>item1</li>'));
-      expect(chapters[0].html, contains('<strong>bold</strong>'));
+      final html = chapters.first.html;
+      expect(html, contains('<p>第一段</p>'));
+      expect(html, contains('<p>第二段</p>'));
     });
 
-    test('M4.6-fix7 段落内换行保留可见 <br>（源码即所见）', () {
-      // 历史：fix4 误以为应回归 CommonMark 标准（段内合并），但用户反馈
-      // 「一段原格式有很多行，现在都压到一行里面了」。fix7 恢复每行可见：
-      // 段内每个非空非结构行强制 hard break → <br>。
-      final chapters = MarkdownBookLoader.parseMarkdown(
-        '第一行\n第二行\n第三行',
-        fallbackTitle: 't',
-      );
-      expect(chapters.length, 1);
-      // fix7: 段内三行应有 <br> 分隔（每行可见）
-      expect(chapters[0].html, contains('<br'));
-      expect(chapters[0].html, contains('第一行'));
-      expect(chapters[0].html, contains('第二行'));
-      expect(chapters[0].html, contains('第三行'));
-    });
-
-    test('M4.6 (#5) 代码块内换行不被破坏', () {
-      // 预处理跳过围栏代码块，行尾不补空格，代码块内格式保持原样。
-      final chapters = MarkdownBookLoader.parseMarkdown(
-        '```\nline1\nline2\n```',
-        fallbackTitle: 't',
-      );
-      expect(chapters[0].html, contains('<pre>'));
-      expect(chapters[0].html, contains('line1'));
-      expect(chapters[0].html, contains('line2'));
-    });
-
-    test('M4.6-fix (#3) 列表项不被补两空格（无多余 <br>）', () {
-      // 列表项行是结构行，不应补两空格，否则 <li> 内多挂 <br> 破坏排版。
+    test('列表项每行成 <p>（前缀保留，无 <ul>/<li>）', () {
+      // fix10: 列表项不再转 <ul>/<li>，原样成 <p>- item</p>
       final chapters = MarkdownBookLoader.parseMarkdown(
         '- 列表项1\n- 列表项2\n- 列表项3',
         fallbackTitle: 't',
       );
       final html = chapters[0].html;
-      expect(html, contains('<li>列表项1</li>'));
-      expect(html, contains('<li>列表项2</li>'));
-      expect(html, contains('<li>列表项3</li>'));
-      // 列表项内不应有 <br>（补两空格的副作用）
-      expect(html, isNot(contains('<br')));
+      expect(html, contains('<p>- 列表项1</p>'));
+      expect(html, contains('<p>- 列表项2</p>'));
+      expect(html, contains('<p>- 列表项3</p>'));
+      expect(html, isNot(contains('<ul>')));
+      expect(html, isNot(contains('<li>')));
     });
 
-    test('M4.6-fix (#3) 引用块行不被补两空格', () {
+    test('粗体 **text** → <strong>', () {
       final chapters = MarkdownBookLoader.parseMarkdown(
-        '> 引用第一行\n> 引用第二行',
+        '这是**粗体**文字',
+        fallbackTitle: 't',
+      );
+      expect(chapters[0].html, contains('<strong>粗体</strong>'));
+    });
+
+    test('斜体 *text* → <em>', () {
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '这是*斜体*文字',
+        fallbackTitle: 't',
+      );
+      expect(chapters[0].html, contains('<em>斜体</em>'));
+    });
+
+    test('行内代码 `code` → <code>', () {
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '这是 `inline code` 示例',
+        fallbackTitle: 't',
+      );
+      expect(chapters[0].html, contains('<code>inline code</code>'));
+    });
+
+    test('链接 [text](url) → 剥离 URL 保留 text', () {
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        '参见 [文档](https://example.com) 了解',
         fallbackTitle: 't',
       );
       final html = chapters[0].html;
-      expect(html, contains('引用第一行'));
-      expect(html, contains('引用第二行'));
-      // 引用块末尾不应有 <br>
-      expect(html, isNot(contains('<br')));
+      expect(html, contains('文档'));
+      expect(html, isNot(contains('https://example.com')));
+      expect(html, isNot(contains('<a ')));
     });
 
-    test('M4.6-fix7 普通段落 soft break 转 <br>（每行可见）', () {
-      // fix7: 段内每行都该有可见换行（用户期望「源码即所见」）。
+    test('围栏代码块内不做行内替换（原样转义）', () {
       final chapters = MarkdownBookLoader.parseMarkdown(
-        '段落第一行\n段落第二行',
+        '```\n**not bold**\n`not code`\n```',
         fallbackTitle: 't',
       );
-      expect(chapters[0].html, contains('<br'));
-      expect(chapters[0].html, contains('段落第一行'));
-      expect(chapters[0].html, contains('段落第二行'));
+      final html = chapters[0].html;
+      // 围栏内 ** 和 ` 原样保留，不转 <strong>/<code>
+      expect(html, isNot(contains('<strong>not bold</strong>')));
+      expect(html, isNot(contains('<code>not code</code>')));
+      // 但内容文本保留（转义后）
+      expect(html, contains('not bold'));
+    });
+
+    test('HTML 实体转义（< > &）', () {
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        'a < b > c & d',
+        fallbackTitle: 't',
+      );
+      final html = chapters[0].html;
+      expect(html, contains('a &lt; b &gt; c &amp; d'));
+      expect(html, isNot(contains('< b')));
+    });
+
+    test('用户报告场景：一段五行原文 → 5 个独立 <p>', () {
+      // 模拟用户报告：「每点是一行」（TXT 正常，MD 异常合并）
+      final md = '# 章节\n\n这是第一句话。\n这是第二句话。\n这是第三句话。\n'
+          '这是第四句话。\n这是第五句话。';
+      final chapters = MarkdownBookLoader.parseMarkdown(
+        md,
+        fallbackTitle: 'book',
+      );
+      final html = chapters.first.html;
+      // fix10: 5 行应产出 5 个 <p>，0 个 <br>（与 TXT 同构）
+      final pCount = '<p>'.allMatches(html).length;
+      expect(pCount, greaterThanOrEqualTo(5),
+          reason: '5 行应至少 5 个 <p>，实际 $pCount：$html');
+      expect(html.contains('<br'), isFalse,
+          reason: 'fix10 不应有 <br>，实际：$html');
     });
   });
 
@@ -180,7 +227,6 @@ void main() {
     });
 
     test('段内换行 → 每行独立 <p>', () {
-      // M4.6 (#6): 启发式分段，每行独立成 <p>（杜绝超长单段导致 Paginator 退化）。
       final html = TextBookLoader.parseText('第一行\n第二行');
       expect(html, '<p>第一行</p><p>第二行</p>');
     });
@@ -207,8 +253,6 @@ void main() {
     });
 
     test('M4.6 (#6) 连续行无空行每行独立 <p>', () {
-      // 中文小说常见格式：连续行无空行，每行一段。
-      // 旧实现按 \n\s*\n 切会整篇当一个 <p>，导致 Paginator 退化。
       final html = TextBookLoader.parseText('第一回\n第二回\n第三回');
       expect(html, '<p>第一回</p><p>第二回</p><p>第三回</p>');
     });
@@ -230,7 +274,6 @@ void main() {
         utf8.encode('第一章\n回来'),
         title: 't',
       );
-      // M4.6: 每行独立 <p>
       expect(chapters[0].html, contains('<p>第一章</p>'));
       expect(chapters[0].html, contains('<p>回来</p>'));
     });

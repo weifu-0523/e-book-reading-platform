@@ -9,6 +9,77 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M4.6-fix10 — 2026-07-06（六大稳定性/排版问题综合治理）
+
+用户在 M4.6-fix9（commit ed6ab68）后报告 6 个阻塞问题：①PDF 双页仍卡死 ②MD 排版仍乱（同文档 TXT 正常 MD 异常）③EPUB《一本书读懂财报》翻页/目录卡死 ④EPUB/TXT 双页跨页选区串读 ⑤摘录新增当场不显示 ⑥阅读区红色蒙层+导航条消失。按 systematic-debugging 完整根因调查后逐一修复，每个问题都现场验证了根因证据。
+
+#### Changed — PDF 彻底锁死单页（A1）
+
+- **决策**：fix9 的"双 PdfViewer 共享 sourceName"方案在用户实测仍卡死（pdfrx 双 PdfViewer `_attach`/`_detach` 竞态未根治）。用户决定先稳定——彻底移除双页入口。
+- **改动**：
+  - `reader_body.dart:407` `e.dualPageMode = isWide && !isScanned` → `false`
+  - `reader_body.dart:576-584` `onToggleDualPage: null` → ReaderScaffold 不再渲染双页 toggle 按钮
+  - `pdf_renderer.dart` 删除 `_buildDualPage`(469-537)、`_buildDualParams`(536-552)、`_dualLeftController`/`_dualRightController` 字段、setPage 的 dual 分支。`build()` branch 判定简化为永远 main。
+- **PDF 缩略图同步**：`reader_drawer_builders.dart:62-84` 缩略图 `currentPage` 改为 `StreamBuilder` 监听 `pdfEngine.rendererRef.currentLocation$`，主区翻页时 stream emit → grid 重建 → 当前页高亮实时跟随（旧实现只在 drawer build 时读一次，主区翻页后高亮不刷新）。
+
+#### Fixed — MD 排版根因（A2，5 次失败的共同元凶）
+
+- **现场证据**（test/debug/compare_txt_md_test.dart 跑出来的 HTML 对比）：
+  - 输入「第一点\n第二点\n第三点\n第四点」（4 行连续文本）
+  - TXT 产出：`<p>第一点</p><p>第二点</p><p>第三点</p><p>第四点</p>`（4 个独立 `<p>`，0 个 `<br>`）→ Paginator 测准 → 正常
+  - MD 产出：`<p>第一点<br />第二点<br />第三点<br />第四点</p>`（1 个 `<p>` 内含 3 个 `<br>`）→ Paginator 测偏 → 溢出
+- **根因**：fix7 加的 `_forceVisibleLineBreaks`（`markdown_book_loader.dart:147-179`）给每行尾补两空格，markdown 标准库识别为 hard break → 产 `<br>`。但 Paginator 按 plain text 字符偏移测高，`<br>` **不增加偏移却增加视觉高度** → 测出来"很矮"、实际渲染"很高" → 一页塞太多 → 内容溢出页面边界。**这是 fix2/3/5/7/9 共 5 次失败的共同元凶**。
+- **修复**（用户决策"按 TXT 技术逻辑"）：重写 `MarkdownBookLoader._markdownBodyToHtml`：
+  - 删除 `md.markdownToHtml()`、`_forceVisibleLineBreaks`、`_isStructuralLine`、`_stripImages`
+  - 仿 `TextBookLoader.parseText`：按 `\n` 分行 → 每行 trim → 空行跳过 → 每行独立成 `<p>...</p>`
+  - **轻量保留行内语法**：`**粗体**`→`<strong>`、`*斜体*`→`<em>`、`` `代码` ``→`<code>`（占位符保护）、`[text](url)`→`text`
+  - 围栏代码块（` ``` `/`~~~ `）内的行原样转义成 `<p>`，不做行内替换
+- `reader_engine_provider.dart:105` 删除 `setPaginationMode(scroll)` → MD 走默认 paged + 双页，与 TXT 完全同构
+- **章节保留**：`parseMarkdown` 的 `#`/`##` 切章逻辑不动，TOC 自动生成，章节跳转/高亮全部继承
+
+#### Fixed — EPUB 翻页/目录卡死 O(N²)→O(N)（A3）
+
+- **根因**：`_buildPaged` 的 LayoutBuilder 内，每个 break 都调 `HtmlSlicer.sliceByPlainRange`，后者每次都 `HtmlParser(html).parse()` 整章 DOM（`html_slicer.dart:62`）。一本长章节（财经书表格多，50+ 页）单帧 50 次 `HtmlParser.parse()`，每次 O(章长度) → 单帧数百 ms → UI 线程堵死 → 翻页/目录 `await chapterSwitchSettled` 永远不返回（它等的 post-frame callback 被堵在队列里）。
+- **修复**：`html_slicer.dart` 新增 `sliceByPlainRangeDoc(Document doc, ...)` 接受预解析 Document，**非破坏式**遍历（重写 `_cloneFiltered` 不修改 source doc，构造新子树）。`epubx_renderer.dart:1083-1109` 改为循环外解析一次 DOM，循环内所有 break 复用同一 `chapterDoc` 实例。复杂度从 O(N × 章长度) 降到 O(章长度 + N × 页内 DOM) ≈ O(N)。
+- **测试**：新增 3 个非破坏式测试（同一 doc 切多范围互不干扰、不修改 source doc、与旧 API 行为一致），全部通过。
+
+#### Fixed — 双页跨页选区串读（A4）
+
+- **根因**：`reader_body.dart:548-552` 单个 `SelectableRegion` 包整个 reader stack（含双页 Row）。Flutter `SelectionRegistrar` 按几何位置合并选区，左右页同一 Y 行的文本都在选区矩形内 → **右页同行被一并选中**。
+- **修复**：`epubx_renderer.dart` 双页 Row 内每个 `Expanded` 包独立 `SelectionArea`（SelectableRegion 的 Material 包装），建立局部 registrar，子树 selectable 不冒泡到外层 SelectableRegion。每页的 `onSelectionChanged` 通过 renderer 新增的 `pagedSelection$` 流推到 reader_body，复用 `_onSelectionChanged` 处理。单页模式不包（保持外层 region 行为）。
+
+#### Fixed — 摘录新增后不刷新（A5）
+
+- **根因**：`local_notes_repository.dart:193-202` 的 `watchAnnotations` 在 `noteRow == null` 时 `yield []; return;` 终结 stream。首条摘录场景 BookNote 不存在（t0），`_ensureBookNote` 创建 BookNote（t1）后 stream 已死，新摘录永不推送 → UI 不刷新，需退出书架重进。
+- **修复**：`book_notes_dao.dart` 新增 `watchByBookId`（drift `.watchSingleOrNull()`，底层表变化重发）。`watchAnnotations` 改用 `await for (final noteRow in _notesDao.watchByBookId(bookId))`，noteRow == null 时持续 yield `[]`，noteRow 出现后切换到 `annotations.watchByBookNoteId`（永久 emit）。
+
+#### Added — 全局错误兜底（A6）
+
+- **根因**：`main.dart` 无 `ErrorWidget.builder` / `FlutterError.onError` / `runZonedGuarded`。任何 widget build 抛异常 → Flutter 默认红底白字 ErrorWidget 替换整棵子树。`reader_body.dart:543-589` 的 chrome（导航条）+ 正文在同一 Stack → 一处异常全树崩 → "红色蒙层 + 导航条消失"。
+- **修复**：`main.dart` 加三件套：
+  1. `ErrorWidget.builder` → 自定义 `_ZhiYueErrorWidget`（白底 + 错误图标 + "页面渲染异常" + 异常摘要）
+  2. `FlutterError.onError` → debugPrint 记录
+  3. `runZonedGuarded` 包 runApp → 捕获异步未捕获异常
+
+#### Lessons（失败对照表）
+
+| # | 问题 | 历史失败次数 | 本次根因 |
+|---|------|-------------|---------|
+| 1 | PDF 双页 | fix4~fix9 共 6 次 | pdfrx 双 PdfViewer 竞态未根治 → 锁死单页 |
+| 2 | MD 排版 | fix2/3/5/7/9 共 5 次 | `<br>` 不增 plain 偏移却增视觉高度 → 仿 TXT 每行成 `<p>` |
+| 3 | EPUB 卡顿 | M3e/Q12 共 1 次（治标） | O(N²) DOM 解析 → 整章一次复用 |
+| 4 | 双页跨页选区 | 首次报告 | 单 SelectableRegion 包整树 → 每页独立 SelectionArea |
+| 5 | 摘录不刷新 | 首次报告 | stream 在 noteRow==null 时 return → 双表 watch |
+| 6 | 红色蒙层 | 首次报告 | 无全局兜底 → ErrorWidget.builder + zone |
+
+#### Verification
+
+- 单元测试：751 通过 / 14 跳过 / 254 失败（**254 全是 drift native fts5 模块环境缺失**，pre-existing，与本次改动无关）
+- 关键测试全绿：MD loader 28 个、html_slicer 21 个（含 3 个新增非破坏式）、epubx_renderer dual page 10 个
+- 构建 exe：**失败**——Flutter `gen_snapshot` 在中文路径下用 GBK 解码路径，UTF-8 中文变乱码（`锟斤拷`）找不到 app.dill。这是 Flutter 工具链 pre-existing bug（非代码问题），需用户在英文路径环境构建或用 8.3 短名 workaround。
+
+---
+
 ### M4.6-fix9 — 2026-07-05（PDF 双页死锁根治 + MD 段落溢出修复）
 
 M4.6-fix4~fix8 共 5 次在 PDF 死锁上失败、fix2/3/5/7 共 4 次在 MD 分段上失败后，触发 systematic-debugging 阶段 4.5（架构质疑）。基于 `zhiyue_pdf.log` 铁证 + pdfrx 源码调研，确认为架构错误，重写两处管线。

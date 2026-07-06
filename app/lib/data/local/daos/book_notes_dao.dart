@@ -34,6 +34,19 @@ class BookNotesDao extends DatabaseAccessor<AppDatabase>
         .getSingleOrNull();
   }
 
+  /// M4.6-fix10/A5: 反应式订阅——按 bookId 观察 BookNote 行的出现/变化。
+  ///
+  /// 用于 [LocalNotesRepository.watchAnnotations] 在 BookNote 尚不存在时
+  /// 等待其出现（首条摘录场景：addHighlight → _ensureBookNote 创建 BookNote
+  /// → 此 stream emit → 切换到 annotations watch）。
+  ///
+  /// drift `.watch()` 在底层表任何变化时重发查询结果，所以 BookNote 从无到有
+  /// 会触发 emit（null → 非 null）。
+  Stream<BookNote?> watchByBookId(String bookId) {
+    return (select(bookNotes)..where((t) => t.bookId.equals(bookId)))
+        .watchSingleOrNull();
+  }
+
   Future<int> insertOne({
     required String id,
     required String bookId,

@@ -19,8 +19,10 @@ import 'dart:io';
 
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
@@ -954,10 +956,25 @@ class EpubxRenderer implements EpubRenderer {
   @override
   Stream<HighlightSelection> get selection$ => _selectionController.stream;
 
+  /// M4.6-fix10/A4: 双页模式下每页独立 SelectionArea 的选区流。
+  /// 单页模式走外层 SelectableRegion.onSelectionChanged，不经过此流。
+  /// reader_body 的 EPUB paged 路径在双页模式下监听此流驱动 toolbar/摘录。
+  final StreamController<SelectedContent> _pagedSelectionController =
+      StreamController<SelectedContent>.broadcast();
+  Stream<SelectedContent> get pagedSelection$ => _pagedSelectionController.stream;
+
   /// 由上层 SelectableRegion 在用户松开选区时调用。
   /// EpubxRenderer 自身不订阅 Flutter selection API（reader_engine 包不依赖 Flutter selection 框架）。
   void emitSelection(HighlightSelection selection) {
     _selectionController.add(selection);
+  }
+
+  /// M4.6-fix10/A4: 双页模式下每页 SelectionArea.onSelectionChanged 回调。
+  /// 推到 _pagedSelectionController 供 reader_body 监听。
+  void emitPagedSelection(SelectedContent? content) {
+    if (content != null && content.plainText.isNotEmpty) {
+      _pagedSelectionController.add(content);
+    }
   }
 
   @override
@@ -1080,13 +1097,25 @@ class EpubxRenderer implements EpubRenderer {
         // 不再每页重新解析整章 HTML（旧实现每页 3 次整章 HtmlParser.parse，
         // 是翻页卡顿的主因）。缩进/高亮变化时因分页缓存 key 含 typography、
         // LayoutBuilder 会因 rebuild 重跑本段，故预计算天然随设置更新。
+        //
+        // M4.6-fix10/A3 (O(N²)→O(N) 根治): 整章 DOM 在循环外解析**一次**，
+        // 所有 break 复用同一 [Document] 实例。HtmlSlicer.sliceByPlainRangeDoc
+        // 非破坏式遍历——不修改 source doc，每次构造新子树。
+        // 旧实现每个 break 都调 HtmlSlicer.sliceByPlainRange(html, ...)，
+        // 内部 `HtmlParser(html).parse()` 是 O(章长度)，N 页 → O(N×章长度)。
+        // 长章节（财经书表格多，50+ 页）单帧数百 ms，UI 线程堵死 → 翻页/目录卡。
+        // 修复后复杂度 O(章长度 + N×页内 DOM) ≈ O(N)，单帧 < 16ms。
+        final chapterDoc = html_parser.HtmlParser(html).parse();
+        for (final el in chapterDoc.querySelectorAll('script, style')) {
+          el.remove();
+        }
         final pageHtmls = List<String>.filled(breaks.length, '');
         for (var i = 0; i < breaks.length; i++) {
           final pb = breaks[i];
           final start = pb.startOffset.clamp(0, plain.length);
           final end = pb.endOffset.clamp(start, plain.length);
-          var pageHtml = HtmlSlicer.sliceByPlainRange(
-            html,
+          var pageHtml = HtmlSlicer.sliceByPlainRangeDoc(
+            chapterDoc,
             start,
             end,
             plainLength: plain.length,
@@ -1192,11 +1221,25 @@ class EpubxRenderer implements EpubRenderer {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: buildSinglePage(leftIdx, verticalMargin: 0)),
+                  // M4.6-fix10/A4: 左右页各自包独立 SelectionArea，建立局部
+                  // SelectionRegistrar，杜绝跨页选区串读（左页选 N 行不再
+                  // 同时选中右页同行）。SelectionArea 是 SelectableRegion 的
+                  // Material 包装，子树 selectable 注册到局部 registrar，不
+                  // 冒泡到外层 SelectableRegion。选区通过 emitPagedSelection
+                  // 推到 pagedSelection$ 流，reader_body 监听驱动 toolbar。
+                  Expanded(
+                    child: SelectionArea(
+                      onSelectionChanged: emitPagedSelection,
+                      child: buildSinglePage(leftIdx, verticalMargin: 0),
+                    ),
+                  ),
                   SizedBox(width: gutterPx),
                   Expanded(
                     child: hasRight
-                        ? buildSinglePage(rightIdx, verticalMargin: 0)
+                        ? SelectionArea(
+                            onSelectionChanged: emitPagedSelection,
+                            child: buildSinglePage(rightIdx, verticalMargin: 0),
+                          )
                         : const SizedBox.shrink(),
                   ),
                 ],
@@ -1217,6 +1260,7 @@ class EpubxRenderer implements EpubRenderer {
     await _stateController.close();
     await _locationController.close();
     await _selectionController.close();
+    await _pagedSelectionController.close();
   }
 }
 

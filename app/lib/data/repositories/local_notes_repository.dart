@@ -191,14 +191,27 @@ class LocalNotesRepository implements NotesRepository {
 
   @override
   Stream<List<Annotation>> watchAnnotations(String bookId) async* {
-    final noteRow = await _notesDao.getByBookId(bookId);
-    if (noteRow == null) {
-      yield const <Annotation>[];
+    // M4.6-fix10/A5: 修复首条摘录场景 stream 提前终结的 bug。
+    //
+    // 旧实现：`await getByBookId(bookId)` 是一次性 Future，noteRow == null 时
+    // `yield []; return;` 终结 stream。但 BookNotes 表后续新增（_ensureBookNote）
+    // 不会触发重发 → stream 已死 → 首条摘录后 UI 不刷新（要退出书架重进才看到）。
+    //
+    // 新实现：用 bookNotesDao.watchByBookId（drift .watch()，底层表变化重发）
+    // 等待 BookNote 出现，出现后切换到 annotations watchByBookNoteId。
+    // BookNote 已存在时：第一次 emit 立即切到 annotations watch（行为同旧实现）。
+    // BookNote 不存在时：持续 emit []，直到 BookNote 被创建（首条摘录）后切换。
+    await for (final noteRow in _notesDao.watchByBookId(bookId)) {
+      if (noteRow == null) {
+        yield const <Annotation>[];
+        continue;
+      }
+      // BookNote 已存在：永久切换到 annotations watch（drift .watch() 持续 emit）
+      yield* _annotationsDao
+          .watchByBookNoteId(noteRow.id)
+          .map((rows) => rows.map(_toAnnotationModel).toList());
       return;
     }
-    yield* _annotationsDao
-        .watchByBookNoteId(noteRow.id)
-        .map((rows) => rows.map(_toAnnotationModel).toList());
   }
 
   @override

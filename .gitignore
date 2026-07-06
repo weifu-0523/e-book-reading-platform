@@ -3,6 +3,9 @@
 
 # === Flutter / Dart ===
 build/
+
+# Golden test failure artifacts (regenerated on test failure)
+app/test/goldens/failures/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies

@@ -144,8 +144,11 @@ class PdfRenderer {
   /// fix9：相同 sourceName → 共享 → 只一份 PdfDocument → dispose 干净。
   /// 翻页用 ValueKey 含 leftIdx 触发 widget 重建到新 initialPageNumber，
   /// 配合 NeverScrollableScrollPhysics 锁定到各自页，避免滚动错位。
-  final PdfViewerController _dualLeftController = PdfViewerController();
-  final PdfViewerController _dualRightController = PdfViewerController();
+  //
+  // M4.6-fix10/A1: 双页彻底移除。fix9 共享 sourceName 方案在用户实测仍卡死，
+  // 按用户决策锁死单页。以下字段（_dualLeftController/_dualRightController）
+  // 与方法（_buildDualPage/_buildDualParams）已删除。dualPageMode setter 保留
+  // 但永远不接受 true（reader_body 强制传 false）。
 
   /// 缓存最近一次成功读取的 PDF 字节，供 [PdfViewer.data] 复用。
   ///
@@ -289,21 +292,11 @@ class PdfRenderer {
       pdfDiagLog('setPage($page) no-op: doc null');
       return;
     }
+    // M4.6-fix10/A1: dualPageMode 永远为 false（reader_body 强制锁死单页）。
+    // 此分支仅为防御性兜底——若未来误把 dualPageMode 设回 true，记录警告并降级单页。
     if (dualPageMode) {
-      int target = page;
-      if (target.isOdd) target -= 1;
-      if (target < 0) target = 0;
-      if (target >= doc.pages.length) target = doc.pages.length - 1;
-      pdfDiagLog('setPage($page) dual → target=$target, '
-          'leftPn=${target + 1} rightPn=${target + 2}');
-      _currentPage = target;
-      _emitLocation();
-      // M4.6-fix9: 不调 goToPage（旧 _goToDualPageSpread 已删）。
-      // 双页翻页通过 ValueKey('pdf-dual-L-$target') 变化触发 widget
-      // 重建到新 initialPageNumber（target+1 / target+2）。
-      // PdfViewer.data 用相同 sourceName → 共享 PdfDocument → 不重复加载。
-      _setState(const ReaderEngineReady());
-      return;
+      pdfDiagLog('setPage($page) WARNING: dualPageMode unexpectedly true, '
+          'falling back to single page (M4.6-fix10 locked single page)');
     }
     if (page < 0 || page >= doc.pages.length) {
       pdfDiagLog('setPage($page) out of range 0..${doc.pages.length - 1}');
@@ -387,14 +380,12 @@ class PdfRenderer {
       return const SizedBox.shrink();
     }
     final showBanner = _scannedCache == true;
-    final branch = (dualPageMode && !showBanner) ? 'dual' : 'main';
-    pdfDiagLog('build #$_buildCount: branch=$branch, page=${_currentPage + 1}/'
-        '${doc.pages.length}, dualMode=$dualPageMode, scanned=$showBanner, '
-        'mainControllerReady=${_mainController?.isReady ?? false}');
+    // M4.6-fix10/A1: dualPageMode 永远 false，只走 main 分支。
+    pdfDiagLog('build #$_buildCount: branch=main (dual locked off), '
+        'page=${_currentPage + 1}/${doc.pages.length}, '
+        'scanned=$showBanner, mainControllerReady=${_mainController?.isReady ?? false}');
     return RepaintBoundary(
-      child: dualPageMode && !showBanner
-          ? _buildDualPage(doc, bytes, showBanner: false)
-          : _buildMain(doc, bytes, showBanner: showBanner),
+      child: _buildMain(doc, bytes, showBanner: showBanner),
     );
   }
 
@@ -457,96 +448,6 @@ class PdfRenderer {
           // menu 触发时必有 anchor）；这里仅极端边界 fallback 用 1。
           fallbackPage: params.a?.page.pageNumber ?? 1,
         );
-      },
-    );
-  }
-
-  /// T13: 双页布局渲染。左侧永远是偶数（0-based）索引页，右侧是奇数索引页。
-  /// 末页若为孤页（索引等于 pageCount - 1 且为偶数），右侧用 SizedBox.shrink。
-  ///
-  /// 不挂 `buildContextMenu` —— 双页模式下选区命中具体哪一页存在歧义，
-  /// 用户需要切到窄屏单页模式做高亮。Text selection 也因此被禁用。
-  Widget _buildDualPage(PdfDocument doc, Uint8List bytes,
-      {required bool showBanner}) {
-    final leftIdx = _currentPage.isEven ? _currentPage : _currentPage - 1;
-    if (leftIdx < 0) return const SizedBox.shrink();
-    final rightIdx = leftIdx + 1;
-    final hasRight = rightIdx < doc.pages.length;
-    // M4.6-fix9: 左右 PdfViewer **必须用相同 sourceName**（不加 #L/#R 后缀）。
-    //
-    // 旧实现（fix4~fix8）误以为相同 sourceName 会导致 _PdfViewerState 竞态，
-    // 加了 #L/#R 后缀 → pdfrx CanonicalizedMap 视为两份文档 → 加载两份
-    // 29MB PdfDocument → dispose 死锁（zhiyue_pdf.log 铁证：dispose start
-    // 后无 dispose done）→ 进程僵尸 → exe 二次启动失败。
-    //
-    // 实际 pdfrx 官方机制（pdf_document_ref.dart 第 18/78/92-97 行）：
-    // 相同 sourceName 的 PdfDocumentRef 共享同一个 PdfDocumentListenable，
-    // 从而共享同一份 PdfDocument。引用计数（_additionalRefs）管理 dispose。
-    // 这正是双页共享 PdfDocument 的正确做法，pdfium 只加载一次。
-    //
-    // 翻页正确性：leftIdx 永远偶数（setPage 已 snap），spread 序列
-    // (1,2) → (3,4) → (5,6)，不会出现 2-3 错位（用户担忧已排除）。
-    final sourceName = doc.sourceName;
-    pdfDiagLog('_buildDualPage: leftIdx=$leftIdx rightIdx=$rightIdx '
-        'hasRight=$hasRight currentPage=$_currentPage sourceName=$sourceName');
-    return Row(
-      children: [
-        Expanded(
-          child: PdfTheme.applyTheme(
-            theme: _typography.theme,
-            child: PdfViewer.data(
-              bytes,
-              // ValueKey 含 leftIdx：翻页时 key 变化 → PdfViewer 重建到新
-              // initialPageNumber。这是双页翻页的核心机制（不依赖 goToPage）。
-              key: ValueKey('pdf-dual-L-$leftIdx'),
-              sourceName: sourceName,
-              controller: _dualLeftController,
-              initialPageNumber: leftIdx + 1,
-              params: _buildDualParams(showBanner: showBanner, side: 'L'),
-            ),
-          ),
-        ),
-        Expanded(
-          child: hasRight
-              ? PdfTheme.applyTheme(
-                  theme: _typography.theme,
-                  child: PdfViewer.data(
-                    bytes,
-                    key: ValueKey('pdf-dual-R-$rightIdx'),
-                    sourceName: sourceName,
-                    controller: _dualRightController,
-                    initialPageNumber: rightIdx + 1,
-                    params: _buildDualParams(showBanner: showBanner, side: 'R'),
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
-      ],
-    );
-  }
-
-  /// M4.6-fix9: 双页模式两侧 PdfViewer 的共用 params。
-  ///
-  /// - **scrollPhysics: NeverScrollableScrollPhysics()** —— 锁定到
-  ///   initialPageNumber 指定的页，不允许用户在单个 viewer 内滚动（避免
-  ///   主页滚到 N+1 与副页 N+2 错位）。双页模式下翻页通过外层 ReaderScaffold
-  ///   的 tap zone / 键盘 / 拖拽触发，step=2。
-  /// - **textSelection 关闭**（双页选择有歧义，与现状一致）。
-  /// - **errorBannerBuilder** 保留诊断。
-  PdfViewerParams _buildDualParams({
-    required bool showBanner,
-    required String side,
-  }) {
-    return PdfViewerParams(
-      scrollPhysics: const NeverScrollableScrollPhysics(),
-      textSelectionParams: PdfTextSelectionParams(enabled: !showBanner),
-      errorBannerBuilder: (context, error, _, __) {
-        pdfDiagLog('dual $side errorBanner: $error');
-        return PdfErrorBanner(error: error);
-      },
-      onViewerReady: (pdfDoc, controller) {
-        pdfDiagLog('onViewerReady(dual-$side): pages=${pdfDoc.pages.length}, '
-            'ready=${controller.isReady}');
       },
     );
   }

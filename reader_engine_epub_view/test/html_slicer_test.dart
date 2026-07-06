@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:html/parser.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine_epub_view/html_slicer.dart';
 
@@ -164,6 +165,53 @@ void main() {
       expect(out, hasLength(1));
       expect(out[0].startOffset, 2);
       expect(out[0].endOffset, 8);
+    });
+  });
+
+  // M4.6-fix10/A3: 验证非破坏式 sliceByPlainRangeDoc——
+  // 对同一预解析 Document 切多个范围，互不干扰（这是 _buildPaged 性能优化
+  // 的核心保证：整章 DOM 解析一次，所有 break 复用）。
+  group('M4.6-fix10/A3 sliceByPlainRangeDoc (non-destructive)', () {
+    test('同一 doc 连续切两个范围，第二次结果不受第一次影响', () {
+      // 模拟 _buildPaged 的循环：一次 parse，多次 slice
+      const html = '<p>AAAA</p><p>BBBB</p><p>CCCC</p>';
+      final doc = HtmlParser(html).parse();
+      // 注：plain text 是 "AAAABBBBCCCC"（12 字符），不含 <p> 标签字符
+      // 第一次切 [0,4) → AAAA
+      final slice1 = HtmlSlicer.sliceByPlainRangeDoc(doc, 0, 4);
+      // 第二次切 [4,8) → BBBB
+      final slice2 = HtmlSlicer.sliceByPlainRangeDoc(doc, 4, 8);
+      // 第三次切 [8,12) → CCCC
+      final slice3 = HtmlSlicer.sliceByPlainRangeDoc(doc, 8, 12);
+
+      expect(slice1, contains('AAAA'));
+      expect(slice1, isNot(contains('BBBB')));
+      expect(slice2, contains('BBBB'));
+      expect(slice2, isNot(contains('AAAA')));
+      expect(slice2, isNot(contains('CCCC')));
+      expect(slice3, contains('CCCC'));
+      expect(slice3, isNot(contains('BBBB')));
+    });
+
+    test('sliceByPlainRangeDoc 不修改 source doc（可重复调用）', () {
+      const html = '<p>Hello world</p>';
+      final doc = HtmlParser(html).parse();
+      final original = doc.outerHtml;
+      // 切多次
+      HtmlSlicer.sliceByPlainRangeDoc(doc, 0, 5);
+      HtmlSlicer.sliceByPlainRangeDoc(doc, 6, 11);
+      HtmlSlicer.sliceByPlainRangeDoc(doc, 0, 11);
+      // source doc 应保持原样
+      expect(doc.outerHtml, original);
+    });
+
+    test('sliceByPlainRangeDoc 与 sliceByPlainRange 行为一致', () {
+      const html = '<p>前半段<b>粗体</b>后半段</p>';
+      final doc = HtmlParser(html).parse();
+      // 用两种方式切同一范围 [3, 7)，结果应一致
+      final viaString = HtmlSlicer.sliceByPlainRange(html, 3, 7);
+      final viaDoc = HtmlSlicer.sliceByPlainRangeDoc(doc, 3, 7);
+      expect(viaDoc, viaString);
     });
   });
 }

@@ -177,6 +177,19 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         _onPdfHighlight(sel);
       });
     }
+    // M4.6-fix10/A4: EPUB paged 双页模式下，每页独立 SelectionArea 的选区流。
+    // 双页模式外层 SelectableRegion 收不到子树 SelectionArea 的 onSelectionChanged
+    // （局部 registrar 隔离），所以双页选区通过 pagedSelection$ 推过来，走与
+    // 单页相同的 _onSelectionChanged 处理。单页模式不经过此流（外层 region 直推）。
+    if (engine is ConcreteEpubReaderEngine) {
+      (engine as ConcreteEpubReaderEngine)
+          .rendererRef
+          .pagedSelection$
+          .listen((content) {
+        if (!mounted) return;
+        _onSelectionChanged(content);
+      });
+    }
     // Chapter switches are now awaited via `engine.chapterSwitchSettled`
     // at call sites (see _maybeHandleInitialLocator / _onAnnotationTap).
     // No global listener required: those are the only places that need to
@@ -392,19 +405,17 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         final e = engine;
         if (e is ConcreteEpubReaderEngine &&
             e.paginationMode == PaginationMode.paged) {
-          // M4.6-fix9: 仅 EPUB 与 TXT 走此分支（paged 模式）。
-          // MD 在 reader_engine_provider 里强制走 scroll 模式（避免 Paginator
-          // 机械分页把段落切到页中），所以 MD 的 paginationMode != paged，
-          // 此 gate 自动跳过 MD → MD 无双页（单列滚动，段落完整不溢出）。
-          // TXT 保持 paged（用户确认正常），仍启用双页。
+          // M4.6-fix10/A2: EPUB / TXT / MD 三者都走 paged 模式，宽屏启用双页。
+          // MD 在 fix10 改为仿 TXT 每行成 `<p>`（无 `<br>`），Paginator 测高
+          // 精准，与 TXT/EPUB 同构，可正常双页。
           e.setDualPageMode(isWide);
         }
-        // M4.6 (#1): PDF 宽屏自动双页。扫描件 (isScanned) 仍维持单页
-        // （扫描件双页会让页面缩太小看不清）。isScanned 是同步 getter，
-        // 未解析时返回 false（保守降级单页），解析完成后下次 rebuild
-        // 自动切双页，无崩溃风险。
+        // M4.6-fix10/A1: PDF 强制单页。fix9 的"双 PdfViewer 共享 sourceName"
+        // 方案在用户实测中仍卡死（pdfrx 双 PdfViewer 竞态未根治），按用户
+        // 决策彻底锁死单页，移除宽屏自动双页 + 手动 toggle 按钮，保稳定。
+        // PDF 双页留给后续 milestone 重写（改用 PageView + PdfPage.render 自绘）。
         if (e is PdfReaderEngine) {
-          e.dualPageMode = isWide && !e.rendererRef.isScanned;
+          e.dualPageMode = false;
         }
         if (isWide) {
           return _buildWideReaderTree(ui);
@@ -571,17 +582,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               },
               // M2.6/T9: 边距像素值同时作为翻页 tap zone 宽度。
               marginPx: engine.typography.pageMargin.pixelValue,
-              // M2.6/T2 (Bug #4): PDF 双页独立 toggle。仅 PDF 引擎提供回调；
-              // EPUB 渲染层推到 v1.6。每次启动默认 false（v1.5.1 不持久化）。
-              onToggleDualPage: engine is PdfReaderEngine
-                  ? () => setState(() {
-                        final pdfEngine = engine as PdfReaderEngine;
-                        pdfEngine.dualPageMode = !pdfEngine.dualPageMode;
-                      })
-                  : null,
-              isDualPageMode: engine is PdfReaderEngine
-                  ? (engine as PdfReaderEngine).dualPageMode
-                  : false,
+              // M4.6-fix10/A1: PDF 双页 toggle 移除（彻底锁死单页）。
+              // onToggleDualPage 传 null → ReaderScaffold 不渲染按钮。
+              onToggleDualPage: null,
+              isDualPageMode: false,
               onBack: () => Navigator.of(innerContext).maybePop(),
               onOpenToc: () {
                 // Tab 切换是幂等且廉价的，无论宽窄屏都执行；

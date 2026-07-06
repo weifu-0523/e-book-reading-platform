@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' hide Locator;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
@@ -58,26 +58,47 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
     // M4.6/T5：PDF 无目录时改用缩略图 grid 导航（替代「本书无目录」空文案）。
     // 仅当 engine 是 PdfReaderEngine、TOC 为空且 doc 已打开时构造；
     // EPUB / PDF 有目录场景保持 null，沿用原 ListView 目录渲染。
+    //
+    // M4.6-fix10/A1: 缩略图 currentPage 改为反应式——用 StreamBuilder 监听
+    // PDF renderer 的 currentLocation$ stream，主区翻页时 stream emit
+    // PdfPageLocator → StreamBuilder 重建 grid → 当前页高亮实时跟随。
+    // 旧实现 currentPage 只在 drawer build 时读一次，主区翻页后高亮不刷新。
     Widget? pdfThumbnails;
     if (engine is PdfReaderEngine && toc.entries.isEmpty) {
       final pdfEngine = engine as PdfReaderEngine;
       final doc = pdfEngine.rendererRef.doc;
       if (doc != null) {
-        pdfThumbnails = PdfThumbnailGrid(
-          document: doc,
-          currentPage: pdfEngine.rendererRef.currentPage,
-          onPageSelected: (idx) async {
-            // idx 是 0-based；PdfPageLocator.page 是 1-based（pdfrx 约定）。
-            await pdfEngine.gotoLocator(PdfPageLocator(
-              page: idx + 1,
-              offsetX: 0,
-              offsetY: 0,
-            ));
-            // 对齐 onSelect 行为：跳转后关闭抽屉。PDF 无 chapterSwitchSettled
-            // 语义（setPage 同步），无需 await。
-            if (context.mounted) {
-              Scaffold.of(context).closeDrawer();
+        pdfThumbnails = StreamBuilder<Locator>(
+          stream: pdfEngine.rendererRef.currentLocation$,
+          initialData: PdfPageLocator(
+            page: pdfEngine.rendererRef.currentPage + 1,
+            offsetX: 0,
+            offsetY: 0,
+          ),
+          builder: (context, snapshot) {
+            // 从 stream event 解析当前页（0-based）
+            int current0 = pdfEngine.rendererRef.currentPage;
+            final loc = snapshot.data;
+            if (loc is PdfPageLocator) {
+              current0 = (loc.page - 1).clamp(0, doc.pages.length - 1);
             }
+            return PdfThumbnailGrid(
+              document: doc,
+              currentPage: current0,
+              onPageSelected: (idx) async {
+                // idx 是 0-based；PdfPageLocator.page 是 1-based（pdfrx 约定）。
+                await pdfEngine.gotoLocator(PdfPageLocator(
+                  page: idx + 1,
+                  offsetX: 0,
+                  offsetY: 0,
+                ));
+                // 对齐 onSelect 行为：跳转后关闭抽屉。PDF 无 chapterSwitchSettled
+                // 语义（setPage 同步），无需 await。
+                if (context.mounted) {
+                  Scaffold.of(context).closeDrawer();
+                }
+              },
+            );
           },
         );
       }

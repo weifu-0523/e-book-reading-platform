@@ -38,6 +38,12 @@ import 'package:reader_engine/rendering/highlight_range.dart';
 /// reader_engine 包）一致；与 [HtmlHighlightInjector] 用的
 /// `PlainTextUtils.htmlToPlainWithOffsets`（自定义扫描器）在常见 EPUB 上
 /// 行为一致，已在 `plain_text_utils_test.dart` 覆盖。
+///
+/// **M4.6-fix10/A3 性能优化**：新增 [sliceByPlainRangeDoc] 接受预解析的
+/// `Document`，**非破坏式**遍历——不修改 source doc，而是构造一个新的子树。
+/// 这样整章 DOM 只需解析一次（`HtmlParser(html).parse()` 是 O(章长度)），
+/// 所有 break 复用同一 doc 实例，把 `_buildPaged` LayoutBuilder 的复杂度从
+/// O(N × 整章 DOM) 降到 O(N + 整章 DOM)。详见 spec A3。
 class HtmlSlicer {
   const HtmlSlicer._();
 
@@ -47,6 +53,10 @@ class HtmlSlicer {
   /// `ReaderEngine.currentChapterPlainText` 一致。
   ///
   /// [pageStart] / [pageEnd] 越界会被 clamp 到 `[0, plainLength]`。
+  ///
+  /// **性能提示**：此方法每次调用都重新 `HtmlParser(html).parse()` 整章。
+  /// 若要对同一章节切多个页面范围（如 `_buildPaged` 的 LayoutBuilder 内
+  /// 循环），请改用 [sliceByPlainRangeDoc] 共享预解析的 Document。
   static String sliceByPlainRange(
     String html,
     int pageStart,
@@ -54,19 +64,41 @@ class HtmlSlicer {
     int? plainLength,
   }) {
     if (html.isEmpty) return '';
-    final total = plainLength ?? _measurePlainLength(html);
+    final doc = HtmlParser(html).parse();
+    return sliceByPlainRangeDoc(doc, pageStart, pageEnd, plainLength: plainLength);
+  }
+
+  /// M4.6-fix10/A3: 接受预解析的 [Document]，非破坏式裁剪到 plain 范围。
+  ///
+  /// **与 [sliceByPlainRange] 的区别**：
+  /// - 不重新 parse HTML（节省 O(章长度) 的解析时间）
+  /// - **不修改** [doc]（非破坏式），可对同一 doc 多次调用切不同范围
+  /// - 算法：DFS 只读遍历 source，命中范围的文本节点深拷贝到新 Document
+  ///
+  /// [doc] 应为已移除 `<script>`/`<style>` 的整章 DOM（本方法内部会再清理
+  /// 一次以保证幂等）。
+  static String sliceByPlainRangeDoc(
+    Document doc,
+    int pageStart,
+    int pageEnd, {
+    int? plainLength,
+  }) {
+    if (pageEnd <= pageStart) return '';
+    final total = plainLength ?? _countText(doc);
     final s = pageStart.clamp(0, total);
     final e = pageEnd.clamp(s, total);
     if (s >= e) return '';
 
-    final doc = HtmlParser(html).parse();
-    for (final el in doc.querySelectorAll('script, style')) {
-      el.remove();
-    }
-    // 游标随 DFS 前进，记录每个文本节点的 plain 起止。
+    // 非破坏式：构造新 Document，深拷贝命中范围的节点
+    final newDoc = Document();
     final cursor = _Cursor(s, e);
-    _walkAndFilter(doc, cursor);
-    return doc.outerHtml;
+    for (final child in doc.nodes) {
+      final cloned = _cloneFiltered(child, cursor);
+      if (cloned != null) {
+        newDoc.append(cloned);
+      }
+    }
+    return newDoc.outerHtml;
   }
 
   /// 把落在页面范围内的 [highlights]（plain 坐标，章节全局）转成
@@ -120,43 +152,75 @@ class HtmlSlicer {
     return n;
   }
 
-  static void _walkAndFilter(Node node, _Cursor cursor) {
-    // 深拷贝 nodes 列表，避免遍历中修改影响迭代。
-    final children = node.nodes.toList();
-    for (final child in children) {
-      if (child.nodeType == Node.TEXT_NODE) {
-        final text = child.text ?? '';
-        if (text.isEmpty) continue;
-        final nodeStart = cursor.consumed;
-        final nodeEnd = nodeStart + text.length;
-        cursor.consumed = nodeEnd;
-        if (nodeEnd <= cursor.pageStart || nodeStart >= cursor.pageEnd) {
-          // 完全在范围外：删除文本节点。
-          child.remove();
-        } else if (nodeStart >= cursor.pageStart &&
-            nodeEnd <= cursor.pageEnd) {
-          // 完全在范围内：保留原文本。
-        } else {
-          // 部分重叠：裁剪到范围内子串。
-          final localStart =
-              nodeStart < cursor.pageStart ? cursor.pageStart - nodeStart : 0;
-          final localEnd =
-              nodeEnd > cursor.pageEnd ? cursor.pageEnd - nodeStart : text.length;
-          child.text = text.substring(localStart, localEnd);
-        }
-      } else if (child.nodeType == Node.ELEMENT_NODE) {
-        _walkAndFilter(child, cursor);
-        // 递归后若该元素所有文本都被删（子节点空），且它不是自闭合/媒体元素，
-        // 删除空元素以避免产生 `<p></p>` 噪声（虽不致命，但保持输出干净）。
-        if (child.nodes.isEmpty) {
-          final tag = (child as Element).localName?.toLowerCase();
-          const keepIfEmpty = {'br', 'img', 'hr', 'input', 'meta', 'link'};
-          if (tag == null || !keepIfEmpty.contains(tag)) {
-            child.remove();
-          }
+  /// M4.6-fix10/A3: 非破坏式 DFS 克隆——只读遍历 [source]，命中
+  /// `_Cursor.pageStart..pageEnd` 范围的文本节点深拷贝到新节点。
+  ///
+  /// 返回 null 表示该子树范围内无任何文本（调用方应跳过）。
+  /// 返回的节点已裁剪文本到范围内子串，且不包含范围外的文本节点。
+  ///
+  /// 算法与旧破坏式 [_walkAndFilter] 行为一致：
+  /// - 文本节点完全在范围外 → 不克隆（返回 null 表示无贡献）
+  /// - 文本节点完全在范围内 → 深拷贝整段
+  /// - 文本节点部分重叠 → 深拷贝并裁剪到范围内子串
+  /// - 元素节点 → 递归克隆子节点；若所有子节点都 null（无文本贡献）且
+  ///   非媒体/自闭合元素，返回 null（不保留空 `<p></p>` 噪声）
+  static Node? _cloneFiltered(Node source, _Cursor cursor) {
+    if (source.nodeType == Node.TEXT_NODE) {
+      final text = source.text ?? '';
+      if (text.isEmpty) return null;
+      final nodeStart = cursor.consumed;
+      final nodeEnd = nodeStart + text.length;
+      cursor.consumed = nodeEnd;
+      if (nodeEnd <= cursor.pageStart || nodeStart >= cursor.pageEnd) {
+        // 完全在范围外：不克隆
+        return null;
+      }
+      if (nodeStart >= cursor.pageStart && nodeEnd <= cursor.pageEnd) {
+        // 完全在范围内：深拷贝整段文本
+        return Text(text);
+      }
+      // 部分重叠：克隆裁剪后的子串
+      final localStart =
+          nodeStart < cursor.pageStart ? cursor.pageStart - nodeStart : 0;
+      final localEnd = nodeEnd > cursor.pageEnd
+          ? cursor.pageEnd - nodeStart
+          : text.length;
+      return Text(text.substring(localStart, localEnd));
+    }
+    if (source.nodeType == Node.ELEMENT_NODE) {
+      final el = source as Element;
+      final tag = el.localName?.toLowerCase();
+      // 媒体/自闭合元素：保留（即使无文本贡献）
+      const keepAlways = {'br', 'img', 'hr', 'input', 'meta', 'link'};
+      final isMedia = tag != null && keepAlways.contains(tag);
+
+      // 递归克隆子节点
+      final clonedChildren = <Node>[];
+      for (final child in el.nodes.toList()) {
+        final cloned = _cloneFiltered(child, cursor);
+        if (cloned != null) {
+          clonedChildren.add(cloned);
         }
       }
+
+      if (clonedChildren.isEmpty && !isMedia) {
+        // 无文本贡献且非媒体元素：不保留（避免空 <p></p> 噪声）
+        return null;
+      }
+
+      // 构造同 tag 的新元素，挂上克隆的子节点
+      final newEl = Element.tag(el.localName ?? 'div');
+      // 复制属性（class/style 等）
+      for (final attr in el.attributes.entries) {
+        newEl.attributes[attr.key] = attr.value;
+      }
+      for (final child in clonedChildren) {
+        newEl.append(child);
+      }
+      return newEl;
     }
+    // 其他节点类型（注释、doctype 等）：保守不克隆
+    return null;
   }
 }
 

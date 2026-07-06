@@ -17,7 +17,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:markdown/markdown.dart' as md;
 import 'package:reader_engine_epub_view/html_chapter_source.dart';
 
 /// M4.5: 把 Markdown 文件转成 [HtmlChapterSource] 列表，喂给
@@ -30,8 +29,27 @@ import 'package:reader_engine_epub_view/html_chapter_source.dart';
 ///
 /// **编码**：默认 UTF-8，解码失败降级 latin1（保证不乱码、不崩溃）。
 ///
-/// **渲染**：每章 body 用 `markdown.markdownToHtml()` 转 HTML，由 fwfh 的
-/// HtmlWidget 渲染（与 EPUB 一致）。
+/// **渲染（M4.6-fix10/A2 重写）**：每章 body **不再用 markdown 标准库**，
+/// 改为仿 [TextBookLoader] 的"每行独立成 `<p>`"技术逻辑——
+///
+/// 历史反复（fix2/3/5/7/9 共 5 次失败的共同元凶）：
+/// 旧实现用 `package:markdown/markdownToHtml()` 把 body 转 HTML，fix7 加
+/// `_forceVisibleLineBreaks`（每行尾补两空格）→ markdown 标准库识别为 hard
+/// break → 产出 `<br>`。但 Paginator 按 plain text 字符偏移测高，`<br>` 不
+/// 增加偏移却增加视觉高度 → 测出来"很矮"、实际渲染"很高" → 一页塞太多 →
+/// 内容溢出页面边界、段落被切到页中。
+///
+/// 对照实验证据（test 跑出来的 HTML 对比）：
+///   输入「第一点\n第二点\n第三点\n第四点」
+///   TXT 产出：4 个独立 `<p>`（无 `<br>`）→ Paginator 测准 → 正常
+///   MD 产出 ：1 个 `<p>` 内含 3 个 `<br>` → Paginator 测偏 → 溢出
+///
+/// 修复方案（用户决策"按 TXT 技术逻辑"）：每行 trim 后独立成 `<p>`，与 TXT
+/// 完全同构。**轻量保留行内语法**：`**粗体**`→`<strong>`、`*斜体*`/`_斜体_`
+/// →`<em>`、`` `代码` ``→`<code>`、`[text](url)`→`text`（剥离链接保留文本）。
+/// 围栏代码块内的行不做行内替换（用 `inFence` 状态机识别 ` ``` `/`~~~ `）。
+/// 标题行 `#`/`##` 已在切章阶段处理，body 内不含 → 无需特殊处理。
+/// 列表项 `- `/`* `/`1. ` 原样成 `<p>`（前缀保留，视觉上仍能看出是列表）。
 class MarkdownBookLoader {
   const MarkdownBookLoader._();
 
@@ -90,136 +108,135 @@ class MarkdownBookLoader {
       final single = text.trim().isEmpty ? '' : text;
       return [HtmlChapterSource(
         title: fallbackTitle.isEmpty ? '正文' : fallbackTitle,
-        html: _markdownToHtml(single),
+        html: _markdownBodyToHtml(single),
       )];
     }
 
     return chapters
         .map((c) => HtmlChapterSource(
               title: c.title.isEmpty ? '(无标题)' : c.title,
-              html: _markdownToHtml(c.body.toString()),
+              html: _markdownBodyToHtml(c.body.toString()),
             ))
         .toList();
   }
 
-  /// M4.6-fix7: Markdown 转 HTML，保留段内每行可见换行（源码即所见）+
-  /// 移除图片语法（避免 fwfh 网络占位）。
+  /// M4.6-fix10/A2: 把 MD 每章 body 转成 HTML（仿 TXT 每行成 `<p>`）。
   ///
-  /// **用户需求**（fix7 重新理解）：MD 文档源码里的换行都应该是可见的
-  /// 视觉换行——「一段原格式有很多行」期望每行都独立显示，不是合并成
-  /// 一行。这与 CommonMark 默认（段内单换行渲染时合并为空格）相反。
+  /// 与 [TextBookLoader.parseText] 同构：
+  /// - 按 `\n` 分行 → 每行 trim → 空行跳过 → 每行独立成 `<p>...</p>`
+  /// - 不同点：MD 行内轻量保留 `**粗体**` 等语法（[_inlineMarkdownToHtml]）
+  /// - 围栏代码块（` ``` `/`~~~ `）内的行不做行内替换，原样转义
   ///
-  /// **历史反复**：
-  /// - M4.6 (#5)：加 `_preserveLineBreaks` 强制 hard break，但跳过规则
-  ///   过窄（列表/引用等结构行被误处理），排版乱。
-  /// - M4.6-fix4：误以为应回归 CommonMark 标准，删除强制 break。结果
-  ///   段内多行被合并成一行，违反用户期望。
-  /// - M4.6-fix7（本版）：保留每行可见，但**简化**预处理——所有非空、
-  ///   非结构行（标题/代码块围栏）都补两空格强制 hard break。结构行
-  ///   （列表/引用/标题/HR）的内部换行由 markdown 标准库自管，不干预。
-  ///
-  /// **关键洞察**：M4.6 (#5) 失败不是「保留换行」错了，而是跳过规则不
-  /// 完整导致结构行被破坏。fix7 简化：只对**纯文本段内行**补两空格，
-  /// 不动任何 markdown 结构语法行。
-  static String _markdownToHtml(String body) {
-    final raw = md.markdownToHtml(_forceVisibleLineBreaks(body));
-    return _stripImages(raw);
-  }
+  /// 这样产出与 TXT 同构的 `<p>...</p><p>...</p>...`，Paginator 按 plain
+  /// text 偏移测高精准，paged + 双页翻页正常。
+  static String _markdownBodyToHtml(String body) {
+    if (body.trim().isEmpty) return '<p></p>';
 
-  /// M4.6-fix7: 给段内每个非空非结构行的尾部补两空格，强制 markdown 视为
-  /// hard break → `<br>`。
-  ///
-  /// 跳过规则（这些行不补两空格，由 markdown 标准库处理）：
-  /// - 空行（段落分隔）
-  /// - 围栏代码块内的行（` ``` ` / `~~~` 包裹区域）
-  /// - 围栏代码块本身（行首 0-3 空格 + 围栏标记）
-  /// - 标题行（`#` ~ `######`）
-  /// - 缩进式代码块（行首 ≥4 空格）
-  /// - 列表项（`- ` / `* ` / `+ ` / `1. `）
-  /// - 引用块（`> `）
-  /// - HTML 块（行首 `<`）
-  /// - 水平分割线（`---` / `***` / `___`）
-  /// - 参考式链接定义（`[id]: url`）
-  /// - 已有 hard break 的行（行尾已 ≥2 空格或反斜杠）
-  ///
-  /// 普通段落正文行：补两空格 → markdown 视为 hard break → `<br>`。
-  /// 这样「一段五行」会渲染成 5 个可见行（4 个 `<br>`），符合用户期望。
-  static String _forceVisibleLineBreaks(String body) {
     final lines = body.split('\n');
+    final buf = StringBuffer();
     bool inFence = false;
     String? fenceMarker;
-    for (var i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      final trimmedRight = line.replaceFirst(RegExp(r'\s*$'), '');
-      // 围栏代码块：检测进入/退出
-      final fenceMatch =
-          RegExp(r'^\s{0,3}(```|~~~)').firstMatch(trimmedRight);
+
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue; // 空行作分隔符，跳过
+
+      // 围栏代码块检测（``` 或 ~~~，行首允许 0-3 空格已被 trim 吃掉）
+      final fenceMatch = RegExp(r'^(`{3,}|~{3,})').firstMatch(line);
       if (fenceMatch != null) {
-        final marker = fenceMatch.group(1)!;
+        final marker = fenceMatch.group(1)![0]; // '`' 或 '~'
         if (!inFence) {
           inFence = true;
           fenceMarker = marker;
+          // 围栏行本身作为 `<p>` 输出（视觉上保留代码块边界）
+          buf.write('<p>${_escapeHtml(line)}</p>');
+          continue;
         } else if (marker == fenceMarker) {
           inFence = false;
           fenceMarker = null;
+          buf.write('<p>${_escapeHtml(line)}</p>');
+          continue;
         }
-        continue; // 围栏行本身不补空格
       }
-      if (inFence) continue; // 围栏内行原样
-      if (trimmedRight.isEmpty) continue; // 空行
-      // 已有 hard break
-      if (RegExp(r' {2,}$').hasMatch(line)) continue;
-      if (trimmedRight.endsWith(r'\')) continue;
-      // 结构行不补（让 markdown 标准库处理）
-      if (_isStructuralLine(trimmedRight)) continue;
-      // 普通段落正文行：补两空格强制 hard break
-      lines[i] = '$trimmedRight  ';
+
+      if (inFence) {
+        // 围栏内：原样转义成 `<p>`，不做行内语法替换
+        buf.write('<p>${_escapeHtml(line)}</p>');
+        continue;
+      }
+
+      // 普通行：先 HTML 转义，再做行内 markdown 语法替换
+      final escaped = _escapeHtml(line);
+      final inlined = _inlineMarkdownToHtml(escaped);
+      buf.write('<p>$inlined</p>');
     }
-    return lines.join('\n');
+
+    final result = buf.toString();
+    return result.isEmpty ? '<p></p>' : result;
   }
 
-  /// M4.6-fix7: 判断是否为 markdown 结构行（不应补两空格）。
-  /// 这些行的语义由 markdown 标准库解析，补两空格会破坏它们的渲染。
-  static bool _isStructuralLine(String trimmedRight) {
-    // 标题（# ~ ######）
-    if (RegExp(r'^#{1,6}\s').hasMatch(trimmedRight)) return true;
-    // 缩进式代码块（行首 ≥4 空格）
-    if (RegExp(r'^    ').hasMatch(trimmedRight)) return true;
-    // 列表项
-    if (RegExp(r'^\s{0,3}([-*+]\s|\d+\.\s)').hasMatch(trimmedRight)) return true;
-    // 引用块
-    if (RegExp(r'^\s{0,3}>').hasMatch(trimmedRight)) return true;
-    // HTML 块
-    if (RegExp(r'^\s*<').hasMatch(trimmedRight)) return true;
-    // 水平分割线
-    if (RegExp(r'^\s{0,3}([-]{3,}|[*]{3,}|[_]{3,})\s*$')
-        .hasMatch(trimmedRight)) {
-      return true;
-    }
-    // 参考式链接定义
-    if (RegExp(r'^\[([^\]]+)\]:\s').hasMatch(trimmedRight)) return true;
-    return false;
-  }
+  /// M4.6-fix10/A2: 行内 markdown 语法 → HTML（轻量保留）。
+  ///
+  /// 输入应为**已 HTML 转义**的字符串（`<`/`>`/`&` 已转义）。
+  /// 处理顺序：先代码 span（保护内容不被后续替换），再粗体，再斜体，最后链接。
+  ///
+  /// 支持的语法：
+  /// - `` `code` `` → `<code>code</code>`（内容不做后续替换）
+  /// - `**text**` → `<strong>text</strong>`
+  /// - `*text*` 或 `_text_` → `<em>text</em>`
+  /// - `[text](url)` → `text`（剥离链接 URL，保留文本）
+  ///
+  /// 不处理：图片 `![alt](url)`（MD 文档少见；保留原样文本即可）、
+  /// 删除线 `~~text~~`、引用、标题（标题在切章阶段已处理）。
+  static String _inlineMarkdownToHtml(String s) {
+    var result = s;
 
-  /// M4.6-fix4: 移除 HTML 中所有 `<img>` 标签，保留 alt 文本作为占位。
-  ///
-  /// markdown 标准库生成的 `<img alt="xxx" src="..." />` 形式固定，
-  /// 用正则匹配 `alt="..."` 提取 alt 文本，整张图替换为 `[alt]` 纯文本。
-  /// 无 alt（`alt=""`）则替换为空串（不留下占位符干扰排版）。
-  ///
-  /// 用正则而非 html parser：app 包不直接依赖 `html` 包（仅
-  /// flutter_widget_from_html 间接引入），加直接依赖仅为移除 img 太重；
-  /// markdown 标准库的 img 输出格式稳定，正则足够。
-  static String _stripImages(String html) {
-    // 匹配 <img ... alt="xxx" ... /> 或 <img ... />（HTML5 自闭合/非自闭合均覆盖）
-    // alt 属性值用 [^"]* 匹配（不处理转义引号，markdown 生成的 alt 不含"）
-    return html.replaceAllMapped(
-      RegExp(r'<img\b[^>]*?\balt="([^"]*)"[^>]*>'),
+    // 1. 先处理 `code`（用占位符保护内容，避免被后续 * / ** 误伤）
+    final codePlaceholders = <String>[];
+    result = result.replaceAllMapped(
+      RegExp(r'`([^`]+)`'),
       (m) {
-        final alt = m.group(1) ?? '';
-        return alt.isEmpty ? '' : '[$alt]';
+        final code = m.group(1)!;
+        final placeholder = '\x00CODE${codePlaceholders.length}\x00';
+        codePlaceholders.add(code);
+        return placeholder;
       },
     );
+
+    // 2. 粗体 **text** 或 __text__
+    result = result.replaceAllMapped(
+      RegExp(r'\*\*([^*]+)\*\*|__([^_]+)__'),
+      (m) {
+        final text = m.group(1) ?? m.group(2)!;
+        return '<strong>$text</strong>';
+      },
+    );
+
+    // 3. 斜体 *text* 或 _text_（单个 * 或 _ 包裹）
+    //    注意：粗体已处理，此处 * 不会再成对出现在 ** 内
+    result = result.replaceAllMapped(
+      RegExp(r'\*([^*]+)\*|_([^_]+)_'),
+      (m) {
+        final text = m.group(1) ?? m.group(2)!;
+        return '<em>$text</em>';
+      },
+    );
+
+    // 4. 链接 [text](url) → text（剥离 URL）
+    result = result.replaceAllMapped(
+      RegExp(r'\[([^\]]+)\]\([^)]+\)'),
+      (m) => m.group(1)!,
+    );
+
+    // 5. 还原 code 占位符
+    for (var i = 0; i < codePlaceholders.length; i++) {
+      result = result.replaceAll(
+        '\x00CODE$i\x00',
+        '<code>${codePlaceholders[i]}</code>',
+      );
+    }
+
+    return result;
   }
 
   static String _decodeText(List<int> bytes) {
@@ -229,6 +246,13 @@ class MarkdownBookLoader {
       // 非 UTF-8：降级 latin1（1 字节直映，绝不抛、不乱码占位）。
       return latin1.decode(bytes);
     }
+  }
+
+  static String _escapeHtml(String s) {
+    return s
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
   }
 }
 
