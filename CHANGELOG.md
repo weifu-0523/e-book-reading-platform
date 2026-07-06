@@ -9,6 +9,53 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M4.7 — 2026-07-07（EPUB 渲染引擎切换调研：开源全景 + Neat Reader 拆解）
+
+**性质**：调研型 spec，无代码改动。作为下一轮（M4.8）EPUB 引擎切换的设计依据。
+
+**背景**：M4.6-fix20 在 fwfh 0.15.3 上烧了 7 轮（fix12→17 + Solution A/B），全部失败。根因经逐字测试锁定：measurer 单段独立渲染 81px vs 整页实际 128px，drift -47px（58% undercount）。fwfh issue #138（2020-03 至今 Open、`help wanted`）确认上游无分页能力——这是架构性缺陷，非版本 bug，升级 0.16+ 也不会解决。继续在 fwfh 上投资是沉没成本。
+
+#### Added — EPUB 引擎切换调研汇报（spec）
+
+- **新文档**：`docs/superpowers/specs/2026-07-07-m4.7-epub-engine-switch-research-design.md`（约 14k 字）
+- **覆盖范围**：
+  - **开源全景**：14 个项目按渲染引擎分 4 类（WebView+CSS columns / 原生 TextPainter / 原生排版引擎 / Flutter+Rust）
+  - **Neat Reader 拆解**：通过 Android 包名 `com.gzhi.neatreader.r2.main` 锁定底层为 **Readium R2 全家桶**（iOS 用 swift-toolkit、Android 用 kotlin-toolkit、桌面/Web 用 r2-navigator-js），分页机制是 CSS columns
+  - **方案对比**：5 个候选方案（A1 WebView+epub.js / A2 cosmos_epub 路线 / A3 升级 fwfh / A4 Rust 桥 / A5 纯自绘）
+  - **决策**：推荐 **A1（WebView + epub.js + flutter_inappwebview）** 为主，**A2（参考 cosmos_epub，TextPainter 自绘）** 为备选；明确放弃 fwfh / Rust 桥 / 纯自绘
+  - **风险与防御**：5 个风险点（桌面 WebView2 / 内存 / CFI↔Locator 互转 / A2 fallback 成本 / 富 HTML 降级）
+
+#### Key Findings（关键发现）
+
+- **工业级共识**：Neat Reader / Readium / epub.js / foliate-js / vocsy 全行业走 **CSS columns + WebView** 路线，分页精度工业级（永不切行）。这不是巧合，是浏览器排版引擎的工业级成熟度决定的。
+- **cosmos_epub 1.0.0 是 Flutter 原生路线的关键证据**：他们 2026-04 在 changelog 里明确写 *"Replaced flutter_html with native Text.rich/SelectableText.rich... Accurate Pagination: TextPainter-based page splitting with real font metrics instead of height estimation. Pages are consistent in height."* —— 这条路被验证过。
+- **fwfh 路线已死**：issue #138 中社区开发者 getBoolean 总结的死结——*"widget height can only be known after render, which is orthogonal to Flutter's layout system"*——正是我们 7 轮失败的根因。
+- **Rust 桥不解决问题**：Ferrous / velora 用 Rust 做 PDF/解码，但 EPUB 渲染仍走 Dart（因为分页是 Flutter widget 层问题）。
+
+#### Decision Summary（决策摘要）
+
+| 方案 | 推荐度 | 理由 |
+|---|---|---|
+| **A1：WebView + epub.js** | ⭐ 首选 | 工业级共识，绕过 Flutter layout 死结，自带 CFI/高亮/搜索 |
+| **A2：参考 cosmos_epub 自研** | ⭐ 备选 | A1 桌面验证失败时降级，纯 Flutter 无 WebView 依赖 |
+| A3：升级 fwfh 0.16+ | ❌ 放弃 | issue #138 证明架构性缺陷，升级无用 |
+| A4：Flutter + Rust 桥 | ❌ 放弃 | 不解决分页问题（Rust 替代不了 Flutter layout） |
+| A5：纯自绘 CustomPaint | ❌ 放弃 | 过度工程，cosmos_epub 已证明 `Text.rich` 就够 |
+
+#### Lessons
+
+- **包名是判断闭源移动应用底层框架的最强信号**：远比 UI 截图可靠。`.r2.` 后缀 + 自称 "kernel/parsing engine" + 跨平台一致性 → 锁定 Readium R2。
+- **fwfh 7 轮失败的元教训**：看到上游 issue 长期 Open + `help wanted` + 维护者明确"不知道怎么做"时，应该**早做架构切换决策**，而不是反复在同一库上尝试 workaround。systematic-debugging Phase 4.5（"3+ failures = question architecture"）应该在 fix15 失败时就触发，而不是拖到第 7 轮。
+- **调研先行 vs 直接动手**：本轮纯调研（无代码）的价值远高于上一轮直接动手 7 次失败。在架构性问题上，1 天调研 > 7 天试错。
+
+#### Next Steps（下一轮 M4.8 的 Pre-flight Checklist）
+
+- [ ] 桌面 WebView2 可用性 spike（Windows 11 + flutter_inappwebview）
+- [ ] epub.js 中文支持 spike（CJK + 字体嵌入）
+- [ ] CFI ↔ 智阅 Locator 适配层设计
+- [ ] A2 fallback 原型（cosmos_epub HtmlTextBuilder，1-2 天 timebox）
+- [ ] 迁移策略（旧代码保留/删除 + 高亮数据 migration）
+
 ### M4.6-fix19 — 2026-07-07（PDF 加载卡死根治：pdfrx sourceName cache pollution）
 
 **症状**：用户报告"昨天第一次开 PDF 还行，今天 PDF 不能正常加载"。`zhiyue_pdf.log` 证据：每次 `openFile` 都卡在 `PdfDocument.openData(_bytes!)`，bytes 读完但 Future 永不 complete（30s 超时）。
