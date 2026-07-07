@@ -43,6 +43,9 @@ import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/ai/widgets/qa_ask_dialog.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
+// M2.7/T21: AI drawer widget (chat panel) wired into narrow Scaffold.endDrawer
+// + wide Row conditional panel.
+import '../../../features/ai_chat/widgets/ai_drawer_widget.dart';
 import '../controllers/bookmark_controller.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
@@ -156,7 +159,23 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   // initialLocator 已处理标志，避免 didChangeDependencies 重复触发。
   bool _initialLocatorHandled = false;
 
+  // M2.7/T21: 宽屏右侧 AI 面板开关。窄屏通过 Scaffold.endDrawer 切换，
+  // 宽屏用此 bool 决定是否在 Row 末尾追加 SizedBox(width:380) panel。
+  // 默认 false（不占用宽屏阅读区域）；用户在 AppBar 通过 toggle 切换。
+  bool _aiPanelOpen = false;
+
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
+
+  /// M2.7/T21: 切换宽屏右侧 AI 面板的展开/收起。
+  /// 同时驱动窄屏 endDrawer 的开关（窄屏 endDrawer 由 AppBar 直接 open，
+  /// 此处仅切换宽屏 inline panel 的可见性）。
+  ///
+  /// 当前调用方：T22 会在 ReaderScaffold AppBar 注入 onToggleAiDrawer 回调
+  /// 指向此方法。在 T22 落地前暂时触发 unused_element，预期 T22 移除忽略。
+  // ignore: unused_element
+  void _toggleAiDrawer() {
+    setState(() => _aiPanelOpen = !_aiPanelOpen);
+  }
 
   @override
   void initState() {
@@ -200,6 +219,24 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   @override
   void dispose() {
     super.dispose();
+  }
+
+  /// M2.7/T21: bookId 切换时（路由层复用 ReaderBody 实例换书），
+  /// post-frame 关闭已打开的 endDrawer，避免 AI 抽屉还停留在旧书的会话上。
+  /// 现实路径里 reader_page 大概率直接重建新 ReaderBody（route extra 变化），
+  /// 此处作为防御性兜底，零回归。
+  @override
+  void didUpdateWidget(covariant ReaderBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bookId != widget.bookId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final messenger = Scaffold.maybeOf(context);
+        if (messenger != null && messenger.hasEndDrawer) {
+          messenger.closeEndDrawer();
+        }
+      });
+    }
   }
 
   @override
@@ -471,6 +508,16 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           notifier.closeTocDrawer();
         }
       },
+      // M2.7/T21: 窄屏 AI 抽屉。3-tab 容器（目录/书签/笔记）保留为左侧
+      // Scaffold.drawer，AI 抽屉挂在右侧 endDrawer。Drawer widget 默认宽度
+      // 304，AI 面板内容自适应。
+      endDrawer: Drawer(
+        child: AiDrawerWidget(
+          bookId: widget.bookId,
+          chapterIndex: _currentChapterIndex(),
+          wide: false,
+        ),
+      ),
       body: _buildReaderStack(ui),
     );
   }
@@ -552,6 +599,19 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                   ),
           ),
           Expanded(child: _buildReaderStack(ui)),
+          // M2.7/T21: 宽屏右侧 AI 面板（条件渲染）。默认收起（_aiPanelOpen=false）
+          // 不占阅读区域；用户在 AppBar 通过 _toggleAiDrawer() 展开后追加 380px
+          // 列。AiDrawerWidget 内部不强制宽度（wide:true 期望外层 SizedBox 撑定），
+          // 此处显式 SizedBox 锁 380px。
+          if (_aiPanelOpen)
+            SizedBox(
+              width: 380,
+              child: AiDrawerWidget(
+                bookId: widget.bookId,
+                chapterIndex: _currentChapterIndex(),
+                wide: true,
+              ),
+            ),
         ],
       ),
     );
@@ -579,6 +639,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               onSelectionChanged: _onSelectionChanged,
               child: ReaderScaffold(
                 content: engine.build(innerContext),
+              paginationMode: engine.paginationMode,
               title: _bookTitle(),
               // M2.8/B1: paged 模式走 nextPage（章内翻页，章末才换章），
               // scroll 模式走 nextSpine（scroll 无章内分页，tap 即换章）。
