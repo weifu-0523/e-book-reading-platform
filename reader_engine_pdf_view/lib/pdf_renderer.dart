@@ -161,6 +161,12 @@ class PdfRenderer {
   /// M4.6-fix19: 每次 [openFile] 生成**唯一**的 sourceName（含时间戳），
   /// 强制 pdfrx 内部 `_listenables` 全局 cache miss。
   ///
+  /// **M4.6-fix21 补充**：fix21 把 `openFile` 从 [PdfDocument.openData] 改到
+  /// [PdfDocument.openCustom]，但 sourceName 仍是 pdfrx cache key（两者底层
+  /// 都进 `PdfDocumentRefKey(sourceName)`），所以 fix19 的唯一性策略**完全
+  /// 保留**——见 [openFile] 的 `pdfDiagLog('openFile unique sourceName: ...')`
+  /// 日志在 fix21 后仍会出现。
+  ///
   /// **根因（PDF-1 系列的真因）**：旧实现不传 sourceName → pdfrx 用
   /// `_sourceNameFromData(data)` = `'data%${sha256(data)}'` 作 cache key
   /// （见 pdfrx_engine lib/src/native/pdfrx_pdfium.dart:645-647）。
@@ -169,14 +175,14 @@ class PdfRenderer {
   /// pdfrx `_listenables`（pdf_document_ref.dart:92）是**进程级 static
   /// CanonicalizedMap**，按 sourceName 缓存 PdfDocumentListenable。一旦某次
   /// openData 卡死（dispose 不完整 / pdfium native 异步释放未完成），
-  /// broken listenable 残留在 cache，之后任何同 sourceName 的 openData
-  /// 都命中 broken entry → FPDF_LoadMemDocument 永不返回 → 30s 超时。
+  /// broken listenable 残留在 cache，之后任何同 sourceName 的 openData 都
+  /// 命中 broken entry → FPDF_LoadMemDocument 永不返回 → 30s 超时。
   ///
   /// 这就是为何"昨天能开，今天不能开"——昨天第一次 cache 空，今天 cache
   /// 里有昨天卡死留下的 broken entry。fix18 试"不调 dispose"反而更糟
   /// （pdfrx 内部 state 半活跃），fix13 的 dispose+timeout 缓解但治标不治本。
   ///
-  /// **本修复**（一行治本）：每次 openFile 用
+  /// **本修复**（fix19 一行治本）：每次 openFile 用
   /// `'zhiyue-pdf-${DateTime.now().microsecondsSinceEpoch}'` 作 sourceName。
   /// - 每次进书 → 新 key → cache miss → 全新 listenable → pdfium 全新 FPDF doc
   /// - 退出再进 → 又是新 key → 永不命中旧 broken cache
@@ -185,6 +191,10 @@ class PdfRenderer {
   ///
   /// 代价：失去跨 PdfViewer 共享文档的内存优化。但智阅是单 PDF 单实例
   /// 阅读，不存在多 viewer 共享场景，代价为零。
+  ///
+  /// **注意**：fix19 解决的是 cache pollution；fix21 解决的是另一个独立的
+  /// `FPDF_LoadCustomDocument` 条件变量死锁（见 [openFile] dartdoc 与 spec
+  /// 2026-07-07-m4.6-fix21）。两者互补，不冲突。
   String? _uniqueSourceName;
 
   /// M4.6-fix4: 缓存的「扫描件判定」Future + 同步缓存。
@@ -248,10 +258,34 @@ class PdfRenderer {
 
   /// 打开 PDF 文件路径，更新状态机（loading → ready / error）。
   ///
-  /// 实现走「先 readAsBytes 再 [PdfDocument.openData]」路径而非
-  /// [PdfDocument.openFile]，以绕过 pdfrx 在 Windows Debug build 上的
-  /// `FPDF_LoadDocument` 兼容性问题（espresso3389/pdfrx#166）。读字节
-  /// 失败（文件不存在/权限问题）会被外层 catch 捕获并转 [ReaderEngineError]。
+  /// 实现走「先 readAsBytes 再 [PdfDocument.openCustom]」路径。
+  ///
+  /// **M4.6-fix21（本方法的当前实现）**：改用 [PdfDocument.openCustom] 并显式
+  /// 传 `maxSizeToCacheOnMemory: bytes.length`，**强制 pdfrx 走
+  /// `FPDF_LoadMemDocument`（小文件路径）**，绕开 `FPDF_LoadCustomDocument`
+  /// + 条件变量死锁路径。
+  ///
+  /// **根因（详见 spec 2026-07-07-m4.6-fix21）**：fix19 之后用 [PdfDocument.openData]
+  /// 走 pdfrx 内部 `_openData` → `openCustom`，但 `openData` 把
+  /// `maxSizeToCacheOnMemory` **硬编码为 null**（pdfrx_pdfium.dart:638）→
+  /// 默认 1MB → 任何 >1MB 的 PDF 走 `FPDF_LoadCustomDocument` + 条件变量路径。
+  /// 该路径在重复 open/close cycle 后**死锁**（espresso3389/pdfrx PR #622，
+  /// jam7 2026-03-22 提交未合并，原文 "this path deadlocks after repeated
+  /// open/close cycles"）。智阅实测 PDF 7/29/41MB 全部 >1MB，全走死锁路径，
+  /// 表现为 ~40% 间歇性卡死（fix19 的唯一 sourceName 对此无效，因为死锁在
+  /// native 条件变量层，不在 cache 层）。
+  ///
+  /// **三层防御（spec Architecture Decisions A1/A2/A3）**：
+  /// - **L1 主路径**（本方法）：openCustom + maxSizeToCacheOnMemory=bytes.length
+  ///   → pdfrx `if (fileSize <= maxSizeToCacheOnMemory)` 走 LoadMemDocument
+  /// - **L2 引擎重置**（本方法开头）：调 [PdfrxEntryFunctions.instance.stopBackgroundWorker]
+  ///   清零上一本书累积的 isolate 状态（pdfium 非线程安全，单例 isolate 重复
+  ///   用可能边缘死锁）
+  /// - **L3 进程兜底**（[dispose]）：退出书时再调一次 stopBackgroundWorker
+  ///
+  /// **大文件回退（>200MB）**：pdfium LoadMemDocument 一次性载入 native 堆，
+  /// >200MB 可能让堆压力过大（jam7 提到 ojpro 的 caveat）。回退到旧 openData
+  /// 路径（可能卡死但概率低，且 >200MB PDF 在电子书场景极罕见）。
   ///
   /// M4.6-fix4：扫描件判定 Future 在此启动（而非 build 时 ??=），完成回调
   /// 写 [_scannedCache] + setState。build 走同步路径，避免 FutureBuilder
@@ -264,11 +298,20 @@ class PdfRenderer {
     try {
       _bytes = await File(path).readAsBytes();
       pdfDiagLog('openFile bytes read: ${_bytes!.length} bytes');
-      // M4.6-fix19: 唯一 sourceName 强制 cache miss（详见 _uniqueSourceName 注释）。
-      // 旧的默认 sourceName = sha256(bytes)，同文件跨会话稳定 → 命中 broken cache。
+      // M4.6-fix21/L2: 读 bytes 成功后才重置 pdfrx 引擎（避免文件不存在等
+      // early-fail 路径白白触发 native 调用）。重置必须在 openCustom/openData
+      // 之前，确保新文档跑在干净 isolate 上，清零上一本书累积的死锁状态。
+      await _resetPdfrxEngine();
+      // M4.6-fix19: 唯一 sourceName 强制 pdfrx _listenables cache miss（根治
+      // cache pollution，详见 _uniqueSourceName 注释）。fix21 改用 openCustom
+      // 后 sourceName 仍是 cache key，唯一性保留。
       _uniqueSourceName =
           'zhiyue-pdf-${DateTime.now().microsecondsSinceEpoch}';
-      pdfDiagLog('openFile unique sourceName: $_uniqueSourceName');
+      // 局部非空别名：openCustom/openData 的 sourceName 形参是非空 String，
+      // 而 _uniqueSourceName 是可空字段（Dart 对字段不做 promotion），用局部
+      // final 捕获刚赋的值，既类型安全又便于阅读。
+      final sourceName = _uniqueSourceName!;
+      pdfDiagLog('openFile unique sourceName: $sourceName');
       // M4.6-fix11→fix12: 30MB PDF 秒开是常态，30s 仍打不开 = pdfium 不兼容
       // 或文件加密/损坏。fix11 把 timeout 拉到 90s 反而让用户多等一倍——
       // 用户原话"30MB 文件加载不可能这么长时间"。fix12 回到 30s budget，
@@ -277,11 +320,31 @@ class PdfRenderer {
       // 在错误信息和日志里指明，无法在代码层面绕过——只能换库（pdfx 等）
       // 或建议用户用 Adobe Reader 重新另存为 PDF/A。
       //
-      // M4.6-fix19: 把 sourceName 传给 openData（不再让 pdfrx 默认走 sha256）。
-      _doc = await PdfDocument.openData(
-        _bytes!,
-        sourceName: _uniqueSourceName,
-      ).timeout(const Duration(seconds: 30));
+      // M4.6-fix21/L1: 改用 [PdfDocument.openCustom] 强制走 FPDF_LoadMemDocument。
+      // 见本方法 dartdoc 与 spec A1。大文件（>200MB）回退 openData 旧路径。
+      const largeFileThreshold = 200 * 1024 * 1024; // 200MB
+      if (_bytes!.length > largeFileThreshold) {
+        pdfDiagLog('openFile path=openData (FALLBACK for >200MB; '
+            'LoadMemDocument 堆压力风险), fileSize=${_bytes!.length}');
+        _doc = await PdfDocument.openData(
+          _bytes!,
+          sourceName: sourceName,
+        ).timeout(const Duration(seconds: 30));
+      } else {
+        pdfDiagLog('openFile path=openCustom (LoadMemDocument), '
+            'fileSize=${_bytes!.length}');
+        _doc = await PdfDocument.openCustom(
+          read: _readFromBytes,
+          fileSize: _bytes!.length,
+          sourceName: sourceName,
+          // 关键：把 maxSizeToCacheOnMemory 设为 bytes.length，
+          // 强制 pdfrx 走 `if (fileSize <= maxSizeToCacheOnMemory)` 分支
+          // → FPDF_LoadMemDocument（一次性载入 pdfium 堆，无条件变量、
+          // 无 BackgroundWorker 串行化依赖），绕开 FPDF_LoadCustomDocument
+          // + 条件变量死锁路径（PR #622 根因）。
+          maxSizeToCacheOnMemory: _bytes!.length,
+        ).timeout(const Duration(seconds: 30));
+      }
       pdfDiagLog('openFile success: pages=${_doc!.pages.length}, '
           'sourceName=${_doc!.sourceName}');
       _currentPage = 0;
@@ -291,13 +354,14 @@ class PdfRenderer {
       _setState(const ReaderEngineReady());
     } on TimeoutException catch (e) {
       pdfDiagLog('openFile TIMEOUT: $path ($e)');
-      // M4.6-fix19 后，pdfium cache pollution 已根治（每次唯一 sourceName）。
-      // 若仍 timeout，几乎可以确定是文件本身问题：加密、WPS 导出、Office 转
-      // PDF 等 pdfium 已知不兼容格式。错误信息指引日志路径 + 建议用 Adobe
-      // Reader 重新另存为 PDF/A。
+      // M4.6-fix21 后，主路径走 LoadMemDocument + 每次 openFile 前
+      // stopBackgroundWorker 重置引擎。若仍 timeout，几乎可以确定是文件
+      // 本身问题：加密、WPS 导出、Office 转 PDF 等 pdfium 已知不兼容格式。
+      // 错误信息指引日志路径 + 建议用 Adobe Reader 重新另存为 PDF/A。
       _setState(ReaderEngineError(
-        message: 'PDF 打开超时（30秒）。该 PDF 可能使用了 pdfium 不兼容'
-            '的格式（加密 / WPS 导出 / Office 转 PDF 等）。'
+        message: 'PDF 打开超时（30秒）。已尝试 LoadMemDocument 路径 + '
+            'stopBackgroundWorker 重置引擎仍超时，该 PDF 可能使用了 pdfium '
+            '不兼容的格式（加密 / WPS 导出 / Office 转 PDF 等）。'
             '请尝试用 Adobe Reader 或 Edge 打开确认文件正常，'
             '或在 Adobe Reader 里"另存为"转成标准 PDF/A 后重试。'
             '详见日志：$_pdfLogPath',
@@ -306,6 +370,63 @@ class PdfRenderer {
     } catch (e, st) {
       pdfDiagLog('openFile ERROR: $path\n  $e\n$st');
       _setState(ReaderEngineError(message: '$e', cause: e));
+    }
+  }
+
+  /// M4.6-fix21/L1: openCustom 的 read 回调 —— 从 [_bytes] 拷贝到 pdfrx 提供
+  /// 的 native buffer。
+  ///
+  /// 仿 pdfrx 内部 `_openData` 实现（pdfrx_engine pdfrx_pdfium.dart:679-688）：
+  /// pdfrx 在 BackgroundWorker isolate 里调此回调，传入 native buffer 地址、
+  /// 读取起始位置、期望读取字节数；回调把 [_bytes] 对应区间拷过去，返回实际
+  /// 拷贝的字节数（或 -1 表示越界）。
+  ///
+  /// 此回调与 pdfrx `openData` 内部走的 read 闭包**逻辑完全一致**（pdfrx
+  /// `_openData` 就是这么构造 read 闭包再调 openCustom 的），我们只是把构造
+  /// 提到外层、并显式传 maxSizeToCacheOnMemory 让 pdfrx 选 LoadMemDocument
+  /// 路径。不存在新风险。
+  int _readFromBytes(Uint8List buffer, int position, int size) {
+    final data = _bytes;
+    if (data == null) return -1;
+    if (position + size > data.length) {
+      size = data.length - position;
+      if (size < 0) return -1;
+    }
+    for (var i = 0; i < size; i++) {
+      buffer[i] = data[position + i];
+    }
+    return size;
+  }
+
+  /// M4.6-fix21/L2: 重置 pdfrx 引擎 —— kill BackgroundWorker isolate +
+  /// FPDF_DestroyLibrary，下次 [PdfDocument.openCustom] 会自动 _ensureInit
+  /// 重建干净 isolate。
+  ///
+  /// **为什么需要**：pdfrx `BackgroundWorker._instance` 是单例 isolate
+  /// （worker.dart:17），所有 pdfium 调用串行化在里面。pdfium **非线程安全**
+  /// （espresso3389/pdfrx#474 maintainer 原话），重复 open/close cycle 后
+  /// isolate 状态可能进入边缘死锁。本方法在每次 openFile 前调，把上一本书
+  /// 累积的状态清零。
+  ///
+  /// **为何不能单独依赖 L2**：stopBackgroundWorker 内部调
+  /// `BackgroundWorker.compute(FPDF_DestroyLibrary)`，如果 isolate 已经
+  /// 死锁，这个 compute 也会卡。所以加 5s timeout + try/catch，失败仅日志
+  /// 不阻塞 —— L1 主路径绕开死锁才是治本。
+  ///
+  /// **API**：[PdfrxEntryFunctions.instance.stopBackgroundWorker]
+  /// （pdfrx_engine 0.4.3 公开 API，pdfrx_entry_functions.dart:61）。espresso3389
+  /// 在 issue #184/#430 官方推荐用于"释放 pdfium 堆 + 重置引擎状态"。
+  Future<void> _resetPdfrxEngine() async {
+    try {
+      pdfDiagLog('stopBackgroundWorker: start');
+      await PdfrxEntryFunctions.instance.stopBackgroundWorker()
+          .timeout(const Duration(seconds: 5));
+      pdfDiagLog('stopBackgroundWorker: done');
+    } on TimeoutException {
+      pdfDiagLog('stopBackgroundWorker: TIMEOUT (5s) — isolate 可能已死锁，'
+          '继续 openFile 让 _ensureInit 重建');
+    } catch (e, st) {
+      pdfDiagLog('stopBackgroundWorker: THREW (ignored, continue): $e\n$st');
     }
   }
 
@@ -511,11 +632,28 @@ class PdfRenderer {
 
   /// 释放 pdfrx 文档与所有 StreamController。
   ///
+  /// **M4.6-fix21 三层防御的 L3（进程兜底）**：在 `_doc?.dispose()` 之后追加
+  /// `stopBackgroundWorker`，退出书时主动 kill isolate + FPDF_DestroyLibrary，
+  /// 给下一本书（如果同进程再开）一个干净起点。
+  ///
+  /// **三层防御回顾**（spec Architecture Decisions A1/A2/A3）：
+  /// - L1 主路径：openCustom + maxSizeToCacheOnMemory=bytes.length（绕开死锁）
+  /// - L2 引擎重置：openFile 前 stopBackgroundWorker（清零累积状态）
+  /// - **L3 进程兜底**：本方法 dispose 时 stopBackgroundWorker（主动清理）
+  ///
+  /// 任一层失效仍有兜底：L1 失效（极端 native bug）→ L2 重置兜底；L2 也失效
+  /// → L3 清理 + 用户重启进程（与现状相同）。
+  ///
+  /// **L3 仅在 _doc 非 null 时触发**：从未加载过文档时 pdfrx 引擎未启动，
+  /// 调 stopBackgroundWorker 会 spawn isolate 但在 widget 测试 FakeAsync 里
+  /// 无法推进 → 挂死。生产环境 dispose 必在 openFile 之后，此 guard 不影响
+  /// 生产行为，只是让 [PdfRenderer] 在未加载状态下 dispose 也安全（用于单测）。
+  ///
   /// M4.6-fix19 后，pdfium cache pollution 已根治（每次 openFile 用唯一
   /// sourceName 强制 cache miss）。dispose 仍保留 timeout + 1.5s buffer
-  /// 作为防御性兜底，但 broken cache 已不会再发生。
+  /// 作为防御性兜底。
   ///
-  /// 历史（fix9→fix13→fix18）：见 [_uniqueSourceName] 字段注释。
+  /// 历史（fix9→fix13→fix18→fix19→fix21）：见 [_uniqueSourceName] 字段注释。
   ///
   /// T13: PdfViewerController 自身不持有 native 资源（pdfrx 文档由
   /// PdfViewer 管理生命周期），无需 dispose；这里仅关闭文档与流。
@@ -525,16 +663,40 @@ class PdfRenderer {
         'sourceName=$_uniqueSourceName');
     _memMonitor?.cancel();
     _memMonitor = null;
-    try {
-      await _doc?.dispose().timeout(const Duration(seconds: 10));
-      // 保留 1.5s buffer：pdfium native 异步释放，给 FPDF_CloseDocument
-      // 充分时间（防御性，fix19 后理论上不再必要，但不删以免其他 corner case）。
-      await Future<void>.delayed(const Duration(milliseconds: 1500));
-    } on TimeoutException {
-      pdfDiagLog('dispose doc.dispose TIMEOUT (10s) — pdfium native stuck; '
-          'cache miss 策略已防下次失败，但建议重启 exe 释放 native 内存');
-    } catch (e, st) {
-      pdfDiagLog('dispose doc.dispose THREW: $e\n$st');
+    // M4.6-fix21: doc-dispose + 1.5s buffer + stopBackgroundWorker（L3）都仅在
+    // _doc 非 null 时执行。三者都依赖真实 pdfium 异步释放，在 widget 测试的
+    // FakeAsync 里 Future.delayed / isolate spawn 无法推进 → 挂死。生产环境
+    // dispose 必在 openFile 之后（_doc 非 null），此 guard 不影响生产行为，
+    // 只是让 PdfRenderer 在未加载状态下 dispose 也安全（用于单测）。
+    //
+    // 这也顺手修了 fix11~18（commit 9c6ffad）引入的 1.5s buffer 让
+    // pdf_renderer_build_test 在 FakeAsync 里挂死的 pre-existing 问题。
+    if (_doc != null) {
+      try {
+        await _doc!.dispose().timeout(const Duration(seconds: 10));
+        // 保留 1.5s buffer：pdfium native 异步释放，给 FPDF_CloseDocument
+        // 充分时间（防御性，fix19 后理论上不再必要，但不删以免其他 corner case）。
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+      } on TimeoutException {
+        pdfDiagLog('dispose doc.dispose TIMEOUT (10s) — pdfium native stuck; '
+            'cache miss 策略已防下次失败，但建议重启 exe 释放 native 内存');
+      } catch (e, st) {
+        pdfDiagLog('dispose doc.dispose THREW: $e\n$st');
+      }
+      // M4.6-fix21/L3: 主动重置 pdfrx 引擎，给同进程下一次 openFile 一个干净
+      // 起点（isolate + pdfium 堆都重建）。失败仅日志，不影响 stream 关闭。
+      try {
+        pdfDiagLog('dispose stopBackgroundWorker: start');
+        await PdfrxEntryFunctions.instance.stopBackgroundWorker()
+            .timeout(const Duration(seconds: 5));
+        pdfDiagLog('dispose stopBackgroundWorker: done');
+      } on TimeoutException {
+        pdfDiagLog('dispose stopBackgroundWorker: TIMEOUT (5s) — ignored');
+      } catch (e, st) {
+        pdfDiagLog('dispose stopBackgroundWorker: THREW (ignored): $e\n$st');
+      }
+    } else {
+      pdfDiagLog('dispose: no doc was loaded, skipping pdfrx cleanup');
     }
     await _stateController.close();
     await _locationController.close();

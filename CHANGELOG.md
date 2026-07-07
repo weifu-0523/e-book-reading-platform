@@ -9,6 +9,63 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M4.6-fix21 — 2026-07-07（PDF 间歇性加载卡死根治：pdfrx openData → FPDF_LoadCustomDocument 死锁）
+
+**性质**：bugfix（根治 fix19 之后残留的 ~40% 间歇性 PDF 加载卡死）。
+
+**症状**：用户实测"连续打开应用 30 多次，~60% 成功率，~40% 白屏不停加载；关闭程序重开往往恢复"。fix19 的"SC1-SC3 三连成功"是**样本量太小**（3 次）漏报了真实分布。
+
+**根因（上游证据）**：
+1. **日志铁证**：`zhiyue_pdf.log` 经 `tool/analyze_pdf_log.py` 解析——40 次 openFile，23 成功 / 17 卡死（57.5%，吻合用户"60%"）。卡死全部卡在 `PdfDocument.openData(...)` 永不返回（无 success / 无 TIMEOUT / 无 ERROR，30s timeout 40 次从未触发）。
+2. **pdfrx 源码追踪**：`PdfDocument.openData` 把 `maxSizeToCacheOnMemory` 硬编码为 null → 默认 1MB → 任何 >1MB 的 PDF 走 `FPDF_LoadCustomDocument` + 条件变量路径（智阅实测 PDF 7/29/41MB 全部走这条）。
+3. **上游 PR #622（jam7, 2026-03-22, 未合并）**：原文 *"when fileSize exceeds maxSizeToCacheOnMemory (default 1MB), openCustom falls through to FPDF_LoadCustomDocument which uses PdfiumFileAccess with condition variables. **This path deadlocks after repeated open/close cycles**."* —— 与智阅症状**逐字吻合**。fix19 的唯一 sourceName 对此**无效**（死锁在 native 条件变量层，不在 cache 层）。
+
+#### Fixed — PDF 加载卡死（三层防御，spec Architecture Decisions A1/A2/A3）
+
+- **L1 主路径**（`pdf_renderer.dart` `openFile`）：改用公开 API `PdfDocument.openCustom(read, fileSize, sourceName, maxSizeToCacheOnMemory: bytes.length)`，**强制 pdfrx 走 `if (fileSize <= maxSizeToCacheOnMemory)` 分支 → `FPDF_LoadMemDocument`**（一次性载入 pdfium 堆，无条件变量），绕开 `FPDF_LoadCustomDocument` 死锁路径。这是 jam7 PR #622 想做的事，但他改的是 pdfrx 源码；我们通过 `openCustom` 的**公开参数**达到同样效果，**不需要 fork**。大文件（>200MB）回退 openData 旧路径（LoadMemDocument 堆压力风险）。
+- **L2 引擎重置**（`pdf_renderer.dart` `openFile` 前）：调 `PdfrxEntryFunctions.instance.stopBackgroundWorker()`（pdfrx_engine 0.4.3 公开 API），kill 单例 isolate + `FPDF_DestroyLibrary`，下次 openFile 自动 `_ensureInit` 重建干净 isolate。清零上一本书累积的死锁状态（pdfium 非线程安全，espresso3389 issue #474 原话）。
+- **L3 进程兜底**（`pdf_renderer.dart` `dispose`）：`_doc?.dispose()` 之后追加 `stopBackgroundWorker`，退出书时主动清理。三层叠加后期望失败率 < 1%（现状 40%）。
+
+#### Fixed — 顺手修 pdf_renderer_build_test 遗留挂死（pre-existing，fix11~18 引入）
+
+- **根因**：fix11~18（commit 9c6ffad）给 `dispose()` 加了 `await Future.delayed(1500ms)` 作 pdfium native 异步释放 buffer。但 `Future.delayed` 用 Zone timer，在 `WidgetTester` 的 `FakeAsync` 里**无法推进**（测试没 pump）→ `pdf_renderer_build_test.dart` 永久挂死（每次跑 test suite 都 5min timeout）。
+- **修复**：`dispose()` 的 doc-dispose + 1.5s buffer + stopBackgroundWorker **三件事都加 `if (_doc != null)` guard**。生产环境 dispose 必在 openFile 之后（_doc 非 null），guard 不影响生产行为；测试环境（从未加载文档）跳过 → 不挂死。
+- **验证**：原本挂死的 `pdf_renderer_build_test.dart` 现在 0s 通过；全包 51 个测试全绿（4s）。
+
+#### Key Findings（关键发现）
+
+- **fix19 的"SC1-SC3 三连成功"验证样本太小**，漏报了真实 60/40 分布。**间歇性 bug 的验证必须有 30+ 次大样本**，3 次连过只能说明"在 fresh state 能开"，不能说明"重复 open/close cycle 后仍能开"。
+- **pdfrx 的 `openData` 是 >1MB 场景下的死锁陷阱**：内部硬编码 `maxSizeToCacheOnMemory: null` 导致永远走 `FPDF_LoadCustomDocument`。**正确姿势是用 `openCustom` 显式传 `maxSizeToCacheOnMemory: data.length` 强制走 `FPDF_LoadMemDocument`**（数据已在内存，本就该用 LoadMem）。
+- **Dart `.timeout()` 对 isolate-native 卡死无效**：40 次 openFile 卡死全部没触发 30s timeout——因为卡在 worker isolate 的 `receivePort.first`（worker.dart:98），主 isolate 的 timer 即便 fire 也只抛 TimeoutException，**底层 native 调用仍卡**，下次 compute 仍会等。所以 timeout 不是治本手段，绕开死锁路径（L1）才是。
+- **pdfrx 的 BackgroundWorker 是进程级单例 isolate**（worker.dart:17 `static final _instance`），所有 pdfium 调用串行化。重复 open/close cycle 后状态可能边缘死锁——这是 `stopBackgroundWorker` API 存在的根本原因（espresso3389 在 issue #184/#430 官方推荐用于"释放 pdfium 堆 + 重置引擎状态"）。
+
+#### Lessons（失败对照表）
+
+| # | 历史 fix | 失败原因 |
+|---|---------|---------|
+| fix9 | 双 PdfViewer 共享 sourceName | 在 dispose 时序上做文章，未触达死锁层 |
+| fix13 | dispose timeout 3s→10s + 1.5s buffer | 缓解 dispose 慢，未根治 openData 卡死 |
+| fix18 | 试"不调 dispose" | 反而更糟，pdfrx state 半活跃 |
+| fix19 | 唯一 sourceName 强制 cache miss | **根治了 cache pollution（独立问题），但没解决 FPDF_LoadCustomDocument 死锁（本 fix）** |
+| **fix21** | **openCustom + maxSizeToCacheOnMemory=bytes.length + stopBackgroundWorker** | **绕开死锁路径（L1）+ 重置引擎（L2/L3），三层防御** |
+
+#### Verification（待用户办公室端到端测）
+
+- [x] dart analyze reader_engine_pdf_view: No issues found
+- [x] dart analyze app: 我的改动 0 影响（pre-existing 的 markdown lint / custom_lint plugin 错与本次无关）
+- [x] 全包 51 个测试通过（含修好的 pdf_renderer_build_test）
+- [ ] **SC1**：连续开/关同一 PDF 30 次，成功率 100%（fix19 后是 60%）
+- [ ] **SC2**：三本 PDF（7/29/41MB）间切换 30 次，成功率 100%
+- [ ] **SC3**：日志 `openFile path=openCustom (LoadMemDocument)`
+- [ ] **SC4**：日志每次 openFile 前 `stopBackgroundWorker: done`
+- [ ] **SC8**：日志仍有 `openFile unique sourceName`（fix19 不回归）
+
+#### Next Steps
+
+用户构建 exe（junction workaround）后端到端验证 SC1-SC4/SC8。通过后 push Gitee。如仍有 < 5% 残余卡死，下一步考虑 stopBackgroundWorker 加更激进的 timeout 或回退到 openFile + 临时文件方案（jam7 最终用的 workaround）。
+
+---
+
 ### M4.7b — 2026-07-07（EPUB 滚动模式调研：第二套方案 + 重大代码盘点发现）
 
 **性质**：M4.7 的补充调研，无代码改动。聚焦用户提出的"第二套方案——单页滚动浏览模式"。
