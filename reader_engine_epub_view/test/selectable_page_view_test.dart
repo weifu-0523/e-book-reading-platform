@@ -39,4 +39,36 @@ void main() {
       contains('First page here!'),
     );
   });
+
+  testWidgets('dualPageMode renders two SelectableText per spread',
+      (tester) async {
+    final rootSpan = TextSpan(children: [
+      TextSpan(text: 'AAAA'),
+      TextSpan(text: 'BBBB'),
+      TextSpan(text: 'CCCC'),
+      TextSpan(text: 'DDDD'),
+    ]);
+    final breaks = [
+      const PageBreak(startOffset: 0, endOffset: 4),
+      const PageBreak(startOffset: 4, endOffset: 8),
+      const PageBreak(startOffset: 8, endOffset: 12),
+      const PageBreak(startOffset: 12, endOffset: 16),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 1000,
+          child: SelectablePageView(
+            rootSpan: rootSpan,
+            plainText: 'AAAABBBBCCCCDDDD',
+            breaks: breaks,
+            dualPageMode: true,
+            initialPage: 0,
+          ),
+        ),
+      ),
+    ));
+    // First spread packs two pages (AAAA + BBBB) side-by-side.
+    expect(find.byType(SelectableText), findsNWidgets(2));
+  });
 }
