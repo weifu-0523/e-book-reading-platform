@@ -39,8 +39,11 @@ import 'epub_image_inliner.dart';
 import 'html_chapter_source.dart';
 import 'html_highlight_injector.dart';
 import 'html_slicer.dart';
+import 'html_to_inline_span_converter.dart';
+import 'line_metrics_paginator.dart';
 import 'paginator.dart';
 import 'rendered_html_measurer.dart';
+import 'selectable_page_view.dart';
 import 'src/chapter_end_event.dart';
 import 'typography_css.dart';
 import 'typography_style_injector.dart';
@@ -165,6 +168,15 @@ class EpubxRenderer implements EpubRenderer {
   /// null 表示尚未测量或已失效。LayoutBuilder 重跑时若 key 不匹配则重新测量。
   /// 重测量期间旧值不可用（drift），故清空而非渐进更新。
   List<double>? _measuredHeights;
+
+  /// M4.8: 新管道（converter → LineMetricsPaginator）产出。pure-text 章节走此
+  /// 路径；image / fallback 章节仍走 [_measuredHeights]（fwfh 实测）。null 表示
+  /// 尚未测量或已失效（章节切换 / 排版变更 / 窗口 resize）。
+  ConvertedSpans? _convertedSpans;
+
+  /// M4.8: [_convertedSpans] 对应的 page breaks（同 plainText 坐标空间）。
+  /// 由 [_InlineSpanMeasurer] 报告。null 表示尚未测量。
+  List<PageBreak>? _lineBreaks;
 
   /// M4.6-fix16: 上次测量时的参数指纹（html + viewport + typography + margin）。
   /// LayoutBuilder 重跑时与当前参数比较：匹配则复用 [_measuredHeights]，
@@ -1540,5 +1552,149 @@ class _MeasurementKey {
 
   @override
   int get hashCode => Object.hash(html, viewport, typography, marginPx);
+}
+
+// ---------------------------------------------------------------------------
+// M4.8: new measurement pipeline (Phase 4 Task 4.1)
+// ---------------------------------------------------------------------------
+
+/// Offstage widget that drives the M4.8 measurement pipeline:
+///
+///   HTML → [HtmlToInlineSpanConverter] → [ConvertedSpans]
+///        → [LineMetricsPaginator] (pure-text) or legacy [Paginator] (image /
+///          fallback) → [List<PageBreak>]
+///
+/// Reports the converted span + page breaks back via [onMeasured].
+///
+/// **Path dispatch (Phase 4 R2 limitation)**:
+/// - Pure-text chapters (`converted.images.isEmpty &&
+///   !converted.shouldFallbackToFwfh`): use [LineMetricsPaginator.paginate] on
+///   the converted InlineSpan. Since the span has no WidgetSpans,
+///   `TextPainter.layout()` succeeds and `computeLineMetrics()` returns the
+///   true per-line metrics. Measurement and rendering both use TextPainter
+///   → drift = 0 (spec §3.2 invariant).
+/// - Image / fallback chapters: defer to [Paginator.paginateWithText], which
+///   measures via TextPainter on plain-text substrings (no WidgetSpans in
+///   measurement). Rendering still uses `SelectableText.rich`, so some drift
+///   is expected for image-heavy chapters. Phase 6 Task 6.2 will close this
+///   gap with a fwfh fallback path for chapters with ≥3 unsupported tags.
+///
+/// The widget itself is always mounted offstage (per spec §3.3.5), even when
+/// the underlying measurement is synchronous — this keeps the build-tree
+/// invariant uniform and makes a future swap to fully offstage rendering
+/// trivial.
+class _InlineSpanMeasurer extends StatefulWidget {
+  const _InlineSpanMeasurer({
+    required this.html,
+    required this.baseStyle,
+    required this.imageMaxHeight,
+    required this.indentEm,
+    required this.indentEnabled,
+    required this.highlights,
+    required this.viewport,
+    required this.marginPx,
+    required this.lineHeight,
+    required this.typography,
+    required this.onMeasured,
+  });
+
+  /// Full chapter HTML (after script/style stripping done by converter).
+  final String html;
+
+  /// Base text style (size, color, line-height) used for conversion.
+  final TextStyle baseStyle;
+
+  /// Max image height (matches the legacy `rawHeight * 0.6` in `_buildPaged`).
+  final double imageMaxHeight;
+
+  /// First-line indent in EM units (forwarded to converter).
+  final double indentEm;
+
+  /// Whether first-line indent is enabled (forwarded to converter).
+  final bool indentEnabled;
+
+  /// Chapter-local highlights (already filtered to the current chapter by
+  /// caller) to overlay on the converted span.
+  final List<HighlightRange> highlights;
+
+  /// Measurement viewport — width is post-gutter halving for dual-page mode
+  /// (caller is responsible for halving).
+  final Size viewport;
+
+  /// Page margin in pixels (matches `_typography.pageMargin.pixelValue`).
+  final double marginPx;
+
+  /// Line height = `fontSize * (textStyle.height ?? 1.0)`. Forwarded to
+  /// [LineMetricsPaginator] for its safety margin.
+  final double lineHeight;
+
+  /// Current typography settings. Used by the legacy fallback estimator
+  /// ([Paginator.paginateWithText]) for paragraph-indent / font-size lookup.
+  final TypographySettings typography;
+
+  /// Reports the converted span + page breaks once measurement completes.
+  /// Called at most once per [_InlineSpanMeasurer] mount.
+  final void Function(ConvertedSpans converted, List<PageBreak> breaks)
+      onMeasured;
+
+  @override
+  State<_InlineSpanMeasurer> createState() => _InlineSpanMeasurerState();
+}
+
+class _InlineSpanMeasurerState extends State<_InlineSpanMeasurer> {
+  bool _measured = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Defer to next frame: the conversion is O(chapter length) and can take
+    // tens of ms for long chapters. Running it inline in build would block
+    // the frame; post-frame keeps the chapter-switch animation smooth.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+  }
+
+  void _run() {
+    if (!mounted || _measured) return;
+    _measured = true;
+
+    final converted = HtmlToInlineSpanConverter().convert(
+      widget.html,
+      baseStyle: widget.baseStyle,
+      imageMaxHeight: widget.imageMaxHeight,
+      indentEm: widget.indentEm,
+      indentEnabled: widget.indentEnabled,
+      highlights: widget.highlights,
+    );
+
+    final List<PageBreak> breaks;
+    if (converted.images.isEmpty && !converted.shouldFallbackToFwfh) {
+      // Pure-text path: LineMetricsPaginator on the converted InlineSpan.
+      // No WidgetSpans → TextPainter.layout() succeeds and per-line metrics
+      // are exact. drift = 0 (spec §3.2 invariant).
+      breaks = LineMetricsPaginator().paginate(
+        span: converted.root,
+        plainText: converted.plainText,
+        viewport: widget.viewport,
+        marginPx: widget.marginPx,
+        lineHeight: widget.lineHeight,
+      );
+    } else {
+      // Image / fallback path: defer to legacy Paginator.paginateWithText,
+      // which measures via TextPainter on plain-text substrings (no
+      // WidgetSpans). Rendering still uses SelectableText.rich, so some
+      // drift is expected until Phase 6 introduces the fwfh fallback.
+      breaks = Paginator().paginateWithText(
+        chapterHtml: widget.html,
+        viewport: widget.viewport,
+        typography: widget.typography,
+        marginPx: widget.marginPx,
+      ).breaks;
+    }
+
+    if (mounted) widget.onMeasured(converted, breaks);
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
