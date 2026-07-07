@@ -267,6 +267,13 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     state = state.copyWith(clearPendingInput: true);
   }
 
+  /// Clears the last surfaced [ChatSessionState.error]. Used by the drawer's
+  /// retry affordance so the user can dismiss an error message without
+  /// triggering a fresh action.
+  void clearError() {
+    state = state.copyWith(clearError: true);
+  }
+
   String _defaultTitle() {
     final now = DateTime.now();
     final m = now.month.toString().padLeft(2, '0');
