@@ -531,6 +531,11 @@ class PdfRenderer {
   }
 
   void _setState(ReaderEngineState next) {
+    // 2026-07-08 review fixup: autoDispose 可能在 openWithLastProgress 完成
+    // 前触发 close()（reader_page unmount 或测试 ProviderContainer 失去
+    // listener）。isClosed 后续 _setState 应静默吞掉，避免
+    // "Cannot add new events after calling close" 异步异常。
+    if (_stateController.isClosed) return;
     _state = next;
     _stateController.add(next);
   }

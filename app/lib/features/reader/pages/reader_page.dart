@@ -55,12 +55,10 @@ class ReaderPage extends ConsumerStatefulWidget {
 
 class _ReaderPageState extends ConsumerState<ReaderPage> {
   ProgressPersister? _persister;
-  ReaderEngine? _engine;
 
   @override
   void dispose() {
     _persister?.dispose();
-    _engine?.close();
     super.dispose();
   }
 
@@ -116,7 +114,6 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
 
   void _ensureProgressPersister(ReaderEngine engine) {
     if (_persister != null) return;
-    _engine = engine;
     _persister = ProgressPersister(
       bookId: widget.bookId,
       repository: ref.read(readingProgressRepositoryProvider),

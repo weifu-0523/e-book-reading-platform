@@ -33,8 +33,14 @@ import '../../../services/text_book_loader.dart';
 /// - 文件加载失败 → 引擎状态为 [ReaderEngineError]（不抛异常）。
 /// - 成功且存在 [ReadingProgress.locator] → 尝试 gotoLocator，CFI 失败静默降级。
 /// - 无历史进度 → 从第一章开始。
+// 2026-07-08 Review P0: 使用 autoDispose + ref.onDispose 让 engine 在
+// 没有任何 watcher 时自动 close。原来 FutureProvider.family 缓存 closed
+// engine，下次打开同一本书时 ref.watch 返回已 close 的实例（stateController
+// 已 close），页面卡死。autoDispose 在 ReaderPage unmount 后释放 cache，
+// onDispose 负责调用 engine.close() 释放底层资源（pdfrx PdfDocument /
+// html chapter cache）。
 final readerEngineForBookProvider =
-    FutureProvider.family<ReaderEngine, String>((ref, bookId) async {
+    FutureProvider.autoDispose.family<ReaderEngine, String>((ref, bookId) async {
   final bookRepo = ref.watch(bookRepositoryProvider);
   final progressRepo = ref.watch(readingProgressRepositoryProvider);
 
@@ -58,6 +64,7 @@ final readerEngineForBookProvider =
 
   if (bookRef.format == re.BookFormat.epub) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     await engine.openWithLastProgress(
       book: bookRef,
@@ -68,6 +75,7 @@ final readerEngineForBookProvider =
   if (bookRef.format == re.BookFormat.pdf) {
     // M4: PDF routing — pdfrx 原生页渲染
     final engine = PdfReaderEngine(renderer: PdfRenderer());
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     await engine.openWithLastProgress(
       book: bookRef,
@@ -86,6 +94,7 @@ final readerEngineForBookProvider =
   // fix10 用"仿 TXT 每行成 `<p>`"彻底绕开。详见 markdown_book_loader.dart。
   if (bookRef.format == re.BookFormat.markdown) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     final sources =
         await MarkdownBookLoader.loadFile(book.filePath, title: book.title);
@@ -101,6 +110,7 @@ final readerEngineForBookProvider =
   }
   if (bookRef.format == re.BookFormat.text) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     final sources =
         await TextBookLoader.loadFile(book.filePath, title: book.title);

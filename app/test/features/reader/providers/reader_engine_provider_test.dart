@@ -68,7 +68,9 @@ void main() {
     final engine =
         await container.read(readerEngineForBookProvider('b1').future);
     expect(engine, isA<ReaderEngine>());
-    await engine.close();
+    // 2026-07-08: provider is now autoDispose + ref.onDispose(engine.close).
+    // container.dispose() (addTearDown above) will close the engine — no
+    // need (and unsafe) to call engine.close() manually here.
   });
 
   test('readerEngineForBookProvider throws for non-existent book', () async {
@@ -115,6 +117,8 @@ void main() {
     // state ends as ReaderEngineError (file doesn't exist on disk) or Ready.
     // What matters: provider returned the engine (no throw) and consulted repo.
     expect(engine.state, isA<ReaderEngineState>());
-    await engine.close();
+    // 2026-07-08: provider is now autoDispose + ref.onDispose(engine.close).
+    // container.dispose() (addTearDown above) will close the engine — no
+    // need (and unsafe) to call engine.close() manually here.
   });
 }

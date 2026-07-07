@@ -163,6 +163,16 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   // 默认 false（不占用宽屏阅读区域）；用户在 AppBar 通过 toggle 切换。
   bool _aiPanelOpen = false;
 
+  // 2026-07-08 Review P1: initState 注册的 4 个 stream subscription
+  // 之前被丢弃，导致 widget unmount 后 listener 仍挂在 engine 上，
+  // 触发对已 dispose 的 _ReaderBodyState 调 setState（"setState after dispose"
+  // 静默被 mounted check 吃掉，但 subscription 资源泄漏 + 对 closed
+  // stateController 的 listener 仍排队）。dispose 时统一 cancel。
+  StreamSubscription? _stateSub;
+  StreamSubscription? _locationSub;
+  StreamSubscription? _pdfSelectionSub;
+  StreamSubscription? _pagedSelectionSub;
+
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
   /// M2.7/T21: 切换宽屏右侧 AI 面板的展开/收起。
@@ -178,10 +188,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   void initState() {
     super.initState();
     _engineState = engine.state;
-    engine.state$.listen((s) {
+    _stateSub = engine.state$.listen((s) {
       if (mounted) setState(() => _engineState = s);
     });
-    engine.currentLocation$.listen((loc) {
+    _locationSub = engine.currentLocation$.listen((loc) {
       if (mounted) _currentLocation = loc;
     });
     // PDF 选区订阅：pdfrx 内部 buildContextMenu 的「高亮」按钮点击后，
@@ -189,7 +199,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     // HighlightSelection。这里订阅并缓存，PDF 选区直接走 _onPdfHighlight
     // （不走 toolbar overlay 的 _openExcerptSheet）。
     if (engine is PdfReaderEngine) {
-      (engine as PdfReaderEngine).selection$.listen((sel) {
+      _pdfSelectionSub = (engine as PdfReaderEngine).selection$.listen((sel) {
         if (!mounted) return;
         _onPdfHighlight(sel);
       });
@@ -199,7 +209,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     // （局部 registrar 隔离），所以双页选区通过 pagedSelection$ 推过来，走与
     // 单页相同的 _onSelectionChanged 处理。单页模式不经过此流（外层 region 直推）。
     if (engine is ConcreteEpubReaderEngine) {
-      (engine as ConcreteEpubReaderEngine)
+      _pagedSelectionSub = (engine as ConcreteEpubReaderEngine)
           .rendererRef
           .pagedSelection$
           .listen((content) {
@@ -215,6 +225,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
   @override
   void dispose() {
+    _stateSub?.cancel();
+    _locationSub?.cancel();
+    _pdfSelectionSub?.cancel();
+    _pagedSelectionSub?.cancel();
     super.dispose();
   }
 

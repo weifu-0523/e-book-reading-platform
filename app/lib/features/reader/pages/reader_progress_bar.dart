@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
@@ -77,12 +79,22 @@ class ReaderProgressBar extends StatefulWidget {
 class _ReaderProgressBarState extends State<ReaderProgressBar> {
   Locator? _current;
 
+  // 2026-07-08 Review P1: initState 注册的 currentLocation$ subscription
+  // 之前被丢弃，widget unmount 后 listener 仍挂在 engine 上。dispose cancel。
+  StreamSubscription? _locationSub;
+
   @override
   void initState() {
     super.initState();
-    widget.engine.currentLocation$.listen((loc) {
+    _locationSub = widget.engine.currentLocation$.listen((loc) {
       if (mounted) setState(() => _current = loc);
     });
+  }
+
+  @override
+  void dispose() {
+    _locationSub?.cancel();
+    super.dispose();
   }
 
   @override

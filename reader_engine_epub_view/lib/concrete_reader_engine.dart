@@ -46,6 +46,11 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
     // calls in epubx_renderer.dart appeared inert — round-2 fixed the
     // renderer half but missed this adapter half.
     _rendererStateSub = _renderer.state$.listen((s) {
+      // 2026-07-08 review fixup: autoDispose 可能在 openWithLastProgress
+      // 完成前触发 close()（reader_page unmount 或测试 ProviderContainer
+      // 失去 listener）。isClosed 后续 _setState 应静默吞掉，避免
+      // "Cannot add new events after calling close" 异步异常。
+      if (_stateController.isClosed) return;
       _state = s;
       _stateController.add(s);
     });
@@ -130,6 +135,7 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   }
 
   void _setState(ReaderEngineState s) {
+    if (_stateController.isClosed) return;
     _state = s;
     _stateController.add(s);
   }

@@ -69,6 +69,8 @@ void main() {
     expect(engine, isA<PdfReaderEngine>());
     expect(engine, isA<ReaderEngine>());
     expect(progressRepo.getCallIds, contains('pdf1'));
-    await engine.close();
+    // 2026-07-08: provider is now autoDispose + ref.onDispose(engine.close).
+    // container.dispose() (addTearDown above) will close the engine — no
+    // need (and unsafe) to call engine.close() manually here.
   });
 }
