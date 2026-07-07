@@ -158,4 +158,33 @@ void main() {
       expect(result.plainText.contains('￼'), isTrue);
     });
   });
+
+  group('first-line indent', () {
+    test('indentEnabled=true prepends U+2003 EM SPACE prefix to each paragraph', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>First</p><p>Second</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 2, indentEnabled: true, highlights: const [],
+      );
+      // Each paragraph's plainText starts with 2 EM SPACEs
+      final firstRange = result.paragraphRanges[0];
+      final firstText = result.plainText.substring(firstRange.start, firstRange.end);
+      expect(firstText.startsWith('  '), isTrue);
+      // First child of first paragraph span is the indent prefix
+      final root = result.root as TextSpan;
+      final firstPara = root.children![0] as TextSpan;
+      expect((firstPara.children!.first as TextSpan).text, '  ');
+    });
+
+    test('indentEnabled=false produces no prefix', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>No indent</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 2, indentEnabled: false, highlights: const [],
+      );
+      final text = result.plainText.substring(
+          result.paragraphRanges[0].start, result.paragraphRanges[0].end);
+      expect(text.startsWith(' '), isFalse);
+    });
+  });
 }

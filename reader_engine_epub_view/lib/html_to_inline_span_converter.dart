@@ -120,13 +120,20 @@ class HtmlToInlineSpanConverter {
         );
       }
 
-      if (prefix != null) {
-        buf.write(prefix);
+      // First-line indent prefix via EM SPACE (U+2003) when enabled.
+      // List item bullets replace the indent (visually exclusive).
+      final indentPrefix = (indentEnabled && indentEm > 0)
+          ? String.fromCharCodes(
+              List.filled(indentEm.truncate().clamp(0, 8), 0x2003))
+          : '';
+      final visualPrefix = prefix ?? (indentPrefix.isNotEmpty ? indentPrefix : '');
+      if (visualPrefix.isNotEmpty) {
+        buf.write(visualPrefix);
       }
       final effectiveStyle = headingStyle ?? _inlineStyle(baseStyle, tag);
       final paraChildren = <InlineSpan>[];
-      if (prefix != null) {
-        paraChildren.add(TextSpan(text: prefix, style: effectiveStyle));
+      if (visualPrefix.isNotEmpty) {
+        paraChildren.add(TextSpan(text: visualPrefix, style: effectiveStyle));
       }
       // Walk block element's child nodes directly (no wrapping span).
       for (final child in el.nodes) {
