@@ -33,6 +33,8 @@ import 'daos/typography_dao.dart';
 import 'daos/user_fonts_dao.dart';
 import 'tables/ai_summaries.dart';
 import 'tables/annotations.dart';
+import 'tables/chat_messages.dart';
+import 'tables/chat_sessions.dart';
 import 'tables/book_notes.dart';
 import 'tables/book_passages.dart';
 import 'tables/book_tags.dart';
@@ -66,6 +68,8 @@ part 'database.g.dart';
     BookPassages,
     QaHistory,
     Bookmarks,
+    ChatSessions,
+    ChatMessages,
   ],
   daos: [
     BooksDao,
@@ -89,7 +93,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration {
@@ -135,6 +139,20 @@ class AppDatabase extends _$AppDatabase {
           'CREATE INDEX IF NOT EXISTS idx_bookmarks_book '
           'ON bookmarks(book_id)',
         );
+        // schema v12: chat_sessions + chat_messages lookup indexes (M2.7)
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_chat_sessions_book '
+          'ON chat_sessions(book_id, deleted_at)',
+        );
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_chat_messages_session '
+          'ON chat_messages(session_id, created_at)',
+        );
+        // M2.7: qa_history is superseded by chat_messages — drop on fresh
+        // install too so existing users and new users see the same schema.
+        // createAll() above created it because QaHistory is still registered
+        // (DAO still referenced during M2.7 transition).
+        await m.database.customStatement('DROP TABLE IF EXISTS qa_history');
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
@@ -224,6 +242,21 @@ class AppDatabase extends _$AppDatabase {
             'WHERE json_valid(settings) = 1 '
             "AND json_extract(settings, '\$.fontFamily') IS NULL",
           );
+        }
+        if (from < 12) {
+          // M2.7: AI 抽屉重构 — 新增 chat_sessions + chat_messages 表（同步前置 schema）
+          await m.createTable(chatSessions);
+          await m.createTable(chatMessages);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_chat_sessions_book '
+            'ON chat_sessions (book_id, deleted_at)',
+          );
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_chat_messages_session '
+            'ON chat_messages (session_id, created_at)',
+          );
+          // M2.7: 用户决定清空 qa_history 旧数据（被 chat_messages 取代）
+          await m.database.customStatement('DROP TABLE IF EXISTS qa_history');
         }
       },
       beforeOpen: (details) async {
