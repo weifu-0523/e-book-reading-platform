@@ -307,6 +307,7 @@ void main() {
         container.read(chatSessionControllerProvider('book-1').notifier);
 
     // 1a. Selection toolbar → setPendingInput.
+    // ignore: cascade_invocations
     notifier.setPendingInput('> selected text\n\n');
     expect(
       container.read(chatSessionControllerProvider('book-1')).pendingInput,

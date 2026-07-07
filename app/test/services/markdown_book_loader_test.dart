@@ -182,7 +182,7 @@ void main() {
 
     test('用户报告场景：一段五行原文 → 5 个独立 <p>', () {
       // 模拟用户报告：「每点是一行」（TXT 正常，MD 异常合并）
-      final md = '# 章节\n\n这是第一句话。\n这是第二句话。\n这是第三句话。\n'
+      const md = '# 章节\n\n这是第一句话。\n这是第二句话。\n这是第三句话。\n'
           '这是第四句话。\n这是第五句话。';
       final chapters = MarkdownBookLoader.parseMarkdown(
         md,
