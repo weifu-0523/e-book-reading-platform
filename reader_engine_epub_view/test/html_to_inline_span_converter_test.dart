@@ -366,5 +366,30 @@ void main() {
       });
       expect(highlighted, isEmpty);
     });
+
+    // Task 5.1: Phase 1 _parseColor already supports `#RRGGBB` hex; this
+    // test pins the contract so a regression to rgba-only would be caught.
+    test('HighlightRange with #RRGGBB hex color maps to backgroundColor', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>Hello</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false,
+        highlights: const [
+          HighlightRange(0, 5, '#FFEB3B'),
+        ],
+      );
+      final highlighted = <TextSpan>[];
+      result.root.visitChildren((s) {
+        if (s is TextSpan && s.style?.backgroundColor != null) {
+          highlighted.add(s);
+        }
+        return true;
+      });
+      expect(highlighted, isNotEmpty,
+          reason: 'highlight over [0,5) of "Hello" must produce one segment');
+      // _parseColor('#FFEB3B') returns Color(v | 0xFF000000) = Color(0xFFFFEB3B).
+      expect(highlighted.first.style!.backgroundColor, const Color(0xFFFFEB3B));
+      expect(highlighted.first.text, 'Hello');
+    });
   });
 }
