@@ -12,12 +12,14 @@ class ConvertedSpans {
   final String plainText;
   final List<ParaRange> paragraphRanges;
   final List<InlineImage> images;
+  final bool shouldFallbackToFwfh;
 
   const ConvertedSpans({
     required this.root,
     required this.plainText,
     required this.paragraphRanges,
     required this.images,
+    this.shouldFallbackToFwfh = false,
   });
 }
 
@@ -42,6 +44,30 @@ class InlineImage {
 class HtmlToInlineSpanConverter {
   const HtmlToInlineSpanConverter();
 
+  // Tags that the converter cannot faithfully render as InlineSpan; when
+  // encountered, contents are flattened to text and a warning icon is
+  // emitted. Three or more occurrences flip [ConvertedSpans.shouldFallbackToFwfh]
+  // to signal the renderer to fall back to fwfh for this chapter.
+  static const _unsupportedTags = {
+    'table',
+    'tbody',
+    'thead',
+    'tfoot',
+    'svg',
+    'video',
+    'audio',
+    'iframe',
+    'canvas',
+    'math',
+    'form',
+    'input',
+    'button',
+  };
+
+  // Per-convert counter; threaded through [_walkInline] as a mutable holder.
+  // Cannot be an instance field because the constructor is `const`.
+
+
   ConvertedSpans convert(
     String chapterHtml, {
     required TextStyle baseStyle,
@@ -50,6 +76,7 @@ class HtmlToInlineSpanConverter {
     required bool indentEnabled,
     required List<HighlightRange> highlights,
   }) {
+    final unsupportedCounter = _Counter();
     if (chapterHtml.isEmpty) {
       return ConvertedSpans(
         root: TextSpan(text: '', style: baseStyle),
@@ -68,21 +95,21 @@ class HtmlToInlineSpanConverter {
     final children = <InlineSpan>[];
 
     final blockTags = const {'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'};
-    final bodyChildren = doc.body?.nodes ?? const <dom.Node>[];
-    final blockElements = <dom.Element>[
-      for (final n in bodyChildren)
-        if (n is dom.Element && blockTags.contains(n.localName)) n,
-    ];
-    // Also flatten <ul>/<ol> direct children into the block list.
     final listTags = const {'ul', 'ol'};
-    final listElements = <dom.Element>[
-      for (final n in bodyChildren)
-        if (n is dom.Element && listTags.contains(n.localName)) n,
-    ];
-    for (final list in listElements) {
-      final items = list.querySelectorAll('li');
-      for (final li in items) {
-        blockElements.add(li);
+    final bodyChildren = doc.body?.nodes ?? const <dom.Node>[];
+    // Iterate body children in document order, dispatching by tag type so
+    // the paragraph order matches source HTML.
+    final blockElements = <dom.Element>[];
+    for (final n in bodyChildren) {
+      if (n is! dom.Element) continue;
+      final tag = n.localName;
+      if (blockTags.contains(tag) || _unsupportedTags.contains(tag)) {
+        blockElements.add(n);
+      } else if (listTags.contains(tag)) {
+        // Flatten <ul>/<ol> direct children into the block list.
+        for (final li in n.querySelectorAll('li')) {
+          blockElements.add(li);
+        }
       }
     }
 
@@ -135,9 +162,15 @@ class HtmlToInlineSpanConverter {
       if (visualPrefix.isNotEmpty) {
         paraChildren.add(TextSpan(text: visualPrefix, style: effectiveStyle));
       }
-      // Walk block element's child nodes directly (no wrapping span).
-      for (final child in el.nodes) {
-        _walkInline(child, effectiveStyle, buf, paraChildren, images, imageMaxHeight);
+      // Unsupported tags (table/svg/...) are walked as a whole element so
+      // the warning branch fires and increments the fallback counter.
+      if (_unsupportedTags.contains(tag)) {
+        _walkInline(el, effectiveStyle, buf, paraChildren, images, imageMaxHeight, unsupportedCounter);
+      } else {
+        // Walk block element's child nodes directly (no wrapping span).
+        for (final child in el.nodes) {
+          _walkInline(child, effectiveStyle, buf, paraChildren, images, imageMaxHeight, unsupportedCounter);
+        }
       }
       final end = buf.length;
       ranges.add(ParaRange(start, end));
@@ -153,6 +186,7 @@ class HtmlToInlineSpanConverter {
       plainText: buf.toString(),
       paragraphRanges: ranges,
       images: images,
+      shouldFallbackToFwfh: unsupportedCounter.value >= 3,
     );
   }
 
@@ -163,6 +197,7 @@ class HtmlToInlineSpanConverter {
     List<InlineSpan> out,
     List<InlineImage> images,
     double imageMaxHeight,
+    _Counter unsupportedCounter,
   ) {
     if (node is dom.Text) {
       final text = node.text;
@@ -174,6 +209,27 @@ class HtmlToInlineSpanConverter {
     }
     if (node is! dom.Element) return;
     final tag = node.localName;
+    if (_unsupportedTags.contains(tag)) {
+      unsupportedCounter.value += 1;
+      // Emit warning WidgetSpan + flatten text content
+      final text = node.text;
+      if (text.isNotEmpty) {
+        buf.write(text);
+        out.add(TextSpan(text: text, style: style));
+      }
+      buf.write('￼');
+      out.add(WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Tooltip(
+            message: '本段含复杂元素（表格/SVG/视频），暂不支持渲染',
+            child: Icon(Icons.warning_amber, size: 14, color: Colors.orange),
+          ),
+        ),
+      ));
+      return;
+    }
     if (tag == 'img') {
       final src = node.attributes['src'] ?? '';
       final w = int.tryParse(node.attributes['width'] ?? '') ?? 0;
@@ -195,7 +251,7 @@ class HtmlToInlineSpanConverter {
     final childStyle = _inlineStyle(style, tag);
     final childOut = <InlineSpan>[];
     for (final child in node.nodes) {
-      _walkInline(child, childStyle, buf, childOut, images, imageMaxHeight);
+      _walkInline(child, childStyle, buf, childOut, images, imageMaxHeight, unsupportedCounter);
     }
     if (childOut.isNotEmpty) {
       if (childOut.length == 1) {
@@ -230,4 +286,10 @@ class HtmlToInlineSpanConverter {
         return base;
     }
   }
+}
+
+/// Mutable counter threaded through [_walkInline]; cannot live as instance
+/// field because [HtmlToInlineSpanConverter]'s constructor is `const`.
+class _Counter {
+  int value = 0;
 }

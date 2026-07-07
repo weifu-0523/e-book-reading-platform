@@ -187,4 +187,34 @@ void main() {
       expect(text.startsWith(' '), isFalse);
     });
   });
+
+  group('unsupported tags', () {
+    test('<table> contents flattened to text + warning WidgetSpan', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>Before</p><table><tr><td>A</td><td>B</td></tr></table><p>After</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      // Plain text should contain table cell text (flattened)
+      expect(result.plainText, contains('A'));
+      expect(result.plainText, contains('B'));
+      // The middle paragraph (the <table>) should contain a WidgetSpan
+      // (the warning icon) alongside the flattened text.
+      final root = result.root as TextSpan;
+      // Order: [Before, "\n\n", <table>, "\n\n", After]
+      final tablePara = root.children![2] as TextSpan;
+      final hasWidget = tablePara.children!.any((s) => s is WidgetSpan);
+      expect(hasWidget, isTrue,
+          reason: '<table> paragraph should contain a warning WidgetSpan');
+    });
+
+    test('three or more unsupported tags trigger chapter-level fallback signal', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>x</p><table><tr><td>1</td></tr></table><table><tr><td>2</td></tr></table><table><tr><td>3</td></tr></table>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      expect(result.shouldFallbackToFwfh, isTrue);
+    });
+  });
 }
