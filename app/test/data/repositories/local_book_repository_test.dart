@@ -1,18 +1,28 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhiyue/data/local/database.dart' hide Book;
 import 'package:zhiyue/data/local/daos/book_tags_dao.dart';
+import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
+import 'package:zhiyue/data/local/database.dart' hide Book;
 import 'package:zhiyue/data/repositories/local_book_repository.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/library/models/sort_by.dart';
+import 'package:zhiyue/services/sync/sync_recorder.dart';
 
 void main() {
   late AppDatabase db;
   late LocalBookRepository repo;
+  late LocalBookRepository repoWithSync;
+  late SyncOutboxDao outbox;
+  late SyncRecorder recorder;
   late BookTagsDao tagsDao;
 
   setUp(() async {
     db = AppDatabase.forTesting();
+    outbox = SyncOutboxDao(db);
+    recorder = SyncRecorder(outbox);
     repo = LocalBookRepository(db);
+    repoWithSync = LocalBookRepository(db, syncRecorder: recorder);
     tagsDao = BookTagsDao(db);
     // b1：标签 A，b2：标签 A+B，b3：标签 B，b4：无标签
     // Distinct addedAt (b1 最新 → b4 最早) 使 addedDesc 排序与插入顺序无关，
@@ -98,5 +108,53 @@ void main() {
     await repo.deleteBooks({'b1', 'b2'});
     final remaining = await repo.getAll();
     expect(remaining.map((b) => b.id).toSet(), {'b3', 'b4'});
+  });
+
+  // Regression: M2.0b review — book delete must enqueue sync outbox tombstone
+  // so deletion propagates cross-device (was missing in M2.0a/b → permanent
+  // residue on other devices after delete).
+  test('delete enqueues book tombstone in outbox', () async {
+    final before = await outbox.getPending();
+    expect(before, isEmpty);
+
+    await repoWithSync.delete('b1');
+
+    final after = await outbox.getPending();
+    expect(after, hasLength(1));
+    expect(after.first.recordId, 'b1');
+    expect(after.first.recordType, 'book');
+
+    final payload = jsonDecode(after.first.payloadJson) as Map<String, dynamic>;
+    expect(payload['id'], 'b1');
+    expect(payload['type'], 'book');
+    expect(payload['deleted'], isTrue);
+    // tombstone payload is empty — applier DELETEs by id without payload
+    expect(payload['payload'], isEmpty);
+    // book actually deleted from local DB
+    expect(await repoWithSync.getById('b1'), isNull);
+  });
+
+  test('deleteBooks batch enqueues tombstone for each id', () async {
+    final before = await outbox.getPending();
+    expect(before, isEmpty);
+
+    await repoWithSync.deleteBooks({'b1', 'b2'});
+
+    final after = await outbox.getPending();
+    expect(after.map((r) => r.recordId).toSet(), {'b1', 'b2'});
+    for (final row in after) {
+      expect(row.recordType, 'book');
+      final payload = jsonDecode(row.payloadJson) as Map<String, dynamic>;
+      expect(payload['deleted'], isTrue);
+    }
+    final remaining = await repoWithSync.getAll();
+    expect(remaining.map((b) => b.id).toSet(), {'b3', 'b4'});
+  });
+
+  test('delete with no sync recorder still deletes from DB (null-safe)', () async {
+    await repo.delete('b1');
+    expect(await repo.getById('b1'), isNull);
+    final pending = await outbox.getPending();
+    expect(pending, isEmpty); // no recorder → no outbox row
   });
 }

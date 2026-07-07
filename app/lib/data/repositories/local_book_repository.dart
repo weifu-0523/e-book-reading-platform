@@ -104,10 +104,46 @@ class LocalBookRepository implements BookRepository {
   }
 
   @override
-  Future<void> delete(String id) => _dao.deleteBook(id);
+  Future<void> delete(String id) async {
+    // Enqueue tombstone BEFORE dao delete: if the dao write fails we still
+    // have a queued row, but the book is still local — outbox push is
+    // idempotent (applier sees deleted=true and DELETEs remote, which is
+    // a no-op on already-absent rows). If we did it AFTER and recordBook
+    // failed, the book would be local-gone but never propagate to remote.
+    // See remote_record_applier._applyBook for the DELETE branch.
+    await _syncRecorder?.recordBook(
+      id: id,
+      title: '', // tombstone — applier ignores payload when deleted=true
+      author: null,
+      format: '',
+      fileHash: '',
+      fileSizeBytes: 0,
+      coverPath: null,
+      mtime: DateTime.now(),
+      deleted: true,
+    );
+    await _dao.deleteBook(id);
+  }
 
   @override
-  Future<void> deleteBooks(Set<String> ids) => _dao.deleteBooks(ids);
+  Future<void> deleteBooks(Set<String> ids) async {
+    if (ids.isEmpty) return;
+    final now = DateTime.now();
+    for (final id in ids) {
+      await _syncRecorder?.recordBook(
+        id: id,
+        title: '',
+        author: null,
+        format: '',
+        fileHash: '',
+        fileSizeBytes: 0,
+        coverPath: null,
+        mtime: now,
+        deleted: true,
+      );
+    }
+    await _dao.deleteBooks(ids);
+  }
 
   @override
   Future<void> setSortOrder({required String bookId, required int sortOrder}) {

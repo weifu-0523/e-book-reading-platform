@@ -71,6 +71,30 @@ void main() {
     expect(pending, isEmpty);
   });
 
+  // Regression: M2.0b review — markPushed loop was non-atomic; a crash mid-
+  // loop after PUT left snapshot containing records whose outbox rows were
+  // still pending → duplicate append on next sync. Now uses single-UPDATE
+  // markPushedMany.
+  test('push with multiple pending marks all as pushed atomically', () async {
+    when(() => webdav.putString(any(), any())).thenAnswer((_) async {});
+    when(() => webdav.getString(any())).thenAnswer((_) async => '');
+
+    for (var i = 0; i < 5; i++) {
+      await outbox.enqueue(
+        recordId: 'a$i',
+        recordType: 'annotation',
+        payloadJson:
+            '{"id":"a$i","type":"annotation","mtime":"2026-06-28T10:00:0$i.000Z","deleted":false,"payload":{}}',
+      );
+    }
+
+    final result = await engine.pushOnly();
+
+    expect(result.pushedCount, 5);
+    final pending = await outbox.getPending();
+    expect(pending, isEmpty);
+  });
+
   test('push preserves existing file content (read-modify-write)', () async {
     const existing =
         '{"id":"old","type":"annotation","mtime":"2026-06-01T00:00:00.000Z","deleted":false,"payload":{"quote":"old"}}\n';

@@ -56,6 +56,25 @@ class SyncOutboxDao extends DatabaseAccessor<AppDatabase>
         .write(SyncOutboxCompanion(pushedAt: Value(ts)));
   }
 
+  /// Mark all [ids] as pushed in a single UPDATE. Halves the crash-time
+  /// window for [WebDavSyncEngine.pushOnly]: previously the loop issued N
+  /// separate statements, so a crash mid-loop left the remote snapshot
+  /// containing records whose outbox rows were still marked pending →
+  /// duplicate append on next sync. Single statement is atomic per
+  /// sqlite semantics.
+  ///
+  /// [ids] are the integer autoincrement primary keys (NOT recordId).
+  Future<void> markPushedMany(List<int> ids, DateTime ts) {
+    if (ids.isEmpty) return Future.value();
+    // Build a parameterized `IN (?, ?, ...)` clause. The first parameter
+    // is the pushed_at value; ids follow.
+    final placeholders = List.filled(ids.length, '?').join(',');
+    return attachedDatabase.customStatement(
+      'UPDATE sync_outbox SET pushed_at = ? WHERE id IN ($placeholders)',
+      <dynamic>[ts.millisecondsSinceEpoch, ...ids],
+    );
+  }
+
   /// Delete pushed rows older than the cutoff. Returns count removed.
   /// Called by a periodic cleanup task (not in M2.0a MVP — exposed for tests).
   Future<int> purgePushedBefore(DateTime cutoff) {

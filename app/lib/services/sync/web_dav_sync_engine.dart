@@ -85,9 +85,7 @@ class WebDavSyncEngine implements SyncEngine {
     await _rateLimiter.run(() => webdav.putString(_snapshotPath, newBody));
 
     final now = DateTime.now();
-    for (final row in pending) {
-      await outbox.markPushed(row.id, now);
-    }
+    await outbox.markPushedMany(pending.map((r) => r.id).toList(), now);
 
     return SyncResult.success(pushedCount: pending.length, pulledCount: 0);
   }
