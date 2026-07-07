@@ -40,10 +40,12 @@ import '../../notes/services/note_file_writer.dart';
 import '../../notes/widgets/annotation_context_sheet.dart';
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/review_controller.dart';
-import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
 // M2.7/T21: AI drawer widget (chat panel) wired into narrow Scaffold.endDrawer
 // + wide Row conditional panel.
+// M2.7/T25: ChatSessionController.setPendingInput used by _onAskAi to push
+// selected text into the AI input composer (no LLM call).
+import '../../../features/ai_chat/providers/chat_session_controller.dart';
 import '../../../features/ai_chat/widgets/ai_drawer_widget.dart';
 import '../controllers/bookmark_controller.dart';
 import '../controllers/reader_ui_controller.dart';
@@ -62,7 +64,6 @@ import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
 import '../widgets/reader_selection_sheet.dart';
 import '../widgets/reader_selection_toolbar.dart';
-import '../../../services/ai/ai_guide.dart';
 import 'reader_progress_bar.dart';
 import 'reader_typography_panel_trigger.dart';
 
@@ -741,7 +742,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             stackSize: _stackSize(),
             onExcerpt: _openExcerptSheet,
             onCopy: _onCopySelection,
-            onAiComment: _onAiComment,
+            onAskAi: _onAskAi,
           ),
           // 底栏始终可见，显示阅读进度。
           Positioned(
@@ -1083,8 +1084,9 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
   /// AppBar「AI 导读」按钮已被 M2.7/T22 移除：原 AI 导读 + 问答 两个 AppBar
   /// 入口合并为单一「AI 抽屉」toggle（[ReaderScaffold.onToggleAiDrawer]）。
-  /// 章节模式 AiGuideSheet 仍可通过选区 toolbar「AI 点评」（[_onAiComment]）
-  /// 或书库 BookCard 菜单进入；QaAskDialog 通过 AI 抽屉内的 chat 入口替代。
+  /// 选区 toolbar「提问 AI」（[_onAskAi]）把选中文本预填到抽屉输入框，
+  /// 不再独立弹 AiGuideSheet；书库 BookCard 菜单的「AI 导读」入口也由 T24 移除。
+  /// QaAskDialog 通过 AI 抽屉内的 chat 入口替代。
 
   /// AppBar 溢出菜单「回顾本章」：触发 [ReviewController.start] 后弹出
   /// [ReviewPreviewSheet]。sheet 关闭时若 review 已完成，把 summary +
@@ -1258,31 +1260,41 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     });
   }
 
-  /// 选区 toolbar「AI 点评」按钮：以选中文本为 source 弹出 AiGuideSheet
-  /// （selection 模式 + modeLocked，禁止切到其它模式以避免上下文缺失）。
-  /// 关闭后清空 selection，与 copy 行为一致。
-  Future<void> _onAiComment() async {
+  /// 选区 toolbar「提问 AI」按钮（M2.7/T25 重构）：把选中文本以 block quote
+  /// 形式预填到 AI 抽屉输入框，**不直接调 LLM**——用户在抽屉里编辑/确认后
+  /// 自行点发送。
+  ///
+  /// 唤出抽屉的两条路径：
+  /// - **窄屏**（<1100px）：`Scaffold.openEndDrawer()`，抽屉浮在右侧覆盖阅读区。
+  /// - **宽屏**（>=1100px）：`setState(() => _aiPanelOpen = true)`，inline
+  ///   panel 在 Row 末尾展开 380px。
+  ///
+  /// 预填通过 `ChatSessionController.setPendingInput` 推入；输入框 composer
+  /// 在下一帧消费 `pendingInput` 字段填入 TextEditingController。
+  /// post-frame 是为了让 endDrawer / panel 完成挂载后再写 state，避免
+  /// 抽屉还未监听就被覆盖。
+  Future<void> _onAskAi() async {
     final sel = _selection;
-    if (sel == null) return;
-    final book = await ref
-        .read(bookRepositoryProvider)
-        .getById(widget.bookId);
-    if (book == null || !mounted) return;
-    final chapterIdx = _currentChapterIndex();
-    final chapterTitle = _chapterTitlesCache[chapterIdx];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      builder: (_) => AiGuideSheet(
-        book: book,
-        initialMode: AiGuideMode.selection,
-        selection: sel.plainText,
-        chapterIndex: chapterIdx,
-        chapterTitle: chapterTitle,
-        modeLocked: true,
-      ),
-    );
+    if (sel == null || sel.plainText.isEmpty) return;
+    final text = sel.plainText;
+
+    // 1. 唤出 AI 抽屉（narrow: endDrawer; wide: 切 inline panel）。
+    if (_isWideScreen(context)) {
+      setState(() => _aiPanelOpen = true);
+    } else {
+      Scaffold.of(context).openEndDrawer();
+    }
+
+    // 2. 选中文本以 block quote 形式预填到输入框（不直接发送）。
+    // post-frame：等抽屉/panel 挂载后再写 state，consumer 在下一帧读取。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref
+          .read(chatSessionControllerProvider(widget.bookId).notifier)
+          .setPendingInput('> $text\n\n');
+    });
+
+    // 3. 不调 LLM——用户在输入框里编辑后自行点 send。
     if (mounted) setState(() => _selection = null);
   }
 

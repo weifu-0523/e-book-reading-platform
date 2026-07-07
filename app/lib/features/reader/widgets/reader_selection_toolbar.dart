@@ -35,12 +35,12 @@ import 'highlight_selection_controls.dart';
 ///   （`top:80, left:16, right:16, Center`）。保证不崩（约束 #3）。
 ///
 /// Caller 负责持有 [SelectedContent] 状态并传入 3 个回调（摘录 / 复制 /
-/// 可选 AI 点评）。本 widget 无内部状态。
+/// 可选「提问 AI」）。本 widget 无内部状态。
 class ReaderSelectionToolbar extends StatelessWidget {
   final SelectedContent? selection;
   final VoidCallback onExcerpt;
   final VoidCallback onCopy;
-  final VoidCallback? onAiComment;
+  final VoidCallback? onAskAi;
 
   /// M3b/任务9：选区在父 [Stack] 局部坐标系内的 Rect。非空时工具条跟随
   /// 选区定位；为空时走 fallback 顶部居中。坐标由 reader_body 通过
@@ -57,7 +57,7 @@ class ReaderSelectionToolbar extends StatelessWidget {
     required this.selection,
     required this.onExcerpt,
     required this.onCopy,
-    this.onAiComment,
+    this.onAskAi,
     this.selectionRect,
     this.stackSize,
   });
@@ -71,7 +71,7 @@ class ReaderSelectionToolbar extends StatelessWidget {
     final controls = HighlightSelectionControls(
       onExcerpt: onExcerpt,
       onCopy: onCopy,
-      onAiComment: onAiComment,
+      onAskAi: onAskAi,
     );
 
     final rect = selectionRect;
