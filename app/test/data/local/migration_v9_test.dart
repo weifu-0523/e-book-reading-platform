@@ -35,19 +35,13 @@ void main() {
       ]));
     });
 
-    test('qa_history table exists with correct columns', () async {
-      final cols = await db.customSelect(
-        "PRAGMA table_info('qa_history')",
+    test('qa_history table is dropped at schema v12 (regression)', () async {
+      // v9 引入 qa_history；v12 (M2.7) 用 chat_sessions + chat_messages 替代并 drop 旧表。
+      // 详见 database_migration_v12_test.dart 的同名断言。
+      final rows = await db.customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='qa_history'",
       ).get();
-      final names = cols.map((r) => r.read<String>('name')).toSet();
-      expect(names, containsAll(<String>[
-        'id',
-        'book_id',
-        'question',
-        'answer',
-        'citations_json',
-        'created_at',
-      ]));
+      expect(rows, isEmpty);
     });
 
     test('book_passages_fts virtual table exists', () async {
