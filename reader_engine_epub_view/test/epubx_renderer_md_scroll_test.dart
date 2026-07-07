@@ -11,7 +11,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 import 'package:reader_engine_epub_view/html_chapter_source.dart';
@@ -51,24 +50,21 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 100));
 
-      // 断言 1：渲染出 HtmlWidget（内容非空白）。
+      // 断言 1：渲染出 SelectableText（M4.8 新管道，替换 fwfh HtmlWidget）。
       expect(
-        find.byType(HtmlWidget),
+        find.byType(SelectableText),
         findsWidgets,
-        reason: 'scroll 模式应渲染 HtmlWidget，空白说明渲染失败',
+        reason: 'scroll 模式应渲染 SelectableText.rich，空白说明渲染失败',
       );
 
-      // 断言 2：渲染出 RichText（fwfh 把 HTML 转成 RichText）。
-      expect(
-        find.byType(RichText),
-        findsWidgets,
-        reason: '应渲染出文字内容',
-      );
-
-      // 断言 3：渲染出预期文字（至少含"第一段"或"第二段"）。
-      final hasContent = find.byType(RichText).evaluate().any((element) {
-        final widget = element.widget as RichText;
-        final text = widget.text.toPlainText();
+      // 断言 2：渲染出预期文字（至少含"第一段"或"第二段"）。
+      // M4.8: SelectableText 的 textSpan 字段持有 InlineSpan，用 toPlainText
+      // 取出文本内容（与旧 RichText.text.toPlainText 等价）。
+      final hasContent = find.byType(SelectableText).evaluate().any((element) {
+        final widget = element.widget as SelectableText;
+        final span = widget.textSpan;
+        if (span == null) return false;
+        final text = span.toPlainText();
         return text.contains('第一段') ||
             text.contains('第二段') ||
             text.contains('第三段');

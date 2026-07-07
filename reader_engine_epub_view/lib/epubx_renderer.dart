@@ -1042,40 +1042,64 @@ class EpubxRenderer implements EpubRenderer {
       color: bg,
       child: DefaultTextStyle(
         style: style.copyWith(color: fg),
-        // M2.8/B3 (Bug #5b): scroll 模式整章渲染，用注入后的 HTML（rich +
-        // 高亮）。paged 模式改为按页切片 + 每页独立注入高亮，传入 raw HTML。
-        // 旧实现 paged 也用 currentHighlightedHtml()，但 _buildPaged 只取
-        // plain substring 喂 Text()，丢掉了所有 span → 高亮不显示。
+        // M2.8/B3 (Bug #5b) historical: scroll 模式曾用注入后的 HTML（rich +
+        // 高亮），paged 模式按页切片 + 每页独立注入高亮。M4.8 起 scroll 与
+        // paged 共享同一 HtmlToInlineSpanConverter：高亮由 converter bake 到
+        // InlineSpan 的 backgroundColor，不再走 HtmlHighlightInjector。两条路
+        // 径都吃 raw HTML；highlights 在各自 _build* 内部按 chapterIndex 过滤。
         child: _paginationMode == PaginationMode.scroll
-            ? _buildScroll(style, fg, currentHighlightedHtml(), margin)
+            ? _buildScroll(style, fg, rawHtml, margin)
             : _buildPaged(style, fg, rawHtml, margin),
       ),
     );
   }
 
-  /// scroll 模式：单章 SingleChildScrollView + 富文本 HtmlWidget。
+  /// scroll 模式：单章 SingleChildScrollView + SelectableText.rich。
+  ///
+  /// M4.8: 与 paged 模式共享同一 HtmlToInlineSpanConverter + SelectableText.rich
+  /// 管道（差异仅在容器：scroll 用 SingleChildScrollView，paged 用 PageView）。
+  /// 高亮由 converter bake 到 InlineSpan 的 backgroundColor（不再走
+  /// HtmlHighlightInjector）；图片由 converter 包 WidgetSpan + ConstrainedBox
+  /// （不再走 fwfh customStylesBuilder）。Scroll 模式无分页，converter 直接吃
+  /// 整章 HTML。
   Widget _buildScroll(TextStyle style, Color fg, String html, double margin) {
     return LayoutBuilder(
       builder: (context, constraints) {
         // M4.6-fix15: scroll 模式图片 max-height 限制为视高度 70%。
-        // scroll 模式无分页（图片撑开滚动），但超大图（如折页地图）仍可能
-        // 占满整屏不利阅读。70% 留 30% 给上下文文字。
+        // M4.8: 此上限由 converter 的 imageMaxHeight 参数传入（WidgetSpan 内
+        // 包 ConstrainedBox(maxHeight: imageMaxHeight)），等价于 fwfh 旧路径的
+        // customStylesBuilder({'max-height': ..., 'height': 'auto'})。
         final maxH = constraints.maxHeight.isFinite
             ? constraints.maxHeight * 0.7
             : 600.0 * 0.7;
+        // M4.8: 章节高亮在 converter 内 bake（与 paged 共用同一 InlineSpan）。
+        // 调用方传 rawHtml（与 paged 一致），converter 用 highlights 参数重新
+        // 着色——避免 currentHighlightedHtml() 的二次注入 + 减少 injector 调用。
+        final chapterHighlights = _allHighlights
+            .where((h) => h.chapterIndex == _currentChapterIndex)
+            .toList();
+        final converted = HtmlToInlineSpanConverter().convert(
+          html,
+          baseStyle: style.copyWith(color: fg),
+          imageMaxHeight: maxH,
+          indentEm: _typography.paragraphIndentEm.toDouble(),
+          indentEnabled: _typography.paragraphIndentEnabled,
+          highlights: chapterHighlights,
+        );
         return SingleChildScrollView(
           controller: _scrollController,
           child: Padding(
             padding: EdgeInsets.all(margin),
-            child: HtmlWidget(
-              html,
-              textStyle: style.copyWith(color: fg),
-              // M3e/Q1: 段落统一 margin（fwfh 支持 margin，见 style_margin.dart）。
-              // 首行缩进由 TypographyStyleInjector 在 HTML 层用 em-space 注入
-              // （fwfh 不支持 text-indent，详见 injector 文档）。
-              // M4.6-fix15: img max-height 防止单图占满视口（closure 捕获 maxH）。
-              customStylesBuilder: (element) =>
-                  _elementStyles(element, maxH),
+            child: SelectableText.rich(
+              // converter.root 是 InlineSpan，但实际总是 TextSpan（converter
+              // 内部用 TextSpan(style: baseStyle, children: ...) 构造根）。
+              // SelectableText.rich 要求 TextSpan，故显式 cast。
+              converted.root as TextSpan,
+              // M3e/Q1: 段落间距（0.5em）由 fwfh customStylesBuilder 旧路径
+              // 注入；新管道下 converter 未处理段间距，scroll 模式需用
+              // DefaultTextStyle.merge + WidgetSpan spacer 或保留极简（无段间距）
+              // 直到 Phase 5/6 在 InlineSpan 层补齐。当前实现可接受：段落间
+              // 通过 '\n\n' TextSpan 分隔，视觉间距由行高自然产生。
             ),
           ),
         );
