@@ -246,8 +246,10 @@ void main() {
   });
 
   group('highlight overlay', () {
-    test('HighlightRange applies BackgroundColor to overlapping text', () {
+    test('HighlightRange splits leaf span into 3 parts: plain/yellow/plain', () {
       // paragraph: "Hello world" (offsets 0..11), highlight 2..7 = "llo w"
+      // Expected structure: TextSpan("He" no bg) +
+      // TextSpan("llo w" yellow) + TextSpan("orld" no bg)
       final result = HtmlToInlineSpanConverter().convert(
         '<p>Hello world</p>',
         baseStyle: const TextStyle(fontSize: 16),
@@ -256,14 +258,13 @@ void main() {
           HighlightRange(2, 7, 'rgba(255,235,59,1)'),
         ],
       );
-      // Walk spans; expect at least one TextSpan with backgroundColor matching
-      final yellowSpans = <TextSpan>[];
+      // Walk spans and collect leaf TextSpans (no children) in document order.
+      final leaves = <TextSpan>[];
       void visit(InlineSpan s) {
         if (s is TextSpan) {
-          if (s.style?.backgroundColor != null) {
-            yellowSpans.add(s);
-          }
-          if (s.children != null) {
+          if (s.children == null || s.children!.isEmpty) {
+            leaves.add(s);
+          } else {
             for (final c in s.children!) {
               visit(c);
             }
@@ -271,10 +272,99 @@ void main() {
         }
       }
       visit(result.root);
-      expect(yellowSpans, isNotEmpty);
-      // The highlighted slice should be "llo w" (plainText[2..7])
-      final highlightedText = yellowSpans.map((s) => s.text ?? '').join();
-      expect(highlightedText, contains('llo w'));
+      // Find the paragraph's leaves: skip empty root/para wrappers.
+      final paragraphLeaves =
+          leaves.where((s) => (s.text ?? '').isNotEmpty).toList();
+      // Expect exactly 3 leaf segments.
+      expect(paragraphLeaves.length, 3,
+          reason: 'highlight should split leaf span into 3 parts');
+      expect(paragraphLeaves[0].text, 'He');
+      expect(paragraphLeaves[0].style?.backgroundColor, isNull);
+      expect(paragraphLeaves[1].text, 'llo w');
+      expect(paragraphLeaves[1].style?.backgroundColor, isNotNull);
+      expect(paragraphLeaves[2].text, 'orld');
+      expect(paragraphLeaves[2].style?.backgroundColor, isNull);
+    });
+
+    test('highlight crossing <em> boundary splits correctly', () {
+      // <p>plain<em>italic</em>tail</p>, highlight covers chars 3..13.
+      // plainText = "plainitalictail" (length 15); chars[3..13) = "initalicta".
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>plain<em>italic</em>tail</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false,
+        highlights: const [HighlightRange(3, 13, 'rgba(255,235,59,1)')],
+      );
+      // Walk and collect all TextSpans with non-null backgroundColor.
+      final highlighted = <TextSpan>[];
+      result.root.visitChildren((s) {
+        if (s is TextSpan && s.style?.backgroundColor != null) {
+          highlighted.add(s);
+        }
+        return true;
+      });
+      // The highlight crosses 3 leaf spans (plain tail / italic / tail head),
+      // producing 3 highlighted segments.
+      expect(highlighted.length, greaterThanOrEqualTo(2));
+      // Concatenated highlighted text must equal plainText[3..13).
+      final highlightedText = highlighted.map((s) => s.text ?? '').join();
+      expect(highlightedText, 'initalicta');
+    });
+
+    test('two disjoint highlights produce two separate background segments', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>ABCDEFGHIJ</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false,
+        highlights: const [
+          HighlightRange(1, 3, 'rgba(255,235,59,1)'), // "BC"
+          HighlightRange(6, 8, 'rgba(255,235,59,1)'), // "GH"
+        ],
+      );
+      final highlighted = <TextSpan>[];
+      result.root.visitChildren((s) {
+        if (s is TextSpan && s.style?.backgroundColor != null) {
+          highlighted.add(s);
+        }
+        return true;
+      });
+      expect(highlighted.length, 2);
+      expect(highlighted[0].text, 'BC');
+      expect(highlighted[1].text, 'GH');
+    });
+
+    test('highlight outside plainText range produces no background span', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>short</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false,
+        highlights: const [HighlightRange(1000, 2000, 'rgba(255,235,59,1)')],
+      );
+      final highlighted = <TextSpan>[];
+      result.root.visitChildren((s) {
+        if (s is TextSpan && s.style?.backgroundColor != null) {
+          highlighted.add(s);
+        }
+        return true;
+      });
+      expect(highlighted, isEmpty);
+    });
+
+    test('empty highlights list produces no background span', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>text</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false,
+        highlights: const [],
+      );
+      final highlighted = <TextSpan>[];
+      result.root.visitChildren((s) {
+        if (s is TextSpan && s.style?.backgroundColor != null) {
+          highlighted.add(s);
+        }
+        return true;
+      });
+      expect(highlighted, isEmpty);
     });
   });
 }
