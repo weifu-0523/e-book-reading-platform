@@ -79,14 +79,21 @@ class ChatMessagesDao extends DatabaseAccessor<AppDatabase>
   /// update API requires reading the row first to compute the new value
   /// (extra round-trip + race window between concurrent appends).
   ///
-  /// Drift stores DateTime columns as INTEGER Unix seconds by default
-  /// (see `BaseSqlType.mapToSqlVariable`), so we pass `Variable<DateTime>`
-  /// and let drift's type mapping handle the conversion — NOT `.toInt()`
-  /// (which doesn't exist on DateTime and would fail to compile).
+  /// Uses [customUpdate] (not [customStatement]) because drift's
+  /// `Variable<DateTime>` is only recognized by the typed SQL API —
+  /// `customStatement` passes params raw to sqlite3 and would reject
+  /// `Variable<DateTime>` instances (sql3 native lib accepts only
+  /// bool/int/num/String/Uint8List/null). `customUpdate` runs drift's type
+  /// mapper, which converts DateTime → INTEGER Unix seconds (drift default).
   Future<void> appendContent(String id, String delta, DateTime at) {
-    return customStatement(
+    return customUpdate(
       'UPDATE chat_messages SET content = content || ?, updated_at = ? WHERE id = ?',
-      [Variable<DateTime>(at), Variable<String>(delta), Variable<String>(id)],
+      variables: [
+        Variable<String>(delta),
+        Variable<DateTime>(at),
+        Variable<String>(id),
+      ],
+      updates: {chatMessages},
     );
   }
 
