@@ -75,6 +75,8 @@ class Paginator {
   /// 实测高度本身已含段间距/图片真实尺寸，无需估算。
   ///
   /// 返回与 [paginateWithText] 同结构（plainText + breaks），可无缝替换。
+  @Deprecated('M4.8: replaced by LineMetricsPaginator. '
+      'Kept for chapter-level fwfh fallback only; remove in M5.0.')
   ({String plainText, List<PageBreak> breaks}) paginateFromActualHeights({
     required String chapterHtml,
     required Size viewport,

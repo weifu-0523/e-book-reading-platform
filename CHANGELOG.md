@@ -9,6 +9,25 @@
 
 v1.6.0-alpha 之后的新变更将记在此处。
 
+### M4.8 — 2026-07-07（EPUB 渲染引擎：fwfh → TextPainter 自研分页）
+
+**性质**：feature（根治 EPUB paged 模式底部溢出 bug）。
+
+**核心变更**：用 TextPainter 自研分页管线替换 fwfh HTML 渲染，实现"测量即渲染"——
+TextPainter 与 SelectableText.rich 共享同一 InlineSpan 输入，layout 结果一致，drift = 0。
+
+**新增组件**：
+- `html_to_inline_span_converter.dart` — HTML → InlineSpan 递归转换器
+- `line_metrics_paginator.dart` — computeLineMetrics 行级分页
+- `inline_span_subtree_slicer.dart` — 静态 InlineSpan 子树切片器
+- `selectable_page_view.dart` — PageView + SelectableText.rich 页面组件
+
+**迁移说明**：所有已有基础设施（M3.3 Locator、SelectionArea、LXGWNeoXiHei 字体、
+HighlightRange）保持不变，无需数据迁移。≥3 个不支持标签的章节自动回退到 fwfh 渲染。
+
+**性能基线**：50KB 章节 convert + paginate < 200ms；
+详见 `reader_engine_epub_view/test/debug/m4_8_perf_baseline_test.dart`。
+
 ### M4.6-fix21 — 2026-07-07（PDF 间歇性加载卡死根治：pdfrx openData → FPDF_LoadCustomDocument 死锁）
 
 **性质**：bugfix（根治 fix19 之后残留的 ~40% 间歇性 PDF 加载卡死）。

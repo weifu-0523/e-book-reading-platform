@@ -58,6 +58,8 @@ import 'typography_style_injector.dart';
 /// （长段落/图片）。50 段章节典型 50-150ms，比旧版 Paginator 的
 /// TextPainter 估算慢约 3-5 倍，但仅在章节首次进入或排版变更时跑（缓存命中
 /// 后零开销），用户可接受。详见 epubx_renderer._buildPaged 的缓存逻辑。
+@Deprecated('M4.8: replaced by _InlineSpanMeasurer. '
+    'Kept for chapter-level fwfh fallback; remove in M5.0.')
 class RenderedHtmlMeasurer extends StatefulWidget {
   const RenderedHtmlMeasurer({
     super.key,
