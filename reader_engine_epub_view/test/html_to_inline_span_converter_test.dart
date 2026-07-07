@@ -142,6 +142,19 @@ void main() {
       expect(result.plainText, contains('1. First'));
       expect(result.plainText, contains('2. Second'));
     });
+
+    test('nested <ol> restarts numbering at 1 for inner list', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<ol><li>Outer<ol><li>Inner</li></ol></li></ol>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      // First prefix should be "1. " (outer), second should be "1. " (inner restarts)
+      expect(result.plainText, contains('1. Outer'));
+      expect(result.plainText, contains('1. Inner'));
+      // Verify "2. Inner" does NOT appear
+      expect(result.plainText.contains('2. Inner'), isFalse);
+    });
   });
 
   group('images', () {

@@ -124,10 +124,14 @@ class HtmlToInlineSpanConverter {
       String? prefix;
       TextStyle? headingStyle;
       if (tag == 'li') {
-        // Determine parent <ol>/<ul> and index.
+        // Determine parent <ol>/<ul> and index. Direct children only —
+        // querySelectorAll('li') would return nested <li> too, producing
+        // wrong numbering for nested ordered lists.
         final parent = el.parent;
         if (parent?.localName == 'ol') {
-          final siblings = parent!.querySelectorAll('li');
+          final siblings = parent!.children
+              .where((c) => c.localName == 'li')
+              .toList(growable: false);
           final idx = siblings.indexOf(el) + 1;
           prefix = '$idx. ';
         } else {
