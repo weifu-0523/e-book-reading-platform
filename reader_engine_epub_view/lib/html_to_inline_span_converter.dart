@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 ZhiYue Open Source contributors
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
@@ -181,9 +183,13 @@ class HtmlToInlineSpanConverter {
       }
     }
 
+    final plainText = buf.toString();
+    final rawRoot = TextSpan(style: baseStyle, children: children);
+    final highlightedRoot =
+        _applyHighlights(rawRoot, plainText, highlights);
     return ConvertedSpans(
-      root: TextSpan(style: baseStyle, children: children),
-      plainText: buf.toString(),
+      root: highlightedRoot,
+      plainText: plainText,
       paragraphRanges: ranges,
       images: images,
       shouldFallbackToFwfh: unsupportedCounter.value >= 3,
@@ -292,4 +298,169 @@ class HtmlToInlineSpanConverter {
 /// field because [HtmlToInlineSpanConverter]'s constructor is `const`.
 class _Counter {
   int value = 0;
+}
+
+// ---------------------------------------------------------------------------
+// Highlight overlay (Task 1.8)
+// ---------------------------------------------------------------------------
+
+/// Walk [root] and split leaf [TextSpan]s at highlight boundaries, attaching
+/// `backgroundColor` to the slice overlapping each [HighlightRange].
+///
+/// Coordinates: highlight `startOffset`/`endOffset` are absolute offsets in
+/// the chapter's plain text (the same plainText emitted by [ConvertedSpans]).
+/// The walker tracks the absolute offset of each visited span and slices
+/// its text accordingly.
+InlineSpan _applyHighlights(
+  InlineSpan root,
+  String plainText,
+  List<HighlightRange> highlights,
+) {
+  if (highlights.isEmpty) return root;
+  // Sort and merge overlapping ranges; keep the first color on conflicts.
+  final sorted = [...highlights]
+    ..sort((a, b) => a.startOffset.compareTo(b.startOffset));
+  final ranges = <(int, int, Color)>[];
+  for (final h in sorted) {
+    ranges.add((h.startOffset, h.endOffset, _parseColor(h.colorRgba)));
+  }
+  return _HighlightRewriter(ranges).rewrite(root, 0);
+}
+
+Color _parseColor(String rgba) {
+  if (rgba.startsWith('#')) {
+    final hex = rgba.substring(1);
+    final v = int.parse(hex, radix: 16);
+    if (hex.length == 6) return Color(v | 0xFF000000);
+    if (hex.length == 8) return Color(v);
+    return const Color(0xFFFFFF00);
+  }
+  final m = RegExp(r'rgba?\(([^)]+)\)').firstMatch(rgba);
+  if (m == null) return const Color(0xFFFFFF00);
+  final parts = m.group(1)!.split(',').map((s) => s.trim()).toList();
+  final r = int.tryParse(parts[0]) ?? 255;
+  final g = int.tryParse(parts.elementAtOrNull(1) ?? '') ?? 235;
+  final b = int.tryParse(parts.elementAtOrNull(2) ?? '') ?? 59;
+  final a = parts.length >= 4
+      ? double.tryParse(parts[3]) ?? 1.0
+      : 1.0;
+  return Color.fromARGB((a * 255).round(), r, g, b);
+}
+
+class _HighlightRewriter {
+  _HighlightRewriter(this.ranges);
+  final List<(int, int, Color)> ranges;
+
+  InlineSpan rewrite(InlineSpan span, int offset) {
+    if (span is TextSpan) {
+      return _rewriteTextSpan(span, offset);
+    }
+    if (span is WidgetSpan) {
+      // WidgetSpan occupies 1 char (U+FFFC) in plainText; no text to recolor.
+      return span;
+    }
+    return span;
+  }
+
+  InlineSpan _rewriteTextSpan(TextSpan span, int offset) {
+    final text = span.text ?? '';
+    final newChildren = <InlineSpan>[];
+
+    if (text.isNotEmpty) {
+      // Slice [text] into segments: each segment is either plain or
+      // highlighted. Highlight boundaries are absolute offsets in plainText.
+      var i = 0;
+      while (i < text.length) {
+        final absStart = offset + i;
+        // Find a highlight that contains absStart.
+        final hit = _findHit(absStart);
+        final int localEnd;
+        final Color? bg;
+        if (hit == null) {
+          // Not highlighted; extend to the next highlight start or text end.
+          final nextStart = _nextHighlightStartAfter(absStart);
+          final absEnd = nextStart == null ? offset + text.length : nextStart;
+          localEnd = math.min(absEnd - offset, text.length);
+          bg = null;
+        } else {
+          final (hStart, hEnd, hColor) = hit;
+          // Extend through this highlight; cap at text end.
+          final absEnd = math.min(hEnd, offset + text.length);
+          localEnd = absEnd - offset;
+          bg = hColor;
+          // absStart must be within highlight; if absStart < hStart (shouldn't
+          // happen because we cap to nextStart in the previous iteration),
+          // clamp local start.
+          if (absStart < hStart) {
+            // shouldn't happen, but guard anyway
+            final localStart = hStart - offset;
+            if (localStart > i) {
+              newChildren.add(TextSpan(
+                text: text.substring(i, localStart),
+                style: span.style,
+              ));
+              i = localStart;
+            }
+          }
+        }
+        newChildren.add(TextSpan(
+          text: text.substring(i, localEnd),
+          style: span.style?.copyWith(backgroundColor: bg),
+        ));
+        i = localEnd;
+      }
+    }
+
+    // Recurse into children with their respective offsets.
+    if (span.children != null && span.children!.isNotEmpty) {
+      var childOffset = offset + text.length;
+      for (final child in span.children!) {
+        newChildren.add(rewrite(child, childOffset));
+        childOffset += _spanTextLength(child);
+      }
+    }
+
+    // If the original span had a non-null text, its children list is empty
+    // in practice; the rewritten spans are flat. If the original had only
+    // children (text == null), wrap them in a TextSpan preserving style.
+    if (text.isEmpty && span.children != null) {
+      return TextSpan(style: span.style, children: newChildren);
+    }
+    // text was non-empty: if there's only one child, unwrap; else wrap.
+    if (newChildren.length == 1) {
+      return newChildren.single;
+    }
+    return TextSpan(style: span.style, children: newChildren);
+  }
+
+  (int, int, Color)? _findHit(int absOffset) {
+    for (final r in ranges) {
+      if (r.$1 <= absOffset && absOffset < r.$2) return r;
+    }
+    return null;
+  }
+
+  int? _nextHighlightStartAfter(int absOffset) {
+    int? next;
+    for (final r in ranges) {
+      if (r.$1 > absOffset) {
+        if (next == null || r.$1 < next) next = r.$1;
+      }
+    }
+    return next;
+  }
+}
+
+int _spanTextLength(InlineSpan span) {
+  if (span is TextSpan) {
+    var len = (span.text ?? '').length;
+    if (span.children != null) {
+      for (final c in span.children!) {
+        len += _spanTextLength(c);
+      }
+    }
+    return len;
+  }
+  if (span is WidgetSpan) return 1;
+  return 0;
 }

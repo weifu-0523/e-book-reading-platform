@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine_epub_view/html_to_inline_span_converter.dart';
 
 void main() {
@@ -215,6 +216,39 @@ void main() {
         imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
       );
       expect(result.shouldFallbackToFwfh, isTrue);
+    });
+  });
+
+  group('highlight overlay', () {
+    test('HighlightRange applies BackgroundColor to overlapping text', () {
+      // paragraph: "Hello world" (offsets 0..11), highlight 2..7 = "llo w"
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>Hello world</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false,
+        highlights: const [
+          HighlightRange(2, 7, 'rgba(255,235,59,1)'),
+        ],
+      );
+      // Walk spans; expect at least one TextSpan with backgroundColor matching
+      final yellowSpans = <TextSpan>[];
+      void visit(InlineSpan s) {
+        if (s is TextSpan) {
+          if (s.style?.backgroundColor != null) {
+            yellowSpans.add(s);
+          }
+          if (s.children != null) {
+            for (final c in s.children!) {
+              visit(c);
+            }
+          }
+        }
+      }
+      visit(result.root);
+      expect(yellowSpans, isNotEmpty);
+      // The highlighted slice should be "llo w" (plainText[2..7])
+      final highlightedText = yellowSpans.map((s) => s.text ?? '').join();
+      expect(highlightedText, contains('llo w'));
     });
   });
 }
