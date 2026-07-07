@@ -142,4 +142,20 @@ void main() {
       expect(result.plainText, contains('2. Second'));
     });
   });
+
+  group('images', () {
+    test('<img> produces a WidgetSpan and records image metadata', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>Before <img src="x.png" width="100" height="50"> After</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      expect(result.images.length, 1);
+      expect(result.images.first.src, 'x.png');
+      expect(result.images.first.width, 100);
+      expect(result.images.first.height, 50);
+      // WidgetSpan occupies exactly 1 character (U+FFFC) in plainText.
+      expect(result.plainText.contains('￼'), isTrue);
+    });
+  });
 }

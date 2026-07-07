@@ -130,7 +130,7 @@ class HtmlToInlineSpanConverter {
       }
       // Walk block element's child nodes directly (no wrapping span).
       for (final child in el.nodes) {
-        _walkInline(child, effectiveStyle, buf, paraChildren, images);
+        _walkInline(child, effectiveStyle, buf, paraChildren, images, imageMaxHeight);
       }
       final end = buf.length;
       ranges.add(ParaRange(start, end));
@@ -155,6 +155,7 @@ class HtmlToInlineSpanConverter {
     StringBuffer buf,
     List<InlineSpan> out,
     List<InlineImage> images,
+    double imageMaxHeight,
   ) {
     if (node is dom.Text) {
       final text = node.text;
@@ -166,10 +167,28 @@ class HtmlToInlineSpanConverter {
     }
     if (node is! dom.Element) return;
     final tag = node.localName;
+    if (tag == 'img') {
+      final src = node.attributes['src'] ?? '';
+      final w = int.tryParse(node.attributes['width'] ?? '') ?? 0;
+      final h = int.tryParse(node.attributes['height'] ?? '') ?? 0;
+      images.add(InlineImage(src, w, h));
+      buf.write('￼'); // OBJECT REPLACEMENT CHARACTER (U+FFFC)
+      out.add(WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: imageMaxHeight),
+          child: Image.network(
+            src,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ),
+      ));
+      return;
+    }
     final childStyle = _inlineStyle(style, tag);
     final childOut = <InlineSpan>[];
     for (final child in node.nodes) {
-      _walkInline(child, childStyle, buf, childOut, images);
+      _walkInline(child, childStyle, buf, childOut, images, imageMaxHeight);
     }
     if (childOut.isNotEmpty) {
       if (childOut.length == 1) {
