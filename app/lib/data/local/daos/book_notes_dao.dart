@@ -34,6 +34,14 @@ class BookNotesDao extends DatabaseAccessor<AppDatabase>
         .getSingleOrNull();
   }
 
+  /// M2.7 (2026-07-07): 单行查询，按主键 [id] 取一条 [BookNote]。
+  /// 用于 [AttachmentNoteResolver] 在用户 @笔记 时把笔记快照绑定到 chat 消息。
+  /// 行不存在时返回 `null`，由调用方决定如何提示。
+  Future<BookNote?> findById(String id) {
+    return (select(bookNotes)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+  }
+
   /// M4.6-fix10/A5: 反应式订阅——按 bookId 观察 BookNote 行的出现/变化。
   ///
   /// 用于 [LocalNotesRepository.watchAnnotations] 在 BookNote 尚不存在时

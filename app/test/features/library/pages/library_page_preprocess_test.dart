@@ -54,7 +54,13 @@ void main() {
     return container;
   }
 
-  test('handleImportResult triggers start when isNew=true', () async {
+  // M2.7 (2026-07-07): BookPreprocessor "import-time" trigger disabled per
+  // user decision. handleImportResult is now a no-op; the three tests below
+  // were updated from "expect startCount==1" to "expect startCount==0" to
+  // reflect the disabled state. 当恢复"导入即批处理"时把这三个 expect 改回
+  // isNew=true → startCount==1, isNew=false → 0, ghost → 0 即可。
+
+  test('handleImportResult is a no-op for new books (M2.7 disabled)', () async {
     final fake = _FakeController();
     final container = await buildContainer('new-book', fake);
     addTearDown(container.dispose);
@@ -65,7 +71,7 @@ void main() {
       isNew: true,
     );
 
-    expect(fake.startCount, 1);
+    expect(fake.startCount, 0);
   });
 
   test('handleImportResult skips when isNew=false', () async {

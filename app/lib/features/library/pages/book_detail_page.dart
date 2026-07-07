@@ -92,13 +92,19 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
       floatingActionButton: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FloatingActionButton.extended(
-            heroTag: 'reprocess',
-            onPressed: _book == null ? null : _reprocess,
-            icon: const Icon(Icons.refresh),
-            label: Text(AppLocalizations.of(context)!.bookDetailActionReprocess),
-          ),
-          const SizedBox(width: 12),
+          // M2.7 (2026-07-07): BookPreprocessor 暂时禁用 per user decision.
+          // "重新处理" FAB 隐藏。代码 + 表保留以备未来恢复（取消下方 Visibility
+          // 注释即可还原；也可以把整段 FloatingActionButton.extended 块删掉）。
+          // Visibility(
+          //   visible: false,
+          //   child: FloatingActionButton.extended(
+          //     heroTag: 'reprocess',
+          //     onPressed: _book == null ? null : _reprocess,
+          //     icon: const Icon(Icons.refresh),
+          //     label: Text(AppLocalizations.of(context)!.bookDetailActionReprocess),
+          //   ),
+          // ),
+          // const SizedBox(width: 12),
           FloatingActionButton.extended(
             heroTag: 'ai_guide',
             onPressed: _openAiGuide,
@@ -120,6 +126,11 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
 
   /// Restart preprocessing from scratch. No-op if the book hasn't been
   /// loaded yet (the FAB is disabled in that case).
+  //
+  // M2.7 (2026-07-07): BookPreprocessor 暂时禁用。`_reprocess` 当前没有调用方
+  // （FAB 已隐藏），但保留方法体以便恢复时直接取消上面 FAB 注释即可联调。
+  // 当恢复时也取消此处的 `// ignore: unused_element` 即可。
+  // ignore: unused_element
   void _reprocess() {
     final book = _book;
     if (book == null) return;

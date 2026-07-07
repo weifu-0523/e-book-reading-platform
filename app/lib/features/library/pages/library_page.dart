@@ -70,21 +70,30 @@ class LibraryPage extends ConsumerStatefulWidget {
   /// No-op when:
   /// - [isNew] is false (dedup hit — book already exists in the library).
   /// - the row for [bookId] cannot be found (race with delete).
+  ///
+  /// M2.7 (2026-07-07): BookPreprocessor 入口暂时禁用 per user decision.
+  /// 用户决定 AI 只在主动调用时进入，不再"导入即批处理"。
+  /// 表 `book_passages` 与代码 `book_preprocessor.dart` 保留以备未来恢复。
+  /// 恢复方法：取消下方注释块即可，DAO/Provider/Controller 链路保持可用。
   static Future<void> handleImportResult(
     ProviderContainer container, {
     required String bookId,
     required bool isNew,
   }) async {
-    if (!isNew) return;
-    final db = container.read(appDatabaseProvider);
-    final row = await (db.select(db.books)
-          ..where((t) => t.id.equals(bookId)))
-        .getSingleOrNull();
-    if (row == null) return;
-    final book = Book.fromRow(row);
-    container
-        .read(bookPreprocessControllerProvider(bookId).notifier)
-        .start(book);
+    // M2.7 (2026-07-07): BookPreprocessor disabled — keep body as no-op.
+    // 当恢复"导入即批处理"时，把下面整块取消注释即可。
+    // if (!isNew) return;
+    // final db = container.read(appDatabaseProvider);
+    // final row = await (db.select(db.books)
+    //       ..where((t) => t.id.equals(bookId)))
+    //     .getSingleOrNull();
+    // if (row == null) return;
+    // final book = Book.fromRow(row);
+    // container
+    //     .read(bookPreprocessControllerProvider(bookId).notifier)
+    //     .start(book);
+    await Future<void>.delayed(Duration.zero);
+    return;
   }
 
   @override
