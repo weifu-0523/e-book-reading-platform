@@ -41,7 +41,6 @@ import '../../notes/widgets/annotation_context_sheet.dart';
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/ai_guide_sheet.dart';
-import '../../../features/ai/widgets/qa_ask_dialog.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
 // M2.7/T21: AI drawer widget (chat panel) wired into narrow Scaffold.endDrawer
 // + wide Row conditional panel.
@@ -63,7 +62,6 @@ import '../widgets/reader_error_view.dart';
 import '../widgets/reader_scaffold.dart';
 import '../widgets/reader_selection_sheet.dart';
 import '../widgets/reader_selection_toolbar.dart';
-import '../widgets/toc_drawer.dart' show defaultTocChapterIndex;
 import '../../../services/ai/ai_guide.dart';
 import 'reader_progress_bar.dart';
 import 'reader_typography_panel_trigger.dart';
@@ -170,9 +168,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   /// 同时驱动窄屏 endDrawer 的开关（窄屏 endDrawer 由 AppBar 直接 open，
   /// 此处仅切换宽屏 inline panel 的可见性）。
   ///
-  /// 当前调用方：T22 会在 ReaderScaffold AppBar 注入 onToggleAiDrawer 回调
-  /// 指向此方法。在 T22 落地前暂时触发 unused_element，预期 T22 移除忽略。
-  // ignore: unused_element
+  /// 调用方：ReaderScaffold AppBar 的 onToggleAiDrawer 回调（M2.7/T22 注入）。
   void _toggleAiDrawer() {
     setState(() => _aiPanelOpen = !_aiPanelOpen);
   }
@@ -711,8 +707,8 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                 unawaited(engine.setTypography(
                     t.copyWith(fontSize: (t.fontSize + 1).clamp(12.0, 32.0))));
               },
-              onOpenAiGuide: _onOpenAiGuide,
-              onOpenQa: _onOpenQa,
+              // M2.7/T22: 单一 AI 抽屉 toggle（替代原 AI 导读 + 问答 入口）。
+              onToggleAiDrawer: _toggleAiDrawer,
               onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
               onAddBookmark: _onAddBookmark,
               // M3c/任务 6b：弹出书架对话框选书切换。
@@ -1085,27 +1081,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     if (mounted) setState(() => _selection = null);
   }
 
-  /// AppBar「AI 导读」按钮：以当前章节为上下文弹出 AiGuideSheet（章节模式）。
-  /// 取 book = repository.getById(widget.bookId)；取不到（书被删）则静默退出。
-  Future<void> _onOpenAiGuide() async {
-    final book = await ref
-        .read(bookRepositoryProvider)
-        .getById(widget.bookId);
-    if (book == null || !mounted) return;
-    final chapterIdx = _currentChapterIndex();
-    final chapterTitle = _chapterTitlesCache[chapterIdx];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      builder: (_) => AiGuideSheet(
-        book: book,
-        initialMode: AiGuideMode.chapter,
-        chapterIndex: chapterIdx,
-        chapterTitle: chapterTitle,
-      ),
-    );
-  }
+  /// AppBar「AI 导读」按钮已被 M2.7/T22 移除：原 AI 导读 + 问答 两个 AppBar
+  /// 入口合并为单一「AI 抽屉」toggle（[ReaderScaffold.onToggleAiDrawer]）。
+  /// 章节模式 AiGuideSheet 仍可通过选区 toolbar「AI 点评」（[_onAiComment]）
+  /// 或书库 BookCard 菜单进入；QaAskDialog 通过 AI 抽屉内的 chat 入口替代。
 
   /// AppBar 溢出菜单「回顾本章」：触发 [ReviewController.start] 后弹出
   /// [ReviewPreviewSheet]。sheet 关闭时若 review 已完成，把 summary +
@@ -1147,53 +1126,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               );
         },
       ),
-    );
-  }
-
-  /// AppBar「问答」按钮：弹出 QaAskDialog。citation 点击回调接到章节号后，
-  /// 在扁平化 TOC 中找到对应 [EpubCfiLocator]（与 [defaultTocChapterIndex]
-  /// 的解析口径一致），调用 [engine.gotoTocEntry] 并等待
-  /// [engine.chapterSwitchSettled]，让 paged-mode LayoutBuilder 重跑、
-  /// 重新计算 `_cachedBreaks`。
-  /// 引用对应章节号在扁平化 TOC 中找不到时（例如 toc 为 null、PDF 书、
-  /// 或索引越界）弹 SnackBar 提示。
-  void _onOpenQa() {
-    showDialog<void>(
-      context: context,
-      useRootNavigator: true,
-      builder: (_) => QaAskDialog(
-        bookId: widget.bookId,
-        book: _cachedBook,
-        onCitationTap: _jumpToChapter,
-      ),
-    );
-  }
-
-  Future<void> _jumpToChapter(int chapterIndex) async {
-    final toc = engine.toc;
-    if (toc == null || !mounted) {
-      _showInvalidChapterSnackBar();
-      return;
-    }
-    final flat = flattenTocEntries(toc.entries);
-    // citation chapterIndex 来自 [ch=N] 标记，对应书的章节序号；
-    // 与 defaultTocChapterIndex 同口径（EpubCfiLocator.chapterIndex）。
-    final target = flat
-        .where((e) => defaultTocChapterIndex(e) == chapterIndex)
-        .firstOrNull;
-    if (target == null) {
-      _showInvalidChapterSnackBar();
-      return;
-    }
-    await engine.gotoTocEntry(target);
-    // M2.8/B4 (Bug #2): 同 _onAnnotationTap / _onBookmarkJump，多等一帧。
-    await _awaitChapterSettledAndLayout();
-  }
-
-  void _showInvalidChapterSnackBar() {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('无效章节号')),
     );
   }
 

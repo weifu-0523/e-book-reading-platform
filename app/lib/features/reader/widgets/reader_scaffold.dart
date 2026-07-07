@@ -64,11 +64,9 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// 点击笔记图标回调（由父组件触发 endDrawer 打开）。
   final VoidCallback? onOpenNotes;
 
-  /// 点击 AI 导读图标回调（由父组件触发 AiGuideSheet 弹出，章节模式）。
-  final VoidCallback? onOpenAiGuide;
-
-  /// 点击「问答」图标回调（由父组件触发 QaAskDialog 弹出）。
-  final VoidCallback? onOpenQa;
+  /// M2.7/T22: 点击「AI 抽屉」toggle 图标回调（wide 模式切 _aiPanelOpen，
+  /// narrow 模式 openEndDrawer）。父组件 reader_body 注入 _toggleAiDrawer。
+  final VoidCallback? onToggleAiDrawer;
 
   /// 点击「回顾本章」菜单项回调（由父组件触发 ReviewPreviewSheet 弹出）。
   ///
@@ -131,8 +129,7 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     this.onOpenToc,
     this.onOpenTypography,
     this.onOpenNotes,
-    this.onOpenAiGuide,
-    this.onOpenQa,
+    this.onToggleAiDrawer,
     this.onOpenReview,
     this.onAddBookmark,
     this.onToggleDualPage,
@@ -435,23 +432,16 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                         _reclaimFocus();
                       },
               ),
+              // M2.7/T22: 单一「AI 抽屉」入口（替代原 AI 导读 + 问答 两个图标）。
+              // wide 模式切 _aiPanelOpen，narrow 模式 openEndDrawer。
               IconButton(
-                icon: const Icon(Icons.auto_awesome),
-                tooltip: 'AI 导读',
-                onPressed: widget.onOpenAiGuide == null
+                key: const Key('toggle_ai_drawer'),
+                icon: const Icon(Icons.smart_toy_outlined),
+                tooltip: 'AI 抽屉',
+                onPressed: widget.onToggleAiDrawer == null
                     ? null
                     : () {
-                        widget.onOpenAiGuide!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              IconButton(
-                icon: const Icon(Icons.quiz_outlined),
-                tooltip: '问答',
-                onPressed: widget.onOpenQa == null
-                    ? null
-                    : () {
-                        widget.onOpenQa!.call();
+                        widget.onToggleAiDrawer!.call();
                         _reclaimFocus();
                       },
               ),
@@ -541,19 +531,23 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
       }
     }
 
-    // M2.6/T1：移除 paginationMode gate。原先 PDF（scroll）模式下方向键被
-    // 静默吞掉，用户报告"键盘左右键不能翻页"。
-    if (key == LogicalKeyboardKey.arrowRight ||
-        key == LogicalKeyboardKey.pageDown ||
-        key == LogicalKeyboardKey.arrowDown) {
-      widget.onTapNext();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.arrowLeft ||
-        key == LogicalKeyboardKey.pageUp ||
-        key == LogicalKeyboardKey.arrowUp) {
-      widget.onTapPrev();
-      return KeyEventResult.handled;
+    // M2.6/T1: PDF scroll mode needs arrow-key chapter navigation;
+    // EPUB scroll mode expects arrow keys to scroll within chapter.
+    // Gate on paginationMode: scroll → let event pass to ScrollView;
+    // paged → convert to page/chapter navigation.
+    if (widget.paginationMode == PaginationMode.paged) {
+      if (key == LogicalKeyboardKey.arrowRight ||
+          key == LogicalKeyboardKey.pageDown ||
+          key == LogicalKeyboardKey.arrowDown) {
+        widget.onTapNext();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowLeft ||
+          key == LogicalKeyboardKey.pageUp ||
+          key == LogicalKeyboardKey.arrowUp) {
+        widget.onTapPrev();
+        return KeyEventResult.handled;
+      }
     }
     return KeyEventResult.ignored;
   }
