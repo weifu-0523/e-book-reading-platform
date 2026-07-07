@@ -7,7 +7,79 @@
 
 ## [Unreleased]
 
-v1.6.0-alpha 之后的新变更将记在此处。
+v1.7.0-alpha 之后的新变更将记在此处。
+
+## [1.7.0-alpha] — 2026-07-08
+
+### M2.7 — 2026-07-08（AI 抽屉重构：5 入口 → 1 抽屉 + 章节级 subagent + 苏格拉底 + /命令）
+
+**性质**：refactor + feature（AI 入口收敛 + 多会话 + 章节级 subagent）。
+
+**核心动机**：M1.5 时代 AI 入口散落在 5 处（书卡菜单"AI 导读"、详情页全书 FAB、Reader AppBar ×2、选区工具栏），各自独立状态、无会话连续性、全书导读超 LLM context。M2.7 收敛为右侧统一抽屉 + per-book 多会话。
+
+**入口收敛**：
+- 删除：书卡"AI 导读" PopupMenuItem、详情页全书导读 FAB（spec §1.2 + §5.7 否决：开销大 + 超 context）、Reader AppBar 双图标（导读 + 问答）、选区"AI 点评"标签。
+- 新增：Reader AppBar 单一"AI 抽屉"toggle（`Icons.smart_toy_outlined`，Key `toggle_ai_drawer`）。
+- 改造：选区工具栏"AI 点评" → "提问 AI"（`onAiComment` → `onAskAi`），打开抽屉并把 `> {selectedText}\n\n` 注入输入框（**不自动发送**——尊重 subagent 隔离契约）。
+
+**Per-book 多会话**：
+- 新表：`chat_sessions` (id, book_id, title, mode, created_at, updated_at, deleted_at) + `chat_messages` (id, session_id, role, content, preset_source, attachment_note_id, attachment_note_snapshot, created_at, updated_at)。
+- 软删除：`deleted_at` 非空即隐藏，`/del` 后自动切到剩余最近会话。
+- Schema v11 → v12，`onCreate` + `onUpgrade(v<12)` 均 `DROP TABLE qa_history`（旧数据由 `chat_messages` 取代，用户决定清空）。
+
+**Subagent 模式 (spec §2.3)**：
+- 4 个 subagent 用例：`RunChapterGuideUseCase` / `RunSocraticBootstrapUseCase` / `RunRecapUseCase` + 共享 `SendMessageUseCase`（B 模式全量历史）。
+- 不变量：subagent 用例**不读** `chat_messages` 历史，**只写一条** AI message。chapter/recap 文本仅在 subagent 内部组装 prompt，**绝不**回灌聊天上下文——这是隔离契约的核心（T26.2 集成测试验证）。
+- 缓存：`AiSummariesDao` 复用（`mode='chapter'` / `'recap'` 区分），sha256(chapterText) 作 key。
+
+**苏格拉底模式**：
+- 卡片 2 (`AiPresetCardRow`) 或 `/socratic` slash：先写 system marker "苏格拉底模式启动"，再 bootstrap（recapProvider → 第一个反问）。
+- `/exit-socratic`：静默回 normal（无 system marker）。
+- 系统提示：`你是苏格拉底式导师，不要直接给出答案，通过反问、追问引导学生自己思考`。
+
+**Slash 命令**：`/new` `/clear` `/del` `/chapter` `/socratic` `/recap` `/help` `/exit-socratic` —— 由 `AiSlashAutocomplete` 提供建议；输入 `/` 触发 popup，按 mode 决定是否显示 `/exit-socratic`。
+
+**B 模式上下文**：用户控制 size——`/new` `/clear` 截断；不自动压缩。`SendMessageUseCase.run` 把当前会话全部消息（system + user + ai + preset_source 标签）按时间序拼成 prompt。
+
+**@ 笔记提及**：`AiInputComposer` 输入 `@` 触发 popup（来源 `Annotations` 表的 per-highlight note，不是 `BookNotes`）；选中后注入 blockquote 格式 + `attachmentNoteId` 字段持久化。
+
+**禁用入口**：详情页"重新处理" FAB 注释（M2.7 用户决定 BookPreprocessor 暂停）；代码 + 表保留以便恢复。
+
+#### Added — M2.7
+
+- `app/lib/data/local/tables/chat_sessions.dart` + `chat_messages.dart`
+- `app/lib/data/local/daos/chat_sessions_dao.dart` + `chat_messages_dao.dart`（`appendContent` 用 `customUpdate` 而非 `customStatement`——sqlite3 拒绝 `Variable<>` 包装）
+- `app/lib/data/local/daos/chat_repository.dart`（12 方法 facade，UUID v4）
+- `app/lib/services/ai/attachment_note_resolver.dart`（NoteSnapshot + 解析器）
+- `app/lib/services/ai/prompt_builder_ext.dart`（buildChatPrompt / buildSocraticBootstrapPrompt / buildRecapPrompt；`promptVersion = 2`）
+- `app/lib/features/ai_chat/use_cases/` 7 个用例：send_message / run_chapter_guide / run_socratic_bootstrap / run_recap / switch_session_mode / session_lifecycle
+- `app/lib/features/ai_chat/providers/`：chat_providers（注册器）+ chat_session_controller（StateNotifier.family per bookId）+ chat_session_list_controller + openai_chat_llm_adapter + ai_summaries_cache_adapter
+- `app/lib/features/ai_chat/widgets/`：ai_drawer_widget（4-section column；wide=380px）+ ai_preset_card_row + ai_session_dropdown + ai_message_list + ai_input_composer + ai_slash_autocomplete + ai_empty_state
+- `app/test/features/ai_chat/`：use_cases ×6 + widgets ×7 + integration ×2（ai_chat_integration_test 5 用例 + socratic_e2e_test 4 用例）
+
+#### Changed — M2.7
+
+- `app/lib/data/local/database.dart`：schemaVersion 11 → 12；onCreate + onUpgrade(v<12) DROP qa_history；新增 chat_sessions/chat_messages 表 + 2 索引。
+- `app/lib/features/reader/pages/reader_body.dart`：+61 行——`_aiPanelOpen` field + `_toggleAiDrawer()` + endDrawer 接入 + wide panel 条件渲染 + `_onAskAi` 替换 `_onAiComment` + `_isWideScreen(context)` 1100px 断点。
+- `app/lib/features/reader/widgets/reader_scaffold.dart`：移除 onOpenAiGuide/onOpenQa，新增 onToggleAiDrawer（Icons.smart_toy_outlined + Key('toggle_ai_drawer')）。
+- `app/lib/features/reader/widgets/reader_selection_toolbar.dart` + `highlight_selection_controls.dart`：onAiComment → onAskAi；标签"AI 点评" → "提问 AI"。
+- `app/lib/features/library/pages/book_detail_page.dart`：注释"重新处理" FAB + ai_guide FAB（M2.7 spec §1.2 + §5.7 否决全书导读）。
+- `app/lib/features/library/models/book_cell_action.dart`：删除 aiGuide enum value（5→4）。
+- `app/lib/features/library/widgets/book_cell_action_menu.dart`：删除 AI 导读 PopupMenuItem。
+- `app/lib/features/library/pages/library_page.dart`：删除 aiGuide case + BookPreprocessor 触发。
+
+#### Removed — M2.7
+
+- `app/test/data/local/daos/qa_history_dao_test.dart`（9 用例，测的表已 drop）
+- `app/test/services/ai/book_qa_service_test.dart`（7 用例，无 UI 入口）
+- `app/test/features/reader/widgets/reader_scaffold_qa_test.dart`（onOpenQa 已移除）
+- 注：`QaHistoryDao` + `BookQaService` + `QaAskDialog` + `QaController` 等 production 代码暂保留为 orphan（无 UI 入口），下个 sweep 删除。
+
+#### Tests — M2.7
+
+- 1122 passed / 4 skipped / 7 failed（7 个 pre-existing typography/notes/migration 失败，非 M2.7 引入）
+- 6 新 use_case 测试 + 7 新 widget 测试 + 9 新集成测试（5 + 4）= 22 新测试
+- `dart analyze lib test` 0 issues
 
 ### M4.8 — 2026-07-07（EPUB 渲染引擎：fwfh → TextPainter 自研分页）
 
