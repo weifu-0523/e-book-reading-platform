@@ -20,6 +20,7 @@ import 'package:http/http.dart' as http;
 import '../../../core/app_providers.dart'
     show apiKeyStoreProvider, chapterTextProviderFor;
 import '../../../core/http_client_provider.dart';
+import '../../../core/locator.dart';
 import '../../../core/providers.dart'
     show appDatabaseProvider, bookRepositoryProvider, notesRepositoryProvider;
 import '../../../data/local/daos/chat_repository.dart';
@@ -163,6 +164,10 @@ final runSocraticBootstrapUseCaseProvider =
 /// are both wired here. The recap stream filters [ReviewChunkEvent]s from
 /// [BookReviewer] and ignores Complete/Error events. Cache lookup
 /// short-circuits before this is invoked when a cached row exists.
+///
+/// `highlightsProvider` mirrors `BookReviewer._loadChapterHighlights` so the
+/// RunRecap sourceHash invalidates on highlight add/edit/remove — invariant
+/// #10 (M2.1 lesson) applied at the use-case layer.
 final runRecapUseCaseProvider = Provider<RunRecapUseCase>((ref) {
   return RunRecapUseCase(
     repo: ref.watch(chatRepositoryProvider),
@@ -173,6 +178,21 @@ final runRecapUseCaseProvider = Provider<RunRecapUseCase>((ref) {
       final provider = chapterTextProviderFor(book);
       final text = await provider.get(book.filePath, chapterIndex);
       return text ?? '';
+    },
+    highlightsProvider: (bookId, chapterIndex) async {
+      final notes = ref.read(notesRepositoryProvider);
+      final note = await notes.getNoteByBook(bookId);
+      if (note == null) return const [];
+      return note.annotations.where((a) {
+        final loc = a.locator;
+        // EPUB highlights: chapterIndex match.
+        if (loc is EpubRangeLocator) return loc.chapterIndex == chapterIndex;
+        if (loc is EpubCfiLocator) return loc.chapterIndex == chapterIndex;
+        // PDF highlights: page == chapterIndex + 1 (page-as-chapter mapping).
+        if (loc is PdfRangeLocator) return loc.page == chapterIndex + 1;
+        return false;
+      }).toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     },
     recapProvider: (bookId, chapterIndex) async* {
       final book = await ref.read(bookRepositoryProvider).getById(bookId);

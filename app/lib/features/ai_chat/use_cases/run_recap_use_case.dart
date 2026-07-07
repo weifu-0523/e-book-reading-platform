@@ -20,6 +20,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../../../data/local/daos/chat_repository.dart';
+import '../../../data/models/annotation.dart';
 import 'run_chapter_guide_use_case.dart' show ChapterGuideCache;
 
 /// Subagent-pattern use case (spec §2.3): wraps the M2.1 chapter-recap
@@ -33,18 +34,25 @@ import 'run_chapter_guide_use_case.dart' show ChapterGuideCache;
 ///   chapter text + highlights — chat history is structurally inaccessible
 ///   since [recapProvider]'s signature is `(bookId, chapterIndex)` only.
 /// - Writes exactly ONE AI message to the session.
-/// - Cache key: `(bookId, mode='recap', sha256(chapterText))`. Distinct from
-///   RunChapterGuideUseCase's `mode='chapter'` so the two caches don't
-///   collide (different prompt builders, different output shapes).
+/// - Cache key: `(bookId, mode='recap', sha256('$chapterText::$highlightsSig'))`.
+///   Distinct from RunChapterGuideUseCase's `mode='chapter'` so the two
+///   caches don't collide (different prompt builders, different output
+///   shapes). Highlights signature mirrors `BookReviewer._highlightsSignature`
+///   so the cache invalidates when the user adds/edits/removes a highlight —
+///   the same invariant #10 the M2.1 reviewer enforces on its own
+///   `mode='review'` rows (re-applying the M2.1 lesson at the use-case layer).
 /// - `presetSource='/recap'` is hardcoded — this use case is invoked only via
 ///   the `/recap` slash command (no preset card variant; see spec §2.3).
 ///
 /// **Flow:**
 /// 1. Resolve chapter text via [chapterTextProvider] (shared with
 ///    RunChapterGuideUseCase in T12 wiring).
-/// 2. Compute `sha256(chapterText)` for cache lookup.
-/// 3. Cache hit: persist cached content as a single AI message, yield once.
-/// 4. Cache miss: insert empty AI placeholder, stream from [recapProvider]
+/// 2. Resolve chapter highlights via [highlightsProvider] and compute
+///    `sha256(joinedQuotes)` (empty string when no highlights).
+/// 3. Compute `sourceHash = sha256('$chapterText::$highlightsSig')` for
+///    cache lookup.
+/// 4. Cache hit: persist cached content as a single AI message, yield once.
+/// 5. Cache miss: insert empty AI placeholder, stream from [recapProvider]
 ///    (appending to the message and yielding upstream), then write cache on
 ///    completion.
 ///
@@ -59,6 +67,7 @@ class RunRecapUseCase {
     required this.repo,
     required this.cache,
     required this.chapterTextProvider,
+    required this.highlightsProvider,
     required this.recapProvider,
   });
 
@@ -70,6 +79,13 @@ class RunRecapUseCase {
   /// typically filter empty chapters upstream).
   final Future<String> Function(String bookId, int chapterIndex)
       chapterTextProvider;
+
+  /// Resolves the chapter's highlights for cache key. Production wires this
+  /// to the same `BookReviewer._loadChapterHighlights` logic (chapter-index
+  /// filter on the book's annotations) so the sourceHash invalidates when
+  /// the highlight set changes — see invariant #10 (M2.1 lesson).
+  final Future<List<Annotation>> Function(String bookId, int chapterIndex)
+      highlightsProvider;
 
   /// Streams recap chunks. In production: wired to BookReviewer (M2.1) by
   /// filtering `ReviewChunkEvent`s and ignoring Complete/Error events. The
@@ -83,7 +99,10 @@ class RunRecapUseCase {
     required int chapterIndex,
   }) async* {
     final chapterText = await chapterTextProvider(bookId, chapterIndex);
-    final sourceHash = sha256.convert(utf8.encode(chapterText)).toString();
+    final highlights = await highlightsProvider(bookId, chapterIndex);
+    final highlightsSig = _highlightsSignature(highlights);
+    final sourceHash =
+        sha256.convert(utf8.encode('$chapterText::$highlightsSig')).toString();
 
     // 1. Cache hit: persist cached content as a single AI message and yield
     //    once. Skips recapProvider entirely.
@@ -130,5 +149,21 @@ class RunRecapUseCase {
       sourceHash: sourceHash,
       value: buf.toString(),
     );
+  }
+
+  /// sha256 of joined quote strings. Empty string when no highlights —
+  /// distinct from any non-empty signature, so adding the first highlight
+  /// invalidates the cache.
+  ///
+  /// **Mirrors `BookReviewer._highlightsSignature`**: hashes only
+  /// [Annotation.quote], not `note`. Editing a highlight's note (comment)
+  /// must NOT invalidate the cache. Sorted by `createdAt` upstream (in the
+  /// production highlightsProvider wiring) so the signature is order-stable
+  /// regardless of insertion order — matches BookReviewer's sort in
+  /// `_loadChapterHighlights`.
+  static String _highlightsSignature(List<Annotation> highlights) {
+    if (highlights.isEmpty) return '';
+    final joined = highlights.map((h) => h.quote).join('\n');
+    return sha256.convert(utf8.encode(joined)).toString();
   }
 }

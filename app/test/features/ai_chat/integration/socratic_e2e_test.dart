@@ -424,6 +424,7 @@ void main() {
           repo: repo,
           cache: cache,
           chapterTextProvider: (_, __) async => 'CHAPTER_TEXT_FOR_RECAP',
+          highlightsProvider: (_, __) async => const [],
           recapProvider: (_, __) async* {
             yield '要点 A';
             yield '；要点 B';
@@ -453,9 +454,10 @@ void main() {
     expect(aiMessages.first.presetSource, '/recap');
     expect(aiMessages.first.content, '要点 A；要点 B');
 
-    // Cache write happened: key = bookId:recap:sha256(chapterText).
+    // Cache write happened: key = bookId:recap:sha256('$chapterText::').
+    // (Empty highlights signature is '' — sourceHash includes the '::' suffix.)
     final sourceHash = sha256
-        .convert(utf8.encode('CHAPTER_TEXT_FOR_RECAP'))
+        .convert(utf8.encode('CHAPTER_TEXT_FOR_RECAP::'))
         .toString();
     expect(
       cache.store['book-1:recap:$sourceHash'],
@@ -485,8 +487,10 @@ void main() {
     final cache = _StubCache();
 
     // Pre-populate cache for the exact key the use case will look up.
+    // Empty highlights signature is '' — sourceHash = sha256('$text::').
     const chapterText = 'CHAPTER_TEXT_FOR_RECAP';
-    final sourceHash = sha256.convert(utf8.encode(chapterText)).toString();
+    final sourceHash =
+        sha256.convert(utf8.encode('$chapterText::')).toString();
     cache._store['book-1:recap:$sourceHash'] = 'CACHED_RECAP_BODY';
 
     var recapProviderCalled = false;
@@ -500,6 +504,7 @@ void main() {
           repo: repo,
           cache: cache,
           chapterTextProvider: (_, __) async => chapterText,
+          highlightsProvider: (_, __) async => const [],
           recapProvider: (_, __) async* {
             recapProviderCalled = true;
             yield 'SHOULD_NOT_BE_USED';

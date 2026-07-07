@@ -8,7 +8,8 @@
 //   - cache hit: skips recapProvider, reuses cached content, writes single AI msg
 //   - cache miss: calls recapProvider once, streams chunks, writes cache on
 //     completion
-//   - cache key: (bookId, mode='recap', sha256(chapterText))
+//   - cache key: (bookId, mode='recap', sha256('$chapterText::$highlightsSig'))
+//   - highlights change invalidates cache (invariant #10, M2.1 lesson)
 //   - recapProvider signature exposes no chat history (subagent isolation)
 //   - chunks yielded upstream in order
 //   - mode distinct from mode='chapter' (chapter-guide) so caches don't collide
@@ -17,8 +18,10 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/data/local/daos/chat_repository.dart';
-import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/local/database.dart' hide Annotation;
+import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/features/ai_chat/use_cases/run_chapter_guide_use_case.dart';
 import 'package:zhiyue/features/ai_chat/use_cases/run_recap_use_case.dart';
 
@@ -141,6 +144,36 @@ class _CacheWrite {
 String _hash(String input) =>
     sha256.convert(utf8.encode(input)).toString();
 
+/// Builds an [Annotation] with an EPUB range locator scoped to chapterIndex
+/// — enough for the use case's highlightsProvider contract (the cache key
+/// only consumes `quote`, so other fields can be minimal).
+Annotation _hl({
+  required String id,
+  required String quote,
+  required int chapterIndex,
+  DateTime? createdAt,
+  String? note,
+}) {
+  final at = createdAt ?? DateTime(2026, 1, 1);
+  return Annotation(
+    id: id,
+    bookNoteId: 'note-1',
+    locator: EpubRangeLocator(
+      chapterIndex: chapterIndex,
+      startOffset: 0,
+      endOffset: quote.length,
+      quote: quote,
+    ),
+    quote: quote,
+    note: note,
+    color: HighlightColor.yellow,
+    tags: const [],
+    source: AnnotationSource.manual,
+    createdAt: at,
+    updatedAt: at,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -149,16 +182,19 @@ void main() {
   late _FakeRepo repo;
   late _StubCache cache;
   late _CapturingRecapProvider recapProvider;
+  late List<Annotation> currentHighlights;
   late RunRecapUseCase useCase;
 
   setUp(() {
     repo = _FakeRepo();
     cache = _StubCache();
+    currentHighlights = const [];
     recapProvider = _CapturingRecapProvider(['• 要点 A - 说明', '• 要点 B - 说明']);
     useCase = RunRecapUseCase(
       repo: repo,
       cache: cache,
       chapterTextProvider: (bookId, idx) async => 'Chapter $idx text',
+      highlightsProvider: (bookId, idx) async => currentHighlights,
       recapProvider: recapProvider.call,
     );
   });
@@ -175,7 +211,8 @@ void main() {
 
   test('cache hit: skips recapProvider and reuses cached content', () async {
     const chapterText = 'Chapter 0 text';
-    final hash = _hash(chapterText);
+    // Empty highlights signature is '' — sourceHash = sha256('$text::').
+    final hash = _hash('$chapterText::');
     await cache.put(
         bookId: 'b1', mode: 'recap', sourceHash: hash, value: 'CACHED_RECAP');
 
@@ -201,7 +238,8 @@ void main() {
     expect(recapProvider.calls.first.bookId, 'b1');
     expect(recapProvider.calls.first.chapterIndex, 0);
 
-    final expectedHash = _hash('Chapter 0 text');
+    // Empty highlights => signature '' => sourceHash = sha256('text::').
+    final expectedHash = _hash('Chapter 0 text::');
     expect(cache.writes, hasLength(1));
     expect(cache.writes.first.bookId, 'b1');
     expect(cache.writes.first.mode, 'recap');
@@ -238,5 +276,93 @@ void main() {
   test('uses mode=recap (distinct from mode=chapter)', () async {
     await useCase.run(sessionId: 's1', bookId: 'b1', chapterIndex: 0).last;
     expect(cache.writes.first.mode, 'recap');
+  });
+
+  // -------------------------------------------------------------------------
+  // Invariant #10 (M2.1 lesson): sourceHash must include highlights so cache
+  // invalidates when the user adds/edits/removes a highlight. Re-applying
+  // the lesson at the RunRecap use-case layer.
+  // -------------------------------------------------------------------------
+
+  test(
+      'sourceHash includes highlights signature '
+      '(highlights change => cache miss)', () async {
+    // First run: no highlights. Persists a cache row with hash of 'text::'.
+    await useCase.run(sessionId: 's1', bookId: 'b1', chapterIndex: 0).last;
+    final hashWithoutHighlights = cache.writes.first.sourceHash;
+    expect(recapProvider.calls, hasLength(1),
+        reason: 'cache miss on first run should call recapProvider');
+    expect(hashWithoutHighlights, _hash('Chapter 0 text::'));
+
+    // Add a highlight — same chapter text, but the sourceHash must change.
+    currentHighlights = [
+      _hl(id: 'h1', quote: 'important sentence', chapterIndex: 0),
+    ];
+
+    await useCase.run(sessionId: 's2', bookId: 'b1', chapterIndex: 0).last;
+    expect(recapProvider.calls, hasLength(2),
+        reason: 'highlights added => cache miss => recapProvider called');
+    expect(cache.writes.last.sourceHash, isNot(hashWithoutHighlights),
+        reason: 'sourceHash must differ after highlight added');
+
+    // Expected signature: sha256 of the joined quote strings.
+    final highlightsSig = _hash('important sentence');
+    expect(cache.writes.last.sourceHash,
+        _hash('Chapter 0 text::$highlightsSig'));
+  });
+
+  test(
+      'sourceHash stable across highlight list reorder '
+      '(sorted by createdAt upstream)', () async {
+    final a = _hl(
+        id: 'h1',
+        quote: 'first',
+        chapterIndex: 0,
+        createdAt: DateTime(2026, 1, 2));
+    final b = _hl(
+        id: 'h2',
+        quote: 'second',
+        chapterIndex: 0,
+        createdAt: DateTime(2026, 1, 1));
+
+    // Provider wiring is expected to sort by createdAt — simulate it here.
+    currentHighlights = [a, b]
+      ..sort((x, y) => x.createdAt.compareTo(y.createdAt));
+
+    await useCase.run(sessionId: 's1', bookId: 'b1', chapterIndex: 0).last;
+    final sortedHash = cache.writes.first.sourceHash;
+
+    // Now reverse the input list — after the same sort, signature must match.
+    currentHighlights = [b, a]
+      ..sort((x, y) => x.createdAt.compareTo(y.createdAt));
+    await useCase.run(sessionId: 's2', bookId: 'b1', chapterIndex: 0).last;
+
+    // Same sourceHash (cache hit means only one new write from the first run).
+    expect(cache.writes.last.sourceHash, sortedHash,
+        reason: 'order-stable when sorted upstream');
+  });
+
+  test(
+      'note edits do NOT invalidate cache '
+      '(signature hashes quote only, mirroring BookReviewer)', () async {
+    currentHighlights = [
+      _hl(id: 'h1', quote: 'a quote', chapterIndex: 0),
+    ];
+    await useCase.run(sessionId: 's1', bookId: 'b1', chapterIndex: 0).last;
+    final hashBefore = cache.writes.first.sourceHash;
+
+    // Edit only the note (comment), keep the quote.
+    currentHighlights = [
+      _hl(
+          id: 'h1',
+          quote: 'a quote',
+          chapterIndex: 0,
+          createdAt: DateTime(2026, 1, 1),
+          note: 'an added comment'),
+    ];
+
+    await useCase.run(sessionId: 's2', bookId: 'b1', chapterIndex: 0).last;
+    expect(cache.writes.last.sourceHash, hashBefore,
+        reason: 'note edit must not change sourceHash');
   });
 }
