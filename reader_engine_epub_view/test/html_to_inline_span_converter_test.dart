@@ -56,4 +56,55 @@ void main() {
       expect(result.paragraphRanges[1].end, 13);
     });
   });
+
+  group('inline formatting', () {
+    test('<em> produces italic TextSpan', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>a<em>b</em>c</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      final root = result.root as TextSpan;
+      final paraSpan = root.children!.single as TextSpan;
+      // children: [Text('a'), Text('b' italic), Text('c')]
+      expect(paraSpan.children!.length, 3);
+      final em = paraSpan.children![1] as TextSpan;
+      expect(em.style?.fontStyle, FontStyle.italic);
+      expect(em.text, 'b');
+    });
+
+    test('<strong> produces bold TextSpan', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p>x<strong>y</strong>z</p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      final paraSpan = (result.root as TextSpan).children!.single as TextSpan;
+      final strong = paraSpan.children![1] as TextSpan;
+      expect(strong.style?.fontWeight, FontWeight.bold);
+    });
+
+    test('<a href> produces underline + blue span', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p><a href="x">link</a></p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      final paraSpan = (result.root as TextSpan).children!.single as TextSpan;
+      final a = paraSpan.children!.single as TextSpan;
+      expect(a.style?.color, Colors.blue);
+      expect(a.style?.decoration, TextDecoration.underline);
+    });
+
+    test('<code> produces monospace span', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p><code>print()</code></p>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      final paraSpan = (result.root as TextSpan).children!.single as TextSpan;
+      final code = paraSpan.children!.single as TextSpan;
+      expect(code.style?.fontFamily, 'monospace');
+    });
+  });
 }
