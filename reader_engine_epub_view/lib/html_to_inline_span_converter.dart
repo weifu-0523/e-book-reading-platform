@@ -272,6 +272,11 @@ class HtmlToInlineSpanConverter {
     }
   }
 
+  /// Compute the per-tag [TextStyle] overlay on top of [base].
+  ///
+  /// Note: `<a>` links default to [Colors.blue] when the inherited [TextStyle]
+  /// has no `color`. Callers passing a themed `baseStyle` (with `color` set)
+  /// will have their color preserved — link color is theme-aware.
   TextStyle _inlineStyle(TextStyle base, String? tag) {
     switch (tag) {
       case 'em':
@@ -286,7 +291,7 @@ class HtmlToInlineSpanConverter {
                 [base.decoration ?? TextDecoration.none, TextDecoration.underline]));
       case 'a':
         return base.copyWith(
-            color: Colors.blue,
+            color: base.color ?? Colors.blue,
             decoration: TextDecoration.combine(
                 [base.decoration ?? TextDecoration.none, TextDecoration.underline]));
       case 'code':

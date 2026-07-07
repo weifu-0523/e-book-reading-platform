@@ -97,6 +97,19 @@ void main() {
       expect(a.style?.decoration, TextDecoration.underline);
     });
 
+    test('<a> preserves themed baseStyle.color instead of defaulting to blue', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<p><a href="x">link</a></p>',
+        baseStyle: const TextStyle(fontSize: 16, color: Colors.amber),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      final paraSpan = (result.root as TextSpan).children!.single as TextSpan;
+      final a = paraSpan.children!.single as TextSpan;
+      expect(a.style?.color, Colors.amber,
+          reason: 'themed baseStyle.color must win over default Colors.blue');
+      expect(a.style?.decoration, TextDecoration.underline);
+    });
+
     test('<code> produces monospace span', () {
       final result = HtmlToInlineSpanConverter().convert(
         '<p><code>print()</code></p>',
