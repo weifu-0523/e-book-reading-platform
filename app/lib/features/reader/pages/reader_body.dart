@@ -659,6 +659,13 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                 innerContext,
                 currentBookId: widget.bookId,
               ),
+              // M4.7b: 翻页/滚动模式切换。
+              onTogglePaginationMode: () {
+                final next = engine.paginationMode == PaginationMode.paged
+                    ? PaginationMode.scroll
+                    : PaginationMode.paged;
+                unawaited(engine.setPaginationMode(next));
+              },
             ),
           ),
           ), // Padding close (M2.11 回归修复)

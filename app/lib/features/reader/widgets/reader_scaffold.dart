@@ -108,6 +108,11 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// 为 null 时不渲染图标。
   final VoidCallback? onOpenBookshelf;
 
+  /// M4.7b: 点击翻页/滚动模式切换图标回调。
+  /// 在 paged 模式显示「切换到滚动」图标，scroll 模式显示「切换到翻页」图标。
+  /// 为 null 时不渲染图标。
+  final VoidCallback? onTogglePaginationMode;
+
   /// 触发水平滑动翻页的最小速度阈值（px/s）。
   ///
   /// 测试中 `timedDrag(Offset(±300, 0), 200ms)` 的速度约为 1500 px/s，
@@ -135,6 +140,7 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     this.onFontDecrease,
     this.onFontIncrease,
     this.onOpenBookshelf,
+    this.onTogglePaginationMode,
   });
 
   @override
@@ -388,6 +394,21 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
                     ? null
                     : () {
                         widget.onOpenTypography!.call();
+                        _reclaimFocus();
+                      },
+              ),
+              IconButton(
+                key: const Key('toggle_pagination_mode'),
+                icon: Icon(widget.paginationMode == PaginationMode.scroll
+                    ? Icons.auto_stories
+                    : Icons.view_agenda),
+                tooltip: widget.paginationMode == PaginationMode.scroll
+                    ? '切换到翻页模式'
+                    : '切换到滚动模式',
+                onPressed: widget.onTogglePaginationMode == null
+                    ? null
+                    : () {
+                        widget.onTogglePaginationMode!.call();
                         _reclaimFocus();
                       },
               ),
