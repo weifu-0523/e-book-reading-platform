@@ -24,6 +24,8 @@ import 'daos/book_notes_dao.dart';
 import 'daos/book_passages_dao.dart';
 import 'daos/book_tags_dao.dart';
 import 'daos/books_dao.dart';
+import 'daos/chat_messages_dao.dart';
+import 'daos/chat_sessions_dao.dart';
 import 'daos/qa_history_dao.dart';
 import 'daos/reading_progress_dao.dart';
 import 'daos/settings_dao.dart';
@@ -85,6 +87,8 @@ part 'database.g.dart';
     SyncConflictsDao,
     BookPassagesDao,
     QaHistoryDao,
+    ChatSessionsDao,
+    ChatMessagesDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
