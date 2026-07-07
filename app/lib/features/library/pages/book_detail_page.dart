@@ -26,8 +26,6 @@ import '../../../core/widgets/loading_view.dart';
 import '../../../data/local/database.dart' hide Book;
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
-import '../../../features/ai/widgets/ai_guide_sheet.dart';
-import '../../../services/ai/ai_guide.dart';
 import '../../../services/ai/book_preprocessor.dart';
 
 /// 书籍详情页。
@@ -105,13 +103,16 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
           //   ),
           // ),
           // const SizedBox(width: 12),
-          FloatingActionButton.extended(
-            heroTag: 'ai_guide',
-            onPressed: _openAiGuide,
-            icon: const Icon(Icons.auto_awesome_outlined),
-            label: Text(AppLocalizations.of(context)!.bookDetailActionAiGuide),
-          ),
-          const SizedBox(width: 12),
+          // M2.7 (2026-07-07): 全书 AI 导读入口暂时禁用 per spec §1.2 + §5.7.
+          // 整书导读开销大且超 LLM context，已替换为右侧抽屉的章节级 AI 交互.
+          // 代码 + 表（ai_summaries mode='book'）保留以备未来恢复.
+          // FloatingActionButton.extended(
+          //   heroTag: 'ai_guide',
+          //   onPressed: _book == null ? null : _openAiGuide,
+          //   icon: const Icon(Icons.auto_awesome_outlined),
+          //   label: Text(AppLocalizations.of(context)!.bookDetailActionAiGuide),
+          // ),
+          // const SizedBox(width: 12),
           FloatingActionButton.extended(
             heroTag: 'delete',
             onPressed: _confirmDelete,
@@ -139,17 +140,9 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         .start(book);
   }
 
-  Future<void> _openAiGuide() async {
-    final b = _book;
-    if (b == null || !mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      builder: (_) =>
-          AiGuideSheet(book: b, initialMode: AiGuideMode.full),
-    );
-  }
+  // M2.7 (2026-07-07): `_openAiGuide` 已删除 —— 全书导读 FAB 已被 spec §1.2
+  // + §5.7 否决（开销 + LLM context 限制），AI 入口统一到 reader 右侧抽屉。
+  // 如需恢复，把对应 PopupMenuItem/FAB 取消注释并重新加回此方法即可。
 
   Widget _buildBody(BuildContext context, PreprocessState preprocess) {
     if (_loading) {

@@ -26,9 +26,7 @@ import '../../../core/providers.dart';
 import '../../../data/models/book.dart';
 import '../../../data/models/book_note.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
-import '../../../features/ai/widgets/ai_guide_sheet.dart';
 import '../../../gen_l10n/app_localizations.dart';
-import '../../../services/ai/ai_guide.dart';
 import '../../notes/services/vault_exporter.dart';
 import '../models/library_mode.dart';
 import '../models/library_state.dart';
@@ -224,8 +222,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     );
   }
 
-  /// ⋮ 菜单分发：read / details / notes 走路由，aiGuide 弹 AiGuideSheet，
-  /// delete 跳详情页（删除 FAB 在那里）。
+  /// ⋮ 菜单分发：read / details / notes 走路由，delete 跳详情页
+  /// （删除 FAB 在那里）。
+  ///
+  /// M2.7 (2026-07-07): 原有 `case BookCellAction.aiGuide` 已移除 —— spec §5.7
+  /// 决定 AI 入口统一到 reader 右侧抽屉。如需恢复，把对应 case 重新加回并
+  /// 引回 `AiGuideSheet`/`AiGuideMode` import 即可。
   Future<void> _handleBookAction(BookCellAction action, Book book) async {
     switch (action) {
       case BookCellAction.read:
@@ -237,15 +239,6 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       case BookCellAction.notes:
         if (!mounted) return;
         unawaited(context.push('/book/${book.id}/notes'));
-      case BookCellAction.aiGuide:
-        if (!mounted) return;
-        await showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          useRootNavigator: true,
-          builder: (_) =>
-              AiGuideSheet(book: book, initialMode: AiGuideMode.full),
-        );
       case BookCellAction.delete:
         // 删除入口在详情页 FAB（避免重复实现删除流程）。
         if (!mounted) return;

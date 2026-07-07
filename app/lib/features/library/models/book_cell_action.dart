@@ -19,4 +19,9 @@
 /// 与 [BookContextMenuAction] 区别：
 /// - 本枚举对应内联 PopupMenu（单元格角落的"⋮"按钮）。
 /// - [BookContextMenuAction] 对应长按弹出的底部 ActionSheet。
-enum BookCellAction { read, details, notes, aiGuide, delete }
+///
+/// M2.7 (2026-07-07): 移除 `aiGuide` value —— spec §5.7 决定 AI 入口统一收敛
+/// 到 reader 右侧抽屉，书卡菜单不再提供 "AI 导读"。原方案保留代码以备恢复，
+/// 只需把 `aiGuide` 加回枚举并在 [BookCellActionMenu] / `_handleBookAction`
+/// 中重新接入即可。
+enum BookCellAction { read, details, notes, delete }

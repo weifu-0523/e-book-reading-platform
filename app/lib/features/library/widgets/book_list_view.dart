@@ -36,7 +36,10 @@ class BookListView extends StatelessWidget {
   final ValueChanged<List<String>> onReorder;
 
   /// 收到 (action, book) 的回调。父级（LibraryPage）据此路由到详情页/笔记页/
-  /// 弹出 AiGuideSheet。Book 在此层注入。
+  /// 跳详情页删除。Book 在此层注入。
+  ///
+  /// M2.7 (2026-07-07): `BookCellAction.aiGuide` 已移除 —— AI 入口收敛到
+  /// reader 右侧抽屉（spec §5.7）。
   final void Function(BookCellAction, Book)? onAction;
 
   /// 可选：按 bookId 返回预处理状态。父级（LibraryPage）通过 Provider 监听。
