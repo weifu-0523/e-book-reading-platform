@@ -22,7 +22,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
-import 'package:html/parser.dart' as html_parser;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
@@ -167,6 +166,12 @@ class EpubxRenderer implements EpubRenderer {
   /// M4.6-fix16: 当前章节每段实际渲染高度（由 [RenderedHtmlMeasurer] 测出）。
   /// null 表示尚未测量或已失效。LayoutBuilder 重跑时若 key 不匹配则重新测量。
   /// 重测量期间旧值不可用（drift），故清空而非渐进更新。
+  ///
+  /// M4.8: 当前新管道（converter → LineMetricsPaginator）不写入此字段——
+  /// pure-text 章节直接用 [_lineBreaks]，image 章节用 [_paginator] 估算。
+  /// 保留字段以备 Phase 6 fwfh 回退路径（image 章节 + ≥3 unsupported tags
+  /// 时切回 RenderedHtmlMeasurer 实测）。
+  // ignore: unused_field
   List<double>? _measuredHeights;
 
   /// M4.8: 新管道（converter → LineMetricsPaginator）产出。pure-text 章节走此
@@ -1143,43 +1148,52 @@ class EpubxRenderer implements EpubRenderer {
           typography: _typography,
           marginPx: margin,
         );
-        // M4.6-fix16+fix17: 单阶段渲染——PageView 始终用某种 breaks 渲染，
-        // measurer 同时挂（Offstage 不可见）算实测高度。修复两个问题：
+        // M4.8: 单阶段同步管道——cache miss 时同步跑 converter + paginator
+        // （pure-text 走 LineMetricsPaginator，image/fallback 走 Paginator
+        // 估算），cache hit 直接复用 [_convertedSpans] / [_lineBreaks]。
         //
-        // 1. fix16 漏注入缩进 → 测量高度偏低 → 溢出。fix17 在 measurer 内
-        //    调 TypographyStyleInjector.inject 修复。
-        // 2. fix16 两阶段（cache miss 时只渲染 measurer）→ 测试访问 PageController
-        //    时 PageView 还没建好 → "PageController.page cannot be accessed
-        //    before a PageView is built"。fix17 改单阶段：始终渲染 PageView
-        //    （cache miss 用估算 breaks，cache hit 用实测 breaks），同时挂
-        //    offstage measurer。生产 UX：进入新章节首帧可能略微 repaginate
-        //    （measurer 完成后 breaks 切换），但无空白帧；测试：PageView 始终
-        //    可访问。
-        final needsMeasure =
-            _measurementKey != measurementKey || _measuredHeights == null;
+        // 与 fix17 的两阶段（offstage measurer + post-frame callback）相比：
+        // - 优点：首帧即正确（无估算→实测的切换，避免用户感知 repaginate）；
+        //   SelectableText.rich 渲染与 LineMetricsPaginator 测量共享同一
+        //   TextPainter → drift = 0（spec §3.2 invariant）。
+        // - 缺点：首帧 heavier（converter + paginator 同步跑，~20-50ms for
+        //   长章节）。但 LayoutBuilder.builder 只在 cache miss 时跑，正常翻页
+        //   不触发；用户感知的卡顿来自首次进入章节，与旧路径一致。
+        //
+        // [_InlineSpanMeasurer] offstage widget 仍保留（Task 4.1），作为
+        // Phase 6 fwfh 回退路径（image 章节 + RenderParagraph 反射提取
+        // WidgetSpan 维度）的接入点；当前主路径未使用它，避免两阶段切换
+        // 引起的视觉跳变。
         final lineHeight = style.fontSize! * (style.height ?? 1.0);
-        final ({String plainText, List<PageBreak> breaks}) result;
+        final needsMeasure = _measurementKey != measurementKey ||
+            _convertedSpans == null ||
+            _lineBreaks == null;
         if (needsMeasure) {
-          // 暂用 TextPainter 估算（旧路径）让 PageView 先有内容可渲染。
-          // 估算有累积误差（高估内容密度 → 每页塞过多），但 measurer 在同帧
-          // offstage 跑，下一帧切换到实测 breaks，误差窗口 < 32ms（2 帧）。
-          result = _paginator.paginateWithText(
-            chapterHtml: html,
-            viewport: viewport,
-            typography: _typography,
-            marginPx: margin,
+          final chapterHighlights = _allHighlights
+              .where((h) => h.chapterIndex == _currentChapterIndex)
+              .toList();
+          final converted = HtmlToInlineSpanConverter().convert(
+            html,
+            baseStyle: style.copyWith(color: fg),
+            imageMaxHeight: measureHeight * 0.6,
+            indentEm: _typography.paragraphIndentEm.toDouble(),
+            indentEnabled: _typography.paragraphIndentEnabled,
+            highlights: chapterHighlights,
           );
-        } else {
-          result = _paginator.paginateFromActualHeights(
-            chapterHtml: html,
+          final breaks = _paginateConverted(
+            converted: converted,
+            html: html,
             viewport: viewport,
             marginPx: margin,
             lineHeight: lineHeight,
-            paragraphHeights: _measuredHeights!,
           );
+          _convertedSpans = converted;
+          _lineBreaks = breaks;
+          _measuredHeights = null; // legacy fwfh cache 不可与新管道混用
+          _measurementKey = measurementKey;
         }
-        final plain = result.plainText;
-        final breaks = result.breaks;
+        final converted = _convertedSpans!;
+        final breaks = _lineBreaks!;
         _cachedBreaks = breaks;
         // M2.8/B2: 新章节分页已算出，若 previousPage 章首换章 arm 了末页
         // 定位，应用之。fix17 单阶段：放到 post-frame callback，等 PageView
@@ -1188,216 +1202,80 @@ class EpubxRenderer implements EpubRenderer {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _maybeApplyPendingLastPageJump();
         });
-        // M2.8/B3: 预先把章节全局高亮按页面分组，避免 itemBuilder 每帧
-        // 对所有高亮做 localize（highlights 数量通常很小，但仍省一次拷贝）。
+        // M4.8: SelectablePageView 是完整的 PageView（内部 PageView.builder
+        // + InlineSpanSubtreeSlicer + SelectableText.rich）。它接管 itemCount
+        // 计算、dual-page spread 渲染、page controller 接线。
         //
-        // M2.11/问题3：必须先按 chapterIndex 过滤到**当前章**的高亮，否则
-        // 全书高亮用各自的章内 0-based offset 去 match 当前章的页范围，offset
-        // 范围恰好重叠的页会冒出"幽灵高亮"（属于别的章）。每章 offset 独立 0-based。
-        final chapterHighlights = _allHighlights
-            .where((h) => h.chapterIndex == _currentChapterIndex)
-            .toList();
-        // M3e/Q12（翻页卡顿优化）: 预计算每页最终 HTML（切片+高亮+缩进注入），
-        // 一次性在 LayoutBuilder.builder（每章 rebuild 只跑一次）内完成。
-        // buildSinglePage（被 PageView.itemBuilder 每页调用）只从这里 O(1) 取用，
-        // 不再每页重新解析整章 HTML（旧实现每页 3 次整章 HtmlParser.parse，
-        // 是翻页卡顿的主因）。缩进/高亮变化时因分页缓存 key 含 typography、
-        // LayoutBuilder 会因 rebuild 重跑本段，故预计算天然随设置更新。
+        // 旧实现的 _PageVerticalAligner / _DualSpreadAligner / SelectionArea
+        // 包装在新管道下不再需要：
+        // - OverflowBox 兜底：LineMetricsPaginator 与 SelectableText.rich 共享
+        //   TextPainter（drift = 0），不再有"测量 < 渲染"溢出场景。
+        // - SelectionArea：SelectableText.rich 自带 SelectionRegistrar，选区
+        //   不会跨页串读。Phase 5 Task 5.2 会接 onSelectionChanged 回调到
+        //   emitPagedSelection，保持 pagedSelection$ 流的语义。
         //
-        // M4.6-fix10/A3 (O(N²)→O(N) 根治): 整章 DOM 在循环外解析**一次**，
-        // 所有 break 复用同一 [Document] 实例。HtmlSlicer.sliceByPlainRangeDoc
-        // 非破坏式遍历——不修改 source doc，每次构造新子树。
-        // 旧实现每个 break 都调 HtmlSlicer.sliceByPlainRange(html, ...)，
-        // 内部 `HtmlParser(html).parse()` 是 O(章长度)，N 页 → O(N×章长度)。
-        // 长章节（财经书表格多，50+ 页）单帧数百 ms，UI 线程堵死 → 翻页/目录卡。
-        // 修复后复杂度 O(章长度 + N×页内 DOM) ≈ O(N)，单帧 < 16ms。
-        final chapterDoc = html_parser.HtmlParser(html).parse();
-        for (final el in chapterDoc.querySelectorAll('script, style')) {
-          el.remove();
-        }
-        final pageHtmls = List<String>.filled(breaks.length, '');
-        for (var i = 0; i < breaks.length; i++) {
-          final pb = breaks[i];
-          final start = pb.startOffset.clamp(0, plain.length);
-          final end = pb.endOffset.clamp(start, plain.length);
-          var pageHtml = HtmlSlicer.sliceByPlainRangeDoc(
-            chapterDoc,
-            start,
-            end,
-            plainLength: plain.length,
-          );
-          if (chapterHighlights.isNotEmpty) {
-            final local = HtmlSlicer.localizeHighlights(
-              chapterHighlights,
-              pb.startOffset,
-              pb.endOffset,
-            );
-            if (local.isNotEmpty) {
-              pageHtml = HtmlHighlightInjector.inject(pageHtml, local);
-            }
-          }
-          pageHtmls[i] = TypographyStyleInjector.inject(
-            pageHtml,
-            indentEm: _typography.paragraphIndentEm,
-            enabled: _typography.paragraphIndentEnabled,
-          );
-        }
-        // M2.9: 双页模式 PageView 的 itemCount = spread 数（每 spread 含
-        // 2 breaks）；单页模式 = breaks.length。
-        final itemCount =
-            _dualPageMode ? (breaks.length + 1) ~/ 2 : breaks.length;
-
-        Widget buildSinglePage(int breakIdx, {double verticalMargin = double.nan}) {
-          // breakIdx 越界（双页孤页）由调用方判断，这里假定合法。
-          // verticalMargin: NaN（默认）= 用 [margin] 作上下 padding（单页模式，
-          //   页内自管上下边距）。双页模式传入 0 → 上下 padding 为 0，上下边距
-          //   由 _DualSpreadAligner 在 spread 层统一管理（保证左右两页 top 一致
-          //   且上下对称）。左右 padding 始终用 [margin]。
-          final vMargin = verticalMargin.isNaN ? margin : verticalMargin;
-          // Q12: 直接取预计算好的页面 HTML（切片+高亮+缩进已在上文一次性完成）。
-          final pageHtml = pageHtmls[breakIdx];
-          // M2.10/Bug A: 页内容包 SingleChildScrollView(NeverScrollable) 吸收
-          // HtmlWidget 与 TextPainter 的高度误差。每个 PageView 页面被赋予固定
-          // 高度（= viewport 高度），而 HtmlWidget 渲染出的实际高度与 Paginator
-          // 的 TextPainter 测量存在系统性误差（line-height / font-metrics 偏差，
-          // 代码已自认误差 < 1 行）。双页模式宽度 halve 放大换行误差，某页真实
-          // 高度 > slot 固定高度 → RenderFlex cross-axis 溢出 → 黄黑斑马线 +
-          // "bottom overflowed by N pixels"。可滚动容器让误差自然吸收（不溢出
-          // 即不滚，溢出可竖向微滚），绝不抛 assertion。
-          // NeverScrollableScrollPhysics 确保子页滚动不干扰 PageView 翻页手势。
-          // 与 _buildScroll（scroll 模式已用 SingleChildScrollView）模式一致。
-          //
-          // M3e/Q2（修正 M3a/任务4 误判）：M3a 曾在此包 Align(topCenter) 作为
-          // "末页顶部对齐双保险"，但 **Align 在 SingleChildScrollView 内部是
-          // no-op** —— scroll view 给子 widget 无限高度约束，Align 没有多余空间
-          // 可对齐，被强制收缩成子大小，对齐逻辑完全不生效（等于没写）。
-          // SingleChildScrollView 默认 child 从顶部排（scrollOffset=0），短内容
-          // （末页）天然顶部对齐，无需额外 Align。删除无效 Align 后行为不变
-          // （M3a 之前就是这个结构且本就顶部对齐）。
-          //
-          // M3e/Q8续（上下边距对称）+ Q9（双页左右对齐）+ Q10（双页上下对称）:
-          // 单页模式：_PageVerticalAligner 自管上下边距，满页居中/末页顶部。
-          // 双页模式：buildSinglePage 传 verticalMargin=0（页内不管上下），
-          //   由外层 _DualSpreadAligner 在 spread 层统一管理上下边距——它测出
-          //   左右两页中较高者的高度，算出余量后给整个 spread 加对称的 top/
-          //   bottom padding。这样两页共享同一 top offset（左右对齐），且上下
-          //   边距对称（余量分摊），同时满足 Q9（左右对齐）和 Q10（上下对称）。
-          //   enableCentering 在双页时无意义（verticalMargin=0 时无居中空间），
-          //   保留参数仅为单页模式。
-          return _PageVerticalAligner(
-            horizontalMargin: margin,
-            verticalMargin: vMargin,
-            enableCentering: !_dualPageMode,
-            child: HtmlWidget(
-              pageHtml,
-              textStyle: style.copyWith(color: fg),
-              // M3e/Q1: 段落统一 margin（fwfh 支持 margin）。缩进走 injector。
-              // M4.6-fix15: img max-height 限制为视高度 60%，防止单图占满整页
-              // （closure 捕获 rawHeight × 0.6）。paged 模式视高比 scroll 紧
-              // （60% vs 70%）—— 一页 60% 视高 ≈ 15 行文字高度，留 40% 给
-              // 图片上下文文字。
-              customStylesBuilder: (element) =>
-                  _elementStyles(element, rawHeight * 0.6),
-            ),
-          );
-        }
-
-        final pageView = PageView.builder(
-          controller: _pageController,
-          itemCount: itemCount,
-          // M2.9 (页码实时更新): 翻页时除了章末检测，还要 emit 当前位置，
-          // 让 ReaderProgressBar 的 currentLocation$ 订阅者收到页码变化。
-          // 旧实现只调 _maybeEmitChapterEnd → 翻页时页码不刷新。
-          onPageChanged: (_) {
-            _emitCurrentLocation();
-            _maybeEmitChapterEnd();
-          },
-          itemBuilder: (context, i) {
-            if (!_dualPageMode) {
-              return buildSinglePage(i);
-            }
-            // 双页模式：spread[i] = breaks[i*2] (左) + breaks[i*2+1] (右)。
-            final leftIdx = i * 2;
-            final rightIdx = leftIdx + 1;
-            final hasRight = rightIdx < breaks.length;
-            // M3e/Q2: Row 的 crossAxisAlignment 必须 start（否则右页短内容会
-            // 在 slot 内垂直居中浮空）。
-            //
-            // M3e/Q9+Q10: 双页模式两页传 verticalMargin=0（页内不管上下边距），
-            // 整个 spread 由 _DualSpreadAligner 统一加对称的 top/bottom padding。
-            // _DualSpreadAligner 测出 Row（两页中较高者）的高度，算余量后对称
-            // 分摊，这样两页共享同一 top offset（左右对齐）且上下边距对称。
-            return _DualSpreadAligner(
-              margin: margin,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // M4.6-fix10/A4: 左右页各自包独立 SelectionArea，建立局部
-                  // SelectionRegistrar，杜绝跨页选区串读（左页选 N 行不再
-                  // 同时选中右页同行）。SelectionArea 是 SelectableRegion 的
-                  // Material 包装，子树 selectable 注册到局部 registrar，不
-                  // 冒泡到外层 SelectableRegion。选区通过 emitPagedSelection
-                  // 推到 pagedSelection$ 流，reader_body 监听驱动 toolbar。
-                  Expanded(
-                    child: SelectionArea(
-                      onSelectionChanged: emitPagedSelection,
-                      child: buildSinglePage(leftIdx, verticalMargin: 0),
-                    ),
-                  ),
-                  SizedBox(width: gutterPx),
-                  Expanded(
-                    child: hasRight
-                        ? SelectionArea(
-                            onSelectionChanged: emitPagedSelection,
-                            child: buildSinglePage(rightIdx, verticalMargin: 0),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-        // M4.6-fix17: 单阶段渲染——cache miss 时同时挂 PageView（用估算 breaks）
-        // 和 offstage measurer。measurer 完成后 onMeasured → emit Ready →
-        // 下一帧 cache hit 用实测 breaks 重新渲染 PageView。
-        //
-        // 用 Stack + Positioned.fill 让 PageView 填满 LayoutBuilder 给的
-        // 空间；measurer 自带 Offstage，在 Stack 里占 0×0，不影响布局。
-        // 缓存命中时直接返回 PageView，零开销。
-        if (!needsMeasure) {
-          return pageView;
-        }
-        return Stack(
-          children: <Widget>[
-            Positioned.fill(child: pageView),
-            // M4.6-fix17: measurer 包在 Positioned 里（位置无所谓，Offstage 自身
-            // 占 0×0），让 Stack 只看 Positioned 子树——Stack size 完全由
-            // LayoutBuilder 父约束决定，PageView 的 Positioned.fill 才能正确撑满。
-            // 之前 measurer 作为非 Positioned 子树（Offstage size=constraints.smallest）
-            // 让 Stack 的 size 计算被它干扰（非 Positioned 子树参与 Stack 自身 size
-            // 计算），可能导致 PageView 拿不到足够空间 → 不渲染 RichText。
-            Positioned(
-              left: 0,
-              top: 0,
-              child: RenderedHtmlMeasurer(
-                chapterHtml: html,
-                width: measureWidth - 2 * margin,
-                textStyle: style.copyWith(color: fg),
-                imageMaxHeight: measureHeight * 0.6,
-                indentEm: _typography.paragraphIndentEm,
-                indentEnabled: _typography.paragraphIndentEnabled,
-                onMeasured: (heights) {
-                  _measurementKey = measurementKey;
-                  _measuredHeights = heights;
-                  _stateController.add(const ReaderEngineReady());
-                },
-              ),
-            ),
-          ],
+        // Padding(EdgeInsets.all(16)) 由 SelectablePageView 内部默认应用；
+        // 当前外层 LayoutBuilder 的父 ColoredBox + DefaultTextStyle 已提供
+        // 主题色与基础样式。若需自定义 page padding，可在 Phase 6 给
+        // SelectablePageView 加 pagePadding 参数（保持 API 兼容）。
+        return SelectionArea(
+          // M4.6-fix10/A4 兼容：emitPagedSelection 推到 pagedSelection$ 流，
+          // reader_body 监听驱动 toolbar / 摘录合并。SelectionArea 包整个
+          // PageView 仍然有效——它建立全局 registrar，SelectableText.rich
+          // 子树注册到本 registrar。Phase 5 会切换到 SelectablePageView
+          // 的 onSelectionChanged 回调（更细粒度，每页独立 registrar）。
+          onSelectionChanged: emitPagedSelection,
+          child: SelectablePageView(
+            rootSpan: converted.root,
+            plainText: converted.plainText,
+            breaks: breaks,
+            dualPageMode: _dualPageMode,
+            initialPage: 0,
+            controller: _pageController,
+            gutterPx: gutterPx,
+            onPageChanged: (_) {
+              _emitCurrentLocation();
+              _maybeEmitChapterEnd();
+            },
+          ),
         );
       },
     );
+  }
+
+  /// M4.8: Dispatch converted span to the appropriate paginator based on
+  /// content type.
+  ///
+  /// - Pure-text chapters (`converted.images.isEmpty &&
+  ///   !converted.shouldFallbackToFwfh`): use [LineMetricsPaginator.paginate]
+  ///   on the converted InlineSpan. No WidgetSpans → TextPainter.layout()
+  ///   succeeds and per-line metrics are exact.
+  /// - Image / fallback chapters: defer to [Paginator.paginateWithText],
+  ///   which measures via TextPainter on plain-text substrings (no
+  ///   WidgetSpans in measurement). Rendering still uses SelectableText.rich,
+  ///   so some drift is expected until Phase 6 introduces the fwfh fallback.
+  List<PageBreak> _paginateConverted({
+    required ConvertedSpans converted,
+    required String html,
+    required Size viewport,
+    required double marginPx,
+    required double lineHeight,
+  }) {
+    if (converted.images.isEmpty && !converted.shouldFallbackToFwfh) {
+      return LineMetricsPaginator().paginate(
+        span: converted.root,
+        plainText: converted.plainText,
+        viewport: viewport,
+        marginPx: marginPx,
+        lineHeight: lineHeight,
+      );
+    }
+    return _paginator.paginateWithText(
+      chapterHtml: html,
+      viewport: viewport,
+      typography: _typography,
+      marginPx: marginPx,
+    ).breaks;
   }
 
   @override
@@ -1434,6 +1312,10 @@ class EpubxRenderer implements EpubRenderer {
 /// 统一顶部对齐。简化为 StatelessWidget。[horizontalMargin]/[verticalMargin]
 /// 分开——双页模式页内 verticalMargin=0（上下边距由 _DualSpreadAligner 统一管），
 /// 单页模式两者都 = margin。[enableCentering] 保留参数仅为向后兼容（已无实际作用）。
+///
+/// M4.8: 当前新管道未使用本 aligner（SelectablePageView 内部自管 Padding(16)）。
+/// 保留以备 Phase 6 fwfh 回退路径（image 章节仍可能需要 OverflowBox 兜底防溢出）。
+// ignore_for_file: unused_element, unused_element_parameter
 class _PageVerticalAligner extends StatelessWidget {
   const _PageVerticalAligner({
     required this.horizontalMargin,
@@ -1496,6 +1378,9 @@ class _PageVerticalAligner extends StatelessWidget {
 /// 固定顶部对齐后：左右页共享同一 Row，都从 top=margin 起（左右对齐 Q9），
 /// 且所有 spread 的 top 一致（版心固定，翻页不跳）。页内两页 verticalMargin=0
 /// （上下边距由此处统一加）。OverflowBox 兜底溢出。
+///
+/// M4.8: 当前新管道未使用本 aligner（SelectablePageView 自管 spread 渲染）。
+/// 保留以备 Phase 6 fwfh 回退路径。
 class _DualSpreadAligner extends StatelessWidget {
   const _DualSpreadAligner({required this.margin, required this.child});
 

@@ -124,10 +124,11 @@ void main() {
         findsOneWidget,
         reason: 'paged 模式应渲染 PageView',
       );
+      // M4.8: 新管道用 SelectableText.rich（替换 fwfh HtmlWidget）。
       expect(
-        find.byType(HtmlWidget),
+        find.byType(SelectableText),
         findsWidgets,
-        reason: 'paged 模式也应渲染内容',
+        reason: 'paged 模式也应渲染内容（M4.8: SelectableText）',
       );
 
       await renderer.dispose();

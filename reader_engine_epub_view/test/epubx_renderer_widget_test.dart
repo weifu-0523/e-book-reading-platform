@@ -1,7 +1,6 @@
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
@@ -55,16 +54,15 @@ void main() {
       await tester.pump();
       // 默认 _paginationMode == PaginationMode.paged → 应当出现 PageView。
       expect(find.byType(PageView), findsOneWidget);
-      // M3e/Q8续: paged 模式每页内容由 _PageVerticalAligner 包裹（替换 M2.10 的
-      // SingleChildScrollView）。_PageVerticalAligner 用 OverflowBox(maxHeight:
-      // infinity) 兜底吸收 HtmlWidget 与 TextPainter 的高度误差，避免 RenderFlex
-      // bottom-overflow assertion（黄黑斑马线）——与 M2.10 同目的，只是换了 widget。
-      // 满页时内容居中（上下边距对称），末页顶部对齐（Q2）。断言：HtmlWidget 渲染
-      // 且无溢出异常（takeException isNull）。
-      expect(find.byType(HtmlWidget), findsWidgets,
-          reason: 'paged pages should render HtmlWidget content');
+      // M4.8: paged 模式每页内容由 SelectablePageView + SelectableText.rich 渲染
+      // （替换 M2.8-M4.6 的 fwfh HtmlWidget）。SelectableText.rich 与
+      // LineMetricsPaginator 共享 TextPainter → drift = 0（spec §3.2 invariant），
+      // 不再需要 OverflowBox 兜底。断言：SelectableText 渲染且无溢出异常。
+      expect(find.byType(SelectableText), findsWidgets,
+          reason: 'paged pages should render SelectableText.rich content '
+              '(M4.8 new pipeline; was HtmlWidget pre-M4.8)');
       expect(tester.takeException(), isNull,
-          reason: 'paged pages must not overflow (OverflowBox absorbs error)');
+          reason: 'paged pages must not overflow');
       await renderer.dispose();
     },
   );

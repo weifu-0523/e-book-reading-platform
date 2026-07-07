@@ -16,7 +16,6 @@
 
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
@@ -32,9 +31,10 @@ import 'package:reader_engine_epub_view/epubx_renderer.dart';
 /// 修复后 [_buildPaged] 用 [HtmlSlicer] + 每页 [HtmlHighlightInjector.inject]
 /// + [HtmlWidget]，让 paged 模式与 scroll 模式视觉一致。
 ///
-/// 本测试通过 widget tree pump 验证：注入高亮后，渲染树里能找到
-/// `HtmlWidget`（不再退化成纯 `Text`），且页面 HTML 片段含高亮 span 的
-/// background-color 样式。
+/// M4.8: 新管道用 [HtmlToInlineSpanConverter] 直接把高亮 bake 到 InlineSpan
+/// 的 backgroundColor 上，[_buildPaged] 渲染 [SelectableText.rich]。本测试
+/// 验证：注入高亮后渲染树里能找到 `SelectableText`（不再退化成纯 `Text`），
+/// 且 currentHighlightedHtml() 仍含高亮 span（用于 scroll 模式兼容路径）。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -62,12 +62,14 @@ void main() {
       ));
       await tester.pump();
 
-      // Contract: paged mode must render at least one HtmlWidget.
-      // Pre-fix (M2.5) it rendered plain Text instead, dropping all formatting.
-      expect(find.byType(HtmlWidget), findsWidgets,
-          reason: 'M2.8/B3 (Bug #5b): paged mode must render HtmlWidget per '
-              'page so that highlights and rich text are visible. Pre-fix it '
-              'rendered Text(plain.substring) which stripped all HTML.');
+      // Contract: paged mode must render at least one SelectableText (M4.8).
+      // Pre-M4.8 it rendered HtmlWidget; M2.8/B3 fix originally asserted
+      // HtmlWidget to guard against regressions to plain Text. M4.8 swap
+      // to SelectableText.rich preserves the rich-text contract.
+      expect(find.byType(SelectableText), findsWidgets,
+          reason: 'M4.8: paged mode must render SelectableText.rich per '
+              'page so that highlights and rich text are visible. Pre-M4.8 '
+              'rendered HtmlWidget; pre-fix (M2.5) rendered Text.');
 
       await renderer.dispose();
     },
@@ -123,18 +125,19 @@ void main() {
       ));
       await tester.pump();
 
-      // The rendered tree must contain HtmlWidget (rich text path active).
-      expect(find.byType(HtmlWidget), findsWidgets);
+      // M4.8: 渲染树必须含 SelectableText（新管道，原 HtmlWidget 已替换）。
+      expect(find.byType(SelectableText), findsWidgets);
 
-      // Direct contract: currentHighlightedHtml() now wraps MARKERWORD in a
-      // span carrying the highlight background-color. This is exactly the HTML
-      // _buildPaged slices per page (via HtmlSlicer) before feeding HtmlWidget.
+      // M4.8: currentHighlightedHtml() 仍是 scroll 模式的契约（_buildScroll
+      // 仍走 HTML 注入路径，Task 4.3 会切换到 SelectableText.rich）。paged
+      // 模式下高亮直接 bake 到 InlineSpan 的 backgroundColor（由 converter），
+      // 此处只验证 injectHighlights 写入 _allHighlights 后 currentHighlightedHtml
+      // 兼容路径仍产出含高亮的 HTML（防止 injectHighlights 写入路径回归）。
       final highlighted = renderer.currentHighlightedHtml();
       expect(highlighted, contains(highlightColor),
           reason: 'Bug #5b: injected highlight color must appear in the HTML '
-              'that the paged renderer consumes. Pre-fix the span was present '
-              'here but _buildPaged used Text(plain.substring) and discarded '
-              'it; post-fix it slices this HTML via HtmlSlicer → HtmlWidget.');
+              'that the scroll renderer consumes (paged path bakes highlight '
+              'into InlineSpan directly via HtmlToInlineSpanConverter).');
       expect(highlighted, contains('MARKERWORD'),
           reason: 'highlighted text must still be present (highlight is a '
               'background tint wrapped around the text, not a replacement)');
@@ -167,9 +170,9 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.byType(HtmlWidget), findsWidgets,
-          reason: 'paged mode must still render HtmlWidget even with zero '
-              'highlights (no regression on the no-highlight path).');
+      expect(find.byType(SelectableText), findsWidgets,
+          reason: 'M4.8: paged mode must still render SelectableText even '
+              'with zero highlights (no regression on the no-highlight path).');
 
       await renderer.dispose();
     },

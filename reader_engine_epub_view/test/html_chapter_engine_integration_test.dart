@@ -72,8 +72,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // fwfh 把 HTML 渲染成 RichText（不是 Text），故用 byType。
-      expect(find.byType(RichText), findsWidgets);
+      // M4.8: 新管道用 HtmlToInlineSpanConverter + SelectableText.rich 渲染
+      // （替换 fwfh HtmlWidget 内部产生的 RichText）。
+      expect(find.byType(SelectableText), findsWidgets);
       expect(tester.takeException(), isNull);
       // 不调 close()：close() 内 controller.close() + sub.cancel() 在测试
       // binding 下与 broadcast stream 时序有冲突会悬挂；引擎随测试销毁即可。

@@ -16,7 +16,6 @@
 
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
@@ -83,7 +82,7 @@ void main() {
   });
 
   group('EpubxRenderer dual-page rendering (M2.9)', () {
-    testWidgets('dual mode renders Row with two HtmlWidgets per spread',
+    testWidgets('dual mode renders Row with two SelectableTexts per spread',
         (tester) async {
       final renderer = EpubxRenderer();
       renderer.bookForTesting = _bookWithLongChapter();
@@ -95,14 +94,17 @@ void main() {
       expect(find.byType(PageView), findsOneWidget);
       expect(find.byType(Row), findsWidgets,
           reason: 'dual mode spread must be a Row of two pages');
-      // Each spread renders two HtmlWidgets (left + right).
-      expect(find.byType(HtmlWidget), findsNWidgets(2),
-          reason: 'spread[0] = left page + right page = 2 HtmlWidgets');
+      // M4.8: each spread renders two SelectableText widgets (left + right).
+      // Pre-M4.8 these were HtmlWidget; the new converter + SelectablePageView
+      // pipeline renders SelectableText.rich instead.
+      expect(find.byType(SelectableText), findsNWidgets(2),
+          reason: 'spread[0] = left page + right page = 2 SelectableTexts');
 
       await renderer.dispose();
     });
 
-    testWidgets('single mode renders one HtmlWidget per page', (tester) async {
+    testWidgets('single mode renders one SelectableText per page',
+        (tester) async {
       final renderer = EpubxRenderer();
       renderer.bookForTesting = _bookWithLongChapter();
       // default dualPageMode = false
@@ -111,8 +113,8 @@ void main() {
       await tester.pump();
 
       expect(find.byType(PageView), findsOneWidget);
-      expect(find.byType(HtmlWidget), findsOneWidget,
-          reason: 'single-page mode: one HtmlWidget per page');
+      expect(find.byType(SelectableText), findsOneWidget,
+          reason: 'single-page mode: one SelectableText per page');
 
       await renderer.dispose();
     });

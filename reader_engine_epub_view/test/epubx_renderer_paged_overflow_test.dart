@@ -17,7 +17,6 @@
 import 'package:epubx/epubx.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 
 /// M2.10/Bug A regression tests: paged-mode page content must NOT throw a
@@ -153,10 +152,10 @@ void main() {
     testWidgets('page content is wrapped in overflow-absorbing container',
         (tester) async {
       // Structural assertion: the overflow-absorption fix is present in the
-      // widget tree. M3e/Q8续 replaced M2.10's SingleChildScrollView with
-      // _PageVerticalAligner (uses OverflowBox to absorb measurement gap +
-      // center full pages / top-align last pages). Verify HtmlWidget renders
-      // and no overflow exception.
+      // widget tree. M4.8: 渲染器换为 SelectableText.rich（替换 fwfh
+      // HtmlWidget）。新管道下 LineMetricsPaginator 与 SelectableText.rich
+      // 共享 TextPainter（drift = 0），不再需要 OverflowBox 兜底；但
+      // OverflowBox 仍在 _PageVerticalAligner 中保留（Phase 6 fwfh 回退路径用）。
       final renderer = EpubxRenderer();
       renderer.bookForTesting = _bookWithDenseContent();
 
@@ -164,18 +163,17 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.byType(HtmlWidget), findsWidgets,
-          reason: 'paged pages must render HtmlWidget content');
+      expect(find.byType(SelectableText), findsWidgets,
+          reason: 'M4.8: paged pages must render SelectableText.rich content');
       expect(tester.takeException(), isNull,
-          reason: 'M3e/Q8续 fix: each paged page must absorb '
-              'HtmlWidget/TextPainter height divergence via _PageVerticalAligner '
-              '(OverflowBox), preventing RenderFlex overflow assertion');
+          reason: 'M4.8: LineMetricsPaginator + SelectableText.rich share '
+              'TextPainter → drift = 0, no overflow expected');
 
       await renderer.dispose();
     });
 
     // M3e/Q12（翻页优化回归）: 预计算所有页 HTML 后，翻到中间页应仍正确渲染
-    // 内容（有 RichText、有缩进 em-space、无异常）。验证预计算没丢内容/缩进。
+    // 内容（有 SelectableText、有缩进 em-space、无异常）。验证预计算没丢内容/缩进。
     testWidgets(
         'Q12: paging to a middle page renders content correctly '
         '(precomputed page HTML not lost)',
@@ -192,9 +190,9 @@ void main() {
       renderer.pageController!.jumpToPage(pageCount ~/ 2);
       await tester.pump();
       await tester.pump();
-      final rts = find.byType(RichText);
+      final rts = find.byType(SelectableText);
       expect(rts.evaluate(), isNotEmpty,
-          reason: '中间页应有渲染内容（预计算 HTML 未丢失）');
+          reason: '中间页应有渲染内容（converter 产出的 InlineSpan 未丢失）');
       expect(tester.takeException(), isNull);
 
       await renderer.dispose();
