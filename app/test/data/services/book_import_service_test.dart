@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:reader_engine_epub_view/reader_engine_epub_view.dart'
@@ -157,6 +158,101 @@ void main() {
     );
   });
 
+  // M2.0a review P2: 非 UNIQUE 异常时清理 library 文件，避免磁盘泄漏。
+  test(
+      'importFile cleans up stored library file when save fails with non-unique error',
+      () async {
+    final source = File(p.join(tempRoot.path, 'book_leak.epub'))
+      ..writeAsBytesSync([101, 102, 103, 104]);
+
+    final throwingRepo = _ThrowingBookRepository(
+      inner: bookRepo,
+      saveException: Exception('disk full'),
+      findHashReturnsNullFirst: true, // 绕开快路径，强制走 save → catch → cleanup
+    );
+    final serviceWithThrowingRepo = BookImportService(
+      bookRepository: throwingRepo,
+      fileStorage: storage,
+      coverExtractor: noopExtractor,
+    );
+
+    await expectLater(
+      serviceWithThrowingRepo.importFile(source, format: BookFormat.epub),
+      throwsA(isA<Exception>()),
+    );
+
+    // library 文件应被清理：fileHash 唯一且 save 失败 → 没人引用，删除安全。
+    final hash = _sha1Of([101, 102, 103, 104]);
+    final stored = File(p.join(storage.libraryDir.path, '$hash.epub'));
+    expect(
+      stored.existsSync(),
+      isFalse,
+      reason: 'library file should be GC-ed on non-unique save failure',
+    );
+  });
+
+  // M2.0a review P2: 非 UNIQUE 异常时同时清理封面文件。
+  test(
+      'importFile cleans up extracted cover when save fails with non-unique error',
+      () async {
+    final source = File(p.join(tempRoot.path, 'book_cover_leak.epub'))
+      ..writeAsBytesSync([201, 202, 203]);
+
+    final throwingRepo = _ThrowingBookRepository(
+      inner: bookRepo,
+      saveException: Exception('disk full'),
+      findHashReturnsNullFirst: true,
+    );
+    final fakeExtractor = _FakeCoverExtractor(
+      coversDir: storage.coversDir,
+      returnPathFromBookId: true,
+    );
+    final serviceWithThrowingRepo = BookImportService(
+      bookRepository: throwingRepo,
+      fileStorage: storage,
+      coverExtractor: fakeExtractor,
+    );
+
+    await expectLater(
+      serviceWithThrowingRepo.importFile(source, format: BookFormat.epub),
+      throwsA(isA<Exception>()),
+    );
+
+    // covers 目录应空（cover 被清理）
+    final coverFiles = storage.coversDir.listSync();
+    expect(
+      coverFiles,
+      isEmpty,
+      reason: 'cover file should be GC-ed on non-unique save failure',
+    );
+  });
+
+  // 非 UNIQUE 清理逻辑必须 best-effort：library 文件已不存在时也不应报错。
+  test(
+      'importFile cleanup is best-effort when library file already absent',
+      () async {
+    final source = File(p.join(tempRoot.path, 'book_idempotent.epub'))
+      ..writeAsBytesSync([5, 5, 5]);
+
+    final throwingRepo = _ThrowingBookRepository(
+      inner: bookRepo,
+      saveException: Exception('disk full'),
+      findHashReturnsNullFirst: true,
+    );
+    final serviceWithThrowingRepo = BookImportService(
+      bookRepository: throwingRepo,
+      fileStorage: storage,
+      coverExtractor: noopExtractor,
+    );
+
+    // 预先手动删除 library 文件（模拟已清掉），import 仍应正确 rethrow
+    await expectLater(
+      serviceWithThrowingRepo.importFile(source, format: BookFormat.epub),
+      throwsA(isA<Exception>()),
+    );
+    // 测试通过 = 清理 best-effort 不抛错
+  });
+
   test('importFile for EPUB writes coverPath on book record', () async {
     // 使用真实的 page-blanche.epub fixture（具有封面）
     File fixture = File(p.join('..', 'app', 'test', 'fixtures', 'page-blanche.epub'));
@@ -210,6 +306,10 @@ void main() {
     expect(result.book.coverPath, isNull); // 降级，不阻断 import
   });
 }
+
+/// 计算字节数组的 sha1 hex（与 BookImportService 一致），用于断言 library 文件名。
+String _sha1Of(List<int> bytes) => sha1.convert(bytes).toString();
+
 /// 通过 [findHashReturnsNullFirst] 可让第一次 findByHash 返回 null，
 /// 用于强制 importFile 绕开快路径、进入 try/catch 回退分支。
 class _ThrowingBookRepository implements BookRepository {

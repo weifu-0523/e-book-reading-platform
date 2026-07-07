@@ -51,6 +51,92 @@ class RemoteRecordApplier {
     }
   }
 
+  /// Apply a batch of records in two phases to satisfy foreign-key ordering:
+  /// **Phase 1**: parent tables (`book`, `bookNote`) — child rows reference
+  /// these via FK (`annotations.book_note_id → book_notes.id`,
+  /// `book_notes.book_id → books.id`).
+  /// **Phase 2**: child tables (`annotation`, `bookmark`, `readingProgress`).
+  ///
+  /// Pull snapshots arrive as JSON Lines; within a file the order is the
+  /// push-time append order, which is NOT guaranteed to be parent-first.
+  /// Without reordering, an annotation line that arrives before its parent
+  /// book_note would hit a FK violation under `PRAGMA foreign_keys = ON` and
+  /// be silently dropped by [WebDavSyncEngine]'s per-line catch — losing data.
+  ///
+  /// Malformed rows (FK still missing after reordering, schema mismatch, etc.)
+  /// are routed through [ConflictSink] as a soft-failure signal rather than
+  /// aborting the whole sync. Returns the number of rows successfully applied
+  /// (for telemetry parity with [WebDavSyncEngine.pullOnly]).
+  Future<int> applyRecords(List<SyncRecord> records) async {
+    // Three-tier FK ordering under `PRAGMA foreign_keys = ON`:
+    //   tier 0: books           (no FK deps)
+    //   tier 1: book_notes       (→ books), bookmarks (→ books),
+    //                            reading_progress (→ books)
+    //   tier 2: annotations      (→ book_notes)
+    //
+    // We split into three passes to guarantee parents exist before children
+    // regardless of input order. Pull snapshots arrive as JSON Lines in push
+    // time-order — NOT FK-order — so without this split an annotation that
+    // arrives before its parent book_note would hit a FK violation and be
+    // silently dropped by [WebDavSyncEngine]'s old per-line catch.
+    final books = <SyncRecord>[];
+    final midTier = <SyncRecord>[]; // book_notes, bookmarks, reading_progress
+    final annotations = <SyncRecord>[];
+    for (final r in records) {
+      switch (r.type) {
+        case SyncRecordType.book:
+          books.add(r);
+          break;
+        case SyncRecordType.bookNote:
+        case SyncRecordType.bookmark:
+        case SyncRecordType.readingProgress:
+          midTier.add(r);
+          break;
+        case SyncRecordType.annotation:
+          annotations.add(r);
+          break;
+      }
+    }
+
+    var applied = 0;
+    for (final r in [...books, ...midTier, ...annotations]) {
+      try {
+        if (await apply(r)) applied++;
+      } catch (e, st) {
+        // Soft-fail: route to conflict sink rather than abort batch.
+        await _recordApplyError(r, e, st);
+      }
+    }
+    return applied;
+  }
+
+  /// Soft-failure path for [applyRecords]: emit a conflict-like event so the
+  /// failure is observable via [ConflictSink] instead of silently swallowed.
+  /// We reuse the conflict payload shape; there is no local-side "local
+  /// mtime" to compare against for apply errors, so `localMtime == remote
+  /// mtime` is used as a sentinel marker. The exception string is embedded
+  /// in the payload under `__applyError` for downstream diagnostics.
+  Future<void> _recordApplyError(SyncRecord record, Object e, StackTrace st) async {
+    try {
+      await _conflictSink.record(
+        recordId: record.id,
+        recordType: record.type,
+        localMtime: record.mtime, // no local equivalent; mirror remote as marker
+        remoteMtime: record.mtime,
+        remoteDeviceId: currentRemoteDeviceId,
+        remotePayload: {
+          ...record.payload,
+          // Diagnostic marker — payload already a Map<String, dynamic>.
+          // Key prefixed with `__` to avoid collision with remote payload.
+          if (!record.payload.containsKey('__applyError'))
+            '__applyError': e.toString(),
+        },
+      );
+    } catch (_) {
+      // Sink failures must never bubble out of the applier.
+    }
+  }
+
   Future<bool> _applyAnnotation(SyncRecord record) async {
     final existing = await _db.customSelect(
       'SELECT updated_at FROM annotations WHERE id = ?',

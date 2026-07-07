@@ -139,6 +139,19 @@ class FileStorage {
     if (await file.exists()) await file.delete();
   }
 
+  /// Delete a cover file by its full path (as returned by [storeCover] /
+  /// [EpubCoverExtractor.extract]). Tolerates missing files and null paths.
+  ///
+  /// Used by [BookImportService] to clean up orphaned covers when DB save
+  /// fails. We accept a path (not bookId+ext) because covers are written by
+  /// the EPUB cover extractor and the import service only sees the final
+  /// path string.
+  Future<void> deleteCoverFile(String? coverPath) async {
+    if (coverPath == null) return;
+    final file = File(coverPath);
+    if (await file.exists()) await file.delete();
+  }
+
   Future<void> clearCache() async {
     if (cacheDir.existsSync()) {
       await cacheDir.delete(recursive: true);

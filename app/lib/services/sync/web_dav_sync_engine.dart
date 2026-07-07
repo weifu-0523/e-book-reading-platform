@@ -91,6 +91,14 @@ class WebDavSyncEngine implements SyncEngine {
   }
 
   /// Pull-only entry point. Fetches all device snapshots and applies them.
+  ///
+  /// Records are buffered per device file and dispatched via
+  /// [RemoteRecordApplier.applyRecords], which reorders rows into FK-safe
+  /// tiers (books → book_notes/bookmarks/reading_progress → annotations)
+  /// under `PRAGMA foreign_keys = ON`. Per-row apply failures are routed
+  /// through [ConflictSink] (no longer silently dropped) — the only
+  /// remaining hard-swallow is JSON parse errors on individual lines (no
+  /// metadata to emit as a conflict).
   Future<SyncResult> pullOnly() async {
     final applier =
         RemoteRecordApplier(database, conflictSink: _conflictSink);
@@ -114,16 +122,18 @@ class WebDavSyncEngine implements SyncEngine {
       final body = await _rateLimiter.run(
           () => webdav.getString('/zhiyue/snapshots/$file'));
       final lines = body.split('\n').where((l) => l.trim().isNotEmpty);
+
+      // Buffer parsed records per file, then FK-ordered apply.
+      final batch = <SyncRecord>[];
       for (final line in lines) {
         try {
           final json = jsonDecode(line) as Map<String, dynamic>;
-          final record = SyncRecord.fromJson(json);
-          final didApply = await applier.apply(record);
-          if (didApply) applied++;
+          batch.add(SyncRecord.fromJson(json));
         } catch (_) {
-          // Skip malformed line — don't fail entire sync.
+          // Skip unparseable line — no metadata to emit as conflict.
         }
       }
+      applied += await applier.applyRecords(batch);
     }
     return SyncResult.success(pushedCount: 0, pulledCount: applied);
   }
