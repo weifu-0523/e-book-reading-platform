@@ -67,25 +67,74 @@ class HtmlToInlineSpanConverter {
     final images = <InlineImage>[];
     final children = <InlineSpan>[];
 
-    final blockTags = const {'p', 'div'};
+    final blockTags = const {'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'};
     final bodyChildren = doc.body?.nodes ?? const <dom.Node>[];
     final blockElements = <dom.Element>[
       for (final n in bodyChildren)
         if (n is dom.Element && blockTags.contains(n.localName)) n,
     ];
+    // Also flatten <ul>/<ol> direct children into the block list.
+    final listTags = const {'ul', 'ol'};
+    final listElements = <dom.Element>[
+      for (final n in bodyChildren)
+        if (n is dom.Element && listTags.contains(n.localName)) n,
+    ];
+    for (final list in listElements) {
+      final items = list.querySelectorAll('li');
+      for (final li in items) {
+        blockElements.add(li);
+      }
+    }
 
     for (var i = 0; i < blockElements.length; i++) {
       final el = blockElements[i];
+      final tag = el.localName;
       final start = buf.length;
+
+      // Prefix for list items.
+      String? prefix;
+      TextStyle? headingStyle;
+      if (tag == 'li') {
+        // Determine parent <ol>/<ul> and index.
+        final parent = el.parent;
+        if (parent?.localName == 'ol') {
+          final siblings = parent!.querySelectorAll('li');
+          final idx = siblings.indexOf(el) + 1;
+          prefix = '$idx. ';
+        } else {
+          prefix = '• ';
+        }
+      } else if (tag != null && tag.startsWith('h')) {
+        final level = int.tryParse(tag.substring(1)) ?? 1;
+        final sizeScale = switch (level) {
+          1 => 1.5,
+          2 => 1.3,
+          3 => 1.15,
+          4 => 1.0,
+          5 => 0.95,
+          _ => 0.85,
+        };
+        headingStyle = baseStyle.copyWith(
+          fontWeight: FontWeight.bold,
+          fontSize: (baseStyle.fontSize ?? 16) * sizeScale,
+        );
+      }
+
+      if (prefix != null) {
+        buf.write(prefix);
+      }
+      final effectiveStyle = headingStyle ?? _inlineStyle(baseStyle, tag);
       final paraChildren = <InlineSpan>[];
+      if (prefix != null) {
+        paraChildren.add(TextSpan(text: prefix, style: effectiveStyle));
+      }
       // Walk block element's child nodes directly (no wrapping span).
-      final blockStyle = _inlineStyle(baseStyle, el.localName);
       for (final child in el.nodes) {
-        _walkInline(child, blockStyle, buf, paraChildren, images);
+        _walkInline(child, effectiveStyle, buf, paraChildren, images);
       }
       final end = buf.length;
       ranges.add(ParaRange(start, end));
-      children.add(TextSpan(style: blockStyle, children: paraChildren));
+      children.add(TextSpan(style: effectiveStyle, children: paraChildren));
       if (i < blockElements.length - 1) {
         buf.write('\n\n');
         children.add(const TextSpan(text: '\n\n'));

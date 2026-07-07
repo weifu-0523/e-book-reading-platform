@@ -107,4 +107,39 @@ void main() {
       expect(code.style?.fontFamily, 'monospace');
     });
   });
+
+  group('headings and lists', () {
+    test('<h1> produces bold larger TextSpan and a paragraph range', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<h1>Title</h1>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      expect(result.paragraphRanges.length, 1);
+      final h1 = (result.root as TextSpan).children!.single as TextSpan;
+      expect(h1.style?.fontWeight, FontWeight.bold);
+      expect(h1.style?.fontSize, greaterThan(16));
+    });
+
+    test('<ul><li> produces bullet-prefixed paragraphs', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<ul><li>One</li><li>Two</li></ul>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      expect(result.paragraphRanges.length, 2);
+      expect(result.plainText, contains('• One'));
+      expect(result.plainText, contains('• Two'));
+    });
+
+    test('<ol><li> produces number-prefixed paragraphs', () {
+      final result = HtmlToInlineSpanConverter().convert(
+        '<ol><li>First</li><li>Second</li></ol>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      expect(result.plainText, contains('1. First'));
+      expect(result.plainText, contains('2. Second'));
+    });
+  });
 }
