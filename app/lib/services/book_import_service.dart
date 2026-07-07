@@ -122,23 +122,13 @@ class BookImportService {
       await _bookRepository.save(book);
       return ImportResult(book: book, isNew: true);
     } on Exception catch (e) {
-      // UNIQUE 约束：另一路并发已写入同 hash。fileHash 是内容哈希，
-      // 同内容只存一份 → 别人写的 library 文件名也是 {hash}.{ext}，
-      // 我们刚写的与之完全同名 → 删除只是删掉自己的覆盖（安全），
-      // 然后走 findByHash 回退。
+      // UNIQUE 约束：另一路并发已写入同 hash。注意 library 文件是
+      // 内容寻址（{hash}.{ext}），fallback 的 Book.filePath 指向同一文件
+      // → **不能删除**，否则会孤立 fallback 记录。也不需要删——两路写的
+      // 是同一份内容，二进制一致。
       if (e.toString().contains('UNIQUE constraint failed')) {
         final fallback = await _bookRepository.findByHash(hash);
         if (fallback != null) {
-          // 顺手清理本次重复写入的 library 文件（幂等；fallback 的同名
-          // 文件会保留）。失败也忽略——这只是 best-effort GC。
-          try {
-            await _fileStorage.deleteLibraryFile(
-              hash: hash,
-              extension: effectiveFormat.fileExtension,
-            );
-          } catch (_) {
-            // best-effort；不影响主流程
-          }
           return ImportResult(book: fallback, isNew: false);
         }
         // fallback 找不到（极少见）：library 文件保留（可能仍有人引用）。
@@ -147,7 +137,9 @@ class BookImportService {
       // 非 UNIQUE 异常（磁盘 I/O / OOM / UUID 冲突等）：
       // fileHash 是内容哈希，相同内容只存一份；既然 save 失败说明这条
       // book 记录没进 DB，没人会引用这个 library 文件，删除安全。同时
-      // 清理本次提取出的 cover。所有清理 best-effort，失败不阻塞 rethrow。
+      // 清理本次提取出的 cover（cover 按 bookId 命名，本次 bookId 永不会
+      // 进 DB 所以 cover 一定无人引用）。所有清理 best-effort，失败不阻塞
+      // rethrow。
       try {
         await _fileStorage.deleteLibraryFile(
           hash: hash,
