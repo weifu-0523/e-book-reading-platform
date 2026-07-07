@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
@@ -182,6 +183,13 @@ class EpubxRenderer implements EpubRenderer {
   /// M4.8: [_convertedSpans] 对应的 page breaks（同 plainText 坐标空间）。
   /// 由 [_InlineSpanMeasurer] 报告。null 表示尚未测量。
   List<PageBreak>? _lineBreaks;
+
+  /// M4.8-6.2: When true, the current chapter has ≥3 unsupported HTML tags
+  /// and should render via the legacy [HtmlWidget] path instead of
+  /// [SelectablePageView] + [SelectableText.rich]. This gives users proper
+  /// rendering of complex elements (tables, SVG, video) that the inline span
+  /// converter can only flatten.
+  bool _fwfhFallbackForCurrentChapter = false;
 
   /// M4.6-fix16: 上次测量时的参数指纹（html + viewport + typography + margin）。
   /// LayoutBuilder 重跑时与当前参数比较：匹配则复用 [_measuredHeights]，
@@ -1215,6 +1223,7 @@ class EpubxRenderer implements EpubRenderer {
           _lineBreaks = breaks;
           _measuredHeights = null; // legacy fwfh cache 不可与新管道混用
           _measurementKey = measurementKey;
+          _fwfhFallbackForCurrentChapter = converted.shouldFallbackToFwfh;
         }
         final converted = _convertedSpans!;
         final breaks = _lineBreaks!;
@@ -1226,28 +1235,14 @@ class EpubxRenderer implements EpubRenderer {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _maybeApplyPendingLastPageJump();
         });
-        // M4.8: SelectablePageView 是完整的 PageView（内部 PageView.builder
-        // + InlineSpanSubtreeSlicer + SelectableText.rich）。它接管 itemCount
-        // 计算、dual-page spread 渲染、page controller 接线。
-        //
-        // 旧实现的 _PageVerticalAligner / _DualSpreadAligner / SelectionArea
-        // 包装在新管道下不再需要：
-        // - OverflowBox 兜底：LineMetricsPaginator 与 SelectableText.rich 共享
-        //   TextPainter（drift = 0），不再有"测量 < 渲染"溢出场景。
-        // - SelectionArea：SelectableText.rich 自带 SelectionRegistrar，选区
-        //   不会跨页串读。Phase 5 Task 5.2 会接 onSelectionChanged 回调到
-        //   emitPagedSelection，保持 pagedSelection$ 流的语义。
-        //
-        // Padding(EdgeInsets.all(16)) 由 SelectablePageView 内部默认应用；
-        // 当前外层 LayoutBuilder 的父 ColoredBox + DefaultTextStyle 已提供
-        // 主题色与基础样式。若需自定义 page padding，可在 Phase 6 给
-        // SelectablePageView 加 pagePadding 参数（保持 API 兼容）。
+        // M4.8-6.2: Chapters with ≥3 unsupported HTML tags (table, SVG, video)
+        // fall back to legacy HtmlWidget rendering. The converter flattens these
+        // to text, but HtmlWidget can render them properly.
+        if (_fwfhFallbackForCurrentChapter) {
+          return _buildPagedFwfhFallback(
+              style, fg, html, margin, breaks, rawHeight);
+        }
         return SelectionArea(
-          // M4.6-fix10/A4 兼容：emitPagedSelection 推到 pagedSelection$ 流，
-          // reader_body 监听驱动 toolbar / 摘录合并。SelectionArea 包整个
-          // PageView 仍然有效——它建立全局 registrar，SelectableText.rich
-          // 子树注册到本 registrar。Phase 5 会切换到 SelectablePageView
-          // 的 onSelectionChanged 回调（更细粒度，每页独立 registrar）。
           onSelectionChanged: emitPagedSelection,
           child: SelectablePageView(
             rootSpan: converted.root,
@@ -1300,6 +1295,125 @@ class EpubxRenderer implements EpubRenderer {
       typography: _typography,
       marginPx: marginPx,
     ).breaks;
+  }
+
+  /// M4.8-6.2: Legacy paged rendering via [HtmlWidget] for chapters with
+  /// complex HTML elements (table, SVG, video) that the inline span converter
+  /// cannot faithfully represent.
+  ///
+  /// Uses the pre-M4.8 DOM-slicing approach: parse once, pre-compute per-page
+  /// HTML, render each page with [HtmlWidget]. Pagination uses the
+  /// [Paginator.paginateWithText] estimator (some drift expected).
+  Widget _buildPagedFwfhFallback(
+    TextStyle style,
+    Color fg,
+    String html,
+    double margin,
+    List<PageBreak> breaks,
+    double rawHeight,
+  ) {
+    const gutterPx = 24.0;
+    final converted = _convertedSpans!;
+    final plain = converted.plainText;
+
+    // Parse chapter DOM once — reuses the same Document for all pages.
+    final chapterDoc = html_parser.HtmlParser(html).parse();
+    for (final el in chapterDoc.querySelectorAll('script, style')) {
+      el.remove();
+    }
+
+    final chapterHighlights = _allHighlights
+        .where((h) => h.chapterIndex == _currentChapterIndex)
+        .toList();
+
+    // Pre-compute per-page HTML (slice + highlight + indent).
+    final pageHtmls = <String>[];
+    for (var i = 0; i < breaks.length; i++) {
+      final pb = breaks[i];
+      final start = pb.startOffset.clamp(0, plain.length);
+      final end = pb.endOffset.clamp(start, plain.length);
+      var pageHtml = HtmlSlicer.sliceByPlainRangeDoc(
+        chapterDoc,
+        start,
+        end,
+        plainLength: plain.length,
+      );
+      if (chapterHighlights.isNotEmpty) {
+        final local = HtmlSlicer.localizeHighlights(
+          chapterHighlights,
+          pb.startOffset,
+          pb.endOffset,
+        );
+        if (local.isNotEmpty) {
+          pageHtml = HtmlHighlightInjector.inject(pageHtml, local);
+        }
+      }
+      pageHtml = TypographyStyleInjector.inject(
+        pageHtml,
+        indentEm: _typography.paragraphIndentEm,
+        enabled: _typography.paragraphIndentEnabled,
+      );
+      pageHtmls.add(pageHtml);
+    }
+
+    final itemCount =
+        _dualPageMode ? (breaks.length + 1) ~/ 2 : breaks.length;
+
+    Widget buildSinglePage(int breakIdx, {double verticalMargin = double.nan}) {
+      final vMargin = verticalMargin.isNaN ? margin : verticalMargin;
+      return _PageVerticalAligner(
+        horizontalMargin: margin,
+        verticalMargin: vMargin,
+        enableCentering: !_dualPageMode,
+        child: HtmlWidget(
+          pageHtmls[breakIdx],
+          textStyle: style.copyWith(color: fg),
+          customStylesBuilder: (element) =>
+              _elementStyles(element, rawHeight * 0.6),
+        ),
+      );
+    }
+
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: itemCount,
+      onPageChanged: (_) {
+        _emitCurrentLocation();
+        _maybeEmitChapterEnd();
+      },
+      itemBuilder: (context, i) {
+        if (!_dualPageMode) {
+          return buildSinglePage(i);
+        }
+        final leftIdx = i * 2;
+        final rightIdx = leftIdx + 1;
+        final hasRight = rightIdx < breaks.length;
+        return _DualSpreadAligner(
+          margin: margin,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SelectionArea(
+                  onSelectionChanged: emitPagedSelection,
+                  child: buildSinglePage(leftIdx, verticalMargin: 0),
+                ),
+              ),
+              if (hasRight) ...[
+                const SizedBox(width: gutterPx),
+                Expanded(
+                  child: SelectionArea(
+                    onSelectionChanged: emitPagedSelection,
+                    child: buildSinglePage(rightIdx, verticalMargin: 0),
+                  ),
+                ),
+              ] else
+                const Expanded(child: SizedBox.shrink()),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
