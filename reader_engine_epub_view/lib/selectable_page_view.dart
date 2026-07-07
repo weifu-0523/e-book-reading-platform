@@ -2,6 +2,7 @@
 // Copyright (C) 2026 ZhiYue Open Source contributors
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine_epub_view/inline_span_subtree_slicer.dart';
 
@@ -16,6 +17,11 @@ import 'package:reader_engine_epub_view/inline_span_subtree_slicer.dart';
 /// Core invariant (M4.8 spec §3.2): the InlineSpan sliced here is the same
 /// one measured by [LineMetricsPaginator], so the rendered page height
 /// matches the measured height — no drift.
+///
+/// Phase 5 (Task 5.2): each page wraps its [SelectableText.rich] in a
+/// [SelectionArea] so each page has its own registrar (selections don't
+/// cross page boundaries), and the area's [SelectionArea.onSelectionChanged]
+/// is forwarded to [onSelectionChanged].
 class SelectablePageView extends StatelessWidget {
   const SelectablePageView({
     super.key,
@@ -26,6 +32,7 @@ class SelectablePageView extends StatelessWidget {
     this.initialPage = 0,
     this.controller,
     this.onPageChanged,
+    this.onSelectionChanged,
     this.gutterPx = 24,
   });
 
@@ -52,6 +59,14 @@ class SelectablePageView extends StatelessWidget {
   /// Forwarded to [PageView.onPageChanged].
   final ValueChanged<int>? onPageChanged;
 
+  /// Forwarded to each page's [SelectionArea.onSelectionChanged].
+  ///
+  /// Each page is wrapped in its own [SelectionArea] so the user's selection
+  /// is scoped to the current page (no cross-page bleed). When the user
+  /// selects text on any page, this callback fires with the consolidated
+  /// [SelectedContent] for that page.
+  final ValueChanged<SelectedContent?>? onSelectionChanged;
+
   /// Horizontal gutter between left/right pages in dual-page mode.
   final double gutterPx;
 
@@ -76,9 +91,12 @@ class SelectablePageView extends StatelessWidget {
     final b = breaks[idx];
     final span =
         InlineSpanSubtreeSlicer.slice(rootSpan, b.startOffset, b.endOffset);
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: SelectableText.rich(span),
+    return SelectionArea(
+      onSelectionChanged: onSelectionChanged,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SelectableText.rich(span),
+      ),
     );
   }
 
