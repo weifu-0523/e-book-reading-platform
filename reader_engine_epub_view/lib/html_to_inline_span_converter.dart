@@ -383,6 +383,10 @@ class _HighlightRewriter {
         final absStart = offset + i;
         // Find a highlight that contains absStart.
         final hit = _findHit(absStart);
+        // _findHit returns r where r.$1 <= absStart < r.$2, so when hit != null
+        // we are guaranteed hStart <= absStart.
+        assert(hit == null || hit.$1 <= absStart,
+            'highlight hit invariant: hStart <= absStart');
         final int localEnd;
         final Color? bg;
         if (hit == null) {
@@ -392,25 +396,11 @@ class _HighlightRewriter {
           localEnd = math.min(absEnd - offset, text.length);
           bg = null;
         } else {
-          final (hStart, hEnd, hColor) = hit;
+          final (_, hEnd, hColor) = hit;
           // Extend through this highlight; cap at text end.
           final absEnd = math.min(hEnd, offset + text.length);
           localEnd = absEnd - offset;
           bg = hColor;
-          // absStart must be within highlight; if absStart < hStart (shouldn't
-          // happen because we cap to nextStart in the previous iteration),
-          // clamp local start.
-          if (absStart < hStart) {
-            // shouldn't happen, but guard anyway
-            final localStart = hStart - offset;
-            if (localStart > i) {
-              newChildren.add(TextSpan(
-                text: text.substring(i, localStart),
-                style: span.style,
-              ));
-              i = localStart;
-            }
-          }
         }
         newChildren.add(TextSpan(
           text: text.substring(i, localEnd),
