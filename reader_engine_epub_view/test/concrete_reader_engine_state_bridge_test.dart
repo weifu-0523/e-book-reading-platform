@@ -97,6 +97,36 @@ void main() {
       await engine.close();
     });
 
+    // 2026-07-08 review fixup: paginationMode getter must forward renderer's
+    // live value (was hard-coded paged). reader_body.dart has 10+ branches on
+    // `engine.paginationMode == PaginationMode.paged`; without forwarding,
+    // m4.7b toggle button updated renderer state but UI/behavior branches kept
+    // seeing paged → toggle icon never flipped, scroll-mode code paths dead.
+    test('paginationMode getter forwards renderer state (review fixup)', () async {
+      final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
+      engine.rendererRef.bookForTesting = _bookWithThreeChapters();
+
+      expect(engine.paginationMode, PaginationMode.paged,
+          reason: 'Default mode must be paged (matches EpubxRenderer ctor).');
+
+      await engine.setPaginationMode(PaginationMode.scroll);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(engine.paginationMode, PaginationMode.scroll,
+          reason: '2026-07-08 review fixup: after setPaginationMode(scroll), '
+              'engine.paginationMode must reflect the new mode. Pre-fix the '
+              'adapter hard-coded paged, so reader_body kept using paged '
+              'branches and the m4.7b toggle icon never flipped despite the '
+              'renderer internally switching.');
+
+      await engine.setPaginationMode(PaginationMode.paged);
+      await Future<void>.delayed(Duration.zero);
+      expect(engine.paginationMode, PaginationMode.paged,
+          reason: 'Round-trip back to paged must also be reflected.');
+
+      await engine.close();
+    });
+
     test('gotoLocator CFI cross-chapter emits ReaderEngineReady on adapter stream',
         () async {
       final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());

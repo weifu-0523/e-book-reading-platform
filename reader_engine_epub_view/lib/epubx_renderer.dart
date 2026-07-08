@@ -103,6 +103,15 @@ class EpubxRenderer implements EpubRenderer {
   /// const default. Pre-fix, panel onChanged wrote to a discarded object.
   TypographySettings get typography => _typography;
 
+  /// 2026-07-08 review fixup: Read-only access to the current
+  /// [PaginationMode]. ConcreteEpubReaderEngine.paginationMode forwards
+  /// this so reader_body's `engine.paginationMode == PaginationMode.paged`
+  /// checks reflect the live mode after setPaginationMode. Pre-fix the
+  /// adapter hard-coded paged, so toggling scroll mode updated the field
+  /// silently and reader_body kept using paged branches (m4.7b toggle UI
+  /// never reflected the new mode).
+  PaginationMode get paginationMode => _paginationMode;
+
   /// M2.9: 双页模式（书脊式左右两页）。
   ///
   /// 当 `true` 且当前章节为 paged 模式时，[_buildPaged] 渲染单 PageView，

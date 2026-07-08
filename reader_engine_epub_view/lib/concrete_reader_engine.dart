@@ -101,7 +101,7 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   TypographySettings get typography => _renderer.typography;
 
   @override
-  PaginationMode get paginationMode => PaginationMode.paged;
+  PaginationMode get paginationMode => _renderer.paginationMode;
 
   /// M2.9: 双页模式透传给 renderer。读取用本 getter；切换用
   /// [setDualPageMode]（reader_body 的 LayoutBuilder 在宽屏时调用）。
