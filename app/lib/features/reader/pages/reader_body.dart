@@ -161,7 +161,17 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   // M2.7/T21: 宽屏右侧 AI 面板开关。窄屏通过 Scaffold.endDrawer 切换，
   // 宽屏用此 bool 决定是否在 Row 末尾追加 SizedBox(width:380) panel。
   // 默认 false（不占用宽屏阅读区域）；用户在 AppBar 通过 toggle 切换。
-  bool _aiPanelOpen = false;
+  // 2026-07-08：默认展开（宽屏 inline panel；窄屏 endDrawer 不受影响）。
+  bool _aiPanelOpen = true;
+
+  // 2026-07-08 BUG A: 宽屏 AI 抽屉宽度可拖动调整。默认 380，范围 [280, 800]。
+  // _dragStartWidth / _dragStartGlobalX 在 drag start 时记录，update 时
+  // width = startWidth - (curX - startX)，往左拖变宽，往右拖变窄。
+  double _aiDrawerWidth = 380;
+  double _dragStartWidth = 380;
+  double _dragStartGlobalX = 0;
+  static const double _aiDrawerMinWidth = 280;
+  static const double _aiDrawerMaxWidth = 800;
 
   // 2026-07-08 Review P1: initState 注册的 4 个 stream subscription
   // 之前被丢弃，导致 widget unmount 后 listener 仍挂在 engine 上，
@@ -611,17 +621,45 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           ),
           Expanded(child: _buildReaderStack(ui)),
           // M2.7/T21: 宽屏右侧 AI 面板（条件渲染）。默认收起（_aiPanelOpen=false）
-          // 不占阅读区域；用户在 AppBar 通过 _toggleAiDrawer() 展开后追加 380px
-          // 列。AiDrawerWidget 内部不强制宽度（wide:true 期望外层 SizedBox 撑定），
-          // 此处显式 SizedBox 锁 380px。
+          // 不占阅读区域；用户在 AppBar 通过 _toggleAiDrawer() 展开后追加 panel。
+          // 2026-07-08 BUG A: 宽度可拖动。结构 = [拖动条 6px | SizedBox(width:_aiDrawerWidth) panel]。
+          // 往左拖 → dx<0 → width 变大；往右拖 → dx>0 → width 变小。clamp [280, 800]。
           if (_aiPanelOpen)
-            SizedBox(
-              width: 380,
-              child: AiDrawerWidget(
-                bookId: widget.bookId,
-                chapterIndex: _currentChapterIndex(),
-                wide: true,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MouseRegion(
+                  cursor: SystemMouseCursors.resizeColumn,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragStart: (d) {
+                      _dragStartWidth = _aiDrawerWidth;
+                      _dragStartGlobalX = d.globalPosition.dx;
+                    },
+                    onHorizontalDragUpdate: (d) {
+                      final dx = d.globalPosition.dx - _dragStartGlobalX;
+                      setState(() {
+                        _aiDrawerWidth = (_dragStartWidth - dx).clamp(
+                          _aiDrawerMinWidth,
+                          _aiDrawerMaxWidth,
+                        );
+                      });
+                    },
+                    child: Container(
+                      width: 6,
+                      color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: _aiDrawerWidth,
+                  child: AiDrawerWidget(
+                    bookId: widget.bookId,
+                    chapterIndex: _currentChapterIndex(),
+                    wide: true,
+                  ),
+                ),
+              ],
             ),
         ],
       ),

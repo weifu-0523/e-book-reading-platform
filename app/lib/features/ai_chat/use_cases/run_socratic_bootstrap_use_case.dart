@@ -66,6 +66,12 @@ class RunSocraticBootstrapUseCase {
   ///   `'card.socratic'` (preset card click) or `'/socratic'` (slash command).
   ///   Does not affect the prompt — both variants produce the same prompt
   ///   shape (modulo LLM nondeterminism).
+  ///
+  /// 2026-07-08 BUG C: 在保持"subagent 不读完整 chat history"契约的前提下，
+  /// 增加一个窄口例外——读取本会话最近一条 `presetSource in
+  /// {'card.chapter', '/chapter'}` 的 AI 消息，作为 chapter guide 上下文
+  /// 优先传入。这匹配用户最常见的"先点本章导读 → 再点苏格拉底"工作流。
+  /// 没有则回退到 recap（原行为）。
   Stream<String> run({
     required String sessionId,
     required String bookId,
@@ -75,9 +81,24 @@ class RunSocraticBootstrapUseCase {
     // 1. Fetch recap text (caller's responsibility to cache upstream).
     final recap = await recapProvider(bookId, chapterIndex);
 
-    // 2. Build prompt from recap alone (subagent invariant: no chat history).
-    final prompt =
-        PromptBuilderExt.buildSocraticBootstrapPrompt(recap: recap);
+    // 1b. BUG C: 抓本会话最近的 chapter guide AI 消息作为优先上下文。
+    String? chapterGuide;
+    final messages = await repo.listMessages(sessionId);
+    for (final m in messages.reversed) {
+      if (m.role == 'ai' &&
+          (m.presetSource == 'card.chapter' ||
+              m.presetSource == '/chapter') &&
+          m.content.trim().isNotEmpty) {
+        chapterGuide = m.content;
+        break;
+      }
+    }
+
+    // 2. Build prompt (chapter guide preferred, recap fallback).
+    final prompt = PromptBuilderExt.buildSocraticBootstrapPrompt(
+      recap: recap,
+      chapterGuide: chapterGuide,
+    );
 
     // 3. Insert empty AI message placeholder with presetSource label.
     final aiMsgId = await repo.appendMessage(

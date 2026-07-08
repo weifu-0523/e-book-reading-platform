@@ -93,9 +93,14 @@ class SelectablePageView extends StatelessWidget {
         InlineSpanSubtreeSlicer.slice(rootSpan, b.startOffset, b.endOffset);
     return SelectionArea(
       onSelectionChanged: onSelectionChanged,
+      // 2026-07-08 BUG 1：用 Text.rich 而非 SelectableText.rich。SelectableText
+      // 自带 EditableText + 私有 SelectionRegistrar，嵌套在 SelectionArea 内时
+      // 把 onSelectionChanged 事件吃掉，外层 listener 收不到。Text.rich 让
+      // SelectionArea 接管 selection，事件正常上报。详见 epubx_renderer.dart
+      // scroll 模式同名修复的根因注释。
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: SelectableText.rich(span),
+        child: Text.rich(span),
       ),
     );
   }

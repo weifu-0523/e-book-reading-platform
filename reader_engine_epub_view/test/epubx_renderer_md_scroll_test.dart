@@ -50,20 +50,19 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 100));
 
-      // 断言 1：渲染出 SelectableText（M4.8 新管道，替换 fwfh HtmlWidget）。
+      // 断言 1：渲染出 RichText（2026-07-08 BUG 1 起：Text.rich + SelectionArea
+      // 替换 SelectableText.rich，让 SelectionArea.onSelectionChanged 触发）。
       expect(
-        find.byType(SelectableText),
+        find.byType(RichText),
         findsWidgets,
-        reason: 'scroll 模式应渲染 SelectableText.rich，空白说明渲染失败',
+        reason: 'scroll 模式应渲染 Text.rich（→ RichText），空白说明渲染失败',
       );
 
       // 断言 2：渲染出预期文字（至少含"第一段"或"第二段"）。
-      // M4.8: SelectableText 的 textSpan 字段持有 InlineSpan，用 toPlainText
-      // 取出文本内容（与旧 RichText.text.toPlainText 等价）。
-      final hasContent = find.byType(SelectableText).evaluate().any((element) {
-        final widget = element.widget as SelectableText;
-        final span = widget.textSpan;
-        if (span == null) return false;
+      // Text.rich 内部渲染为 RichText，InlineSpan 在 RichText.text。
+      final hasContent = find.byType(RichText).evaluate().any((element) {
+        final widget = element.widget as RichText;
+        final span = widget.text;
         final text = span.toPlainText();
         return text.contains('第一段') ||
             text.contains('第二段') ||
@@ -120,11 +119,11 @@ void main() {
         findsOneWidget,
         reason: 'paged 模式应渲染 PageView',
       );
-      // M4.8: 新管道用 SelectableText.rich（替换 fwfh HtmlWidget）。
+      // 2026-07-08 BUG 1: Text.rich（替换 fwfh HtmlWidget 和 SelectableText.rich）。
       expect(
-        find.byType(SelectableText),
+        find.byType(RichText),
         findsWidgets,
-        reason: 'paged 模式也应渲染内容（M4.8: SelectableText）',
+        reason: 'paged 模式也应渲染内容（Text.rich → RichText）',
       );
 
       await renderer.dispose();

@@ -87,7 +87,8 @@ class EpubxRenderer implements EpubRenderer {
   EpubImageInliner? _imageInliner;
   int _currentChapterIndex = 0;
   TypographySettings _typography = TypographySettings.defaults();  // ⚠️ NOT const (M1 factory)
-  PaginationMode _paginationMode = PaginationMode.paged;
+  // 2026-07-08：默认改 scroll（用户偏好滚动阅读）。setPaginationMode 仍可切换。
+  PaginationMode _paginationMode = PaginationMode.scroll;
 
   /// M4.5: 格式无关的章节数据源。EPUB 路径由 [openFile] 解析 epubx 后填充；
   /// Markdown/TXT 路径由 [openChapters] 直接填充（不经 epubx）。所有渲染/
@@ -1107,16 +1108,22 @@ class EpubxRenderer implements EpubRenderer {
           controller: _scrollController,
           child: Padding(
             padding: EdgeInsets.all(margin),
-            child: SelectableText.rich(
-              // converter.root 是 InlineSpan，但实际总是 TextSpan（converter
-              // 内部用 TextSpan(style: baseStyle, children: ...) 构造根）。
-              // SelectableText.rich 要求 TextSpan，故显式 cast。
-              converted.root as TextSpan,
-              // M3e/Q1: 段落间距（0.5em）由 fwfh customStylesBuilder 旧路径
-              // 注入；新管道下 converter 未处理段间距，scroll 模式需用
-              // DefaultTextStyle.merge + WidgetSpan spacer 或保留极简（无段间距）
-              // 直到 Phase 5/6 在 InlineSpan 层补齐。当前实现可接受：段落间
-              // 通过 '\n\n' TextSpan 分隔，视觉间距由行高自然产生。
+            // 2026-07-08 BUG 1 修复（运行时根因）：
+            // 原实现 SelectionArea > SelectableText.rich —— SelectableText 自带
+            // EditableText + 私有 SelectionRegistrar，嵌套在 SelectionArea 内时
+            // 把 selection 事件吃掉，外层 SelectionArea.onSelectionChanged **不会
+            // 触发**。结果 reader_body._selection 永远 null，自定义
+            // ReaderSelectionToolbar（摘录/复制/提问 AI）永不显示，只剩导航条上
+            // 的 Text（走外层 SelectableRegion 默认 selectionControls）会弹 Material
+            // 默认工具条。
+            //
+            // 修复：用 Text.rich 替代 SelectableText.rich。Text.rich 自身不持有
+            // selection registrar，外层 SelectionArea 会接管，onSelectionChanged
+            // 正常触发，emitPagedSelection 推到 pagedSelection$ 流，reader_body
+            // 订阅器调 _onSelectionChanged → _selection 设置 → toolbar 渲染。
+            child: SelectionArea(
+              onSelectionChanged: emitPagedSelection,
+              child: Text.rich(converted.root),
             ),
           ),
         );

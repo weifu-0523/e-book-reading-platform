@@ -41,7 +41,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    // Dual-page mode renders two SelectableText per spread.
-    expect(find.byType(SelectableText), findsNWidgets(2));
+    // 2026-07-08 BUG 1: Text.rich → RichText（dual spread 两页 = 两个 RichText）。
+    expect(find.byType(RichText), findsNWidgets(2));
   });
 }

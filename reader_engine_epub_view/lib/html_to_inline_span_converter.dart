@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 ZhiYue Open Source contributors
 
+import 'dart:convert' show base64;
 import 'dart:math' as math;
+import 'dart:typed_data' show Uint8List;
 
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
@@ -123,6 +125,9 @@ class HtmlToInlineSpanConverter {
       // Prefix for list items.
       String? prefix;
       TextStyle? headingStyle;
+      // 2026-07-08 BUG #2: 仅 h1（大章节/部分标题）居中显示。h2-h6 维持
+      // 默认左对齐（章节小标题保持现状）。
+      bool isH1 = false;
       if (tag == 'li') {
         // Determine parent <ol>/<ul> and index. Direct children only —
         // querySelectorAll('li') would return nested <li> too, producing
@@ -139,6 +144,7 @@ class HtmlToInlineSpanConverter {
         }
       } else if (tag != null && tag.startsWith('h')) {
         final level = int.tryParse(tag.substring(1)) ?? 1;
+        isH1 = (level == 1);
         final sizeScale = switch (level) {
           1 => 1.5,
           2 => 1.3,
@@ -179,8 +185,33 @@ class HtmlToInlineSpanConverter {
         }
       }
       final end = buf.length;
-      ranges.add(ParaRange(start, end));
-      children.add(TextSpan(style: effectiveStyle, children: paraChildren));
+      if (isH1) {
+        // 2026-07-08 BUG #2: h1 居中渲染。把刚追加到 buf 的 heading 文字
+        // 撤回，改为单 U+FFFC 占位（与 WidgetSpan 占位符语义匹配），避免
+        // plain text 长度与 span 树错位导致后续高亮 offset 偏移。
+        final kept = buf.toString().substring(0, start);
+        buf
+          ..clear()
+          ..write(kept)
+          ..write('￼');
+        ranges.add(ParaRange(start, start + 1));
+        children.add(WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Align(
+              alignment: Alignment.center,
+              child: Text.rich(
+                TextSpan(style: effectiveStyle, children: paraChildren),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ));
+      } else {
+        ranges.add(ParaRange(start, end));
+        children.add(TextSpan(style: effectiveStyle, children: paraChildren));
+      }
       if (i < blockElements.length - 1) {
         buf.write('\n\n');
         children.add(const TextSpan(text: '\n\n'));
@@ -250,10 +281,12 @@ class HtmlToInlineSpanConverter {
         alignment: PlaceholderAlignment.middle,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: imageMaxHeight),
-          child: Image.network(
-            src,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-          ),
+          // 2026-07-08 BUG #5 修复：EPUB 图片资源已被 [EpubImageInliner]
+          // 替换为 data URI（base64），[Image.network] 无法解析 data:
+          // scheme（按 URL 走 network 请求 → 失败 → errorBuilder 吞掉）。
+          // 分支：data URI → Image.memory（解码 base64）；http(s) → Image.network
+          // （保留外链兜底）；其它 → 占位 SizedBox（无效 src）。
+          child: _EpubImageWidget(src: src),
         ),
       ));
       return;
@@ -462,4 +495,57 @@ int _spanTextLength(InlineSpan span) {
   }
   if (span is WidgetSpan) return 1;
   return 0;
+}
+
+/// 2026-07-08 BUG #5：解析 `<img src>` 渲染为 Flutter [Image]。
+///
+/// EPUB 路径下 src 已被 [EpubImageInliner] 内联为 `data:image/...;base64,...`，
+/// [Image.network] 不能解析 data scheme（按 URL 走网络请求 → 失败 → errorBuilder
+/// 吞掉）。本 widget 分支：
+/// - `data:` URI → base64 解码为 [Uint8List] + [Image.memory]
+/// - `http(s)://` → [Image.network]（外链兜底，理论上 EPUB 不该有，但保留）
+/// - 其它 → 空 [SizedBox]（无效 src 占位，避免布局异常）
+class _EpubImageWidget extends StatelessWidget {
+  const _EpubImageWidget({required this.src});
+  final String src;
+
+  @override
+  Widget build(BuildContext context) {
+    if (src.startsWith('data:')) {
+      final commaIdx = src.indexOf(',');
+      if (commaIdx < 0 || commaIdx >= src.length - 1) {
+        return const SizedBox.shrink();
+      }
+      final meta = src.substring(5, commaIdx).toLowerCase();
+      final payload = src.substring(commaIdx + 1);
+      try {
+        final Uint8List bytes;
+        if (meta.contains('base64')) {
+          bytes = base64.decode(payload);
+        } else {
+          // 百分号编码或纯文本 data URI（极少见，fallback 用 Uri.dataFromString）
+          final data = Uri.dataFromString(src).data;
+          if (data == null) return const SizedBox.shrink();
+          bytes = data.contentAsBytes();
+        }
+        if (bytes.isEmpty) return const SizedBox.shrink();
+        return Image.memory(
+          bytes,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        );
+      } catch (_) {
+        return const SizedBox.shrink();
+      }
+    }
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      return Image.network(
+        src,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+    return const SizedBox.shrink();
+  }
 }

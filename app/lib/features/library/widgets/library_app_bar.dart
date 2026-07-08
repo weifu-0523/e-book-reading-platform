@@ -127,6 +127,11 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
           tooltip: AppLocalizations.of(context)!.batchExportMenuLabel,
         ),
         IconButton(
+          icon: const Icon(Icons.smart_toy_outlined),
+          tooltip: 'AI 设置',
+          onPressed: () => context.push('/settings/ai'),
+        ),
+        IconButton(
           icon: const Icon(Icons.settings_outlined),
           tooltip: '设置',
           onPressed: () => context.push('/settings'),

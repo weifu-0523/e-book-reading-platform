@@ -1,18 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/typography_settings.dart';
+import 'package:zhiyue/core/providers.dart';
+import 'package:zhiyue/data/repositories/settings_repository.dart';
 import 'package:zhiyue/features/reader/widgets/typography_panel.dart';
 
 void main() {
+  // 2026-07-08 BUG #4: TypographyPanel 改 ConsumerWidget 后需要 ProviderScope。
+  // override settingsRepositoryProvider 为 in-memory fake，避免依赖 sqlite。
   Future<void> pumpPanel(
     WidgetTester tester,
     TypographySettings initial,
     ValueChanged<TypographySettings> onChanged,
   ) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Material(
-        child: SingleChildScrollView(
-          child: TypographyPanel(current: initial, onChanged: onChanged),
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        settingsRepositoryProvider.overrideWithValue(_FakeSettingsRepo()),
+      ],
+      child: MaterialApp(
+        home: Material(
+          child: SingleChildScrollView(
+            child: TypographyPanel(current: initial, onChanged: onChanged),
+          ),
         ),
       ),
     ));
@@ -32,6 +42,8 @@ void main() {
     expect(find.text('字体'), findsOneWidget);
     expect(find.text('段落'), findsOneWidget);
     expect(find.text('页边距'), findsOneWidget);
+    // 2026-07-08 BUG #4: 新增「应用主题」区块。
+    expect(find.text('应用主题'), findsOneWidget);
   });
 
   testWidgets('tapping lineHeight chip emits new settings', (tester) async {
@@ -52,7 +64,6 @@ void main() {
   testWidgets('font options are 系统/黑体/宋体/楷体/普惠体/新晰黑 (M3e/Q3)',
       (tester) async {
     await pumpPanel(tester, TypographySettings.defaults(), (_) {});
-    expect(find.text('系统'), findsOneWidget);
     expect(find.text('黑体'), findsOneWidget);
     expect(find.text('宋体'), findsOneWidget);
     expect(find.text('楷体'), findsOneWidget);
@@ -108,7 +119,7 @@ void main() {
       TypographySettings.defaults(),
       (s) => captured = s,
     );
-    // 主题 '深' = dark
+    // 阅读主题 '深' = ReadingTheme.dark（注意：与"应用主题"区块的"深色"区分）。
     await tester.tap(find.text('深'));
     await tester.pump();
     expect(captured, isNotNull);
@@ -128,4 +139,18 @@ void main() {
     // M3a/任务7: 默认字号 16→18，+1 = 19。
     expect(captured!.fontSize, 19.0);
   });
+}
+
+/// 简单 in-memory fake，给 themeModeProvider 提供 mock 仓储。
+class _FakeSettingsRepo implements SettingsRepository {
+  final Map<String, dynamic> _data = {};
+  @override
+  Future<T> get<T>(String key, T defaultValue) async =>
+      (_data[key] as T?) ?? defaultValue;
+  @override
+  Future<T?> getOrNull<T>(String key) async => _data[key] as T?;
+  @override
+  Future<void> set<T>(String key, T value) async {
+    _data[key] = value;
+  }
 }

@@ -72,8 +72,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // M4.8: 结构断言换成 SelectableText（新管道渲染器）。
-      expect(find.byType(SelectableText), findsWidgets);
+      // 2026-07-08 BUG 1: 结构断言改为 RichText（Text.rich 的 leaf）。
+      expect(find.byType(RichText), findsWidgets);
       expect(tester.takeException(), isNull);
       await renderer.dispose();
     },
@@ -90,10 +90,8 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // M4.8: 缩进由 HtmlToInlineSpanConverter 在 InlineSpan 层注入（U+2003
-      // EM SPACE 前缀），不再经 TypographyStyleInjector 注入 HTML。本断言换为
-      // SelectableText 渲染（缩进字符已 bake 进 InlineSpan）。
-      expect(find.byType(SelectableText), findsWidgets);
+      // 2026-07-08 BUG 1: RichText（Text.rich leaf）。缩进字符已 bake 进 InlineSpan。
+      expect(find.byType(RichText), findsWidgets);
       expect(tester.takeException(), isNull);
       await renderer.dispose();
     },

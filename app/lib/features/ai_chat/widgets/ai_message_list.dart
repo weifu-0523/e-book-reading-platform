@@ -47,11 +47,17 @@ class AiMessageList extends StatelessWidget {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: messages.length,
-      itemBuilder: (context, i) =>
-          _MessageBubble(message: messages[i]),
+    // 2026-07-08 BUG D: 包一层 SelectionArea 让所有消息（system/user/ai）
+    // 内容都可选中复制。SelectionArea 自动挂 materialTextSelectionControls
+    // 提供 toolbar（复制）。AI 抽屉在 reader Stack 之外，不会与 reader 的
+    // SelectableRegion 冲突。
+    return SelectionArea(
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        itemCount: messages.length,
+        itemBuilder: (context, i) =>
+            _MessageBubble(message: messages[i]),
+      ),
     );
   }
 }

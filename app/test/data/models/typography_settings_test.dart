@@ -4,10 +4,11 @@ import 'package:zhiyue/data/models/typography_settings.dart';
 void main() {
   test('default settings have expected values', () {
     final s = TypographySettings.defaults();
-    expect(s.fontSize, 16.0);
-    expect(s.lineHeight, 1.5);
-    expect(s.theme, ReadingTheme.light);
-    expect(s.fontFamily, null); // null = 系统默认字体
+    // 2026-07-08: defaults aligned with reader_engine (M3a + tuning).
+    expect(s.fontSize, 18.0);
+    expect(s.lineHeight, 1.8);
+    expect(s.theme, ReadingTheme.green);
+    expect(s.fontFamily, 'LXGWNeoXiHei');
   });
 
   test('copyWith updates specific fields', () {
@@ -15,7 +16,7 @@ void main() {
     final updated = s.copyWith(fontSize: 20.0, theme: ReadingTheme.dark);
     expect(updated.fontSize, 20.0);
     expect(updated.theme, ReadingTheme.dark);
-    expect(updated.lineHeight, 1.5); // 未变
+    expect(updated.lineHeight, 1.8); // 未变
   });
 
   test('copyWith can reset fontFamily to null', () {

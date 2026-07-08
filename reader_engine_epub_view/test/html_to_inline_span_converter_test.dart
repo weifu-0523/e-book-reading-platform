@@ -123,16 +123,43 @@ void main() {
   });
 
   group('headings and lists', () {
-    test('<h1> produces bold larger TextSpan and a paragraph range', () {
+    test('<h1> produces bold larger text in centered WidgetSpan', () {
+      // 2026-07-08 BUG #2: h1（大章节标题）现在渲染成 WidgetSpan 包
+      // Center + Text.rich 让整段居中显示；plainText 占 1 个 U+FFFC 占位符
+      // 避免后续高亮 offset 错位。
       final result = HtmlToInlineSpanConverter().convert(
         '<h1>Title</h1>',
         baseStyle: const TextStyle(fontSize: 16),
         imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
       );
       expect(result.paragraphRanges.length, 1);
-      final h1 = (result.root as TextSpan).children!.single as TextSpan;
-      expect(h1.style?.fontWeight, FontWeight.bold);
-      expect(h1.style?.fontSize, greaterThan(16));
+      // h1 占 1 字符 U+FFFC（与 WidgetSpan 占位符语义匹配）
+      expect(result.plainText, '￼');
+      // root.children[0] 现在是 WidgetSpan（不再是 TextSpan）
+      final h1Widget = (result.root as TextSpan).children!.single as WidgetSpan;
+      final padding = h1Widget.child as Padding;
+      final align = padding.child as Align;
+      expect(align.alignment, Alignment.center);
+      final text = align.child as Text;
+      expect(text.textAlign, TextAlign.center);
+      // 内层 TextSpan 仍是 bold + larger fontSize
+      final innerSpan = text.textSpan as TextSpan;
+      expect(innerSpan.style?.fontWeight, FontWeight.bold);
+      expect(innerSpan.style?.fontSize, greaterThan(16));
+    });
+
+    test('<h2> remains left-aligned TextSpan (not centered)', () {
+      // 2026-07-08 BUG #2: h2-h6 维持默认左对齐，仅 h1 居中。
+      final result = HtmlToInlineSpanConverter().convert(
+        '<h2>Section</h2>',
+        baseStyle: const TextStyle(fontSize: 16),
+        imageMaxHeight: 400, indentEm: 0, indentEnabled: false, highlights: const [],
+      );
+      expect(result.paragraphRanges.length, 1);
+      // h2 仍是 TextSpan（未包 WidgetSpan）
+      final h2 = (result.root as TextSpan).children!.single as TextSpan;
+      expect(h2.style?.fontWeight, FontWeight.bold);
+      expect(h2.style?.fontSize, greaterThan(16));
     });
 
     test('<ul><li> produces bullet-prefixed paragraphs', () {

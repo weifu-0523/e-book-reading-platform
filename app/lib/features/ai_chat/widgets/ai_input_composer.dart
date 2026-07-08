@@ -245,7 +245,29 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
         if (sid != null) await repo.clearSession(sid);
         break;
       case '/del':
-        if (sid != null) await repo.softDeleteSession(sid);
+        // 2026-07-08 BUG B: 多会话时 /del 应删除当前会话并切换到下一个，
+        // 仅当唯一会话时降级为 /clear（清空保留会话 row）。
+        // 原 bug：直接 softDeleteSession 不切换会话，UI 仍指向已删除
+        // session，messages 被 hard-delete 看起来像被清空。
+        if (sid != null) {
+          final sessions = await repo.listSessionsForBook(widget.bookId);
+          if (sessions.length <= 1) {
+            await repo.clearSession(sid);
+          } else {
+            final nextId = await ref
+                .read(sessionLifecycleUseCaseProvider)
+                .delete(sid);
+            if (nextId != null) {
+              await controller.selectSession(nextId);
+            } else {
+              // 兜底：delete 返回 null 说明会话已没（竞争），创建新会话。
+              final newId = await ref
+                  .read(sessionLifecycleUseCaseProvider)
+                  .create(bookId: widget.bookId, title: _defaultTitle());
+              await controller.selectSession(newId);
+            }
+          }
+        }
         break;
       case '/chapter':
         await controller.runChapterGuide(

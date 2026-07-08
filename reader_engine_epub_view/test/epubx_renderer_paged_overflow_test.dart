@@ -163,11 +163,11 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.byType(SelectableText), findsWidgets,
-          reason: 'M4.8: paged pages must render SelectableText.rich content');
+      expect(find.byType(RichText), findsWidgets,
+          reason: '2026-07-08 BUG 1: paged pages render Text.rich (→RichText)');
       expect(tester.takeException(), isNull,
-          reason: 'M4.8: LineMetricsPaginator + SelectableText.rich share '
-              'TextPainter → drift = 0, no overflow expected');
+          reason: 'Text.rich 与 LineMetricsPaginator 共享 TextPainter → '
+              'drift = 0, no overflow expected');
 
       await renderer.dispose();
     });
@@ -190,9 +190,9 @@ void main() {
       renderer.pageController!.jumpToPage(pageCount ~/ 2);
       await tester.pump();
       await tester.pump();
-      final rts = find.byType(SelectableText);
+      final rts = find.byType(RichText);
       expect(rts.evaluate(), isNotEmpty,
-          reason: '中间页应有渲染内容（converter 产出的 InlineSpan 未丢失）');
+          reason: '中间页应有渲染内容（Text.rich → RichText）');
       expect(tester.takeException(), isNull);
 
       await renderer.dispose();

@@ -5,10 +5,11 @@ void main() {
   test('defaults returns expected values', () {
     final s = TypographySettings.defaults();
     // M3a/任务7: 16→18, 1.5→1.8, normal→wide, 段落缩进默认开启 2em。
+    // 2026-07-08: 默认 theme 改 ReadingTheme.green（护眼绿）。
     expect(s.fontSize, 18.0);
     expect(s.lineHeight, 1.8);
-    expect(s.fontFamily, isNull);
-    expect(s.theme, ReadingTheme.light);
+    expect(s.fontFamily, 'LXGWNeoXiHei');
+    expect(s.theme, ReadingTheme.green);
     expect(s.pageMargin, PageMargin.wide);
     expect(s.paragraphIndentEm, 2.0);
     expect(s.paragraphIndentEnabled, isTrue);

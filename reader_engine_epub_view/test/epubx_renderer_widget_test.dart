@@ -32,12 +32,14 @@ void main() {
   });
 
   testWidgets(
-    'default mode (paged) renders a PageView once a chapter is available',
+    'paged mode renders a PageView once a chapter is available',
     (tester) async {
       final renderer = EpubxRenderer();
       renderer.bookForTesting = _bookWithSingleChapter(
         List.filled(40, '<p>${'hello world ' * 30}</p>').join(),
       );
+      // 2026-07-08 tuning: 默认改 scroll，这里显式切回 paged 验证 paged 渲染。
+      await renderer.setPaginationMode(PaginationMode.paged);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -52,15 +54,13 @@ void main() {
         ),
       );
       await tester.pump();
-      // 默认 _paginationMode == PaginationMode.paged → 应当出现 PageView。
+      // _paginationMode == PaginationMode.paged → 应当出现 PageView。
       expect(find.byType(PageView), findsOneWidget);
-      // M4.8: paged 模式每页内容由 SelectablePageView + SelectableText.rich 渲染
-      // （替换 M2.8-M4.6 的 fwfh HtmlWidget）。SelectableText.rich 与
-      // LineMetricsPaginator 共享 TextPainter → drift = 0（spec §3.2 invariant），
-      // 不再需要 OverflowBox 兜底。断言：SelectableText 渲染且无溢出异常。
-      expect(find.byType(SelectableText), findsWidgets,
-          reason: 'paged pages should render SelectableText.rich content '
-              '(M4.8 new pipeline; was HtmlWidget pre-M4.8)');
+      // 2026-07-08 BUG 1: paged 模式每页内容由 SelectablePageView + Text.rich 渲染
+      // （外层 SelectionArea 接管 selection，让 onSelectionChanged 触发，修复
+      // 用户报告的"选正文不弹工具条"BUG）。Text.rich 内部渲染为 RichText。
+      expect(find.byType(RichText), findsWidgets,
+          reason: 'paged pages should render Text.rich (→RichText) content');
       expect(tester.takeException(), isNull,
           reason: 'paged pages must not overflow');
       await renderer.dispose();
@@ -110,7 +110,8 @@ void main() {
           ),
         );
 
-    // 默认 paged。
+    // 2026-07-08 tuning: 默认改 scroll，这里显式切 paged 模拟"切换前"状态。
+    await renderer.setPaginationMode(PaginationMode.paged);
     await tester.pumpWidget(tree());
     await tester.pump();
     expect(find.byType(PageView), findsOneWidget);

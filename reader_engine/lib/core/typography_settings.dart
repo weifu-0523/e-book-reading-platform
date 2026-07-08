@@ -72,11 +72,13 @@ class TypographySettings {
   /// M3a/任务7：默认字号 16→18、行距 1.5→1.8（宽松）、页边距 normal→wide（72px）。
   /// 仅影响"未选预设"的新打开书籍；已保存的 TypographyProfile 是 DB 独立记录，不受影响。
   /// 默认开启 2em 段落首行缩进（任务2）。
+  ///
+  /// 2026-07-08：默认 theme 改 ReadingTheme.green（护眼绿）。
   factory TypographySettings.defaults() => const TypographySettings(
         fontSize: 18.0,
         lineHeight: 1.8,
         fontFamily: 'LXGWNeoXiHei', // M4.6: 默认字体改新晰黑
-        theme: ReadingTheme.light,
+        theme: ReadingTheme.green,
         pageMargin: PageMargin.wide,
         paragraphIndentEm: 2.0,
         paragraphIndentEnabled: true,

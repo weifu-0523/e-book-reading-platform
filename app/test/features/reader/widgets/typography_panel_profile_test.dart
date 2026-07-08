@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/typography_settings.dart';
+import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/models/typography_profile.dart';
 import 'package:zhiyue/data/models/user_font.dart';
+import 'package:zhiyue/data/repositories/settings_repository.dart';
 import 'package:zhiyue/features/reader/widgets/typography_panel.dart';
 
 void main() {
+  // 2026-07-08 BUG #4: TypographyPanel 改 ConsumerWidget 后需要 ProviderScope。
+  final overrides = [
+    settingsRepositoryProvider.overrideWithValue(_FakeSettingsRepo()),
+  ];
+
   final profiles = [
     TypographyProfile(
         id: 'p1',
@@ -21,16 +29,19 @@ void main() {
 
   testWidgets('renders profile dropdown when profiles provided', (tester) async {
     TypographyProfile? selected;
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: TypographyPanel(
-          current: TypographySettings.defaults(),
-          onChanged: (_) {},
-          profiles: profiles,
-          currentProfile: profiles[0],
-          onSelectProfile: (p) => selected = p,
-          onSaveAsProfile:
-              ({required settings, required overwrite, newName}) async {},
+    await tester.pumpWidget(ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        home: Scaffold(
+          body: TypographyPanel(
+            current: TypographySettings.defaults(),
+            onChanged: (_) {},
+            profiles: profiles,
+            currentProfile: profiles[0],
+            onSelectProfile: (p) => selected = p,
+            onSaveAsProfile:
+                ({required settings, required overwrite, newName}) async {},
+          ),
         ),
       ),
     ));
@@ -43,16 +54,19 @@ void main() {
 
   testWidgets('tap 存为预设 opens dialog with overwrite/save-new options',
       (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: TypographyPanel(
-          current: TypographySettings.defaults(),
-          onChanged: (_) {},
-          profiles: profiles,
-          currentProfile: profiles[0],
-          onSelectProfile: (_) {},
-          onSaveAsProfile:
-              ({required settings, required overwrite, newName}) async {},
+    await tester.pumpWidget(ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        home: Scaffold(
+          body: TypographyPanel(
+            current: TypographySettings.defaults(),
+            onChanged: (_) {},
+            profiles: profiles,
+            currentProfile: profiles[0],
+            onSelectProfile: (_) {},
+            onSaveAsProfile:
+                ({required settings, required overwrite, newName}) async {},
+          ),
         ),
       ),
     ));
@@ -73,15 +87,31 @@ void main() {
       absolutePath: '/tmp/myfont.ttf',
       addedAt: DateTime(2026, 6, 27),
     );
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: TypographyPanel(
-          current: TypographySettings.defaults().copyWith(fontFamily: 'MyFont'),
-          onChanged: (_) {},
-          userFonts: [userFont],
+    await tester.pumpWidget(ProviderScope(
+      overrides: overrides,
+      child: MaterialApp(
+        home: Scaffold(
+          body: TypographyPanel(
+            current: TypographySettings.defaults().copyWith(fontFamily: 'MyFont'),
+            onChanged: (_) {},
+            userFonts: [userFont],
+          ),
         ),
       ),
     ));
     expect(find.text('MyFont'), findsOneWidget);
   });
+}
+
+class _FakeSettingsRepo implements SettingsRepository {
+  final Map<String, dynamic> _data = {};
+  @override
+  Future<T> get<T>(String key, T defaultValue) async =>
+      (_data[key] as T?) ?? defaultValue;
+  @override
+  Future<T?> getOrNull<T>(String key) async => _data[key] as T?;
+  @override
+  Future<void> set<T>(String key, T value) async {
+    _data[key] = value;
+  }
 }

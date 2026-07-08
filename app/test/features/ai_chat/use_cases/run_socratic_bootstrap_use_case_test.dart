@@ -90,6 +90,12 @@ class _FakeRepo implements ChatRepository {
       .map((m) => m.inner)
       .toList();
 
+  // 2026-07-08 BUG C: use case 现在会调 listMessages 找最近 chapter guide AI 输出。
+  @override
+  Future<List<ChatMessage>> listMessages(String sessionId) async {
+    return messagesFor(sessionId);
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) {
     throw UnimplementedError(
@@ -284,5 +290,63 @@ void main() {
         .last;
     expect(seenBook, 'book-42');
     expect(seenIdx, 7);
+  });
+
+  // 2026-07-08 BUG C: 用户工作流"先点本章导读 → 再点苏格拉底"。Socratic
+  // use case 应优先把本会话最近 chapter guide AI 输出作为上下文。recap
+  // 内容不应出现（chapter guide 优先）。
+  test('prefers recent chapter guide AI message over recap (BUG C)', () async {
+    await repo.appendMessage(
+      sessionId: 's1',
+      role: 'ai',
+      content: '本章导读：核心讲 flutter state 的三大原则。',
+      presetSource: 'card.chapter',
+    );
+    await useCase
+        .run(
+          sessionId: 's1',
+          bookId: 'b1',
+          chapterIndex: 0,
+          source: 'card.socratic',
+        )
+        .last;
+    expect(llm.prompts.single, contains('核心讲 flutter state'));
+    expect(llm.prompts.single, contains('本章要点'));
+    // recap 内容被 chapter guide 覆盖，不应出现。
+    expect(llm.prompts.single, isNot(contains('要点 A')));
+  });
+
+  test('chapter guide fallback to recap when no prior chapter guide (BUG C)',
+      () async {
+    await useCase
+        .run(
+          sessionId: 's1',
+          bookId: 'b1',
+          chapterIndex: 0,
+          source: 'card.socratic',
+        )
+        .last;
+    expect(llm.prompts.single, contains('要点 A'));
+    expect(llm.prompts.single, contains('本章回顾'));
+  });
+
+  test('chapter guide with empty content is ignored (BUG C)', () async {
+    await repo.appendMessage(
+      sessionId: 's1',
+      role: 'ai',
+      content: '   ',
+      presetSource: 'card.chapter',
+    );
+    await useCase
+        .run(
+          sessionId: 's1',
+          bookId: 'b1',
+          chapterIndex: 0,
+          source: 'card.socratic',
+        )
+        .last;
+    // 空 chapter guide 不应被采用，回落到 recap。
+    expect(llm.prompts.single, contains('本章回顾'));
+    expect(llm.prompts.single, contains('要点 A'));
   });
 }

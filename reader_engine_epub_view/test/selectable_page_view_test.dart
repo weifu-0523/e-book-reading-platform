@@ -30,13 +30,14 @@ void main() {
         ),
       ),
     ));
-    expect(find.byType(SelectableText), findsOneWidget);
-    // Verify the rendered content by reading the SelectableText's span.
-    final selectable =
-        tester.widget<SelectableText>(find.byType(SelectableText));
-    expect(selectable.textSpan, isNotNull);
+    // 2026-07-08 BUG 1：渲染从 SelectableText.rich 改为 Text.rich（外层
+    // SelectionArea 接管 selection，触发 onSelectionChanged 上报），断言换
+    // 为 RichText（Text.rich 内部 widget tree 的 leaf）。
+    expect(find.byType(RichText), findsOneWidget);
+    final richText = tester.widget<RichText>(find.byType(RichText));
+    expect(richText.text, isNotNull);
     expect(
-      selectable.textSpan!.toPlainText(),
+      richText.text.toPlainText(),
       contains('First page here!'),
     );
   });
@@ -69,8 +70,8 @@ void main() {
         ),
       ),
     ));
-    // First spread packs two pages (AAAA + BBBB) side-by-side.
-    expect(find.byType(SelectableText), findsNWidgets(2));
+    // 2026-07-08 BUG 1: SelectableText → Text.rich，断言改为 RichText。
+    expect(find.byType(RichText), findsNWidgets(2));
   });
 
   testWidgets('onSelectionChanged callback is wired via SelectionArea',
@@ -103,8 +104,8 @@ void main() {
     // Verify SelectionArea exists — each page wraps in its own SelectionArea
     // so selections don't cross page boundaries.
     expect(find.byType(SelectionArea), findsOneWidget);
-    // Verify SelectableText.rich is rendered inside SelectionArea.
-    expect(find.byType(SelectableText), findsOneWidget);
+    // 2026-07-08 BUG 1: Text.rich 内部渲染为 RichText。
+    expect(find.byType(RichText), findsOneWidget);
     // The callback should start as null (no selection).
     expect(captured, isNull);
   });

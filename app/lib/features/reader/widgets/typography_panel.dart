@@ -15,14 +15,21 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/typography_settings.dart';
 
 import '../../../data/models/typography_profile.dart';
 import '../../../data/models/user_font.dart';
+import '../../../features/settings/models/theme_mode_setting.dart';
+import '../../../features/settings/providers/theme_mode_provider.dart';
 
 /// 阅读排版设置面板。
 /// M2 字号/主题 + M3.1 行距/字体/页边距 + M3.5 多预设 + 用户字体。
-class TypographyPanel extends StatelessWidget {
+///
+/// 2026-07-08 BUG #4：加「应用主题」区块（系统/亮色/暗色），与「阅读主题」
+/// （白/深/黄/墨/绿）分开。前者控制整个 app chrome（AppBar/Drawer/书库页），
+/// 后者只控制阅读内容区域背景。
+class TypographyPanel extends ConsumerWidget {
   final TypographySettings current;
   final ValueChanged<TypographySettings> onChanged;
 
@@ -51,7 +58,9 @@ class TypographyPanel extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 2026-07-08 BUG #4：应用级 ThemeMode（system/light/dark）。
+    final appThemeMode = ref.watch(themeModeProvider);
     return SingleChildScrollView(
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -202,6 +211,31 @@ class TypographyPanel extends StatelessWidget {
                       ))
                   .toList(),
             ),
+            const SizedBox(height: 16),
+
+            // 2026-07-08 BUG #4：应用主题（系统/浅色/深色），影响整个 app chrome。
+            Text('应用主题', style: Theme.of(context).textTheme.titleSmall),
+            Wrap(
+              spacing: 8,
+              children: ThemeModeSetting.values
+                  .map((m) => ChoiceChip(
+                        label: Text(_appThemeLabel(m)),
+                        selected: appThemeMode == m,
+                        onSelected: (_) => ref
+                            .read(themeModeProvider.notifier)
+                            .setThemeMode(m),
+                      ))
+                  .toList(),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '应用主题影响整个 app（AppBar/书库/抽屉）；阅读主题只影响阅读区域。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
           ],
         ),
       ),
@@ -326,6 +360,18 @@ class TypographyPanel extends StatelessWidget {
         return '宽松';
       case PageMargin.extraWide:
         return '特宽';
+    }
+  }
+
+  /// 2026-07-08 BUG #4：应用级 ThemeMode 标签。
+  String _appThemeLabel(ThemeModeSetting m) {
+    switch (m) {
+      case ThemeModeSetting.system:
+        return '系统';
+      case ThemeModeSetting.light:
+        return '浅色';
+      case ThemeModeSetting.dark:
+        return '深色';
     }
   }
 }

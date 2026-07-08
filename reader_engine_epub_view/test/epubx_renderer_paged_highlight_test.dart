@@ -66,10 +66,9 @@ void main() {
       // Pre-M4.8 it rendered HtmlWidget; M2.8/B3 fix originally asserted
       // HtmlWidget to guard against regressions to plain Text. M4.8 swap
       // to SelectableText.rich preserves the rich-text contract.
-      expect(find.byType(SelectableText), findsWidgets,
-          reason: 'M4.8: paged mode must render SelectableText.rich per '
-              'page so that highlights and rich text are visible. Pre-M4.8 '
-              'rendered HtmlWidget; pre-fix (M2.5) rendered Text.');
+      expect(find.byType(RichText), findsWidgets,
+          reason: '2026-07-08 BUG 1: paged mode renders Text.rich (→RichText) '
+              'per page so highlights and rich text are visible.');
 
       await renderer.dispose();
     },
@@ -125,8 +124,8 @@ void main() {
       ));
       await tester.pump();
 
-      // M4.8: 渲染树必须含 SelectableText（新管道，原 HtmlWidget 已替换）。
-      expect(find.byType(SelectableText), findsWidgets);
+      // 2026-07-08 BUG 1: 渲染树含 RichText（Text.rich leaf widget）。
+      expect(find.byType(RichText), findsWidgets);
 
       // M4.8: currentHighlightedHtml() 仍是 scroll 模式的契约（_buildScroll
       // 仍走 HTML 注入路径，Task 4.3 会切换到 SelectableText.rich）。paged
@@ -170,9 +169,9 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.byType(SelectableText), findsWidgets,
-          reason: 'M4.8: paged mode must still render SelectableText even '
-              'with zero highlights (no regression on the no-highlight path).');
+      expect(find.byType(RichText), findsWidgets,
+          reason: '2026-07-08 BUG 1: paged mode must still render RichText '
+              '(Text.rich) even with zero highlights.');
 
       await renderer.dispose();
     },

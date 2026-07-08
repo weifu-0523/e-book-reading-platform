@@ -105,6 +105,10 @@ class _TocTile extends StatelessWidget {
     final marker = _buildMarker();
     final reviewButton = _buildReviewButton(context);
     return ExpansionTile(
+      // 2026-07-08 BUG #3 修复：顶层（part-level）目录默认展开，
+      // 让用户进入目录就能看到章节列表，不用每个 part 都手动点开。
+      // 二级及以下仍默认折叠（避免目录过深展开刷屏）。
+      initiallyExpanded: depth == 0,
       tilePadding: EdgeInsets.only(left: 16.0 + depth * 16.0, right: 16.0),
       title: InkWell(
         onTap: () => onSelect(entry),

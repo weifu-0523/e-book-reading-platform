@@ -97,8 +97,9 @@ void main() {
       // M4.8: each spread renders two SelectableText widgets (left + right).
       // Pre-M4.8 these were HtmlWidget; the new converter + SelectablePageView
       // pipeline renders SelectableText.rich instead.
-      expect(find.byType(SelectableText), findsNWidgets(2),
-          reason: 'spread[0] = left page + right page = 2 SelectableTexts');
+      // 2026-07-08 BUG 1: Text.rich → RichText（断言跟随管道改动）。
+      expect(find.byType(RichText), findsNWidgets(2),
+          reason: 'spread[0] = left page + right page = 2 RichTexts');
 
       await renderer.dispose();
     });
@@ -113,8 +114,8 @@ void main() {
       await tester.pump();
 
       expect(find.byType(PageView), findsOneWidget);
-      expect(find.byType(SelectableText), findsOneWidget,
-          reason: 'single-page mode: one SelectableText per page');
+      expect(find.byType(RichText), findsOneWidget,
+          reason: 'single-page mode: one RichText per page (Text.rich)');
 
       await renderer.dispose();
     });

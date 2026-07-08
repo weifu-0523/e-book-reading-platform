@@ -90,11 +90,26 @@ class PromptBuilderExt {
   ///
   /// Given a recap of the current chapter, asks the LLM to open the
   /// socratic session with a single open-ended question (NOT a lecture).
-  static String buildSocraticBootstrapPrompt({required String recap}) {
+  ///
+  /// 2026-07-08 BUG C: 增加 [chapterGuide] 可选参数。用户工作流常是
+  /// 「先点本章导读 → 再点苏格拉底」，此时本会话里已经有 chapter guide
+  /// 的 AI 输出。若只传 recap（可能为空，因为 recap 是独立的 /recap 命令
+  /// 产物），LLM 看到 "下面是本章回顾：" + 空内容，会回复"看到你提到了
+  /// 本章回顾但没看到具体内容"。优先把 chapter guide 当作"本章要点"
+  /// 传入，没有时再用 recap 兜底。
+  static String buildSocraticBootstrapPrompt({
+    required String recap,
+    String? chapterGuide,
+  }) {
+    final guide = chapterGuide?.trim();
+    final effectiveGuide = (guide != null && guide.isNotEmpty) ? guide : recap;
+    final sectionLabel = (guide != null && guide.isNotEmpty)
+        ? '本章要点（来自本章导读）'
+        : '本章回顾';
     return '''$_socraticSystemPrompt
 
-下面是本章回顾：
-$recap
+下面是$sectionLabel：
+$effectiveGuide
 
 请基于其中任意一个关键点，向学生提一个开放性问题。
 规则：
