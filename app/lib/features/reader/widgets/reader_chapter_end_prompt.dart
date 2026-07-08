@@ -38,12 +38,17 @@ class ReaderChapterEndPrompt extends ConsumerStatefulWidget {
   final void Function(int chapterIndex) onReview;
   final VoidCallback onNext;
 
+  /// 2026-07-08 FEAT 3：章末卡片「上一章」回调。null 时不渲染左下卡片
+  /// （如已经在第一章）。
+  final VoidCallback? onPrev;
+
   const ReaderChapterEndPrompt({
     super.key,
     required this.engine,
     required this.bookId,
     required this.onReview,
     required this.onNext,
+    this.onPrev,
   });
 
   @override
@@ -78,8 +83,14 @@ class _ReaderChapterEndPromptState
         _lastVisibility != ChapterEndPromptVisibility.visible) {
       _lastVisibility = state.visibility;
       _showSnackBar(state);
+      // 2026-07-08 FEAT 3：visible 时除了 SnackBar，还要 setState 让 build
+      // 渲染章末卡片。原实现只发 SnackBar，build 永远 SizedBox.shrink。
+      if (mounted) setState(() {});
     } else {
+      // hidden / dismissed → setState 让卡片消失。
+      final changed = _lastVisibility != state.visibility;
       _lastVisibility = state.visibility;
+      if (changed && mounted) setState(() {});
     }
   }
 
@@ -107,5 +118,78 @@ class _ReaderChapterEndPromptState
   }
 
   @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
+  Widget build(BuildContext context) {
+    // 2026-07-08 FEAT 3：章末显示「上一章 / 下一章」两个卡片按钮，左下 / 右下。
+    // 章末事件触发后 state.visible=true；用户翻页 / 切章 / dismiss 后回到 hidden。
+    if (_lastVisibility != ChapterEndPromptVisibility.visible) {
+      return const SizedBox.shrink();
+    }
+    // 用 IgnorePointer + Align + Row 让两个卡片分别贴 Stack 左下 / 右下，
+    // 同时不阻挡 reader 区其他手势（Stack 子树级 IgnorePointer=false 让卡片
+    // 自身可点，对其他区域透传）。
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 80),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (widget.onPrev != null)
+              _ChapterNavCard(
+                label: '上一章',
+                icon: Icons.arrow_back_ios_new,
+                onTap: widget.onPrev!,
+              ),
+            // 左卡片缺位时占位（无 onPrev 的第一章场景），保证右卡片贴右下。
+            if (widget.onPrev == null) const Spacer(),
+            _ChapterNavCard(
+              label: '下一章',
+              icon: Icons.arrow_forward_ios,
+              onTap: widget.onNext,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 2026-07-08 FEAT 3：章末导航卡片。Material Card 风格，圆角 + 阴影 +
+/// 半透明背景，与 reader chrome（底栏进度条等）层级一致。
+class _ChapterNavCard extends StatelessWidget {
+  const _ChapterNavCard({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface.withValues(alpha: 0.92),
+      elevation: 4,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 24, color: theme.colorScheme.primary),
+              const SizedBox(height: 6),
+              Text(label, style: theme.textTheme.labelLarge),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -118,6 +118,9 @@ class FakeReaderEngine implements ReaderEngine {
   Future<void> setPaginationMode(PaginationMode mode) async {}
 
   @override
+  void scrollBy(double delta, {Duration duration = const Duration(milliseconds: 200)}) {}
+
+  @override
   Future<void> setTypography(TypographySettings settings) async {}
 
   @override

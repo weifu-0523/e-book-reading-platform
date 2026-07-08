@@ -144,7 +144,11 @@ void main() {
           ..HtmlContent = '<p>hello world</p>',
       ];
     renderer.bookForTesting = bookA;
-    expect(await renderer.currentChapterPlainText, 'hello world');
+    // 2026-07-08 BUG 2: currentChapterPlainText 现在走 converter（与渲染层
+    // 同坐标），plainText 含 EM SPACE 缩进前缀（默认 paragraphIndentEm=2）。
+    // 测试断言改成包含子串，exact value 不重要（cache 行为才是重点）。
+    final a = await renderer.currentChapterPlainText;
+    expect(a, contains('hello world'));
 
     // Switch to book B whose chapter 0 has different text. If the cache were
     // not cleared, we'd get stale 'hello world' instead.
@@ -155,7 +159,9 @@ void main() {
           ..HtmlContent = '<p>different text</p>',
       ];
     renderer.bookForTesting = bookB;
-    expect(await renderer.currentChapterPlainText, 'different text');
+    final b = await renderer.currentChapterPlainText;
+    expect(b, contains('different text'));
+    expect(b, isNot(contains('hello world')));
 
     await renderer.dispose();
   });

@@ -108,6 +108,9 @@ class _RecordingFakeEngine implements ReaderEngine {
   bool previousPage() => false;
   @override
   Future<void> setPaginationMode(PaginationMode mode) async {}
+
+  @override
+  void scrollBy(double delta, {Duration duration = const Duration(milliseconds: 200)}) {}
   @override
   Future<void> setTypography(TypographySettings settings) async {
     lastSetTypography = settings;

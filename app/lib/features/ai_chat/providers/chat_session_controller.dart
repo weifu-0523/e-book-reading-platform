@@ -21,6 +21,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/local/daos/chat_repository.dart';
 import '../../../data/local/database.dart';
+import '../../../core/app_providers.dart' show chapterTextProviderFor;
+import '../../../core/providers.dart' show bookRepositoryProvider;
 import 'chat_providers.dart';
 
 /// Immutable snapshot of the chat drawer's UI state for one (bookId, session).
@@ -179,6 +181,8 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     if (sid == null) return;
     state = state.copyWith(isStreaming: true, clearError: true);
     try {
+      // 2026-07-08 FEAT 5：查 Book + 章节标题，传给 prompt。
+      final meta = await _resolveBookChapterMeta(chapterIndex);
       await _ref
           .read(runChapterGuideUseCaseProvider)
           .run(
@@ -186,6 +190,9 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             bookId: bookId,
             chapterIndex: chapterIndex,
             source: source,
+            bookTitle: meta.$1,
+            author: meta.$2,
+            chapterTitle: meta.$3,
           )
           .last;
       if (!mounted) return;
@@ -206,6 +213,8 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
       await _ref
           .read(switchSessionModeUseCaseProvider)
           .toSocratic(sessionId: sid);
+      // 2026-07-08 FEAT 5：查 Book + 章节标题，传给 prompt。
+      final meta = await _resolveBookChapterMeta(chapterIndex);
       await _ref
           .read(runSocraticBootstrapUseCaseProvider)
           .run(
@@ -213,6 +222,9 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
             bookId: bookId,
             chapterIndex: chapterIndex,
             source: 'card.socratic',
+            bookTitle: meta.$1,
+            author: meta.$2,
+            chapterTitle: meta.$3,
           )
           .last;
       if (!mounted) return;
@@ -224,6 +236,28 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     } catch (e) {
       if (!mounted) return;
       state = state.copyWith(isStreaming: false, error: e.toString());
+    }
+  }
+
+  /// 2026-07-08 FEAT 5：查 Book 元数据（title, author）+ 章节标题。
+  /// 任一查不到返回 null（调用方/prompt 模板对 null 容错，跳过对应行）。
+  /// 用 [_ref] 读 bookRepositoryProvider + chapterTextProviderFor。
+  /// 单点失败不影响主流程（章节标题查不到，prompt 仍有 bookTitle/author）。
+  Future<(String?, String?, String?)> _resolveBookChapterMeta(
+      int chapterIndex) async {
+    try {
+      final book = await _ref.read(bookRepositoryProvider).getById(bookId);
+      if (book == null) return (null, null, null);
+      String? chapterTitle;
+      try {
+        final provider = chapterTextProviderFor(book);
+        chapterTitle = await provider.title(book.filePath, chapterIndex);
+      } catch (_) {
+        // 章节标题查不到不算致命，主流程继续
+      }
+      return (book.title, book.author, chapterTitle);
+    } catch (_) {
+      return (null, null, null);
     }
   }
 

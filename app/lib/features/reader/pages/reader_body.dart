@@ -776,6 +776,8 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                     : PaginationMode.paged;
                 unawaited(engine.setPaginationMode(next));
               },
+              // 2026-07-08 FEAT 4：scroll 模式键盘上下键滚动（左右键仍翻章）。
+              onScrollBy: (delta) => engine.scrollBy(delta),
             ),
           ),
           ), // Padding close (M2.11 回归修复)
@@ -785,6 +787,8 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               bookId: widget.bookId,
               onReview: _onOpenReview,
               onNext: engine.nextSpine,
+              // 2026-07-08 FEAT 3：章末卡片「上一章」回调。
+              onPrev: engine.previousSpine,
             ),
           ReaderSelectionToolbar(
             selection: _selection,

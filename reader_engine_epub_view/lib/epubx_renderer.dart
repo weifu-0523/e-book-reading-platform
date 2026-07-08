@@ -30,7 +30,6 @@ import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine/navigation/toc.dart';
 import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine/rendering/highlight_selection.dart';
-import 'package:reader_engine/rendering/html_text_utils.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 import 'package:reader_engine/rendering/renderer.dart';
 
@@ -464,9 +463,18 @@ class EpubxRenderer implements EpubRenderer {
     return _chapters[index].title;
   }
 
-  /// Plain text of the current chapter, parsed from
-  /// `flatChapters[_currentChapterIndex].HtmlContent`.
-  /// Cached per `chapterIndex` for the renderer's lifetime.
+  /// Plain text of the current chapter, in **converter 坐标**（与渲染层
+  /// `_buildScroll`/`_buildPaged` 使用的 `HtmlToInlineSpanConverter.convert().plainText`
+  /// 完全一致）。Cached per `chapterIndex` for the renderer's lifetime.
+  ///
+  /// 2026-07-08 BUG 2：原实现走 `HtmlTextUtils.htmlToPlainText`（DOM 文本节点
+  /// 拼接），与渲染层坐标系不一致——h1 在 DOM 拼接里占完整字符数（"第N章 标题"
+  /// = N 字符），在 converter 里被折成 1 字符 `￼` 占位符 + `\n\n` 分隔符 +
+  /// EM SPACE 缩进前缀。`resolveSelectionLocator` 用 `indexOf` 在本字段算
+  /// 选区 offset，offset 喂给 `_applyHighlights`（converter 坐标）时偏移到
+  /// 选区**之后**的位置，导致高亮颜色显示在选中文字之后（用户报告"高亮
+  /// 与选择不一致，会向前移动"）。修复：直接返回 converter 的 plainText，
+  /// 统一坐标系。
   Future<String> get currentChapterPlainText async {
     if (_chapters.isEmpty) return '';
     // M2.8/B4 (Bug #1): 跨 book-switch race 下 _currentChapterIndex 可能
@@ -479,9 +487,20 @@ class EpubxRenderer implements EpubRenderer {
     final cached = _plainTextCache[_currentChapterIndex];
     if (cached != null) return cached;
     final html = flatChapterHtmlAt(_currentChapterIndex);
-    final plain = HtmlTextUtils.htmlToPlainText(html);
-    _plainTextCache[_currentChapterIndex] = plain;
-    return plain;
+    // 用与渲染层 (_buildScroll / _buildPaged) 完全相同的 converter 参数，
+    // 保证 plainText 坐标一致。baseStyle/imageMaxHeight 不影响 plainText 输出
+    // （converter 的 buf 只拼接 text + prefix + U+FFFC 占位符），但保留与渲染
+    // 一致的入参，避免未来 converter 行为分化。
+    final converted = HtmlToInlineSpanConverter().convert(
+      html,
+      baseStyle: TypographyCss.textStyleFromSettings(_typography),
+      imageMaxHeight: 600 * 0.7,
+      indentEm: _typography.paragraphIndentEm.toDouble(),
+      indentEnabled: _typography.paragraphIndentEnabled,
+      highlights: const [],
+    );
+    _plainTextCache[_currentChapterIndex] = converted.plainText;
+    return converted.plainText;
   }
 
   /// Current chapter's page breaks in plainText coordinates.
@@ -950,6 +969,30 @@ class EpubxRenderer implements EpubRenderer {
     // notifier, but state$ must still fire so the widget tree rebuilds under
     // the new mode.
     _stateController.add(const ReaderEngineReady());
+  }
+
+  /// 2026-07-08 FEAT 4：scroll 模式下键盘上下键滚动入口。
+  ///
+  /// paged 模式调用方应使用 nextPage/previousPage；本方法仅 scroll 模式有意义
+  /// （但允许在 paged 模式被调用，会 no-op，避免调用方需自行 mode-gate）。
+  ///
+  /// [delta] 单位像素：正数向下（看后面），负数向上（看前面）。越界由
+  /// [_scrollController] 内部 clamp（position.minScrollExtent/maxScrollExtent），
+  /// 不会抛异常。controller 未挂载（首次 build 前）/ 无 positions 时静默 no-op。
+  void scrollBy(double delta, {Duration duration = const Duration(milliseconds: 200)}) {
+    if (_paginationMode != PaginationMode.scroll) return;
+    final c = _scrollController;
+    if (!c.hasClients) return;
+    final pos = c.position;
+    final target = (pos.pixels + delta)
+        .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+    if (target == pos.pixels) return;
+    if (duration == Duration.zero) {
+      c.jumpTo(target);
+    } else {
+      c.animateTo(target,
+          duration: duration, curve: Curves.easeOutCubic);
+    }
   }
 
   @override

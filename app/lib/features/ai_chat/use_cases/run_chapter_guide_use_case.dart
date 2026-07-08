@@ -91,11 +91,19 @@ class RunChapterGuideUseCase {
   /// - [source]: persisted as `presetSource` on the AI message. Conventionally
   ///   `'card.chapter'` (preset card) or `'/chapter'` (slash command). Does
   ///   not affect prompt or cache key — both variants share cache rows.
+  ///
+  /// 2026-07-08 FEAT 5：新增 [bookTitle] / [author] / [chapterTitle] 三个可选
+  /// 参数，让 LLM 看到书的整体上下文。任一为 null/空 时模板内对应行被跳过。
+  /// cache key 仍按 (bookId, mode, sourceHash) 算，promptVersion bump 已保证
+  /// 旧缓存自动 miss。
   Stream<String> run({
     required String sessionId,
     required String bookId,
     required int chapterIndex,
     required String source,
+    String? bookTitle,
+    String? author,
+    String? chapterTitle,
   }) async* {
     final chapterText = await chapterTextProvider(bookId, chapterIndex);
     final sourceHash =
@@ -119,12 +127,14 @@ class RunChapterGuideUseCase {
       return;
     }
 
-    // 2. Cache miss: build prompt from chapter text only (subagent invariant:
-    //    no chat history). [PromptBuilder.chapter] is the existing M1.5a
-    //    chapter prompt — chapterTitle is omitted because the subagent does
-    //    not have direct access to chapter metadata (caller can extend
-    //    chapterTextProvider to inject title if desired).
-    final prompt = PromptBuilder.chapter(chapterText);
+    // 2. Cache miss: build prompt from chapter text + book metadata (FEAT 5
+    //    新增 bookTitle/author/chapterTitle 行，让 LLM 知道在讲哪本书的哪章)。
+    final prompt = PromptBuilder.chapter(
+      chapterText,
+      bookTitle: bookTitle,
+      author: author,
+      chapterTitle: chapterTitle,
+    );
 
     // 3. Insert empty AI message placeholder.
     final aiMsgId = await repo.appendMessage(

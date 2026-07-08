@@ -100,6 +100,18 @@ abstract interface class ReaderEngine {
 
   Future<void> setTypography(TypographySettings settings);
   Future<void> setPaginationMode(PaginationMode mode);
+
+  /// 2026-07-08 FEAT 4：scroll 模式下按 delta（像素）滚动内容。
+  ///
+  /// - EPUB 路径走 EpubxRenderer._scrollController.animateTo。
+  /// - PDF 路径走 pdfrx PdfViewerController（若 expose 困难，先 no-op）。
+  /// - paged 模式调用方应自己处理（PageController.nextPage），不走本方法。
+  ///
+  /// [delta] 正数向下滚（看后面），负数向上滚（看前面）。duration 为 0 时瞬切。
+  /// 调用方需保证只在 scroll 模式调用；越界（已到顶/底）由内部 ScrollController
+  /// 自然 clamp，不抛异常。
+  void scrollBy(double delta, {Duration duration = const Duration(milliseconds: 200)});
+
   Future<void> close();
 
   /// 由 UI 层调用，构建实际阅读区。

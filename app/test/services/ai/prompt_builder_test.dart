@@ -3,8 +3,8 @@ import 'package:zhiyue/services/ai/book_chunker.dart';
 import 'package:zhiyue/services/ai/prompt_builder.dart';
 
 void main() {
-  test('promptVersion is 2 (bumped from 1 for review mode)', () {
-    expect(PromptBuilder.promptVersion, 2);
+  test('promptVersion is 3 (FEAT 5: chapter prompt 新增 book/author/title metadata)', () {
+    expect(PromptBuilder.promptVersion, 3);
   });
 
   test('fullBook renders source and 300-char instruction', () {
@@ -25,6 +25,28 @@ void main() {
   test('chapter with title includes title line', () {
     final p = PromptBuilder.chapter('章节文本', chapterTitle: '第三章');
     expect(p, contains('章节标题：第三章'));
+  });
+
+  // 2026-07-08 FEAT 5：chapter prompt 新增 bookTitle/author 支持。
+  test('chapter with bookTitle + author + chapterTitle includes all metadata',
+      () {
+    final p = PromptBuilder.chapter(
+      '章节文本',
+      bookTitle: '概率论入门',
+      author: '张三',
+      chapterTitle: '第三章 期望值',
+    );
+    expect(p, contains('书名：概率论入门'));
+    expect(p, contains('作者：张三'));
+    expect(p, contains('章节标题：第三章 期望值'));
+  });
+
+  test('chapter with only bookTitle includes bookTitle but skips author/title',
+      () {
+    final p = PromptBuilder.chapter('文本', bookTitle: '书名');
+    expect(p, contains('书名：书名'));
+    expect(p.contains('作者'), isFalse);
+    expect(p.contains('章节标题'), isFalse);
   });
 
   test('chapter requires 3-5 markdown bullets', () {

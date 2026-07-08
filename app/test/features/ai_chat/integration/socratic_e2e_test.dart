@@ -30,8 +30,11 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/local/daos/chat_repository.dart';
-import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/local/database.dart' hide Book;
+import 'package:zhiyue/data/models/book.dart';
+import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/features/ai_chat/providers/chat_providers.dart';
 import 'package:zhiyue/features/ai_chat/providers/chat_session_controller.dart';
 import 'package:zhiyue/features/ai_chat/use_cases/run_chapter_guide_use_case.dart'
@@ -235,6 +238,18 @@ class _StubCache implements ChapterGuideCache {
   Map<String, String> get store => Map.unmodifiable(_store);
 }
 
+/// 2026-07-08 FEAT 5：测试无 drift DB，BookRepository.getById 返回 null。
+/// runSocraticBootstrap._resolveBookChapterMeta 捕获 null 后回退到
+/// (null,null,null)，prompt 仍能正常生成。
+class _NullBookRepository implements BookRepository {
+  @override
+  Future<Book?> getById(String id) async => null;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -261,6 +276,8 @@ void main() {
     final cache = _StubCache();
     final llm = _CapturingLlm(['提问：', '你怎么看？']);
     final container = ProviderContainer(overrides: [
+      // 2026-07-08 FEAT 5：runSocraticBootstrap 内部查 bookRepository；测试无 DB。
+      bookRepositoryProvider.overrideWithValue(_NullBookRepository()),
       chatRepositoryProvider.overrideWithValue(repo),
       chatLlmClientProvider.overrideWithValue(llm),
       chapterGuideCacheProvider.overrideWithValue(cache),
@@ -345,6 +362,8 @@ void main() {
     final cache = _StubCache();
     final llm = _CapturingLlm(['x']);
     final container = ProviderContainer(overrides: [
+      // 2026-07-08 FEAT 5：runSocraticBootstrap 内部查 bookRepository；测试无 DB。
+      bookRepositoryProvider.overrideWithValue(_NullBookRepository()),
       chatRepositoryProvider.overrideWithValue(repo),
       chatLlmClientProvider.overrideWithValue(llm),
       chapterGuideCacheProvider.overrideWithValue(cache),
@@ -416,6 +435,8 @@ void main() {
     final cache = _StubCache();
     final llm = _CapturingLlm(['x']);
     final container = ProviderContainer(overrides: [
+      // 2026-07-08 FEAT 5：runSocraticBootstrap 内部查 bookRepository；测试无 DB。
+      bookRepositoryProvider.overrideWithValue(_NullBookRepository()),
       chatRepositoryProvider.overrideWithValue(repo),
       chatLlmClientProvider.overrideWithValue(llm),
       chapterGuideCacheProvider.overrideWithValue(cache),
@@ -496,6 +517,8 @@ void main() {
     var recapProviderCalled = false;
     final llm = _CapturingLlm(['x']);
     final container = ProviderContainer(overrides: [
+      // 2026-07-08 FEAT 5：runSocraticBootstrap 内部查 bookRepository；测试无 DB。
+      bookRepositoryProvider.overrideWithValue(_NullBookRepository()),
       chatRepositoryProvider.overrideWithValue(repo),
       chatLlmClientProvider.overrideWithValue(llm),
       chapterGuideCacheProvider.overrideWithValue(cache),

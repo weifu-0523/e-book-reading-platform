@@ -111,6 +111,12 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// 为 null 时不渲染图标。
   final VoidCallback? onTogglePaginationMode;
 
+  /// 2026-07-08 FEAT 4：scroll 模式下键盘上下键滚动入口。
+  ///
+  /// 调用方（reader_body）传入 engine.scrollBy 包装。paged 模式不调用
+  /// （仍走 onTapPrev/onTapNext）；为 null 时不响应方向键。
+  final void Function(double delta)? onScrollBy;
+
   /// 触发水平滑动翻页的最小速度阈值（px/s）。
   ///
   /// 测试中 `timedDrag(Offset(±300, 0), 200ms)` 的速度约为 1500 px/s，
@@ -138,6 +144,7 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     this.onFontIncrease,
     this.onOpenBookshelf,
     this.onTogglePaginationMode,
+    this.onScrollBy,
   });
 
   @override
@@ -533,8 +540,8 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
 
     // M2.6/T1: PDF scroll mode needs arrow-key chapter navigation;
     // EPUB scroll mode expects arrow keys to scroll within chapter.
-    // Gate on paginationMode: scroll → let event pass to ScrollView;
-    // paged → convert to page/chapter navigation.
+    // 2026-07-08 FEAT 4：scroll 模式下上下键（含 PgUp/PgDn）改为内容滚动；
+    // 左右键仍是章导航（onTapPrev/Next），保留 M2.6/T1 行为。
     if (widget.paginationMode == PaginationMode.paged) {
       if (key == LogicalKeyboardKey.arrowRight ||
           key == LogicalKeyboardKey.pageDown ||
@@ -548,8 +555,55 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
         widget.onTapPrev();
         return KeyEventResult.handled;
       }
+    } else {
+      // scroll mode: 左右键 → 章导航；上下键 / PgUp / PgDn → 内容滚动
+      if (key == LogicalKeyboardKey.arrowRight) {
+        widget.onTapNext();
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.arrowLeft) {
+        widget.onTapPrev();
+        return KeyEventResult.handled;
+      }
+      if (widget.onScrollBy != null) {
+        if (key == LogicalKeyboardKey.arrowDown ||
+            key == LogicalKeyboardKey.pageDown) {
+          final viewport = _viewportHeight() ?? 600;
+          widget.onScrollBy!(viewport * 0.8);
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.arrowUp ||
+            key == LogicalKeyboardKey.pageUp) {
+          final viewport = _viewportHeight() ?? 600;
+          widget.onScrollBy!(-(viewport * 0.8));
+          return KeyEventResult.handled;
+        }
+      } else {
+        // onScrollBy 未配置（如 PDF）：上下键/PgUp/PgDn 回退到章导航，
+        // 与 M2.6/T1 旧行为一致。
+        if (key == LogicalKeyboardKey.arrowDown ||
+            key == LogicalKeyboardKey.pageDown) {
+          widget.onTapNext();
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.arrowUp ||
+            key == LogicalKeyboardKey.pageUp) {
+          widget.onTapPrev();
+          return KeyEventResult.handled;
+        }
+      }
     }
     return KeyEventResult.ignored;
+  }
+
+  /// 2026-07-08 FEAT 4：取 reader 内容区视高度，用于算 scrollBy delta。
+  /// 在 widget tree 已 layout 时从 context.findRenderObject 取实际高度；
+  /// 未 layout（极早期按键）fallback null，调用方用 600 px 默认值。
+  double? _viewportHeight() {
+    final ctx = context;
+    final ro = ctx.findRenderObject();
+    if (ro is RenderBox && ro.hasSize) return ro.size.height;
+    return null;
   }
 
   /// T9：滚轮事件。**保留** paginationMode gate —— scroll 模式下应让内容

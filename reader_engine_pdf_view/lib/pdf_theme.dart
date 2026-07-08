@@ -74,11 +74,17 @@ class PdfTheme {
       case ReadingTheme.light:
         return child;
       case ReadingTheme.sepia:
+        // 2026-07-08 BUG 1：sepia 改 matrix —— 把白色像素 (255,255,255) 映射到
+        // 米黄色 (245,222,179)，深色像素（文字）保持。原 dstATop 半透明叠加
+        // 会给所有像素盖一层米黄纱，文字变糊。matrix 路径 R*0.96/G*0.87/B*0.70
+        // 让黑字 (0,0,0) 输出仍为 (0,0,0)，文字锐利。
         return ColorFiltered(
-          colorFilter: const ColorFilter.mode(
-            Color(0x40F5DEB3), // 米黄半透明
-            BlendMode.dstATop,
-          ),
+          colorFilter: const ColorFilter.matrix(<double>[
+            0.96, 0, 0, 0, 0,
+            0, 0.87, 0, 0, 0,
+            0, 0, 0.70, 0, 0,
+            0, 0, 0, 1, 0,
+          ]),
           child: child,
         );
       case ReadingTheme.dark:
@@ -104,12 +110,17 @@ class PdfTheme {
           child: child,
         );
       case ReadingTheme.green:
-        // M4.6: 浅艾绿半透明叠加（仿 sepia 模式）。
+        // 2026-07-08 BUG 1：green 改 matrix。原 dstATop 半透明叠加
+        // (0x40E3EDD7) 给整页盖绿色纱，文字糊。matrix 路径 R*0.89/G*0.93/B*0.84
+        // 把白色像素 (255,255,255) 映射到艾绿 (227,237,215)，黑字保持
+        // (0,0,0)，中间灰度按比例过渡。护眼绿效果保留，文字锐利度恢复。
         return ColorFiltered(
-          colorFilter: const ColorFilter.mode(
-            Color(0x40E3EDD7),
-            BlendMode.dstATop,
-          ),
+          colorFilter: const ColorFilter.matrix(<double>[
+            0.89, 0, 0, 0, 0,
+            0, 0.93, 0, 0, 0,
+            0, 0, 0.84, 0, 0,
+            0, 0, 0, 1, 0,
+          ]),
           child: child,
         );
     }

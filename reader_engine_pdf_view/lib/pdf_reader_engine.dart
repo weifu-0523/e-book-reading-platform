@@ -117,6 +117,14 @@ class PdfReaderEngine implements ReaderEngine {
     // PDF 强制 scroll mode；noop
   }
 
+  /// 2026-07-08 FEAT 4：PDF 路径 scrollBy no-op（pdfrx 内部 controller 不暴露
+  /// 像素级 scroll offset；上层应通过 setPage 翻页）。键盘上下键在 PDF 模式
+  /// 无效果，用户用 PgUp/PgDn 或滚轮。
+  @override
+  void scrollBy(double delta, {Duration duration = const Duration(milliseconds: 200)}) {
+    // no-op
+  }
+
   @override
   Widget build(BuildContext context) => _renderer.build(context);
 

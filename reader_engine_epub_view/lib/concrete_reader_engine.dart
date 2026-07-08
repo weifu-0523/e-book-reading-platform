@@ -226,6 +226,11 @@ class ConcreteEpubReaderEngine implements ReaderEngine {
   Future<void> setPaginationMode(PaginationMode mode) =>
       _renderer.setPaginationMode(mode);
 
+  /// 2026-07-08 FEAT 4：转发给 [EpubxRenderer.scrollBy]。
+  @override
+  void scrollBy(double delta, {Duration duration = const Duration(milliseconds: 200)}) =>
+      _renderer.scrollBy(delta, duration: duration);
+
   @override
   Future<void> close() async {
     await _rendererStateSub.cancel();

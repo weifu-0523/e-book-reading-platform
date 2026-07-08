@@ -104,6 +104,27 @@ void main() {
       // This test guards against regression to "explain mode".
       expect(prompt.contains('请直接讲解'), isFalse);
     });
+
+    // 2026-07-08 FEAT 5：苏格拉底 bootstrap prompt 新增 bookTitle/author/chapterTitle。
+    test('FEAT 5: 包含 bookTitle/author/chapterTitle metadata 行', () {
+      final prompt = PromptBuilderExt.buildSocraticBootstrapPrompt(
+        recap: '章节内容',
+        bookTitle: '概率论入门',
+        author: '张三',
+        chapterTitle: '第三章 期望值',
+      );
+      expect(prompt, contains('书名：概率论入门'));
+      expect(prompt, contains('作者：张三'));
+      expect(prompt, contains('章节标题：第三章 期望值'));
+    });
+
+    test('FEAT 5: 不传 metadata 时仍正常生成（向后兼容）', () {
+      final prompt = PromptBuilderExt.buildSocraticBootstrapPrompt(
+        recap: 'recap',
+      );
+      expect(prompt, contains('recap'));
+      expect(prompt.contains('书名'), isFalse);
+    });
   });
 
   group('buildRecapPrompt', () {

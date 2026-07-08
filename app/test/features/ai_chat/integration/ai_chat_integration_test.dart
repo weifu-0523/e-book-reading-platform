@@ -28,8 +28,11 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/local/daos/chat_repository.dart';
-import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/local/database.dart' hide Book;
+import 'package:zhiyue/data/models/book.dart';
+import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/features/ai_chat/providers/chat_providers.dart';
 import 'package:zhiyue/features/ai_chat/providers/chat_session_controller.dart';
 import 'package:zhiyue/features/ai_chat/use_cases/run_chapter_guide_use_case.dart';
@@ -257,6 +260,18 @@ class _StubCache implements ChapterGuideCache {
   }
 }
 
+/// 2026-07-08 FEAT 5：测试环境无 drift DB，BookRepository.getById 直接返回 null。
+/// 其他方法用 noSuchMethod 兜底（测试不调用）。runChapterGuide._resolveBookChapterMeta
+/// 捕获 null 后回退到 (null, null, null)，prompt 仍能正常生成。
+class _NullBookRepository implements BookRepository {
+  @override
+  Future<Book?> getById(String id) async => null;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -361,6 +376,10 @@ void main() {
     final llm = _CapturingLlm(['章节要点']);
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      // 2026-07-08 FEAT 5：runChapterGuide 现在内部查 bookRepository 取 metadata；
+      // 测试环境无 drift DB，stub 返回 null（_resolveBookChapterMeta catch 后
+      // 返回 (null,null,null)，prompt 仍能生成）。
+      bookRepositoryProvider.overrideWithValue(_NullBookRepository()),
       chatLlmClientProvider.overrideWithValue(llm),
       chapterGuideCacheProvider.overrideWithValue(cache),
       sendMessageUseCaseProvider.overrideWithValue(

@@ -97,16 +97,38 @@ class PromptBuilderExt {
   /// 产物），LLM 看到 "下面是本章回顾：" + 空内容，会回复"看到你提到了
   /// 本章回顾但没看到具体内容"。优先把 chapter guide 当作"本章要点"
   /// 传入，没有时再用 recap 兜底。
+  ///
+  /// 2026-07-08 FEAT 5：新增 [bookTitle] / [author] / [chapterTitle] 三个
+  /// 可选参数。苏格拉底导师需要知道"在讲哪本书的哪一章"才能问出有针对性的
+  /// 问题（如"《概率论入门》第三章讲的是期望值，请你举一个生活中的期望值
+  /// 例子"），而不是泛泛而问。null/空 都跳过对应行；不传时输出与旧模板一致。
   static String buildSocraticBootstrapPrompt({
     required String recap,
     String? chapterGuide,
+    String? bookTitle,
+    String? author,
+    String? chapterTitle,
   }) {
     final guide = chapterGuide?.trim();
     final effectiveGuide = (guide != null && guide.isNotEmpty) ? guide : recap;
     final sectionLabel = (guide != null && guide.isNotEmpty)
         ? '本章要点（来自本章导读）'
         : '本章回顾';
+    final metaBuf = StringBuffer();
+    if (bookTitle != null && bookTitle.isNotEmpty) {
+      metaBuf.writeln('书名：$bookTitle');
+    }
+    if (author != null && author.isNotEmpty) {
+      metaBuf.writeln('作者：$author');
+    }
+    if (chapterTitle != null && chapterTitle.isNotEmpty) {
+      metaBuf.writeln('章节标题：$chapterTitle');
+    }
+    final metaBlock = metaBuf.isEmpty ? '' : '''## 阅读上下文
+$metaBuf''';
     return '''$_socraticSystemPrompt
+
+$metaBlock
 
 下面是$sectionLabel：
 $effectiveGuide

@@ -72,11 +72,17 @@ class RunSocraticBootstrapUseCase {
   /// {'card.chapter', '/chapter'}` 的 AI 消息，作为 chapter guide 上下文
   /// 优先传入。这匹配用户最常见的"先点本章导读 → 再点苏格拉底"工作流。
   /// 没有则回退到 recap（原行为）。
+  ///
+  /// 2026-07-08 FEAT 5：新增 [bookTitle] / [author] / [chapterTitle]，让
+  /// 苏格拉底导师问出有针对性的问题（如《书名》第N章 主题）。
   Stream<String> run({
     required String sessionId,
     required String bookId,
     required int chapterIndex,
     required String source,
+    String? bookTitle,
+    String? author,
+    String? chapterTitle,
   }) async* {
     // 1. Fetch recap text (caller's responsibility to cache upstream).
     final recap = await recapProvider(bookId, chapterIndex);
@@ -94,10 +100,13 @@ class RunSocraticBootstrapUseCase {
       }
     }
 
-    // 2. Build prompt (chapter guide preferred, recap fallback).
+    // 2. Build prompt (chapter guide preferred, recap fallback) + FEAT 5 metadata.
     final prompt = PromptBuilderExt.buildSocraticBootstrapPrompt(
       recap: recap,
       chapterGuide: chapterGuide,
+      bookTitle: bookTitle,
+      author: author,
+      chapterTitle: chapterTitle,
     );
 
     // 3. Insert empty AI message placeholder with presetSource label.

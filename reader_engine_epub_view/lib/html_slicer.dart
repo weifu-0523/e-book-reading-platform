@@ -129,17 +129,6 @@ class HtmlSlicer {
     return result;
   }
 
-  /// 粗略测量 plain-text 长度（用于 clamp 边界）。与
-  /// `HtmlTextUtils.htmlToPlainText` 同口径（DOM 文本节点拼接）。
-  static int _measurePlainLength(String html) {
-    if (html.isEmpty) return 0;
-    final doc = HtmlParser(html).parse();
-    for (final el in doc.querySelectorAll('script, style')) {
-      el.remove();
-    }
-    return _countText(doc);
-  }
-
   static int _countText(Node node) {
     var n = 0;
     for (final child in node.nodes) {
