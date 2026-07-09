@@ -538,6 +538,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           chapterIndex: _currentChapterIndex(),
           wide: false,
           textStyle: _readerTextStyle(),
+          chapterTitle: _currentChapterTitle(),
         ),
       ),
       body: _buildReaderStack(ui),
@@ -657,6 +658,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                     chapterIndex: _currentChapterIndex(),
                     wide: true,
                     textStyle: _readerTextStyle(),
+                    chapterTitle: _currentChapterTitle(),
                   ),
                 ),
               ],
@@ -1055,6 +1057,14 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     final loc = _currentLocation;
     if (loc is EpubCfiLocator) return loc.chapterIndex;
     return 0;
+  }
+
+  /// T3 (2026-07-09): 当前章节标题（从 [_chapterTitlesCache] 取），用于 AI 抽屉
+  /// 首次激活时给默认会话命名。null 表示无 TOC 或当前章节未在 cache 中
+  /// （由 [ChatSessionController._defaultTitle] 容错，回退到日期格式）。
+  String? _currentChapterTitle() {
+    final idx = _currentChapterIndex();
+    return _chapterTitlesCache[idx];
   }
 
   /// toolbar 「摘录」：打开 [ReaderSelectionSheet]（5 色选择 + 可选备注）

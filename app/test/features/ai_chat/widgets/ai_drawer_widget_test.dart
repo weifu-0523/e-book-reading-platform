@@ -155,6 +155,99 @@ void main() {
         reason: 'no new session should be created when one exists');
   });
 
+  // -------------------------------------------------------------------------
+  // T3 (2026-07-09): 默认会话名优先用 chapterTitle。
+  // -------------------------------------------------------------------------
+
+  testWidgets('T3 ensureSession uses chapterTitle when creating first session',
+      (tester) async {
+    final repo = _FakeRepo();
+    expect(repo._sessions, isEmpty);
+
+    final container = ProviderContainer(overrides: [
+      chatRepositoryProvider.overrideWithValue(repo),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+        home: Scaffold(
+          body: AiDrawerWidget(
+            bookId: 'b1',
+            chapterIndex: 0,
+            wide: true,
+            chapterTitle: '第一章 引言',
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(repo._sessions, hasLength(1));
+    expect(repo._sessions.values.single.title, '第一章 引言');
+  });
+
+  testWidgets('T3 ensureSession falls back to default title when chapterTitle '
+      'is null', (tester) async {
+    final repo = _FakeRepo();
+    expect(repo._sessions, isEmpty);
+
+    final container = ProviderContainer(overrides: [
+      chatRepositoryProvider.overrideWithValue(repo),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+        home: Scaffold(
+          body: AiDrawerWidget(
+            bookId: 'b1',
+            chapterIndex: 0,
+            wide: true,
+            // chapterTitle omitted → backward-compat fallback.
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(repo._sessions, hasLength(1));
+    // Should look like "新会话 YYYY-MM-DD".
+    expect(repo._sessions.values.single.title,
+        startsWith('新会话 '));
+  });
+
+  testWidgets('T3 ensureSession ignores whitespace-only chapterTitle',
+      (tester) async {
+    final repo = _FakeRepo();
+
+    final container = ProviderContainer(overrides: [
+      chatRepositoryProvider.overrideWithValue(repo),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+        home: Scaffold(
+          body: AiDrawerWidget(
+            bookId: 'b1',
+            chapterIndex: 0,
+            wide: true,
+            chapterTitle: '   ',
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(repo._sessions, hasLength(1));
+    expect(repo._sessions.values.single.title, startsWith('新会话 '),
+        reason: 'whitespace-only chapterTitle should fall back to default');
+  });
+
   testWidgets('wide=true does not impose a fixed inner width',
       (tester) async {
     // 2026-07-09 T7: inner SizedBox(width:380) was removed so the outer

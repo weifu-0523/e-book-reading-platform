@@ -56,6 +56,7 @@ class AiInputComposer extends ConsumerStatefulWidget {
     super.key,
     required this.bookId,
     required this.chapterIndex,
+    this.chapterTitle,
   });
 
   final String bookId;
@@ -64,6 +65,11 @@ class AiInputComposer extends ConsumerStatefulWidget {
   /// `/socratic`, and `/recap` slash commands. Defaults to 0 when the caller
   /// doesn't know yet (e.g., book without chapter structure).
   final int chapterIndex;
+
+  /// T3 (2026-07-09): `/new` slash 创建新会话时，默认名优先用这个章节标题。
+  /// 由 reader_body 通过 `_chapterTitlesCache[currentChapterIndex]` 提供。
+  /// 默认 null（向后兼容，回退到「新会话 YYYY-MM-DD」）。
+  final String? chapterTitle;
 
   @override
   ConsumerState<AiInputComposer> createState() => _AiInputComposerState();
@@ -255,7 +261,7 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
       case '/new':
         final newId = await ref
             .read(sessionLifecycleUseCaseProvider)
-            .create(bookId: widget.bookId, title: _defaultTitle());
+            .create(bookId: widget.bookId, title: _defaultTitle(widget.chapterTitle));
         await controller.selectSession(newId);
         break;
       case '/clear':
@@ -331,7 +337,10 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
     }
   }
 
-  String _defaultTitle() {
+  String _defaultTitle([String? chapterTitle]) {
+    if (chapterTitle != null && chapterTitle.trim().isNotEmpty) {
+      return chapterTitle.trim();
+    }
     final now = DateTime.now();
     final m = now.month.toString().padLeft(2, '0');
     final d = now.day.toString().padLeft(2, '0');

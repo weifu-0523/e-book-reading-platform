@@ -55,6 +55,7 @@ class AiDrawerWidget extends ConsumerStatefulWidget {
     required this.chapterIndex,
     required this.wide,
     this.textStyle,
+    this.chapterTitle,
   });
 
   final String bookId;
@@ -66,6 +67,12 @@ class AiDrawerWidget extends ConsumerStatefulWidget {
   /// （输入框 / 消息列表 / Markdown）默认继承 fontFamily/fontSize/height。
   /// 默认 null（向后兼容）。
   final TextStyle? textStyle;
+
+  /// T3 (2026-07-09)：首次激活抽屉时若需要新建首个会话，用这个章节标题作为
+  /// 默认会话名（trim 后非空才用，否则回退到「新会话 YYYY-MM-DD」）。
+  /// 由 reader_body 通过 `_chapterTitlesCache[currentChapterIndex]` 提供。
+  /// 默认 null（向后兼容）。
+  final String? chapterTitle;
 
   @override
   ConsumerState<AiDrawerWidget> createState() => _AiDrawerWidgetState();
@@ -85,7 +92,7 @@ class _AiDrawerWidgetState extends ConsumerState<AiDrawerWidget> {
       if (!mounted) return;
       ref
           .read(chatSessionControllerProvider(widget.bookId).notifier)
-          .ensureSession();
+          .ensureSession(chapterTitle: widget.chapterTitle);
     });
   }
 
@@ -120,6 +127,7 @@ class _AiDrawerWidgetState extends ConsumerState<AiDrawerWidget> {
         AiInputComposer(
           bookId: widget.bookId,
           chapterIndex: widget.chapterIndex,
+          chapterTitle: widget.chapterTitle,
         ),
       ],
     );

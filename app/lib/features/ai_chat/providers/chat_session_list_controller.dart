@@ -94,10 +94,13 @@ class ChatSessionListController extends StateNotifier<ChatSessionListState> {
   /// via [ChatSessionController.selectSession]. The title format mirrors
   /// [ChatSessionController]'s default-title helper so newly-created sessions
   /// in the dropdown match the one auto-created by `ensureSession`.
-  Future<String> createNew() async {
+  ///
+  /// 2026-07-09 T3: 接受可选 [title]（dropdown 的「+ 新建会话」按钮不知当前章节，
+  /// 故 dropdown 不传 title，保持原「新会话 YYYY-MM-DD」行为）。
+  Future<String> createNew({String? title}) async {
     final id = await _repo.createSession(
       bookId: _bookId,
-      title: _defaultTitle(),
+      title: title ?? _defaultTitle(),
     );
     await refresh();
     return id;

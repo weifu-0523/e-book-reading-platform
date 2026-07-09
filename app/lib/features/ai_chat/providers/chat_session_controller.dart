@@ -129,13 +129,17 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
 
   /// Loads the most-recent session for this book, or creates a new one.
   /// Idempotent: no-op if [ChatSessionState.currentSessionId] is already set.
-  Future<void> ensureSession() async {
+  ///
+  /// 2026-07-09 T3: 当需要新建首个会话时，默认名优先用 [chapterTitle]（首次激活
+  /// 抽屉时所在章节的标题），其次回退到「新会话 YYYY-MM-DD」。这样新书/首次打开
+  /// AI 抽屉时，会话列表里的默认名对用户而言是有意义的章节名。
+  Future<void> ensureSession({String? chapterTitle}) async {
     if (state.currentSessionId != null) return;
     final sessions = await _repo.listSessionsForBook(bookId);
     if (sessions.isEmpty) {
       final id = await _ref
           .read(sessionLifecycleUseCaseProvider)
-          .create(bookId: bookId, title: _defaultTitle());
+          .create(bookId: bookId, title: _defaultTitle(chapterTitle));
       await selectSession(id);
     } else {
       await selectSession(sessions.first.id);
@@ -308,7 +312,10 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     state = state.copyWith(clearError: true);
   }
 
-  String _defaultTitle() {
+  String _defaultTitle([String? chapterTitle]) {
+    if (chapterTitle != null && chapterTitle.trim().isNotEmpty) {
+      return chapterTitle.trim();
+    }
     final now = DateTime.now();
     final m = now.month.toString().padLeft(2, '0');
     final d = now.day.toString().padLeft(2, '0');
