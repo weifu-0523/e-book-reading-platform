@@ -25,6 +25,7 @@ import '../controllers/bookmark_controller.dart';
 import '../providers/notes_controller.dart';
 import '../providers/reader_engine_provider.dart';
 import '../services/progress_persister.dart';
+import '../services/typography_persister.dart';
 import '../widgets/reader_error_view.dart';
 import 'reader_body.dart';
 
@@ -55,10 +56,12 @@ class ReaderPage extends ConsumerStatefulWidget {
 
 class _ReaderPageState extends ConsumerState<ReaderPage> {
   ProgressPersister? _persister;
+  TypographyPersister? _typographyPersister;
 
   @override
   void dispose() {
     _persister?.dispose();
+    _typographyPersister?.dispose();
     super.dispose();
   }
 
@@ -75,6 +78,7 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
         ),
         data: (engine) {
           _ensureProgressPersister(engine);
+          _ensureTypographyPersister(engine);
           // 用本地 ProviderScope 覆盖 currentBookIdProvider，让 NotesController
           // 拿到当前 bookId（仅作用于本书的子树）。
           // notesControllerProvider / bookmarkControllerProvider 都是 autoDispose
@@ -118,6 +122,16 @@ class _ReaderPageState extends ConsumerState<ReaderPage> {
       bookId: widget.bookId,
       repository: ref.read(readingProgressRepositoryProvider),
       source: engine.currentLocation$,
+    )..start();
+  }
+
+  void _ensureTypographyPersister(ReaderEngine engine) {
+    if (_typographyPersister != null) return;
+    _typographyPersister = TypographyPersister(
+      bookId: widget.bookId,
+      repository: ref.read(bookTypographyRepositoryProvider),
+      stateSource: engine.state$,
+      typographyGetter: () => engine.typography,
     )..start();
   }
 }
