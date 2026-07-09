@@ -21,6 +21,10 @@ class _SaveCall {
 }
 
 /// Fake BookTypographyRepository that records saveForBook calls.
+///
+/// NOTE: After T3 removed the fire-and-forget dispose-time save, saveCalls is
+/// no longer asserted by any test in this file. The fake is retained because
+/// _applyPersistedTypography still uses getForBook on engine open.
 class _RecordingBookTypographyRepository implements BookTypographyRepository {
   final List<_SaveCall> saveCalls = [];
   TypographySettings? getForBookReturnValue;
@@ -75,35 +79,7 @@ class _NullProgressRepo implements ReadingProgressRepository {
 }
 
 void main() {
-  group('T3 - per-book typography persistence', () {
-    test('T3.1 provider dispose calls saveForBook with current typography',
-        () async {
-      final fakeRepo = _RecordingBookTypographyRepository();
-
-      final container = ProviderContainer(overrides: [
-        bookRepositoryProvider.overrideWithValue(_StubBookRepository()),
-        readingProgressRepositoryProvider.overrideWithValue(_NullProgressRepo()),
-        bookTypographyRepositoryProvider.overrideWithValue(fakeRepo),
-      ]);
-
-      // Open the engine (will fail to open file, but engine object is created)
-      final engine =
-          await container.read(readerEngineForBookProvider('b1').future);
-
-      // Engine exists and has default typography even if file failed to open
-      expect(engine.typography, TypographySettings.defaults());
-
-      // Dispose the container, which should trigger the provider's dispose hook
-      container.dispose();
-      // Allow async disposal to complete
-      await Future<void>.delayed(Duration.zero);
-
-      // Verify saveForBook was called exactly once with correct parameters
-      expect(fakeRepo.saveCalls, hasLength(1));
-      expect(fakeRepo.saveCalls.first.bookId, 'b1');
-      expect(fakeRepo.saveCalls.first.settings, TypographySettings.defaults());
-    });
-
+  group('T3 - per-book typography load on open', () {
     test('T3.2 first-time open (no override) → engine at defaults', () async {
       final fakeRepo = _RecordingBookTypographyRepository()
         ..getForBookReturnValue = null;

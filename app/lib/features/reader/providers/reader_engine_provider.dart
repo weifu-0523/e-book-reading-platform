@@ -67,7 +67,7 @@ final readerEngineForBookProvider =
   if (bookRef.format == re.BookFormat.epub) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
     final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
-    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     await engine.openWithLastProgress(
       book: bookRef,
@@ -80,7 +80,7 @@ final readerEngineForBookProvider =
     // M4: PDF routing — pdfrx 原生页渲染
     final engine = PdfReaderEngine(renderer: PdfRenderer());
     final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
-    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     await engine.openWithLastProgress(
       book: bookRef,
@@ -101,7 +101,7 @@ final readerEngineForBookProvider =
   if (bookRef.format == re.BookFormat.markdown) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
     final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
-    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     final sources =
         await MarkdownBookLoader.loadFile(book.filePath, title: book.title);
@@ -119,7 +119,7 @@ final readerEngineForBookProvider =
   if (bookRef.format == re.BookFormat.text) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
     final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
-    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
+    ref.onDispose(engine.close);
     final lastProgress = await progressRepo.get(bookId);
     final sources =
         await TextBookLoader.loadFile(book.filePath, title: book.title);
@@ -152,16 +152,4 @@ Future<void> _applyPersistedTypography(
   if (saved != null) {
     await engine.setTypography(saved);
   }
-}
-
-/// T2: snapshot engine.typography → upsert 到 per-book override → close 引擎。
-/// `ref.onDispose` 不支持 await，整个操作 fire-and-forget。
-void _disposeEngineWithPersist(
-  ReaderEngine engine,
-  String bookId,
-  BookTypographyRepository repo,
-) {
-  final snapshot = engine.typography;
-  repo.saveForBook(bookId, snapshot);
-  engine.close();
 }
