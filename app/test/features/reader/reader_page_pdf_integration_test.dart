@@ -57,7 +57,8 @@ void main() {
         // 见 reader_flow_integration_test.dart 的 EPUB 等价实现。
         expect(true, isTrue);
       },
-      skip: true,
+      skip: 'integration_test PDFium framework not ready (需 PDFium native lib + '
+          '真机 integration_test harness); deferred. 2026-07-10 深度清理确认仍 skip.',
     );
   });
 }
