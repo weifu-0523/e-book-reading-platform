@@ -7,7 +7,35 @@
 
 ## [Unreleased]
 
-v1.7.0-alpha 之后的新变更将记在此处。
+v1.7.1-alpha 之后的新变更将记在此处。
+
+## [1.7.1-alpha] — 2026-07-10
+
+### 修复
+
+- **reader**: per-book typography persistence 修复 — 用户调整字体设为默认后退出重开仍恢复预设的 bug
+  - 根因：dispose-time fire-and-forget `saveForBook` 被 `main.dart` 的 `exit(0)` 同步截断（绕 PDFium 死锁的设计）
+  - 修复：引入 `TypographyPersister`，订阅 `engine.state$` stream + debounce 500ms 即时落盘
+  - PDF 路径补充 `setTypography` emit state$ 保持契约一致
+  - 架构约束：dispose 回调里的 fire-and-forget Future 必丢（exit(0) 截断），新持久化需求必须参照 ProgressPersister/TypographyPersister 即时落盘模式
+  - commits: `436b35f` / `216f70b` / `ecb0f26` / `85c94f8`
+
+### 测试卫生
+
+- migration_v4_test: schemaVersion 硬编码 10 → 12（M2.6+M2.7 bump 后过期）
+- notes_repository_test: drift 2.28 watchAnnotations 改 asyncExpand 修 cancel 生命周期
+- typography_profile_repository_test: stale fontSize 断言 16.0 → defaults().fontSize（M3a bump 后过期）
+- book_open_bridge_test: M4.5 加 .txt/.md 支持后 non-book 列表过期，加防回归用例
+- library_golden_test + reader_ui_golden_test: regen 6 个 golden（字体漂移 <1.1%）
+- typography_golden_test: skip（TypographyPanel 改 ConsumerWidget 后需 ProviderScope override，deferred）
+- reader_ai_drawer_integration + reader_page_pdf_integration: skip 理由补描述性字符串
+
+### 杂项
+
+- gitignore: 扩展 `.claude/` + 根目录 `*.png` + `pub_get_output.txt` + `**/failures/`
+- installer: 移除 Inno Setup chinesesimp language（`95cfcee`）
+- docs: 归档 2026-07-08 review 报告（1 P0 + 8 P1 + 7 P2）
+- docs: 移动端前置深度清理 spec + plan
 
 ## [1.7.0-alpha] — 2026-07-08
 
@@ -1548,7 +1576,8 @@ M0 + M1：数据层基础交付（58 测试）。
 
 ## 链接
 
-- [Unreleased]: https://gitee.com/weifu0523/e-book-reading-platform/compare/v0.5.0...master
+- [Unreleased]: https://gitee.com/weifu0523/e-book-reading-platform/compare/v1.7.1-alpha...master
+- [1.7.1-alpha]: https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.7.1-alpha
 - [0.5.0]: https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v0.5.0
 - [0.4.0]: https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v0.4.0
 - [0.1.0]: https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v0.1.0
