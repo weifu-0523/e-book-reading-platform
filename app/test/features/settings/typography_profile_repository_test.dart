@@ -17,7 +17,10 @@ void main() {
   test('seedDefaultIfEmpty creates exactly one default profile when empty', () async {
     final profile = await repo.seedDefaultIfEmpty();
     expect(profile.isDefault, isTrue);
-    expect(profile.settings.fontSize, 16.0);
+    // seedDefaultIfEmpty seeds TypographySettings.defaults(); fontSize was
+    // bumped 16→18 in M3a/任务7 (see typography_settings.dart). Assert the
+    // current default, not a stale literal.
+    expect(profile.settings.fontSize, TypographySettings.defaults().fontSize);
 
     final again = await repo.seedDefaultIfEmpty();
     expect(again.id, profile.id); // not duplicated
