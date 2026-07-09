@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart' show appDatabaseProvider;
@@ -91,6 +92,22 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
         });
       }
     });
+    // 2026-07-09 T5: Enter 发送，Shift+Enter 换行。Focus.onKeyEvent 在 TextField
+    // 聚焦时被消费（KeyEventResult.handled 阻止 TextField 默认换行）。
+    _focus.onKeyEvent = (node, event) {
+      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+      if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+        final isShift = HardwareKeyboard.instance.isShiftPressed;
+        if (!isShift) {
+          // fire-and-forget：onKeyEvent 同步返回，_onSend 内部 async 调度。
+          _onSend();
+          return KeyEventResult.handled;
+        }
+        // Shift+Enter → ignored，让 TextField 默认换行
+      }
+      return KeyEventResult.ignored;
+    };
   }
 
   @override

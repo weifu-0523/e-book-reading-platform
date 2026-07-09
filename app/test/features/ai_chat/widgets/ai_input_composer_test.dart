@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/features/ai_chat/providers/chat_session_controller.dart';
@@ -121,6 +122,41 @@ void main() {
     await pumpComposer(tester);
     await tester.pump();
     expect(find.text('> selected text'), findsOneWidget);
+  });
+
+  testWidgets('T5: Enter sends message + clears input', (tester) async {
+    // 2026-07-09 T5: Enter 不带 Shift → _onSend → sendMessage + 清空输入。
+    await pumpComposer(tester);
+    await tester.enterText(find.byType(TextField), 'hello');
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(fakeController.sendMessageCount, 1,
+        reason: 'Enter should trigger sendMessage');
+    expect(fakeController.lastText, 'hello');
+    expect(find.text('hello'), findsNothing,
+        reason: 'Enter should clear input via _onSend');
+  });
+
+  testWidgets('T5: Shift+Enter does NOT send (lets TextField handle newline)',
+      (tester) async {
+    // 2026-07-09 T5: Shift+Enter → onKeyEvent returns ignored → 不调 _onSend。
+    // widget test 环境下 sendKeyEvent 不走 text input channel，TextField 不会
+    // 真的插入 '\n'（需 platform IME），所以本测试只验证 sendMessage 不被调用
+    // 且输入未被清空。换行的实际插入依赖桌面平台 IME，集成测试已验证。
+    await pumpComposer(tester);
+    await tester.enterText(find.byType(TextField), 'world');
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+
+    expect(fakeController.sendMessageCount, 0,
+        reason: 'Shift+Enter should NOT trigger sendMessage');
+    expect(find.text('world'), findsOneWidget,
+        reason: 'Shift+Enter should NOT clear input (only _onSend clears)');
   });
 }
 
