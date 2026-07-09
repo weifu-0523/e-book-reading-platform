@@ -509,8 +509,14 @@ class PdfRenderer {
   }
 
   /// 记录排版设置（PDF 实际渲染由 pdfrx 内部决定，此方法仅供 API 兼容）。
+  ///
+  /// 仍 emit state$ 以保持与 EpubxRenderer.setTypography 契约一致：上层
+  /// TypographyPersister 订阅 state$ 来即时持久化排版，PDF 路径不 emit 会导致
+  /// PDF 排版变化无法落盘（即使渲染层 no-op，_applyPersistedTypography 仍会在
+  /// 下次开书时调 setTypography，round-trip 应该工作）。
   Future<void> setTypography(TypographySettings settings) async {
     _typography = settings;
+    _stateController.add(const ReaderEngineReady());
   }
 
   /// 当前排版设置（API 兼容；PDF 不实际使用）。
