@@ -17,6 +17,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/book_ref.dart' as re;
 import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
 import 'package:reader_engine_epub_view/epubx_renderer.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
@@ -24,6 +25,7 @@ import 'package:reader_engine_pdf_view/pdf_renderer.dart';
 import 'package:zhiyue/data/models/book.dart';
 
 import '../../../core/providers.dart';
+import '../../../data/repositories/book_typography_repository.dart';
 import '../../../services/markdown_book_loader.dart';
 import '../../../services/text_book_loader.dart';
 
@@ -64,23 +66,27 @@ final readerEngineForBookProvider =
 
   if (bookRef.format == re.BookFormat.epub) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
-    ref.onDispose(engine.close);
+    final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
+    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
     final lastProgress = await progressRepo.get(bookId);
     await engine.openWithLastProgress(
       book: bookRef,
       lastLocator: lastProgress?.locator,
     );
+    await _applyPersistedTypography(engine, bookId, typographyRepo);
     return engine;
   }
   if (bookRef.format == re.BookFormat.pdf) {
     // M4: PDF routing — pdfrx 原生页渲染
     final engine = PdfReaderEngine(renderer: PdfRenderer());
-    ref.onDispose(engine.close);
+    final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
+    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
     final lastProgress = await progressRepo.get(bookId);
     await engine.openWithLastProgress(
       book: bookRef,
       lastLocator: lastProgress?.locator,
     );
+    await _applyPersistedTypography(engine, bookId, typographyRepo);
     return engine;
   }
   // M4.5/M4.6-fix10: Markdown / TXT routing — 复用 EPUB 的 HTML 渲染管道。
@@ -94,7 +100,8 @@ final readerEngineForBookProvider =
   // fix10 用"仿 TXT 每行成 `<p>`"彻底绕开。详见 markdown_book_loader.dart。
   if (bookRef.format == re.BookFormat.markdown) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
-    ref.onDispose(engine.close);
+    final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
+    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
     final lastProgress = await progressRepo.get(bookId);
     final sources =
         await MarkdownBookLoader.loadFile(book.filePath, title: book.title);
@@ -106,11 +113,13 @@ final readerEngineForBookProvider =
     // M4.6-fix10: 删除 setPaginationMode(scroll)——MD 走默认 paged + 双页，
     // 与 TXT 完全一致。章节切分（# / ##）仍由 MarkdownBookLoader 处理，
     // TOC 自动生成，章节跳转/高亮全部继承。
+    await _applyPersistedTypography(engine, bookId, typographyRepo);
     return engine;
   }
   if (bookRef.format == re.BookFormat.text) {
     final engine = ConcreteEpubReaderEngine(renderer: EpubxRenderer());
-    ref.onDispose(engine.close);
+    final typographyRepo = ref.watch(bookTypographyRepositoryProvider);
+    ref.onDispose(() => _disposeEngineWithPersist(engine, bookId, typographyRepo));
     final lastProgress = await progressRepo.get(bookId);
     final sources =
         await TextBookLoader.loadFile(book.filePath, title: book.title);
@@ -120,8 +129,39 @@ final readerEngineForBookProvider =
       lastLocator: lastProgress?.locator,
     );
     // TXT 保持默认 paged + 双页（用户确认 TXT 正常，不改动）。
+    await _applyPersistedTypography(engine, bookId, typographyRepo);
     return engine;
   }
   // 防御性兜底：未来新增格式若忘了在此路由，明确报错而非静默走 PDF。
   throw StateError('Unsupported book format: ${book.format}');
 });
+
+/// T2: 打开引擎后从 [BookTypographyRepository] 读该书最后一次保存的
+/// 排版并应用到 engine；无记录则保留引擎默认（`TypographySettings.defaults`）。
+Future<void> _applyPersistedTypography(
+  ReaderEngine engine,
+  String bookId,
+  BookTypographyRepository repo,
+) async {
+  // Only apply typography if engine successfully opened (Ready state).
+  // If engine is in Error state, calling setTypography would fail with
+  // "Cannot add new events after calling close" when engine gets disposed.
+  if (engine.state is! ReaderEngineReady) return;
+
+  final saved = await repo.getForBook(bookId);
+  if (saved != null) {
+    await engine.setTypography(saved);
+  }
+}
+
+/// T2: snapshot engine.typography → upsert 到 per-book override → close 引擎。
+/// `ref.onDispose` 不支持 await，整个操作 fire-and-forget。
+void _disposeEngineWithPersist(
+  ReaderEngine engine,
+  String bookId,
+  BookTypographyRepository repo,
+) {
+  final snapshot = engine.typography;
+  repo.saveForBook(bookId, snapshot);
+  engine.close();
+}

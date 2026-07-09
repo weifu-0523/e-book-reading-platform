@@ -3,10 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
+import 'package:reader_engine/core/typography_settings.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/models/reading_progress.dart';
 import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/repositories/book_repository.dart';
+import 'package:zhiyue/data/repositories/book_typography_repository.dart';
 import 'package:zhiyue/data/repositories/reading_progress_repository.dart';
 import 'package:zhiyue/features/reader/providers/reader_engine_provider.dart';
 
@@ -51,6 +53,24 @@ class _FakeReadingProgressRepository implements ReadingProgressRepository {
   Future<void> save(ReadingProgress progress) async {}
 }
 
+class _FakeBookTypographyRepository implements BookTypographyRepository {
+  final Map<String, TypographySettings> _storage = {};
+
+  @override
+  Future<TypographySettings?> getForBook(String bookId) async {
+    return _storage[bookId];
+  }
+
+  @override
+  Future<void> saveForBook(String bookId, TypographySettings settings) async {
+    _storage[bookId] = settings;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      super.noSuchMethod(invocation);
+}
+
 void main() {
   test(
       'readerEngineForBookProvider returns ConcreteEpubReaderEngine for epub',
@@ -60,6 +80,9 @@ void main() {
         bookRepositoryProvider.overrideWithValue(_FakeBookRepository()),
         readingProgressRepositoryProvider.overrideWithValue(
           _FakeReadingProgressRepository(),
+        ),
+        bookTypographyRepositoryProvider.overrideWithValue(
+          _FakeBookTypographyRepository(),
         ),
       ],
     );
@@ -79,6 +102,9 @@ void main() {
         bookRepositoryProvider.overrideWithValue(_FakeBookRepository()),
         readingProgressRepositoryProvider.overrideWithValue(
           _FakeReadingProgressRepository(),
+        ),
+        bookTypographyRepositoryProvider.overrideWithValue(
+          _FakeBookTypographyRepository(),
         ),
       ],
     );
@@ -105,6 +131,9 @@ void main() {
       overrides: [
         bookRepositoryProvider.overrideWithValue(_FakeBookRepository()),
         readingProgressRepositoryProvider.overrideWithValue(progressRepo),
+        bookTypographyRepositoryProvider.overrideWithValue(
+          _FakeBookTypographyRepository(),
+        ),
       ],
     );
     addTearDown(container.dispose);
