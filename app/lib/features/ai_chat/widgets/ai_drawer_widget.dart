@@ -54,11 +54,18 @@ class AiDrawerWidget extends ConsumerStatefulWidget {
     required this.bookId,
     required this.chapterIndex,
     required this.wide,
+    this.textStyle,
   });
 
   final String bookId;
   final int chapterIndex;
   final bool wide;
+
+  /// T2 (2026-07-09)：AI 抽屉字体跟随阅读区正文设置。非 null 时用
+  /// [DefaultTextStyle.merge] 套在 body 外层，让所有子 widget 的文字
+  /// （输入框 / 消息列表 / Markdown）默认继承 fontFamily/fontSize/height。
+  /// 默认 null（向后兼容）。
+  final TextStyle? textStyle;
 
   @override
   ConsumerState<AiDrawerWidget> createState() => _AiDrawerWidgetState();
@@ -123,7 +130,9 @@ class _AiDrawerWidgetState extends ConsumerState<AiDrawerWidget> {
 
     return ColoredBox(
       color: Theme.of(context).colorScheme.surface,
-      child: body,
+      child: widget.textStyle == null
+          ? body
+          : DefaultTextStyle.merge(style: widget.textStyle!, child: body),
     );
   }
 }

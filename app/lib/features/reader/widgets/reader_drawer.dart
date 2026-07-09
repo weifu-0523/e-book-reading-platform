@@ -47,6 +47,7 @@ class ReaderDrawer extends ConsumerWidget {
     required this.onSwitchTab,
     required this.onBookmarkJump,
     this.standalone = false,
+    this.textStyle,
   });
 
   final String bookId;
@@ -60,6 +61,12 @@ class ReaderDrawer extends ConsumerWidget {
   /// `engine.gotoLocator` + 关闭抽屉。
   final ValueChanged<BookmarkEntry> onBookmarkJump;
   final bool standalone;
+
+  /// T2 (2026-07-09)：抽屉字体跟随阅读区正文设置。非 null 时用
+  /// [DefaultTextStyle.merge] 套在 Column 外层，让所有子 widget 的
+  /// bodyMedium/bodyLarge 默认继承 fontFamily/fontSize/height。默认 null
+  /// （Material Theme 默认行为，向后兼容现有测试）。
+  final TextStyle? textStyle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,11 +86,14 @@ class ReaderDrawer extends ConsumerWidget {
         break;
     }
 
-    final Widget child = Column(
-      children: [
-        _DrawerTabBar(current: tab, onTap: onSwitchTab),
-        Expanded(child: body),
-      ],
+    final Widget child = DefaultTextStyle.merge(
+      style: textStyle ?? const TextStyle(),
+      child: Column(
+        children: [
+          _DrawerTabBar(current: tab, onTap: onSwitchTab),
+          Expanded(child: body),
+        ],
+      ),
     );
 
     if (standalone) {

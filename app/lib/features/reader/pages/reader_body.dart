@@ -518,6 +518,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             .read(readerUiControllerProvider.notifier)
             .setActiveDrawerTab(tab),
         onBookmarkJump: _onBookmarkJump,
+        textStyle: _readerTextStyle(),
       ),
       onDrawerChanged: (open) {
         // 用户从外部滑出/收起抽屉时同步 UI 状态。
@@ -536,6 +537,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           bookId: widget.bookId,
           chapterIndex: _currentChapterIndex(),
           wide: false,
+          textStyle: _readerTextStyle(),
         ),
       ),
       body: _buildReaderStack(ui),
@@ -609,6 +611,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                                 .read(readerUiControllerProvider.notifier)
                                 .setActiveDrawerTab(tab),
                             onBookmarkJump: _onBookmarkJump,
+                            textStyle: _readerTextStyle(),
                           ),
                         ),
                       ],
@@ -653,6 +656,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                     bookId: widget.bookId,
                     chapterIndex: _currentChapterIndex(),
                     wide: true,
+                    textStyle: _readerTextStyle(),
                   ),
                 ),
               ],
@@ -1369,4 +1373,15 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   };
 
   String _highlightColorToRgba(HighlightColor c) => _highlightColorRgba[c]!;
+
+  /// T2 (2026-07-09): 抽屉字体跟随阅读区设置，让目录/笔记/AI 抽屉的
+  /// 文字与正文字体（family/size/lineHeight）一致。
+  TextStyle? _readerTextStyle() {
+    final t = engine.typography;
+    return TextStyle(
+      fontFamily: t.fontFamily,
+      fontSize: t.fontSize,
+      height: t.lineHeight,
+    );
+  }
 }

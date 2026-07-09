@@ -138,6 +138,39 @@ void main() {
       // T12: empty bookmark list shows '本书暂无书签'.
       expect(find.text('本书暂无书签'), findsOneWidget);
     });
+
+    // T2 (2026-07-09): textStyle 参数应通过 DefaultTextStyle.merge 透传给
+    // 整个抽屉子树，让目录/书签/笔记文字与阅读区正文 family/size/height 一致。
+    testWidgets('passes textStyle to DefaultTextStyle.merge', (tester) async {
+      const style = TextStyle(fontFamily: 'TestFont', fontSize: 20);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: ReaderDrawer(
+                bookId: 'b1',
+                tocBuilder: (_) => const Text('TOC_CONTENT'),
+                notesBuilder: (_) => const Text('NOTES_CONTENT'),
+                onSwitchTab: (_) {},
+                onBookmarkJump: _noopBookmarkJump,
+                textStyle: style,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // 用 TextStyle.merge 后某处 DefaultTextStyle 应携带我们的 style。
+      // Scaffold/MaterialApp 自身会注入默认 DefaultTextStyle，所以用
+      // find.byWidgetPredicate 过滤 fontFamily == 'TestFont' 的那个。
+      final merged = find.byWidgetPredicate(
+        (w) => w is DefaultTextStyle && w.style.fontFamily == 'TestFont',
+      );
+      expect(merged, findsOneWidget);
+      final defaultStyle = tester.widget<DefaultTextStyle>(merged);
+      expect(defaultStyle.style.fontSize, 20);
+    });
   });
 
   group('ReaderDrawer integration', () {
