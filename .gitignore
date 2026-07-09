@@ -75,3 +75,14 @@ app/android/app/keys/keystore.properties
 # M4.6-fix19: 本地构建辅助脚本（含硬编码本地路径 C:\zhiyue / C:\flutter）
 # 仅本机使用，不入库。
 run_build.bat
+
+# === Claude Code 工作目录 + 测试产物 + 临时日志 ===
+# .claude/ : Claude Code 本地配置 / 计划 / 调度任务（每台机器独立，不入库）
+.claude/
+# 根目录临时截图（如 1.png / 2.png，调试时随手粘贴的）；docs/ 下的正式截图保留
+/*.png
+!docs/screenshots/**
+# pub 命令输出重定向产物
+pub_get_output.txt
+# 测试失败产物目录（比 app/test/goldens/failures/ 更宽，覆盖任意包的 failures/）
+**/failures/
