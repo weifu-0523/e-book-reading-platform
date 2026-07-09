@@ -30,6 +30,7 @@ import '../data/repositories/bookmark_repository.dart';
 import '../data/repositories/notes_repository.dart';
 import '../data/repositories/reading_progress_repository.dart';
 import '../data/repositories/settings_repository.dart';
+import '../data/repositories/book_typography_repository.dart';
 import '../data/repositories/typography_profile_repository.dart';
 import '../data/repositories/user_font_repository.dart';
 import '../data/models/typography_profile.dart' as model;
@@ -122,6 +123,11 @@ final libraryControllerProvider =
 final typographyProfileRepositoryProvider =
     Provider<TypographyProfileRepository>((ref) {
   return TypographyProfileRepository(ref.watch(appDatabaseProvider));
+});
+
+final bookTypographyRepositoryProvider =
+    Provider<BookTypographyRepository>((ref) {
+  return BookTypographyRepository(ref.watch(appDatabaseProvider));
 });
 
 final typographyProfileProvider =
