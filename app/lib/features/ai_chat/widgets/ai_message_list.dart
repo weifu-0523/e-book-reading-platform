@@ -19,8 +19,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../../data/local/database.dart';
 
-/// Renders the chat message list. Stateless — messages come from parent
-/// (which observes [ChatSessionController] / [ChatRepository.watchMessages]).
+/// Renders the chat message list. Stateful — auto-scrolls to bottom when new
+/// messages arrive or streaming content updates, while respecting user-pinned
+/// scroll (i.e. user scrolled up to read history).
 ///
 /// Visual contract:
 /// - system messages 居中灰底 pill (no avatar, no alignment)
@@ -28,14 +29,77 @@ import '../../../data/local/database.dart';
 /// - ai messages left-aligned bubble (surfaceContainerHighest)
 /// - [ChatMessage.presetSource] → emoji 标签（📖 / 🦉 / 📋）
 /// - [ChatMessage.attachmentNoteSnapshot] → 琥珀色 blockquote above content
-class AiMessageList extends StatelessWidget {
+///
+/// Auto-scroll contract (2026-07-09 T4):
+/// - messages 数量增加或最后一条 content 变化（流式）时，post-frame jumpTo bottom。
+/// - 若用户距底部 > 80px（pinned 状态），不强制 auto-scroll，让用户能查看历史。
+/// - 首次挂载且 messages 非空时（如切换 session）也滚到底部。
+class AiMessageList extends StatefulWidget {
   const AiMessageList({super.key, required this.messages});
 
   final List<ChatMessage> messages;
 
   @override
+  State<AiMessageList> createState() => _AiMessageListState();
+}
+
+class _AiMessageListState extends State<AiMessageList> {
+  final ScrollController _controller = ScrollController();
+  bool _userPinned = false;
+
+  /// 用户距底部超过 80px 视为 pinned（正在查看历史），不再 auto-scroll。
+  static const double _pinThreshold = 80;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onScrollChanged);
+    // 首次挂载且已有消息（如切换 session）也滚到底部。
+    if (widget.messages.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_controller.hasClients) return;
+        _controller.jumpTo(_controller.position.maxScrollExtent);
+      });
+    }
+  }
+
+  void _onScrollChanged() {
+    if (!_controller.hasClients) return;
+    final max = _controller.position.maxScrollExtent;
+    final pinned = _controller.offset < max - _pinThreshold;
+    if (pinned != _userPinned) {
+      setState(() => _userPinned = pinned);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AiMessageList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 新消息（数量变化）或流式增量（messages.last.content 变化）：
+    // 若用户未 pinned，post-frame 滚到底。
+    final hasNewMessage = widget.messages.length != oldWidget.messages.length;
+    final lastChanged = widget.messages.isNotEmpty &&
+        oldWidget.messages.isNotEmpty &&
+        widget.messages.last.content != oldWidget.messages.last.content;
+    if ((hasNewMessage || lastChanged) && !_userPinned) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_controller.hasClients) return;
+        _controller.jumpTo(_controller.position.maxScrollExtent);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onScrollChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (messages.isEmpty) {
+    if (widget.messages.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -48,16 +112,15 @@ class AiMessageList extends StatelessWidget {
       );
     }
 
-    // 2026-07-08 BUG D: 包一层 SelectionArea 让所有消息（system/user/ai）
-    // 内容都可选中复制。SelectionArea 自动挂 materialTextSelectionControls
-    // 提供 toolbar（复制）。AI 抽屉在 reader Stack 之外，不会与 reader 的
-    // SelectableRegion 冲突。
+    // 2026-07-08 BUG D + 2026-07-09 T1 + T4: SelectionArea 接管选择，
+    // MarkdownBody selectable=false；ListView 加 controller 实现 auto-scroll。
     return SelectionArea(
       child: ListView.builder(
+        controller: _controller,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: messages.length,
+        itemCount: widget.messages.length,
         itemBuilder: (context, i) =>
-            _MessageBubble(message: messages[i]),
+            _MessageBubble(message: widget.messages[i]),
       ),
     );
   }

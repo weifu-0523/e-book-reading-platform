@@ -152,4 +152,91 @@ void main() {
     expect(renderedText, isNot(contains('**')));
     expect(renderedText, isNot(contains('`')));
   });
+
+  testWidgets('auto-scrolls to bottom when new message arrives',
+      (tester) async {
+    // 给 AiMessageList 一个有限高度的容器，让 ListView 有 maxScrollExtent。
+    final messages = <ChatMessage>[
+      ChatMessage(
+        id: 'm1',
+        sessionId: 's',
+        role: 'ai',
+        content: List.filled(20, 'line').join('\n'),
+        createdAt: DateTime(2026, 7, 9),
+        updatedAt: DateTime(2026, 7, 9),
+      ),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+            height: 120, child: AiMessageList(messages: messages)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final scrollBefore = tester.widget<Scrollable>(
+      find.byType(Scrollable),
+    ).controller!;
+    // 初始挂载时已滚到底部。
+    expect(scrollBefore.position.pixels,
+        closeTo(scrollBefore.position.maxScrollExtent, 1));
+
+    // 加一条新消息（仍很长，让 scroll extent 变大）。
+    messages.add(ChatMessage(
+      id: 'm2',
+      sessionId: 's',
+      role: 'ai',
+      content: List.filled(20, 'new').join('\n'),
+      createdAt: DateTime(2026, 7, 9),
+      updatedAt: DateTime(2026, 7, 9),
+    ));
+    await tester.pumpAndSettle();
+
+    final scrollAfter = tester.widget<Scrollable>(
+      find.byType(Scrollable),
+    ).controller!;
+    expect(scrollAfter.position.pixels,
+        closeTo(scrollAfter.position.maxScrollExtent, 1),
+        reason: '新消息到达后应自动滚到底');
+  });
+
+  testWidgets('auto-scrolls on streaming content update (last.content change)',
+      (tester) async {
+    // 流式场景：messages.last.content 增长，长度不变。
+    final messages = <ChatMessage>[
+      ChatMessage(
+        id: 'm1',
+        sessionId: 's',
+        role: 'ai',
+        content: List.filled(10, 'line').join('\n'),
+        createdAt: DateTime(2026, 7, 9),
+        updatedAt: DateTime(2026, 7, 9),
+      ),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+            height: 120, child: AiMessageList(messages: messages)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 模拟流式增量：替换 messages.last 为更长 content（list 长度不变）。
+    messages[0] = ChatMessage(
+      id: 'm1',
+      sessionId: 's',
+      role: 'ai',
+      content: List.filled(40, 'streamed').join('\n'),
+      createdAt: DateTime(2026, 7, 9),
+      updatedAt: DateTime(2026, 7, 9),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollAfter = tester.widget<Scrollable>(
+      find.byType(Scrollable),
+    ).controller!;
+    expect(scrollAfter.position.pixels,
+        closeTo(scrollAfter.position.maxScrollExtent, 1),
+        reason: '流式 content 增长后应自动滚到底');
+  });
 }
