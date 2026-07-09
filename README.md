@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.6.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.6.0-alpha)
+[![Version](https://img.shields.io/badge/version-1.7.1--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.7.1-alpha)
 
 ## 项目状态
 
@@ -16,7 +16,9 @@
 - ✅ **v1.5.0-alpha**：Reader UX Overhaul——修 2 个 P0 bug（高亮不渲染、笔记点击无效）+ 8 项 UX 增强（多输入翻页、全屏模式、合并摘录按钮、宽屏 TOC sidebar、PDF 双页布局、书签系统、margin 调整、chrome 默认可见）。EPUB 双页渲染层留 v1.6。
 - ✅ **v1.5.1-alpha**：Emergency Bug Fix Sweep——v1.5.0-alpha 用户上手测试发现 9 个 bug（翻页/排版/双页/高亮/目录/边距/选择/全屏 ESC/书签）全闭。无新功能，纯 fix sweep。
 - ✅ **v1.6.0-alpha**：阅读体验大修——EPUB **双页对开布局**（M2.9，含每页页码/书脊/孤页处理）+ 段落首行缩进真正生效（em-space 预处理）+ 末页顶部对齐（双页 Row crossAxis 修复）+ 新增 5 款中文字体（黑体/宋体/楷体/普惠体/新晰黑）+ 摘录/书签右键菜单与可见删除/导出按钮 + 摘录工具条跟随选区 + 顶栏书架/字号快捷键挪到时钟左侧。用户两轮反馈共 7 个问题逐一定位修复。
-- 下一步：AI 内容调整（导读/回顾/问答的提示词与交互优化）。
+- ✅ **v1.7.0-alpha**：AI 抽屉重构——5 入口收敛为 1 个统一抽屉（Reader AppBar `smart_toy_outlined`）+ per-book 多会话（`chat_sessions` / `chat_messages` 表）+ 章节级 subagent 隔离契约 + 苏格拉底式追问 + slash 命令（`/new` / `/del` / `/switch`）+ @-note 提及。schema v11→v12 DROP `qa_history`。
+- ✅ **v1.7.1-alpha**：typography 持久化修复——用户报告"调整字体设为默认后退出重开仍恢复预设"的 bug。根因：dispose-time fire-and-forget 被 `exit(0)` 截断。引入 `TypographyPersister` 即时落盘（stream + debounce 500ms），PDF `setTypography` 补 emit state$ 保持契约一致。
+- 下一步：**移动端 MVP 开发**（Android 优先 + iOS CI 后续，同代码库 + `PlatformChromeController` 抽象层；MVP=阅读+AI+WebDAV）。
 
 ## 下载安装
 
