@@ -18,7 +18,6 @@ import 'package:flutter/material.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/navigation/toc.dart';
 
-import '../../../gen_l10n/app_localizations.dart';
 import '../../ai/providers/book_preprocess_controller.dart';
 
 /// 用于为 TocEntry 解析 chapterIndex 的回调（仅 EPUB CFI locator 有此信息）。
@@ -39,10 +38,6 @@ class TocDrawer extends StatelessWidget {
   /// [EpubCfiLocator.chapterIndex]）。仅在 [preprocessState] 非 null 时使用。
   final TocChapterIndexResolver? chapterIndexResolver;
 
-  /// 可选：用户点击“回顾本章”按钮时回调的章节索引（来自
-  /// [chapterIndexResolver]）。为 null 时不渲染按钮。
-  final ValueChanged<int>? onReviewChapter;
-
   /// M4.6/T5 (#2)：PDF 无目录时的缩略图导航 widget。
   /// 调用方（reader_drawer_builders）在 PDF + 空 TOC 时构造 [PdfThumbnailGrid]
   /// 传入。非 null 且 [toc].entries 为空时显示此 widget 替代「本书无目录」文案。
@@ -55,7 +50,6 @@ class TocDrawer extends StatelessWidget {
     required this.onSelect,
     this.preprocessState,
     this.chapterIndexResolver,
-    this.onReviewChapter,
     this.pdfThumbnails,
   });
 
@@ -76,7 +70,6 @@ class TocDrawer extends StatelessWidget {
           onSelect: onSelect,
           preprocessState: preprocessState,
           chapterIndexResolver: chapterIndexResolver,
-          onReviewChapter: onReviewChapter,
         );
       },
     );
@@ -89,7 +82,6 @@ class _TocTile extends StatelessWidget {
   final ValueChanged<TocEntry> onSelect;
   final PreprocessState? preprocessState;
   final TocChapterIndexResolver? chapterIndexResolver;
-  final ValueChanged<int>? onReviewChapter;
 
   const _TocTile({
     required this.entry,
@@ -97,13 +89,11 @@ class _TocTile extends StatelessWidget {
     required this.onSelect,
     this.preprocessState,
     this.chapterIndexResolver,
-    this.onReviewChapter,
   });
 
   @override
   Widget build(BuildContext context) {
     final marker = _buildMarker();
-    final reviewButton = _buildReviewButton(context);
     return ExpansionTile(
       // 2026-07-08 BUG #3 修复：顶层（part-level）目录默认展开，
       // 让用户进入目录就能看到章节列表，不用每个 part 都手动点开。
@@ -116,7 +106,6 @@ class _TocTile extends StatelessWidget {
           children: [
             Expanded(child: Text(entry.title)),
             if (marker != null) marker,
-            if (reviewButton != null) reviewButton,
           ],
         ),
       ),
@@ -127,7 +116,6 @@ class _TocTile extends StatelessWidget {
                 onSelect: onSelect,
                 preprocessState: preprocessState,
                 chapterIndexResolver: chapterIndexResolver,
-                onReviewChapter: onReviewChapter,
               ))
           .toList(),
     );
@@ -159,29 +147,6 @@ class _TocTile extends StatelessWidget {
       );
     }
     return null;
-  }
-
-  /// Renders the “回顾本章” IconButton when [onReviewChapter] is provided
-  /// AND the chapter's index can be resolved. The button is enabled only
-  /// for chapters already in [PreprocessState.summarizedChapters]
-  /// (`onPressed: null` otherwise → Material renders a disabled state).
-  Widget? _buildReviewButton(BuildContext context) {
-    final callback = onReviewChapter;
-    final resolver = chapterIndexResolver;
-    if (callback == null || resolver == null) return null;
-    final idx = resolver(entry);
-    if (idx == null) return null;
-    final l10n = AppLocalizations.of(context);
-    final isSummarized =
-        preprocessState?.summarizedChapters.contains(idx) ?? false;
-    return IconButton(
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(),
-      iconSize: 20,
-      icon: const Icon(Icons.rate_review_outlined),
-      tooltip: l10n?.reviewButtonLabel,
-      onPressed: isSummarized ? () => callback(idx) : null,
-    );
   }
 }
 

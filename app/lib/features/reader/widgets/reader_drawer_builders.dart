@@ -40,12 +40,10 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
     super.key,
     required this.engine,
     required this.bookId,
-    this.onReviewChapter,
   });
 
   final ReaderEngine engine;
   final String bookId;
-  final ValueChanged<int>? onReviewChapter;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -122,7 +120,6 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
           Scaffold.of(context).closeDrawer();
         }
       },
-      onReviewChapter: onReviewChapter,
       pdfThumbnails: pdfThumbnails,
     );
   }

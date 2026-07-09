@@ -503,8 +503,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         tocBuilder: (_) => ReaderTocDrawerWrapper(
           engine: engine,
           bookId: widget.bookId,
-          onReviewChapter:
-              engine is PdfReaderEngine ? null : _onOpenReview,
         ),
         notesBuilder: (_) => ReaderNotesDrawerWrapper(
           chapterTitles: _chapterTitlesCache,
@@ -594,9 +592,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                             tocBuilder: (_) => ReaderTocDrawerWrapper(
                               engine: engine,
                               bookId: widget.bookId,
-                              onReviewChapter: engine is PdfReaderEngine
-                                  ? null
-                                  : _onOpenReview,
                             ),
                             notesBuilder: (_) => ReaderNotesDrawerWrapper(
                               chapterTitles: _chapterTitlesCache,
