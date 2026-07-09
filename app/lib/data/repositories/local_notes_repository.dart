@@ -190,28 +190,31 @@ class LocalNotesRepository implements NotesRepository {
   }
 
   @override
-  Stream<List<Annotation>> watchAnnotations(String bookId) async* {
+  Stream<List<Annotation>> watchAnnotations(String bookId) {
     // M4.6-fix10/A5: 修复首条摘录场景 stream 提前终结的 bug。
     //
     // 旧实现：`await getByBookId(bookId)` 是一次性 Future，noteRow == null 时
     // `yield []; return;` 终结 stream。但 BookNotes 表后续新增（_ensureBookNote）
     // 不会触发重发 → stream 已死 → 首条摘录后 UI 不刷新（要退出书架重进才看到）。
     //
-    // 新实现：用 bookNotesDao.watchByBookId（drift .watch()，底层表变化重发）
+    // 本实现：用 bookNotesDao.watchByBookId（drift .watch()，底层表变化重发）
     // 等待 BookNote 出现，出现后切换到 annotations watchByBookNoteId。
     // BookNote 已存在时：第一次 emit 立即切到 annotations watch（行为同旧实现）。
     // BookNote 不存在时：持续 emit []，直到 BookNote 被创建（首条摘录）后切换。
-    await for (final noteRow in _notesDao.watchByBookId(bookId)) {
+    //
+    // 实现细节（2026-07-10 清理 T5）：改用 asyncExpand 而非 async* + await for。
+    // 旧 async* 版本在 BookNote 不存在时一直阻塞在 await for 循环；当外部 cancel
+    // 订阅时，drift 2.28 的内层 watch 订阅未被干净释放，残留 listener 让测试 isolate
+    // 挂起 30s 超时（notes_repository_test 的 initial-empty case）。asyncExpand 由
+    // stream 组合管理生命周期，cancel 外层会 cancel 内层，桌面/测试行为一致。
+    return _notesDao.watchByBookId(bookId).asyncExpand((noteRow) {
       if (noteRow == null) {
-        yield const <Annotation>[];
-        continue;
+        return Stream.value(const <Annotation>[]);
       }
-      // BookNote 已存在：永久切换到 annotations watch（drift .watch() 持续 emit）
-      yield* _annotationsDao
+      return _annotationsDao
           .watchByBookNoteId(noteRow.id)
           .map((rows) => rows.map(_toAnnotationModel).toList());
-      return;
-    }
+    });
   }
 
   @override
