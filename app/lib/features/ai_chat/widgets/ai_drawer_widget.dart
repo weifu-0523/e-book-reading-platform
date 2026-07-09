@@ -39,9 +39,10 @@ import 'ai_session_dropdown.dart';
 /// avoid provider reads during the build phase.
 ///
 /// [wide] controls the layout shape:
-/// - `true` (default drawer when placed in a wide side panel): constrains
-///   width to 380 px via a wrapping [SizedBox].
-/// - `false` (narrow `Drawer` widget host): fills parent width.
+/// - `true` (wide inline panel in reader_body): width is decided by the
+///   outer [SizedBox] in reader_body (`_aiDrawerWidth`, default 570 px).
+/// - `false` (narrow `Drawer` widget host): width is decided by [Drawer]
+///   default (304 px).
 ///
 /// Error handling: while [ChatSessionState.error] is non-null the message
 /// list is replaced by an [AiEmptyState] showing the error text with a
@@ -116,9 +117,9 @@ class _AiDrawerWidgetState extends ConsumerState<AiDrawerWidget> {
       ],
     );
 
-    if (widget.wide) {
-      body = SizedBox(width: 380, child: body);
-    }
+    // wide=true: width is decided by the outer SizedBox in reader_body
+    // (`_aiDrawerWidth`, default 570 px). No inner constraint here.
+    // wide=false: width is decided by Drawer default (304 px).
 
     return ColoredBox(
       color: Theme.of(context).colorScheme.surface,

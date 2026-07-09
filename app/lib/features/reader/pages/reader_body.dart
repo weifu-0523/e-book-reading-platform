@@ -164,11 +164,12 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   // 2026-07-08：默认展开（宽屏 inline panel；窄屏 endDrawer 不受影响）。
   bool _aiPanelOpen = true;
 
-  // 2026-07-08 BUG A: 宽屏 AI 抽屉宽度可拖动调整。默认 380，范围 [280, 800]。
+  // 2026-07-08 BUG A: 宽屏 AI 抽屉宽度可拖动调整。默认 570（用户反馈 1.5x），
+  // 范围 [280, 800]。
   // _dragStartWidth / _dragStartGlobalX 在 drag start 时记录，update 时
   // width = startWidth - (curX - startX)，往左拖变宽，往右拖变窄。
-  double _aiDrawerWidth = 380;
-  double _dragStartWidth = 380;
+  double _aiDrawerWidth = 570;
+  double _dragStartWidth = 570;
   double _dragStartGlobalX = 0;
   static const double _aiDrawerMinWidth = 280;
   static const double _aiDrawerMaxWidth = 800;

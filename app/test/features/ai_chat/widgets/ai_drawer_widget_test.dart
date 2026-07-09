@@ -155,7 +155,12 @@ void main() {
         reason: 'no new session should be created when one exists');
   });
 
-  testWidgets('wide=true constrains width to 380', (tester) async {
+  testWidgets('wide=true does not impose a fixed inner width',
+      (tester) async {
+    // 2026-07-09 T7: inner SizedBox(width:380) was removed so the outer
+    // SizedBox in reader_body (_aiDrawerWidth, default 570) decides the
+    // actual width. Wrap in SizedBox here to mimic real usage and avoid
+    // unbounded-width layout failure (AiPresetCardRow has Expanded children).
     final repo = _FakeRepo();
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
@@ -168,7 +173,11 @@ void main() {
         home: Scaffold(
           body: Row(
             children: [
-              AiDrawerWidget(bookId: 'b1', chapterIndex: 0, wide: true),
+              SizedBox(
+                width: 570,
+                child: AiDrawerWidget(
+                    bookId: 'b1', chapterIndex: 0, wide: true),
+              ),
             ],
           ),
         ),
@@ -178,7 +187,8 @@ void main() {
 
     final widget = tester.widget<AiDrawerWidget>(find.byType(AiDrawerWidget));
     expect(widget.wide, isTrue);
-    // Find a SizedBox with width 380 in the tree below AiDrawerWidget.
+    // No SizedBox with the legacy fixed width 380 should be present in the
+    // subtree (otherwise the outer 570 wrapper would be overridden).
     final sizeBoxes = find
         .descendant(
           of: find.byType(AiDrawerWidget),
@@ -187,7 +197,10 @@ void main() {
           ),
         )
         .evaluate();
-    expect(sizeBoxes.isNotEmpty, isTrue,
-        reason: 'wide mode should constrain width to 380');
+    expect(sizeBoxes, isEmpty,
+        reason: 'wide mode must not wrap inner SizedBox(width:380); '
+            'outer SizedBox decides width');
+    // Smoke check: widget still renders.
+    expect(find.byType(AiDrawerWidget), findsOneWidget);
   });
 }
