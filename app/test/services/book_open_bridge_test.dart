@@ -23,9 +23,17 @@ void main() {
       expect(BookOpenBridge.isSupportedBookPath('C:\\docs\\paper.pdf'), isTrue);
     });
 
+    test('accepts .md / .markdown / .mdown / .txt paths (M4.5)', () {
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/notes.md'), isTrue);
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/notes.markdown'), isTrue);
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/notes.mdown'), isTrue);
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/readme.txt'), isTrue);
+    });
+
     test('rejects non-book extensions', () {
-      expect(BookOpenBridge.isSupportedBookPath('/tmp/readme.txt'), isFalse);
       expect(BookOpenBridge.isSupportedBookPath('/tmp/image.png'), isFalse);
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/doc.docx'), isFalse);
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/archive.zip'), isFalse);
       expect(BookOpenBridge.isSupportedBookPath('/tmp/'), isFalse);
     });
 
@@ -37,6 +45,8 @@ void main() {
     test('case-insensitive on extensions', () {
       expect(BookOpenBridge.isSupportedBookPath('/tmp/BOOK.EPUB'), isTrue);
       expect(BookOpenBridge.isSupportedBookPath('/tmp/Paper.PDF'), isTrue);
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/Notes.MD'), isTrue);
+      expect(BookOpenBridge.isSupportedBookPath('/tmp/Readme.TXT'), isTrue);
     });
   });
 
