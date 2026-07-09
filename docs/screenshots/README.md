@@ -3,17 +3,16 @@
 This directory hosts Windows release-build screenshots used in the root
 `README.md` and the Gitee Release attachments.
 
-## Current state (2026-07-03, M2.5 后)
+## Current state (2026-07-10, v1.7.0-alpha 后深度清理确认)
 
 | File          | On disk      | Captured in | Notes |
 |---------------|-------------|-------------|-------|
-| `epub_reader.png` | present (2208x1200) | M8 T14 (`bfee397`) | 老 M8 截图，未含 M2.5 sidebar/fullscreen/dual-page，需重捕 |
+| `epub_reader.png` | present (2208x1200) | M8 T14 (`bfee397`) | 老 M8 截图，未含 M2.5+ sidebar/fullscreen/dual-page/typography 修改，需重捕 |
 | `library.png`     | present | v1.4.0-alpha | M2.5 引入 sidebar 后过时，需重捕 |
 | `pdf_reader.png`  | **missing** | — | README.md:39 渲染为 broken-image，必须补 |
 | `notes.png`       | **missing** | — | README.md:39 渲染为 broken-image，必须补 |
 
-**v1.5.0-alpha 必做**：重捕全部 4 张（M2.5 改了 reader UX 全部布局）。
-至少补齐 `pdf_reader.png` 和 `notes.png`，否则 README 公开页面显示 broken image。
+**深度清理结论（2026-07-10）**：截图状态自 2026-07-03 起未变，`pdf_reader.png` + `notes.png` 仍缺失。Claude 不能替代用户手动截图（需 Windows release 运行 + 真实书籍 + Win+Shift+S）。留待用户下次发版前补齐。README broken-image 是已知 pre-existing 问题，不阻塞当前清理节点。
 
 ## What each pending screenshot should show
 
