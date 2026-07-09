@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/features/ai_chat/widgets/ai_message_list.dart';
@@ -127,5 +128,28 @@ void main() {
     expect(find.text('first'), findsOneWidget);
     expect(find.text('second'), findsOneWidget);
     expect(find.text('third'), findsOneWidget);
+  });
+
+  testWidgets('ai message renders markdown (bold + code)', (tester) async {
+    final messages = [
+      _msg(id: 'm1', role: 'ai', content: '**bold** and `code`'),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: AiMessageList(messages: messages)),
+    ));
+    await tester.pump();
+    expect(find.byType(MarkdownBody), findsOneWidget);
+    // flutter_markdown 把整段渲染成一个 RichText（多 InlineSpan 拼接），
+    // 所以用 find.text 找不到独立的 'bold' Text 节点；改为通过 RichText
+    // 的 text span tree 验证渲染结果。
+    final richTexts = tester.widgetList<RichText>(find.byType(RichText));
+    final renderedText = richTexts
+        .map((rt) => rt.text.toPlainText())
+        .join('\n');
+    expect(renderedText, contains('bold'));
+    expect(renderedText, contains('code'));
+    // 原始 markdown 符号不应出现在最终渲染的纯文本里
+    expect(renderedText, isNot(contains('**')));
+    expect(renderedText, isNot(contains('`')));
   });
 }

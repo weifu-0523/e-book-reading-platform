@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../../data/local/database.dart';
 
@@ -135,10 +136,28 @@ class _MessageBubble extends StatelessWidget {
                   style: const TextStyle(fontStyle: FontStyle.italic),
                 ),
               ),
-            Text(
-              message.content,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            if (isUser)
+              Text(
+                message.content,
+                style: Theme.of(context).textTheme.bodyMedium,
+              )
+            else
+              // 2026-07-09 BUG 1: AI 回复按 markdown 渲染（粗体/代码块/列表等）。
+              // selectable: false 因为外层 SelectionArea 已接管选择，
+              // 嵌套 selectableText 会冲突。
+              MarkdownBody(
+                data: message.content,
+                selectable: false,
+                styleSheet:
+                    MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                  p: Theme.of(context).textTheme.bodyMedium,
+                  code: TextStyle(
+                    fontFamily: 'monospace',
+                    backgroundColor:
+                        Theme.of(context).colorScheme.surfaceContainer,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
