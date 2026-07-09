@@ -110,4 +110,69 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('arrow keys do NOT paginate when EditableText is focused',
+      (tester) async {
+    // T6 (2026-07-09): 阅读区方向键翻页通过 HardwareKeyboard 全局监听，
+    // 但 EditableText 聚焦时应让出方向键给文本编辑（移动光标）。
+    int prevCalls = 0;
+    int nextCalls = 0;
+    final textFieldFocusNode = FocusNode();
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+      home: Scaffold(
+        body: ReaderScaffold(
+          content: TextField(focusNode: textFieldFocusNode),
+          onTapPrev: () => prevCalls++,
+          onTapNext: () => nextCalls++,
+          title: 't',
+        ),
+      ),
+    )));
+    // 先 pump 让 ReaderScaffold 的 PostFrameCallback 跑完（初始获焦）。
+    await tester.pump();
+    // 再显式让 TextField 获焦（模拟用户点输入框）。
+    textFieldFocusNode.requestFocus();
+    await tester.pump();
+    // sanity: TextField 拿到焦点（primaryFocus 应在 EditableText 内部）。
+    final primary = FocusManager.instance.primaryFocus;
+    expect(
+      primary?.context?.findAncestorWidgetOfExactType<EditableText>(),
+      isNotNull,
+      reason: 'TextField should be focused for this test',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+
+    expect(prevCalls, 0, reason: 'EditableText focused → 不应触发 prev');
+    expect(nextCalls, 0, reason: 'EditableText focused → 不应触发 next');
+  });
+
+  testWidgets('arrow keys DO paginate when no EditableText focused',
+      (tester) async {
+    // 对照组：非 EditableText 聚焦时，方向键仍翻页（M2.8/B1-fix 行为）。
+    int prevCalls = 0;
+    int nextCalls = 0;
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+      home: Scaffold(
+        body: ReaderScaffold(
+          content: const Text('reader content'),
+          onTapPrev: () => prevCalls++,
+          onTapNext: () => nextCalls++,
+          title: 't',
+        ),
+      ),
+    )));
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pump();
+
+    expect(nextCalls, greaterThan(0), reason: 'arrowRight 应翻页');
+    expect(prevCalls, greaterThan(0), reason: 'arrowLeft 应翻页');
+  });
 }

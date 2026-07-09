@@ -193,9 +193,22 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
   bool _handleHardwareKeyEvent(KeyEvent event) {
     if (!mounted) return false;
     if (event is! KeyDownEvent) return false;
+    // 2026-07-09 BUG 6: 当任何 EditableText（如 AI 抽屉的输入框）聚焦时，
+    // 方向键交给文本编辑（移动光标），reader 不翻页。HardwareKeyboard 是
+    // 全局监听（M2.8/B1-fix 绕过 Focus 树），所以这里要显式检查 primaryFocus。
+    if (_isEditableTextFocused()) return false;
     final result = _handleKeyEvent(event);
     // handled → 返回 true 阻止 Focus 树重复处理；ignored → false 让其继续
     return result == KeyEventResult.handled;
+  }
+
+  /// 检查当前 primaryFocus 是否在 EditableText（TextField/TextFormField 等可
+  /// 编辑文本 widget）内部。如是，方向键/PgUp/PgDn 等按键应交给编辑器处理
+  /// （移动光标、翻页选词），不触发阅读界面翻页。
+  bool _isEditableTextFocused() {
+    final primary = FocusManager.instance.primaryFocus;
+    if (primary == null) return false;
+    return primary.context?.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
   @override
