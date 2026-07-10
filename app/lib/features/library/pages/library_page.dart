@@ -427,13 +427,18 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     final res = result;
     if (res == null) return;
 
+    final SnackBarAction? openFolderAction =
+        (!Platform.isAndroid && !Platform.isIOS)
+            ? SnackBarAction(
+                label: l10n.batchExportOpenFolder,
+                onPressed: () => _openFolder(dirPath),
+              )
+            : null;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(_summarizeBatchResult(l10n, res, dirPath)),
-        action: SnackBarAction(
-          label: l10n.batchExportOpenFolder,
-          onPressed: () => _openFolder(dirPath),
-        ),
+        action: openFolderAction,
       ),
     );
   }
