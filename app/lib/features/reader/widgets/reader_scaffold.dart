@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 
+import '../../../core/platform_info.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../controllers/reader_ui_controller.dart';
 import 'reader_clock.dart';
@@ -161,6 +162,20 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
   /// 移动端无鼠标，onEnter/onExit 永不触发，箭头不显示，行为不变。
   bool _hoverLeft = false;
   bool _hoverRight = false;
+
+  /// S2/T5 (UX-A)：mobile chrome tap-toggle 的 down 指针位置。
+  ///
+  /// 非 null 表示当前有进行中的指针序列（pointerDown 已触发但 up/cancel 未到）。
+  /// onPointerUp 时计算 down→up 距离，超过阈值（[_chromeToggleDragThresholdPx]）
+  /// 视为翻页滑动，不触发 chrome 切换。
+  Offset? _chromeToggleDownPosition;
+
+  /// S2/T5 (UX-A)：判定为 tap（非 drag）的最大 down→up 位移。
+  ///
+  /// 18px 是经验值：低于此值的 down→up 几乎只能是手指轻微抖动；翻页滑动
+  /// 通常远超此阈值（如 [ReaderScaffold.dragVelocityThreshold] 对应的
+  /// 200ms / 300px 滑动 = 600+px 位移）。
+  static const double _chromeToggleDragThresholdPx = 18.0;
 
   @override
   void initState() {
@@ -307,10 +322,70 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
 
             // Chrome 覆盖层（AppBar + actions）。
             if (ui.chromeVisible) _buildChrome(context),
+
+            // S2/T5 (UX-A)：mobile chrome tap-toggle Listener。
+            // 位于 Stack 最顶层，覆盖整个屏幕。仅移动端挂载（桌面端依赖
+            // hover 与全屏切换图标，无需 tap-toggle）。
+            if (PlatformInfo.isMobile) _buildChromeToggleListener(),
           ],
         ),
       ),
     );
+  }
+
+  /// S2/T5 (UX-A)：构建 mobile-only 的 chrome tap-toggle Listener。
+  ///
+  /// **设计要点（hit-test race condition 处理）**：
+  ///
+  /// Listener 用 [HitTestBehavior.translucent] 挂在 Stack 顶层，所有指针
+  /// 事件先到本 Listener，再继续分发到下层（SelectableRegion / AppBar /
+  /// 翻页 zone）。Listener 不参与 gesture arena，所以 AppBar 的 IconButton
+  /// 仍能正常消费 tap。
+  ///
+  /// **避免与 IconButton 双发**：当 chrome 可见时，AppBar 覆盖屏幕顶部
+  /// （高度 = [MediaQueryData.padding.top] + [kToolbarHeight]）。本方法在
+  /// onPointerUp 中检查 up 位置是否落在 AppBar 区域内：是则跳过 toggle，
+  /// 让 AppBar 内的 IconButton（如目录/笔记/AI/全屏）独享 tap。
+  ///
+  /// **避免与翻页 drag 冲突**：onPointerDown 记录起始位置，onPointerUp
+  /// 计算 down→up 距离；超过 [_chromeToggleDragThresholdPx] 视为滑动，
+  /// 不 toggle（让 [_handleDragEnd] 接管翻页）。
+  Widget _buildChromeToggleListener() {
+    return Positioned.fill(
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) {
+          _chromeToggleDownPosition = event.position;
+        },
+        onPointerUp: (event) => _handleChromeTogglePointerUp(event),
+        onPointerCancel: (_) {
+          _chromeToggleDownPosition = null;
+        },
+      ),
+    );
+  }
+
+  /// S2/T5 (UX-A)：根据 pointerUp 事件决定是否 toggle chrome。
+  void _handleChromeTogglePointerUp(PointerUpEvent event) {
+    final down = _chromeToggleDownPosition;
+    _chromeToggleDownPosition = null;
+    if (down == null) return;
+
+    // (1) Drag threshold：位移超过阈值视为翻页滑动，不 toggle。
+    if ((event.position - down).distance > _chromeToggleDragThresholdPx) {
+      return;
+    }
+
+    // (2) AppBar 区域豁免：chrome 可见时，AppBar 在顶部消费 tap。
+    // tap 落在 AppBar 高度内 → 让 IconButton 独享，避免双发。
+    final ui = ref.read(readerUiControllerProvider);
+    if (ui.chromeVisible) {
+      final mediaQuery = MediaQuery.of(context);
+      final appBarBottom = mediaQuery.padding.top + kToolbarHeight;
+      if (event.position.dy <= appBarBottom) return;
+    }
+
+    ref.read(readerUiControllerProvider.notifier).toggleChrome();
   }
 
   /// M2.6/T9：中央 double-tap 触发的 chrome 切换。

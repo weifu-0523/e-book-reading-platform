@@ -17,7 +17,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderBox, SelectedContent;
 import 'package:flutter/services.dart';
@@ -687,19 +686,18 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           // Paginator 分页正确，文字不再被遮。PDF 走 pdfrx 整页缩放，剩余
           // 高度减小只会让页略缩小，不会被遮挡，反而更准确。
           GestureDetector(
-            // T9 mobile tap-to-toggle: mobile 无 hover，单次点击阅读区切换 chrome 显隐。
-            // translucent 让底层 SelectableRegion 与 ReaderScaffold 的翻页/拖拽手势
-            // 仍能正常接收事件。桌面端此 detector 不注册 onTap，hover 行为不变。
-          //
-          // 接线契约（onTap = _isDesktopPlatform ? null : toggleChrome）只在 controller
-          // 层验证（test/features/reader/pages/reader_body_tap_toggle_test.dart 覆盖
-          // toggleChrome 行为）。完整 pump ReaderBody 需要 mock ReaderEngine /
-          // notesController / bookRepository 等，推 S2 AI 适配时一并做。
-            onTap: _isDesktopPlatform
-                ? null
-                : () => ref
-                    .read(readerUiControllerProvider.notifier)
-                    .toggleChrome(),
+            // S2/T5 (UX-A)：mobile chrome tap-toggle 已迁移到 ReaderScaffold
+            // 的 Stack 顶层 Listener（见 reader_scaffold._buildChromeToggleListener）。
+            // 原 GestureDetector.onTap = toggleChrome 的方案有缺陷：body 的
+            // GestureDetector 在 SelectableRegion 之内，AppBar 区域的 tap 被吞
+            // 无法 toggle 隐藏。此处保留 GestureDetector 仅作为容器（child
+            // Padding → SelectableRegion），onTap 永远 null。
+            //
+            // controller 层的 toggleChrome 行为由
+            // test/features/reader/pages/reader_body_tap_toggle_test.dart 覆盖；
+            // widget 层的 tap-toggle 行为由
+            // test/features/reader/widgets/reader_scaffold_chrome_toggle_test.dart 覆盖。
+            onTap: null,
             behavior: HitTestBehavior.translucent,
             child: Padding(
               padding: const EdgeInsets.only(bottom: kReaderProgressBarHeight),
@@ -856,14 +854,6 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   /// 读取当前可用宽度，>=1100 视为宽屏。
   bool _isWideScreen(BuildContext context) {
     return MediaQuery.of(context).size.width >= kDesktopDualPageBreakpoint;
-  }
-
-  /// T9：当前运行平台是否为桌面（Windows / macOS / Linux）。
-  /// 移动端无 hover，单次点击阅读区切换 chrome 显隐；桌面保留 hover 行为不变。
-  bool get _isDesktopPlatform {
-    return defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux;
   }
 
   Future<void> _onAnnotationTap(String id) async {
