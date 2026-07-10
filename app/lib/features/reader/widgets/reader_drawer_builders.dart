@@ -20,10 +20,12 @@ import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 
+import '../../../core/providers.dart';
 import '../../../core/widgets/error_view.dart';
 import '../../../core/widgets/loading_view.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
+import '../../notes/pages/note_edit_page.dart';
 import '../providers/notes_controller.dart';
 import 'notes_drawer.dart';
 import 'pdf_thumbnail_grid.dart';
@@ -133,6 +135,7 @@ class ReaderTocDrawerWrapper extends ConsumerWidget {
 class ReaderNotesDrawerWrapper extends ConsumerWidget {
   const ReaderNotesDrawerWrapper({
     super.key,
+    required this.bookId,
     required this.chapterTitles,
     required this.onAnnotationTap,
     required this.onAnnotationLongPress,
@@ -142,6 +145,7 @@ class ReaderNotesDrawerWrapper extends ConsumerWidget {
     this.onAnnotationDelete,
   });
 
+  final String bookId;
   final Map<int, String> chapterTitles;
   final ValueChanged<String> onAnnotationTap;
   final ValueChanged<String> onAnnotationLongPress;
@@ -156,17 +160,43 @@ class ReaderNotesDrawerWrapper extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notesAsync = ref.watch(notesControllerProvider);
+    // Bug #3 (2026-07-10)：监听本书的自由笔记，渲染在 annotations 上方。
+    final freeformAsync =
+        ref.watch(freeformNotesRepositoryProvider.watchForBook(bookId));
     return notesAsync.when(
-      data: (s) => NotesDrawerContent(
-        annotations: s.annotations,
-        chapterTitles: chapterTitles,
-        onTap: onAnnotationTap,
-        onLongPress: onAnnotationLongPress,
-        onClose: () => Navigator.of(context).maybePop(),
-        onSecondaryTapDown: onAnnotationSecondaryTapDown,
-        onEdit: onAnnotationEdit,
-        onExport: onAnnotationExport,
-        onDelete: onAnnotationDelete,
+      data: (s) => freeformAsync.when(
+        data: (freeform) => NotesDrawerContent(
+          annotations: s.annotations,
+          chapterTitles: chapterTitles,
+          onTap: onAnnotationTap,
+          onLongPress: onAnnotationLongPress,
+          onClose: () => Navigator.of(context).maybePop(),
+          onSecondaryTapDown: onAnnotationSecondaryTapDown,
+          onEdit: onAnnotationEdit,
+          onExport: onAnnotationExport,
+          onDelete: onAnnotationDelete,
+          freeformNotes: freeform,
+          onCreateFreeformNote: () {
+            // 关闭抽屉后跳转编辑页，避免视觉堆叠。
+            Navigator.of(context).maybePop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => NoteEditPage(bookId: bookId),
+              ),
+            );
+          },
+          onOpenFreeformNote: (id) {
+            Navigator.of(context).maybePop();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => NoteEditPage(bookId: bookId, noteId: id),
+              ),
+            );
+          },
+        ),
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(
+            message: AppLocalizations.of(context)!.notesLoadFailed),
       ),
       loading: () => const LoadingView(),
       error: (e, _) =>

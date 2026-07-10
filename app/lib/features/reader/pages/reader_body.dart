@@ -507,6 +507,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           bookId: widget.bookId,
         ),
         notesBuilder: (_) => ReaderNotesDrawerWrapper(
+          bookId: widget.bookId,
           chapterTitles: _chapterTitlesCache,
           onAnnotationTap: (id) => _onAnnotationTap(id),
           onAnnotationLongPress: (id) => _onAnnotationLongPress(id),
@@ -599,6 +600,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                               bookId: widget.bookId,
                             ),
                             notesBuilder: (_) => ReaderNotesDrawerWrapper(
+                              bookId: widget.bookId,
                               chapterTitles: _chapterTitlesCache,
                               onAnnotationTap: (id) => _onAnnotationTap(id),
                               onAnnotationLongPress: (id) =>
