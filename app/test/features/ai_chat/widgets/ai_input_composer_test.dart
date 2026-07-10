@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +36,12 @@ class _FakeController extends ChatSessionController {
   String? lastAttachmentId;
   String? lastAttachmentSnap;
 
+  /// When non-null, sendMessage waits on this completer before returning,
+  /// simulating the LLM streaming delay that production code awaits via
+  /// `.last`. Used by the "clear input immediately" regression test for
+  /// Bug #2 (2026-07-10).
+  Completer<void>? pendingSend;
+
   @override
   Future<void> sendMessage({
     required String text,
@@ -44,6 +52,9 @@ class _FakeController extends ChatSessionController {
     lastText = text;
     lastAttachmentId = attachmentNoteId;
     lastAttachmentSnap = attachmentSnapshot;
+    if (pendingSend != null) {
+      await pendingSend!.future;
+    }
   }
 }
 
@@ -157,6 +168,31 @@ void main() {
         reason: 'Shift+Enter should NOT trigger sendMessage');
     expect(find.text('world'), findsOneWidget,
         reason: 'Shift+Enter should NOT clear input (only _onSend clears)');
+  });
+
+  // Bug #2 regression (2026-07-10): sendMessage awaits `.last` of LLM stream,
+  // which can take seconds. _onSend must clear input BEFORE the await, not
+  // after — otherwise user sees their text lingering in the input field for
+  // the entire streaming duration.
+  testWidgets('Bug #2: clears input immediately even if sendMessage pending',
+      (tester) async {
+    fakeController.pendingSend = Completer<void>();
+    await pumpComposer(tester);
+    await tester.enterText(find.byType(TextField), 'slow response');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+
+    expect(fakeController.sendMessageCount, 1);
+    expect(fakeController.lastText, 'slow response');
+    expect(find.text('slow response'), findsNothing,
+        reason: 'Input must be cleared before sendMessage completes');
+    // Verify sendMessage is still pending (not yet returned).
+    expect(fakeController.pendingSend!.isCompleted, isFalse);
+
+    // Release the pending send to avoid hanging the test.
+    fakeController.pendingSend!.complete();
+    await tester.pump();
   });
 }
 

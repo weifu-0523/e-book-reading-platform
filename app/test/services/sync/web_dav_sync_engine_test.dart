@@ -116,6 +116,70 @@ void main() {
     expect(written, contains('"id":"new"'));
   });
 
+  // Bug #1 regression (2026-07-10): jianguoyun WebDAV returns 409
+  // AncestorsNotFound when PUT targets a file whose parent directory doesn't
+  // exist. pushOnly must call ensureAncestors before the first PUT (when
+  // getString returns 404), but skip it on subsequent pushes (when
+  // getString returns 200/empty).
+  group('Bug #1: ensureAncestors on first push', () {
+    test('calls ensureAncestors when snapshot file does not exist (404)',
+        () async {
+      when(() => webdav.getString(any())).thenThrow(
+          WebDavException(404, '/zhiyue/snapshots/device-A.jsonl', 'not found'));
+      when(() => webdav.ensureAncestors(any())).thenAnswer((_) async {});
+      when(() => webdav.putString(any(), any())).thenAnswer((_) async {});
+
+      await outbox.enqueue(
+        recordId: 'a1',
+        recordType: 'annotation',
+        payloadJson:
+            '{"id":"a1","type":"annotation","mtime":"2026-06-28T10:00:00.000Z","deleted":false,"payload":{}}',
+      );
+
+      await engine.pushOnly();
+
+      final captured =
+          verify(() => webdav.ensureAncestors(captureAny())).captured;
+      expect(captured, ['/zhiyue/snapshots/device-A.jsonl']);
+    });
+
+    test('does NOT call ensureAncestors when snapshot file already exists',
+        () async {
+      when(() => webdav.getString(any())).thenAnswer((_) async => '');
+      when(() => webdav.putString(any(), any())).thenAnswer((_) async {});
+
+      await outbox.enqueue(
+        recordId: 'a1',
+        recordType: 'annotation',
+        payloadJson:
+            '{"id":"a1","type":"annotation","mtime":"2026-06-28T10:00:00.000Z","deleted":false,"payload":{}}',
+      );
+
+      await engine.pushOnly();
+
+      verifyNever(() => webdav.ensureAncestors(any()));
+    });
+
+    test('non-404 getString error still propagates after ensureAncestors',
+        () async {
+      when(() => webdav.getString(any())).thenThrow(
+          WebDavException(403, '/zhiyue/snapshots/device-A.jsonl', 'forbidden'));
+      when(() => webdav.ensureAncestors(any())).thenAnswer((_) async {});
+      when(() => webdav.putString(any(), any())).thenAnswer((_) async {});
+
+      await outbox.enqueue(
+        recordId: 'a1',
+        recordType: 'annotation',
+        payloadJson:
+            '{"id":"a1","type":"annotation","mtime":"2026-06-28T10:00:00.000Z","deleted":false,"payload":{}}',
+      );
+
+      // 403 is rethrown, never reaches ensureAncestors path.
+      expect(engine.pushOnly(), throwsA(isA<WebDavException>()));
+      verifyNever(() => webdav.ensureAncestors(any()));
+    });
+  });
+
   group('pull', () {
     test('fetches all device files and applies with last-write-wins', () async {
       // Setup: device-A has nothing remote, device-B has 1 annotation.

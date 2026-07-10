@@ -98,6 +98,51 @@ class WebDavClient {
     }
   }
 
+  /// MKCOL a directory. Idempotent — succeeds silently if the directory
+  /// already exists.
+  ///
+  /// Status code semantics (RFC 4918 §9.3 + jianguoyun observed behavior):
+  /// - 201 Created: directory created
+  /// - 200 OK: rare, but some servers return this on MKCOL
+  /// - 405 Method Not Allowed: directory already exists (RFC 4918 §9.3)
+  ///
+  /// Any other status throws [WebDavException]. Notably 409 (AncestorsNotFound)
+  /// means the parent path doesn't exist — callers should ensure parents first
+  /// via [ensureAncestors].
+  Future<void> mkcol(String path) async {
+    final request = http.Request('MKCOL', _uri(path))
+      ..headers['authorization'] = _authHeader['authorization']!;
+    final response = await _httpClient.send(request);
+    final body = await response.stream.bytesToString();
+    final status = response.statusCode;
+    if (status != 201 && status != 200 && status != 405) {
+      throw WebDavException(status, path, body);
+    }
+  }
+
+  /// Ensure every ancestor directory of [filePath] exists. [filePath] is a
+  /// full remote path like `/zhiyue/snapshots/device.jsonl`; this MKCOLs
+  /// `/zhiyue` and `/zhiyue/snapshots` (every directory segment except the
+  /// trailing file name), in order from root outward.
+  ///
+  /// Workaround for jianguoyun WebDAV returning 409 AncestorsNotFound when
+  /// PUT targets a file whose parent directory doesn't exist (Bug #1,
+  /// 2026-07-10). Unlike Nextcloud / ownCloud, jianguoyun does not auto-create
+  /// parent directories on PUT.
+  ///
+  /// Idempotent: each MKCOL succeeds silently if the directory already
+  /// exists (405). Safe to call before every PUT if you don't want to track
+  /// "first push" state, at the cost of extra round-trips.
+  Future<void> ensureAncestors(String filePath) async {
+    final segments = filePath.split('/').where((s) => s.isNotEmpty).toList();
+    if (segments.length <= 1) return;
+    var path = '';
+    for (final seg in segments.take(segments.length - 1)) {
+      path += '/$seg';
+      await mkcol(path);
+    }
+  }
+
   void _ensureOk(int status, String path, String body) {
     if (status < 200 || status >= 300) {
       throw WebDavException(status, path, body);

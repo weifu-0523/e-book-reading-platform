@@ -237,16 +237,25 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
   Future<void> _onSend() async {
     final text = _controller.text.trim();
     if (text.isEmpty && _pendingAttachment == null) return;
-    await ref.read(chatSessionControllerProvider(widget.bookId).notifier).sendMessage(
-          text: text,
-          attachmentNoteId: _pendingAttachment?.id,
-          attachmentSnapshot: _pendingAttachment?.content,
-        );
+
+    // Capture attachment locally, then clear input IMMEDIATELY before the
+    // await on sendMessage. sendMessage awaits `.last` of the LLM streaming
+    // response, which can take seconds to tens of seconds — clearing after
+    // the await left the user's text lingering in the input field for the
+    // entire streaming duration (Bug #2 user report 2026-07-10).
+    final attachmentId = _pendingAttachment?.id;
+    final attachmentContent = _pendingAttachment?.content;
     _controller.clear();
     setState(() {
       _pendingAttachment = null;
       _showSlashPopup = false;
     });
+
+    await ref.read(chatSessionControllerProvider(widget.bookId).notifier).sendMessage(
+          text: text,
+          attachmentNoteId: attachmentId,
+          attachmentSnapshot: attachmentContent,
+        );
   }
 
   Future<void> _handleSlash(String command) async {

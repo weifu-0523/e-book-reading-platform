@@ -99,4 +99,73 @@ void main() {
       expect(files, containsAll(['device-a.jsonl', 'device-b.jsonl']));
     });
   });
+
+  group('mkcol', () {
+    test('issues MKCOL with basic auth', () async {
+      String? capturedMethod;
+      String? capturedUrl;
+      final mock = MockClient((request) async {
+        capturedMethod = request.method;
+        capturedUrl = request.url.toString();
+        return http.Response('', 201);
+      });
+      client = build(mock);
+      await client.mkcol('/zhiyue');
+      expect(capturedMethod, 'MKCOL');
+      expect(capturedUrl, 'https://dav.jianguoyun.com/dav/user@example.com/zhiyue');
+    });
+
+    test('idempotent: 405 (already exists) does not throw', () async {
+      final mock = MockClient((request) async => http.Response('', 405));
+      client = build(mock);
+      await expectLater(client.mkcol('/zhiyue'), completes);
+    });
+
+    test('throws on 409 AncestorsNotFound', () async {
+      final mock = MockClient((request) async =>
+          http.Response('<?xml version="1.0"?><d:error xmlns:d="DAV:"/>', 409));
+      client = build(mock);
+      expect(() => client.mkcol('/zhiyue'), throwsA(isA<WebDavException>()));
+    });
+  });
+
+  group('ensureAncestors', () {
+    test('MKCOLs every directory segment except the file name', () async {
+      final capturedPaths = <String>[];
+      final mock = MockClient((request) async {
+        capturedPaths.add(request.url.path);
+        return http.Response('', 201);
+      });
+      client = build(mock);
+      await client.ensureAncestors('/zhiyue/snapshots/dev1.jsonl');
+      // Two MKCOLs: /zhiyue and /zhiyue/snapshots. The .jsonl file is NOT
+      // included (it's the file, not a directory).
+      expect(capturedPaths, [
+        '/dav/user@example.com/zhiyue',
+        '/dav/user@example.com/zhiyue/snapshots',
+      ]);
+    });
+
+    test('idempotent: existing dirs (405) do not abort the loop', () async {
+      final capturedPaths = <String>[];
+      final mock = MockClient((request) async {
+        capturedPaths.add(request.url.path);
+        return http.Response('', 405);
+      });
+      client = build(mock);
+      await client.ensureAncestors('/zhiyue/snapshots/dev1.jsonl');
+      expect(capturedPaths, hasLength(2));
+    });
+
+    test('single-segment path is a no-op', () async {
+      var callCount = 0;
+      final mock = MockClient((request) async {
+        callCount++;
+        return http.Response('', 201);
+      });
+      client = build(mock);
+      await client.ensureAncestors('/file.jsonl');
+      expect(callCount, 0);
+    });
+  });
 }

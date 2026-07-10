@@ -65,11 +65,19 @@ class WebDavSyncEngine implements SyncEngine {
     }
 
     String existing = '';
+    var firstPush = false;
     try {
       existing = await _rateLimiter.run(() => webdav.getString(_snapshotPath));
     } on WebDavException catch (e) {
       if (e.statusCode != 404) rethrow;
-      // 404 = file doesn't exist yet, treat as empty
+      // 404 = file doesn't exist yet, treat as empty.
+      // Also means the parent directory may not exist either (jianguoyun
+      // does NOT auto-create parents on PUT — Bug #1, 2026-07-10).
+      firstPush = true;
+    }
+
+    if (firstPush) {
+      await _rateLimiter.run(() => webdav.ensureAncestors(_snapshotPath));
     }
 
     // Append new lines.
