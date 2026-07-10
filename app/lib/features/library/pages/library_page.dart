@@ -492,6 +492,14 @@ class _LibraryNavigationDrawer extends StatelessWidget {
             child: Text('智阅', style: TextStyle(color: Colors.white, fontSize: 24)),
           ),
           ListTile(
+            leading: const Icon(Icons.note_outlined),
+            title: const Text('全部自由笔记'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/notes/freeform');
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.smart_toy_outlined),
             title: const Text('AI 设置'),
             onTap: () {

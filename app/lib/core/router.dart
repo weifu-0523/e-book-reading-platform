@@ -22,6 +22,7 @@ import '../features/ai/pages/api_key_settings_page.dart';
 import '../features/bookmarks/pages/bookmarks_page.dart';
 import '../features/library/pages/book_detail_page.dart';
 import '../features/library/pages/library_page.dart';
+import '../features/notes/pages/global_freeform_notes_page.dart';
 import '../features/notes/pages/notes_page.dart';
 import '../features/reader/pages/reader_page.dart';
 import '../features/search/pages/search_highlights_page.dart';
@@ -77,6 +78,11 @@ GoRouter createAppRouter() {
       GoRoute(
         path: '/search/highlights',
         builder: (context, state) => const SearchHighlightsPage(),
+      ),
+      // Bug #3 (2026-07-10)：全局自由笔记入口（library drawer）。
+      GoRoute(
+        path: '/notes/freeform',
+        builder: (context, state) => const GlobalFreeformNotesPage(),
       ),
       // 注意：go_router 按顺序匹配，更具体的子路径必须放在 /settings 之前
       GoRoute(
