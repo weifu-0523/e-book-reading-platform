@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/responsive_layout_builder.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../models/sort_by.dart';
 import '../models/view_mode.dart';
@@ -63,6 +64,84 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sizeClass = windowSizeClassOf(context);
+
+    if (sizeClass == WindowSizeClass.compact) {
+      return _buildCompactBar(context);
+    }
+    return _buildExpandedBar(context);
+  }
+
+  Widget _buildCompactBar(BuildContext context) {
+    if (searching) {
+      return AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: onExitSearch,
+          tooltip: '退出搜索',
+        ),
+        title: TextField(
+          controller: searchController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '搜索书名/作者',
+            border: InputBorder.none,
+          ),
+          onChanged: onSearch,
+        ),
+        actions: const [],
+      );
+    }
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.menu),
+        tooltip: '菜单',
+        onPressed: () => Scaffold.of(context).openDrawer(),
+      ),
+      title: const Text('智阅'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.add),
+          onPressed: onImportTap,
+          tooltip: '导入书籍',
+        ),
+        PopupMenuButton<_CompactAction>(
+          icon: const Icon(Icons.more_vert),
+          onSelected: (action) {
+            switch (action) {
+              case _CompactAction.search:
+                onEnterSearch();
+              case _CompactAction.tags:
+                _showTagDialog(context);
+              case _CompactAction.sort:
+                _showSortDialog(context);
+              case _CompactAction.toggleView:
+                onViewModeChanged(
+                  viewMode == ViewMode.grid ? ViewMode.list : ViewMode.grid,
+                );
+              case _CompactAction.batchExport:
+                onBatchExport();
+              case _CompactAction.aiSettings:
+                context.push('/settings/ai');
+              case _CompactAction.settings:
+                context.push('/settings');
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: _CompactAction.search, child: Text('搜索')),
+            PopupMenuItem(value: _CompactAction.tags, child: Text('标签筛选')),
+            PopupMenuItem(value: _CompactAction.sort, child: Text('排序')),
+            PopupMenuItem(value: _CompactAction.toggleView, child: Text('切换视图')),
+            PopupMenuItem(value: _CompactAction.batchExport, child: Text('批量导出')),
+            PopupMenuItem(value: _CompactAction.aiSettings, child: Text('AI 设置')),
+            PopupMenuItem(value: _CompactAction.settings, child: Text('设置')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExpandedBar(BuildContext context) {
     return AppBar(
       leading: searching
           ? IconButton(
@@ -161,4 +240,40 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
     );
   }
+
+  void _showSortDialog(BuildContext context) {
+    showDialog<SortBy>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('排序方式'),
+        children: SortBy.values.map((s) {
+          return SimpleDialogOption(
+            onPressed: () {
+              onSortChanged(s);
+              Navigator.of(ctx).pop();
+            },
+            child: Text(
+              _sortByLabel(s),
+              style: TextStyle(
+                fontWeight: s == sortBy ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  String _sortByLabel(SortBy s) {
+    switch (s) {
+      case SortBy.recentlyRead: return '最近阅读';
+      case SortBy.addedDesc: return '添加时间';
+      case SortBy.titleAsc: return '书名';
+      case SortBy.authorAsc: return '作者';
+      case SortBy.progressDesc: return '阅读进度';
+      case SortBy.manual: return '手动排序';
+    }
+  }
 }
+
+enum _CompactAction { search, tags, sort, toggleView, batchExport, aiSettings, settings }
