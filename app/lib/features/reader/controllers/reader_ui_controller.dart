@@ -64,6 +64,19 @@ class ReaderUiState {
     );
   }
 
+  /// 跨平台一致的初始化默认值（spec §2.2 UX-B）。
+  ///
+  /// chrome 在所有平台开局可见，确保用户打开书籍就能看到 AppBar（目录 /
+  /// 排版 / AI 等入口）。移动端不再"开局全黑无提示"。移动端的 3s 自动隐藏
+  /// 定时器（Task 6）会在用户无交互时把 chrome 收回隐藏态；桌面端保持可见。
+  ///
+  /// 与 [defaults] 的区别：[defaults] 用于桌面锚点 backward compat（仍按
+  /// `defaultTargetPlatform` 区分，桌面=true / 移动=false）。新初始化路径
+  /// （Task 4 readerUiControllerProvider）应改用本工厂。
+  factory ReaderUiState.defaultsForPlatform() {
+    return ReaderUiState.defaults().copyWith(chromeVisible: true);
+  }
+
   ReaderUiState copyWith({
     bool? chromeVisible,
     bool? tocDrawerOpen,
