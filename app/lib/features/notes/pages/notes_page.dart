@@ -282,13 +282,17 @@ class NotesPage extends ConsumerWidget {
         suggestedName: name,
       );
       if (!context.mounted || path == null) return;
+      final SnackBarAction? folderAction =
+          (!Platform.isAndroid && !Platform.isIOS)
+              ? SnackBarAction(
+                  label: '打开文件夹',
+                  onPressed: () => _openFolder(path),
+                )
+              : null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('已保存：$path'),
-          action: SnackBarAction(
-            label: '打开文件夹',
-            onPressed: () => _openFolder(path),
-          ),
+          action: folderAction,
         ),
       );
     } catch (e) {
@@ -315,13 +319,17 @@ class NotesPage extends ConsumerWidget {
         suggestedName: name,
       );
       if (!context.mounted || path == null) return;
+      final SnackBarAction? folderAction =
+          (!Platform.isAndroid && !Platform.isIOS)
+              ? SnackBarAction(
+                  label: '打开文件夹',
+                  onPressed: () => _openFolder(path),
+                )
+              : null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('已保存：$path'),
-          action: SnackBarAction(
-            label: '打开文件夹',
-            onPressed: () => _openFolder(path),
-          ),
+          action: folderAction,
         ),
       );
     } catch (e) {
