@@ -15,7 +15,15 @@ OWNER = "weifu0523"
 REPO = "e-book-reading-platform"
 API = f"https://gitee.com/api/v5/repos/{OWNER}/{REPO}"
 DOCS = Path("docs/releases")
-INSTALLER = Path("C:/Users/1/Desktop/zhiyue-1.8.0-alpha.apk")
+
+# Attachments per-tag. Each entry: (path, [list of files to upload]).
+# Files must exist on disk; missing files are skipped with a warning.
+ATTACHMENTS = {
+    "v1.9.0-alpha": [
+        "C:/Users/1/Desktop/zhiyue-setup-1.9.0-alpha.exe",
+        "C:/Users/1/Desktop/zhiyue-1.9.0-alpha.apk",
+    ],
+}
 
 # (tag, release title, notes file)
 RELEASES = [
@@ -32,6 +40,7 @@ RELEASES = [
     ("v1.7.0-alpha",     "智阅 v1.7.0-alpha",     "release-notes-v1.7.0-alpha.md"),
     ("v1.7.1-alpha",     "智阅 v1.7.1-alpha",     "release-notes-v1.7.1-alpha.md"),
     ("v1.8.0-alpha",     "智阅 v1.8.0-alpha",     "release-notes-v1.8.0-alpha.md"),
+    ("v1.9.0-alpha",     "智阅 v1.9.0-alpha",     "release-notes-v1.9.0-alpha.md"),
 ]
 
 
@@ -104,7 +113,7 @@ def main():
         sys.exit("GITEE_TOKEN env var required")
 
     results = []
-    release_id_for_attach = None
+    release_ids = {}
     for tag, name, fname in RELEASES:
         notes_path = DOCS / fname
         if not notes_path.exists():
@@ -116,23 +125,28 @@ def main():
             results.append((tag, f"FAIL {resp['_error']}", resp.get("_body", "")[:200]))
         else:
             results.append((tag, f"OK id={resp.get('id')}", resp.get("name", "")))
-            if tag == "v1.8.0-alpha":
-                release_id_for_attach = resp.get("id")
+            release_ids[tag] = resp.get("id")
 
-    if release_id_for_attach and INSTALLER.exists():
-        print(f"\nUploading installer to release {release_id_for_attach}...")
-        resp = upload_attachment(token, release_id_for_attach, INSTALLER)
-        if "_error" in resp:
-            results.append(("installer", f"FAIL {resp['_error']}", resp.get("_body", "")[:200]))
-        else:
-            results.append(("installer", "OK", resp.get("browser_download_url", str(resp)[:200])))
-    else:
-        results.append(("installer", "SKIPPED",
-                        f"id={release_id_for_attach} exists={INSTALLER.exists()}"))
+    for tag, files in ATTACHMENTS.items():
+        release_id = release_ids.get(tag)
+        if not release_id:
+            results.append((f"attach:{tag}", "SKIPPED", "no release id (create failed?)"))
+            continue
+        for fpath in files:
+            p = Path(fpath)
+            if not p.exists():
+                results.append((f"attach:{tag}:{p.name}", "SKIPPED", f"file not found: {fpath}"))
+                continue
+            print(f"\nUploading {p.name} to {tag} (release {release_id})...")
+            resp = upload_attachment(token, release_id, p)
+            if "_error" in resp:
+                results.append((f"attach:{tag}:{p.name}", f"FAIL {resp['_error']}", resp.get("_body", "")[:200]))
+            else:
+                results.append((f"attach:{tag}:{p.name}", "OK", resp.get("browser_download_url", str(resp)[:200])))
 
     print("\n=== Results ===")
     for r in results:
-        print(f"  {r[0]:<20} {r[1]:<35} {r[2][:80]}")
+        print(f"  {r[0]:<30} {r[1]:<35} {r[2][:80]}")
 
 
 if __name__ == "__main__":

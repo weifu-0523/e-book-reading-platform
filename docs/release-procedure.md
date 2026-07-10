@@ -194,18 +194,30 @@ git tag vX.Y.Z
 git push origin master --tags
 ```
 
-## 步骤 11：上传 Gitee Release
+## 步骤 11：上传 Gitee Release（API 脚本）
 
-1. 浏览器打开 [Gitee Release 创建页](https://gitee.com/weifu0523/e-book-reading-platform/releases/new)
-2. 选择刚推送的 tag（如 `v1.1.0-alpha`）
-3. 标题：`智阅 X.Y.Z`（如"智阅 1.1.0-alpha"）
-4. 上传 3 个 artifact：
-   - `build/installer/zhiyue-setup-X.Y.Z.exe`
-   - `build/installer/zhiyue-portable-X.Y.Z.zip`
-   - `build/installer/zhiyue-X.Y.Z.apk`
-5. Release notes 内容（复制 `CHANGELOG.md` 对应版本的段落，开头加一行简短描述）
-6. 附 4 张 release 截图（library / epub_reader / pdf_reader / notes）
-7. 发布
+通过 `scripts/create_gitee_releases.py` 用 Gitee API 批量创建 Release 并上传附件。
+
+**前置**：
+
+1. 在 [私人令牌页](https://gitee.com/profile/personal_access_tokens) 生成一个 Personal Access Token（勾选 `projects` 权限）。SSH 公钥只覆盖 `git push`，Release API 必须用 token。
+2. 编辑 `scripts/create_gitee_releases.py`：
+   - `RELEASES` 列表加入新版本条目 `(tag, 标题, release-notes 文件名)`
+   - `ATTACHMENTS` dict 加入新版本 + 对应 artifact 路径（通常复制到 `C:/Users/1/Desktop/` 下）
+
+**运行**（在终端，token 不进 git 历史）：
+
+```bash
+GITEE_TOKEN=xxx python scripts/create_gitee_releases.py
+```
+
+**脚本行为**：
+
+- 遍历 `RELEASES`，每个 tag 调用 `POST /releases` 创建 Release（已存在的会返回错误，可在 Gitee Web UI 删除后重跑）
+- 对 `ATTACHMENTS` 中每个 tag 的每个文件，调用 `POST /releases/<id>/attach_files` 上传附件
+- 末尾打印 `=== Results ===` 列出每步 OK / FAIL / SKIPPED
+
+**验证**：浏览器打开 [Releases 页面](https://gitee.com/weifu0523/e-book-reading-platform/releases)，确认新版本条目存在、附件可下载。
 
 ## 步骤 12：发布后核对
 
