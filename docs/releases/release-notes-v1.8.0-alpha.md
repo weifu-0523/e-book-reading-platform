@@ -37,9 +37,10 @@ T1-T22 共 18-22 个 commits，详见 `docs/superpowers/plans/2026-07-10-mobile-
 ## 已知问题
 
 - iOS 目录占位但无法 build（用户本机 Windows，无 Mac）
-- APK 体积 50-80MB（含 PDFium native，单 APK 不拆 ABI）
+- APK 体积 224 MB（debug 构建，含 PDFium native + 调试符号；release 构建约 50-80 MB 单 APK 不拆 ABI）
+- **5 个 Flutter plugin 默认 `compileSdk 34` 与 `flutter_plugin_android_lifecycle` 要求的 36 冲突**：connectivity_plus / file_picker / flutter_secure_storage / just_audio / webview_flutter_android。本次发布采用 pub cache 直接补丁（`sed 's/compileSdk 34/compileSdk 36/g'`）作为 band-aid；长期方案是升级到默认 compileSdk 36 的版本（S2 跟进）
 - Golden 测试不覆盖 Android 渲染（mobile 字体微差 + emulator 渲染抖动）
-- 8 个 pre-existing 测试失败（不阻塞本版本）
+- 12 个 pre-existing 测试失败（router + library golden 4 + reader_page_test 4 + reader_flow_integration timeout + reader_page_pdf_integration load + reader_ai_drawer_integration load — 全部为本分支 mobile 改动之前就存在的 baseline 问题，已通过 commit 1e0b497 反向验证）
 
 ## 升级指南
 

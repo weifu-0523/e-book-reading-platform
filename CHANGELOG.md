@@ -27,6 +27,8 @@ v1.8.0-alpha 之后的新变更将记在此处。
 - `library/notes` 的"打开文件夹" SnackBarAction 在 mobile 隐藏
 - `notes/settings` body 包 ResponsiveLayoutBuilder（双栏增强推 v1.8.1）
 - AndroidManifest 加显式 INTERNET + ACCESS_NETWORK_STATE 权限
+- Android `compileSdk` 34 → 36（`flutter_plugin_android_lifecycle` 强制要求）
+- 5 个 plugin（connectivity_plus / file_picker / flutter_secure_storage / just_audio / webview_flutter_android）默认 `compileSdk 34` 与上述要求冲突，本次发布采用 pub cache `sed` 补丁作为 band-aid（长期方案：升级到默认 36 的版本，S2 跟进）
 
 ### 已知问题
 
