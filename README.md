@@ -18,7 +18,8 @@
 - ✅ **v1.6.0-alpha**：阅读体验大修——EPUB **双页对开布局**（M2.9，含每页页码/书脊/孤页处理）+ 段落首行缩进真正生效（em-space 预处理）+ 末页顶部对齐（双页 Row crossAxis 修复）+ 新增 5 款中文字体（黑体/宋体/楷体/普惠体/新晰黑）+ 摘录/书签右键菜单与可见删除/导出按钮 + 摘录工具条跟随选区 + 顶栏书架/字号快捷键挪到时钟左侧。用户两轮反馈共 7 个问题逐一定位修复。
 - ✅ **v1.7.0-alpha**：AI 抽屉重构——5 入口收敛为 1 个统一抽屉（Reader AppBar `smart_toy_outlined`）+ per-book 多会话（`chat_sessions` / `chat_messages` 表）+ 章节级 subagent 隔离契约 + 苏格拉底式追问 + slash 命令（`/new` / `/del` / `/switch`）+ @-note 提及。schema v11→v12 DROP `qa_history`。
 - ✅ **v1.7.1-alpha**：typography 持久化修复——用户报告"调整字体设为默认后退出重开仍恢复预设"的 bug。根因：dispose-time fire-and-forget 被 `exit(0)` 截断。引入 `TypographyPersister` 即时落盘（stream + debounce 500ms），PDF `setTypography` 补 emit state$ 保持契约一致。
-- 下一步：**移动端 MVP 开发**（Android 优先 + iOS CI 后续，同代码库 + `PlatformChromeController` 抽象层；MVP=阅读+AI+WebDAV）。
+- ✅ **v1.8.0-alpha**：移动端 MVP Spiral 1——M3 三档断点（compact <600 / medium 600-840 / expanded ≥840）+ `ResponsiveLayoutBuilder`（自研 ~80 行）+ `kDesktopDualPageBreakpoint=1100` 桌面 GA 行为常量 + `PlatformChromeController`（status bar + orientation 抽象）+ Library compact 分支（hamburger menu + overflow PopupMenu）+ Reader tap-to-toggle chrome + Android INTERNET 权限 + iOS 目录占位（不 build 不 CI）。桌面行为 100% 保留（hover / 双页阈值 / exit(0) 时序 / window chrome 不变）。
+- 下一步：**S2 AI 适配**（IME / 流式 sheet / 软键盘避让）→ v1.9.0-alpha。
 
 ## 下载安装
 
@@ -32,7 +33,8 @@
 
 ### Android
 
-- **v1.1.0-alpha APK**（[zhiyue-1.1.0.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.1.0-alpha)）— sideload 安装。
+- **v1.8.0-alpha APK**（[zhiyue-1.8.0.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.8.0-alpha)）— sideload 安装，含移动端响应式 UX 全部能力。
+- **v1.1.0-alpha APK**（[zhiyue-1.1.0.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.1.0-alpha)）— 旧版（v1.0 GA 同款 APK）。
 - Android 8+ 需在「设置 → 应用 → 特殊访问权限 → 安装未知应用」中允许浏览器安装 APK。
 - 安装后在文件管理器点击 .epub / .pdf，选「智阅」打开。
 
