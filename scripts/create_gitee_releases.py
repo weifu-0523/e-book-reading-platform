@@ -15,7 +15,7 @@ OWNER = "weifu0523"
 REPO = "e-book-reading-platform"
 API = f"https://gitee.com/api/v5/repos/{OWNER}/{REPO}"
 DOCS = Path("docs/releases")
-INSTALLER = Path("C:/zhiyue_build/app/build/installer/zhiyue-setup-1.7.1-alpha.exe")
+INSTALLER = Path("C:/Users/1/Desktop/zhiyue-1.8.0-alpha.apk")
 
 # (tag, release title, notes file)
 RELEASES = [
@@ -31,6 +31,7 @@ RELEASES = [
     ("v1.6.0-alpha",     "智阅 v1.6.0-alpha",     "release-notes-v1.6.0-alpha.md"),
     ("v1.7.0-alpha",     "智阅 v1.7.0-alpha",     "release-notes-v1.7.0-alpha.md"),
     ("v1.7.1-alpha",     "智阅 v1.7.1-alpha",     "release-notes-v1.7.1-alpha.md"),
+    ("v1.8.0-alpha",     "智阅 v1.8.0-alpha",     "release-notes-v1.8.0-alpha.md"),
 ]
 
 
@@ -115,7 +116,7 @@ def main():
             results.append((tag, f"FAIL {resp['_error']}", resp.get("_body", "")[:200]))
         else:
             results.append((tag, f"OK id={resp.get('id')}", resp.get("name", "")))
-            if tag == "v1.7.1-alpha":
+            if tag == "v1.8.0-alpha":
                 release_id_for_attach = resp.get("id")
 
     if release_id_for_attach and INSTALLER.exists():
