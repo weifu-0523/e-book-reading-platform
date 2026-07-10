@@ -22,10 +22,15 @@ void main() {
   });
 
   group('MobilePlatformChromeController', () {
+    // Captured SystemChannels.platform MethodCalls for assertion in tests.
+    // Reset before each test in setUp to keep tests isolated.
+    final List<MethodCall> capturedCalls = <MethodCall>[];
+
     setUp(() {
+      capturedCalls.clear();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-        // 记录调用，返回 null
+        capturedCalls.add(call);
         return null;
       });
     });
@@ -37,15 +42,111 @@ void main() {
 
     test('setStatusBarStyle invokes SystemChrome.setSystemUIOverlayStyle',
         () async {
-      const controller = MobilePlatformChromeController();
-      controller.setStatusBarStyle(brightness: Brightness.dark);
-      // 不抛即过；SystemChrome.setSystemUIOverlayStyle 是 fire-and-forget
+      const MobilePlatformChromeController()
+          .setStatusBarStyle(brightness: Brightness.dark);
+
+      // SystemChrome.setSystemUIOverlayStyle schedules a microtask before it
+      // actually invokes the platform channel. Flush microtasks so the mock
+      // handler can capture the call.
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        capturedCalls.where((c) =>
+            c.method == 'SystemChrome.setSystemUIOverlayStyle'),
+        isNotEmpty,
+        reason: 'should route through SystemChrome platform channel',
+      );
+      final call = capturedCalls.firstWhere((c) =>
+          c.method == 'SystemChrome.setSystemUIOverlayStyle');
+      // Argument is a Map carrying the SystemUiOverlayStyle fields.
+      final args = call.arguments as Map<dynamic, dynamic>;
+      // SystemUiOverlayStyle._toMap serializes Brightness via toString(),
+      // so we get 'Brightness.dark' rather than just 'dark'.
+      expect(args['statusBarBrightness'], 'Brightness.dark');
+      expect(args['statusBarIconBrightness'], 'Brightness.dark');
     });
 
-    test('setPreferredOrientations allows all axes when input is [horizontal, vertical]',
+    test('setStatusBarStyle light brightness forwards light value',
+        () async {
+      const MobilePlatformChromeController()
+          .setStatusBarStyle(brightness: Brightness.light);
+
+      // Flush the scheduleMicrotask SystemChrome queues internally.
+      await Future<void>.delayed(Duration.zero);
+
+      final call = capturedCalls.firstWhere((c) =>
+          c.method == 'SystemChrome.setSystemUIOverlayStyle');
+      final args = call.arguments as Map<dynamic, dynamic>;
+      expect(args['statusBarBrightness'], 'Brightness.light');
+      expect(args['statusBarIconBrightness'], 'Brightness.light');
+    });
+
+    test(
+        'setPreferredOrientations horizontal → [landscapeLeft, landscapeRight]',
         () async {
       const controller = MobilePlatformChromeController();
-      await controller.setPreferredOrientations([Axis.horizontal, Axis.vertical]);
+      await controller.setPreferredOrientations([Axis.horizontal]);
+
+      final call = capturedCalls.firstWhere(
+          (c) => c.method == 'SystemChrome.setPreferredOrientations');
+      final List<dynamic> orientations = call.arguments as List<dynamic>;
+      expect(orientations, containsAll(<String>[
+        'DeviceOrientation.landscapeLeft',
+        'DeviceOrientation.landscapeRight',
+      ]));
+      // Strict equality: nothing else.
+      expect(orientations.length, 2);
+    });
+
+    test('setPreferredOrientations vertical → [portraitUp, portraitDown]',
+        () async {
+      const controller = MobilePlatformChromeController();
+      await controller.setPreferredOrientations([Axis.vertical]);
+
+      final call = capturedCalls.firstWhere(
+          (c) => c.method == 'SystemChrome.setPreferredOrientations');
+      final List<dynamic> orientations = call.arguments as List<dynamic>;
+      expect(orientations, containsAll(<String>[
+        'DeviceOrientation.portraitUp',
+        'DeviceOrientation.portraitDown',
+      ]));
+      expect(orientations.length, 2);
+    });
+
+    test(
+        'setPreferredOrientations [horizontal, vertical] → all four orientations',
+        () async {
+      const controller = MobilePlatformChromeController();
+      await controller.setPreferredOrientations(
+          [Axis.horizontal, Axis.vertical]);
+
+      final call = capturedCalls.firstWhere(
+          (c) => c.method == 'SystemChrome.setPreferredOrientations');
+      final List<dynamic> orientations = call.arguments as List<dynamic>;
+      expect(orientations.toSet(), <String>{
+        'DeviceOrientation.landscapeLeft',
+        'DeviceOrientation.landscapeRight',
+        'DeviceOrientation.portraitUp',
+        'DeviceOrientation.portraitDown',
+      });
+    });
+
+    test(
+        'setPreferredOrientations empty list → falls back to all orientations',
+        () async {
+      // Empty input has no axis matches, so deviceOrientations stays empty
+      // and the controller falls back to DeviceOrientation.values (all 4).
+      // Realistically this branch is never hit from production code (callers
+      // always pass at least one Axis), but the safety net is part of the
+      // contract — guarding it here.
+      const controller = MobilePlatformChromeController();
+      await controller.setPreferredOrientations(<Axis>[]);
+
+      final call = capturedCalls.firstWhere(
+          (c) => c.method == 'SystemChrome.setPreferredOrientations');
+      final List<dynamic> orientations = call.arguments as List<dynamic>;
+      expect(orientations.length, 4,
+          reason: 'empty input should fall back to DeviceOrientation.values');
     });
   });
 }
