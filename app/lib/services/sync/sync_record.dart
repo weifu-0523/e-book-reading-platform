@@ -24,6 +24,7 @@ enum SyncRecordType {
   annotation,
   readingProgress,
   bookmark,
+  freeformNote,
 }
 
 /// JSON envelope persisted in outbox + shipped over WebDAV.

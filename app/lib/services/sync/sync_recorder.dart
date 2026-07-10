@@ -187,6 +187,46 @@ class SyncRecorder {
     ));
   }
 
+  /// Bug #3 (2026-07-10): freeform note write/delete. `bookId` nullable —
+  /// null = global note; non-null = per-book note (FK books.id CASCADE).
+  Future<void> recordFreeformNote({
+    required String id,
+    required String? bookId,
+    required String title,
+    required String content,
+    required int color,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    bool deleted = false,
+  }) {
+    final payload = <String, dynamic>{
+      'id': id,
+      'bookId': bookId,
+      'title': title,
+      'content': content,
+      'color': color,
+      'createdAt': createdAt.toUtc().toIso8601String(),
+    };
+    return _enqueue(SyncRecord(
+      id: id,
+      type: SyncRecordType.freeformNote,
+      mtime: updatedAt,
+      deleted: deleted,
+      payload: deleted ? const {} : payload,
+    ));
+  }
+
+  Future<void> recordFreeformNoteDeletion({
+    required String id,
+    required DateTime mtime,
+  }) {
+    return _enqueue(SyncRecord.tombstone(
+      id: id,
+      type: SyncRecordType.freeformNote,
+      mtime: mtime,
+    ));
+  }
+
   Future<void> _enqueue(SyncRecord record) {
     return _outbox.enqueue(
       recordId: record.id,

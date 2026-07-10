@@ -27,6 +27,7 @@ import '../data/repositories/local_reading_progress_repository.dart';
 import '../data/repositories/local_settings_repository.dart';
 import '../data/repositories/book_repository.dart';
 import '../data/repositories/bookmark_repository.dart';
+import '../data/repositories/freeform_notes_repository.dart';
 import '../data/repositories/notes_repository.dart';
 import '../data/repositories/reading_progress_repository.dart';
 import '../data/repositories/settings_repository.dart';
@@ -82,6 +83,15 @@ final notesRepositoryProvider = Provider<NotesRepository>((ref) {
 final bookmarkRepositoryProvider = Provider<BookmarkRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return LocalBookmarkRepository(
+    db,
+    syncRecorder: SyncRecorder(db.syncOutboxDao),
+  );
+});
+
+/// Bug #3 (2026-07-10): 自由笔记 repository。
+final freeformNotesRepositoryProvider = Provider<FreeformNotesRepository>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return LocalFreeformNotesRepository(
     db,
     syncRecorder: SyncRecorder(db.syncOutboxDao),
   );
