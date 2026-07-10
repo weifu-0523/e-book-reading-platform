@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -152,7 +154,8 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   ConsumerState<ReaderScaffold> createState() => _ReaderScaffoldState();
 }
 
-class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
+class _ReaderScaffoldState extends ConsumerState<ReaderScaffold>
+    with WidgetsBindingObserver {
   /// M2.6/T10 (Bug #9)：State 持有的 FocusNode，确保 AppBar IconButton
   /// 点击后能 [_reclaimFocus] 重新获焦，避免 ESC/F11/方向键被按钮节点吞掉。
   late final FocusNode _focusNode;
@@ -177,22 +180,70 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
   /// 200ms / 300px 滑动 = 600+px 位移）。
   static const double _chromeToggleDragThresholdPx = 18.0;
 
+  /// S2/T6 (UX-B)：移动端 chrome 自动隐藏延时。书一打开 chrome 作为 onboarding
+  /// 提示显示，3 秒后自动隐藏以提供沉浸式阅读体验。
+  static const Duration _chromeAutoHideDelay = Duration(seconds: 3);
+
+  /// S2/T6 (UX-B)：自动隐藏 chrome 的计时器。null 表示当前没有 pending 自动
+  /// 隐藏任务（桌面端、chrome 已隐藏、用户已交互、或 app 进入后台）。
+  Timer? _autoHideTimer;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _focusNode = FocusNode(debugLabel: 'ReaderScaffold');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
     });
     // M2.8/B1-fix: 全局键盘兜底监听，绕过 SelectableRegion 焦点抢占。
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
+    // S2/T6 (UX-B): 启动 3s 自动隐藏计时器（仅移动端 + 当前 chrome 可见）。
+    _startAutoHideTimerIfNeeded();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // S2/T6 (UX-B): app 进入后台时取消 pending 自动隐藏 timer，
+    // 避免回到前台时 chrome 已被过早隐藏。
+    if (state == AppLifecycleState.paused) {
+      _cancelAutoHideTimer();
+    }
   }
 
   @override
   void dispose() {
+    _cancelAutoHideTimer();
+    WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     _focusNode.dispose();
     super.dispose();
+  }
+
+  /// S2/T6 (UX-B)：若当前在移动端且 chrome 可见，启动（或重启）3s 自动
+  /// 隐藏 timer。timer 触发时调 [ReaderUiController.hideChrome]。
+  ///
+  /// 桌面端不调用此机制（桌面稳定锚点：行为 byte-for-byte 不变）。
+  /// 已隐藏时也不启动（避免重复 fire 无用 hideChrome）。
+  void _startAutoHideTimerIfNeeded() {
+    if (!PlatformInfo.isMobile) return;
+    if (!mounted) return;
+    final ui = ref.read(readerUiControllerProvider);
+    if (!ui.chromeVisible) return;
+
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(_chromeAutoHideDelay, () {
+      _autoHideTimer = null;
+      if (!mounted) return;
+      ref.read(readerUiControllerProvider.notifier).hideChrome();
+    });
+  }
+
+  /// S2/T6 (UX-B)：取消 pending 自动隐藏 timer。用户交互（UX-A tap）、
+  /// app 进入后台、widget dispose 时调用。
+  void _cancelAutoHideTimer() {
+    _autoHideTimer?.cancel();
+    _autoHideTimer = null;
   }
 
   /// M2.6/T10：所有 AppBar IconButton onPressed 完成主操作后调本方法，
@@ -370,6 +421,11 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold> {
     final down = _chromeToggleDownPosition;
     _chromeToggleDownPosition = null;
     if (down == null) return;
+
+    // S2/T6 (UX-B): 任何 pointer up 都视为 user interaction，先取消 pending
+    // 自动隐藏 timer（无论后续是判定为 tap/drag/AppBar-tap，用户已开始
+    // 交互，chrome 不应再被定时器悄悄隐藏）。
+    _cancelAutoHideTimer();
 
     // (1) Drag threshold：位移超过阈值视为翻页滑动，不 toggle。
     if ((event.position - down).distance > _chromeToggleDragThresholdPx) {
