@@ -9,13 +9,13 @@ void main() {
 
   group('DesktopPlatformChromeController', () {
     test('setStatusBarStyle is noop (no exception)', () {
-      final controller = DesktopPlatformChromeController();
+      const controller = DesktopPlatformChromeController();
       controller.setStatusBarStyle(brightness: Brightness.dark);
       // noop：不应抛
     });
 
     test('setPreferredOrientations is noop', () async {
-      final controller = DesktopPlatformChromeController();
+      const controller = DesktopPlatformChromeController();
       await controller.setPreferredOrientations([Axis.horizontal]);
       // noop：不应抛
     });
@@ -37,14 +37,14 @@ void main() {
 
     test('setStatusBarStyle invokes SystemChrome.setSystemUIOverlayStyle',
         () async {
-      final controller = MobilePlatformChromeController();
+      const controller = MobilePlatformChromeController();
       controller.setStatusBarStyle(brightness: Brightness.dark);
       // 不抛即过；SystemChrome.setSystemUIOverlayStyle 是 fire-and-forget
     });
 
     test('setPreferredOrientations allows all axes when input is [horizontal, vertical]',
         () async {
-      final controller = MobilePlatformChromeController();
+      const controller = MobilePlatformChromeController();
       await controller.setPreferredOrientations([Axis.horizontal, Axis.vertical]);
     });
   });

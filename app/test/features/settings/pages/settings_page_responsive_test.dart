@@ -21,12 +21,12 @@ import 'package:zhiyue/features/settings/pages/settings_page.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 Widget _harness() {
-  return ProviderScope(
+  return const ProviderScope(
     child: MaterialApp(
-      locale: const Locale('zh'),
+      locale: Locale('zh'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: const SettingsPage(),
+      home: SettingsPage(),
     ),
   );
 }
