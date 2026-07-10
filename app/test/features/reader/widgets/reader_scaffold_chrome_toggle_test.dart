@@ -35,7 +35,12 @@ import 'package:zhiyue/features/reader/widgets/reader_scaffold.dart';
 /// [debugDefaultTargetPlatformOverride] when set. The helpers below simulate
 /// android (mobile) and windows (desktop).
 
-(ProviderContainer, Widget) _harness({required bool chromeVisible}) {
+(ProviderContainer, Widget) _harness({
+  required bool chromeVisible,
+  void Function()? onTapPrev,
+  void Function()? onTapNext,
+  int marginPx = 32,
+}) {
   final container = ProviderContainer(
     overrides: [
       readerUiControllerProvider.overrideWith((ref) => ReaderUiController(
@@ -49,8 +54,9 @@ import 'package:zhiyue/features/reader/widgets/reader_scaffold.dart';
         content: const Center(child: Text('book')),
         title: 't',
         paginationMode: PaginationMode.paged,
-        onTapPrev: () {},
-        onTapNext: () {},
+        marginPx: marginPx,
+        onTapPrev: onTapPrev ?? () {},
+        onTapNext: onTapNext ?? () {},
         // Provide a no-op TOC callback so AppBar IconButton is enabled and
         // produces no ReaderUiState side-effect. Tapping it should be a true
         // no-op for chromeVisible (proves Stack-top Listener doesn't
@@ -199,6 +205,82 @@ void main() {
         final after = container.read(readerUiControllerProvider).chromeVisible;
         expect(after, equals(before),
             reason: 'UX-A: desktop should not toggle chrome on tap');
+      });
+    });
+
+    // T5-6 / T5-7 (C1 follow-up): page-zone exemption. The Stack-top chrome
+    // toggle Listener must NOT toggle chrome when the tap lands inside the
+    // left/right page zone — otherwise every margin-tap-to-page also toggles
+    // chrome, causing visible/hidden flicker on each page turn. Page-zone
+    // GestureDetectors (opaque) own the tap for paging; the Listener should
+    // let them have it.
+    //
+    // Default test viewport is 800x600; with marginPx=32 the zones are:
+    //   left  : x in [0, 32]
+    //   right : x in [768, 800]
+    // We tap at x=16 (left zone) / x=784 (right zone), y=400 (well below the
+    // AppBar region so the AppBar exemption doesn't kick in).
+    testWidgets(
+        'T5-6 tap in LEFT page zone pages back, does NOT toggle chrome (mobile)',
+        (tester) async {
+      await _withAndroid(tester, () async {
+        int prevCount = 0;
+        int nextCount = 0;
+        final (container, widget) = _harness(
+          chromeVisible: false,
+          onTapPrev: () => prevCount++,
+          onTapNext: () => nextCount++,
+        );
+        addTearDown(container.dispose);
+        await tester.pumpWidget(widget);
+        await tester.pumpAndSettle();
+
+        expect(container.read(readerUiControllerProvider).chromeVisible,
+            isFalse,
+            reason: 'precondition: chrome hidden');
+
+        // Tap inside left page zone (x=16 < zoneWidth=32).
+        await tester.tapAt(const Offset(16, 400));
+        await tester.pumpAndSettle();
+
+        expect(prevCount, 1,
+            reason: 'left page zone should page back (onTapPrev fired)');
+        expect(nextCount, 0, reason: 'right zone not involved');
+        expect(container.read(readerUiControllerProvider).chromeVisible,
+            isFalse,
+            reason: 'C1: page-zone tap must NOT toggle chrome');
+      });
+    });
+
+    testWidgets(
+        'T5-7 tap in RIGHT page zone pages forward, does NOT toggle chrome '
+        '(mobile)', (tester) async {
+      await _withAndroid(tester, () async {
+        int prevCount = 0;
+        int nextCount = 0;
+        final (container, widget) = _harness(
+          chromeVisible: false,
+          onTapPrev: () => prevCount++,
+          onTapNext: () => nextCount++,
+        );
+        addTearDown(container.dispose);
+        await tester.pumpWidget(widget);
+        await tester.pumpAndSettle();
+
+        expect(container.read(readerUiControllerProvider).chromeVisible,
+            isFalse,
+            reason: 'precondition: chrome hidden');
+
+        // Tap inside right page zone (x=784 > 800 - zoneWidth(32) = 768).
+        await tester.tapAt(const Offset(784, 400));
+        await tester.pumpAndSettle();
+
+        expect(nextCount, 1,
+            reason: 'right page zone should page forward (onTapNext fired)');
+        expect(prevCount, 0, reason: 'left zone not involved');
+        expect(container.read(readerUiControllerProvider).chromeVisible,
+            isFalse,
+            reason: 'C1: page-zone tap must NOT toggle chrome');
       });
     });
   });

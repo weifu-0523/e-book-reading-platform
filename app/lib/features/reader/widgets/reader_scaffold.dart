@@ -441,6 +441,18 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold>
       if (event.position.dy <= appBarBottom) return;
     }
 
+    // (3) Page-zone 豁免：左右翻页 zone（width = zoneWidth，与 build() 中
+    // 一致：marginPx clamped to screen/2）。下层 GestureDetector 用
+    // HitTestBehavior.opaque 接管翻页；但 Listener 不参与 gesture arena，
+    // 仍会无条件收到 pointerUp，故需在此手动跳过 toggle，避免"翻页时
+    // chrome 闪烁"双发问题。
+    final size = MediaQuery.sizeOf(context);
+    final zoneWidth = widget.marginPx.clamp(0, (size.width / 2).toInt());
+    final dx = event.position.dx;
+    if (dx < zoneWidth || dx > size.width - zoneWidth) {
+      return; // 让 page zone GestureDetector 独享 tap
+    }
+
     ref.read(readerUiControllerProvider.notifier).toggleChrome();
   }
 
