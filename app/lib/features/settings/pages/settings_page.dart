@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/responsive_layout_builder.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../reader/providers/chapter_end_prompt_enabled_provider.dart';
 import '../widgets/language_section.dart';
@@ -31,49 +32,55 @@ class SettingsPage extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
-      body: ListView(
-        children: [
-          _SectionHeader(label: l10n.settingsSectionReading),
-          ListTile(
-            leading: const Icon(Icons.text_fields),
-            title: Text(l10n.settingsTypographyProfiles),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/typography'),
-          ),
-          const _ChapterEndPromptTile(),
-          _SectionHeader(label: l10n.settingsSectionFonts),
-          ListTile(
-            leading: const Icon(Icons.font_download_outlined),
-            title: Text(l10n.settingsCustomFonts),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/fonts'),
-          ),
-          _SectionHeader(label: l10n.syncSectionData),
-          ListTile(
-            leading: const Icon(Icons.cloud_outlined),
-            title: Text(l10n.syncTitle),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/sync'),
-          ),
-          _SectionHeader(label: l10n.aiSettingsTitle),
-          ListTile(
-            leading: const Icon(Icons.smart_toy),
-            title: Text(l10n.aiSettingsTitle),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/ai'),
-          ),
-          _SectionHeader(label: l10n.settingsSectionAppearance),
-          const ThemeSection(),
-          _SectionHeader(label: l10n.settingsSectionLanguage),
-          const LanguageSection(),
-          _SectionHeader(label: l10n.settingsSectionAbout),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: Text(l10n.settingsAbout),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/about'),
-          ),
-        ],
+      body: ResponsiveLayoutBuilder(
+        builder: (context, sizeClass) {
+          // 当前所有尺寸都是单栏 list push detail。
+          // expanded 双栏 nav+pane 留待未来 polish（v1.8.1+）。
+          return ListView(
+            children: [
+              _SectionHeader(label: l10n.settingsSectionReading),
+              ListTile(
+                leading: const Icon(Icons.text_fields),
+                title: Text(l10n.settingsTypographyProfiles),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/typography'),
+              ),
+              const _ChapterEndPromptTile(),
+              _SectionHeader(label: l10n.settingsSectionFonts),
+              ListTile(
+                leading: const Icon(Icons.font_download_outlined),
+                title: Text(l10n.settingsCustomFonts),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/fonts'),
+              ),
+              _SectionHeader(label: l10n.syncSectionData),
+              ListTile(
+                leading: const Icon(Icons.cloud_outlined),
+                title: Text(l10n.syncTitle),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/sync'),
+              ),
+              _SectionHeader(label: l10n.aiSettingsTitle),
+              ListTile(
+                leading: const Icon(Icons.smart_toy),
+                title: Text(l10n.aiSettingsTitle),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/ai'),
+              ),
+              _SectionHeader(label: l10n.settingsSectionAppearance),
+              const ThemeSection(),
+              _SectionHeader(label: l10n.settingsSectionLanguage),
+              const LanguageSection(),
+              _SectionHeader(label: l10n.settingsSectionAbout),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: Text(l10n.settingsAbout),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/about'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
