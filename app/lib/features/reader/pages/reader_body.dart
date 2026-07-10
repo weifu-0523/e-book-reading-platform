@@ -32,6 +32,7 @@ import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_selection_bridge.dart';
 
 import '../../../core/providers.dart';
+import '../../../core/responsive_layout_builder.dart';
 import '../../../core/widgets/loading_view.dart';
 import '../../../data/local/database.dart' show BookmarkEntry;
 import '../../../data/models/annotation.dart';
@@ -464,7 +465,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     // 窗口尺寸变化时即时切换分支。
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 1100;
+        final isWide = constraints.maxWidth >= kDesktopDualPageBreakpoint;
         // M2.9 (Bug #4 EPUB 双页): EPUB paged 模式 + 宽屏 → 自动启用双页
         // （书脊式左右两页）。窄屏或 scroll 模式 → 单页。setDualPageMode 内部
         // 会去重（值不变直接 return），所以每次 rebuild 调用是廉价的。
@@ -835,7 +836,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
   /// 读取当前可用宽度，>=1100 视为宽屏。
   bool _isWideScreen(BuildContext context) {
-    return MediaQuery.of(context).size.width >= 1100;
+    return MediaQuery.of(context).size.width >= kDesktopDualPageBreakpoint;
   }
 
   Future<void> _onAnnotationTap(String id) async {
