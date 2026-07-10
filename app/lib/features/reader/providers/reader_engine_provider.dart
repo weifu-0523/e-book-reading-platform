@@ -16,6 +16,7 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/book_ref.dart' as re;
+import 'package:reader_engine/core/typography_settings.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/engine/reader_engine_state.dart';
 import 'package:reader_engine_epub_view/concrete_reader_engine.dart';
@@ -24,6 +25,7 @@ import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_renderer.dart';
 import 'package:zhiyue/data/models/book.dart';
 
+import '../../../core/platform_info.dart';
 import '../../../core/providers.dart';
 import '../../../data/repositories/book_typography_repository.dart';
 import '../../../services/markdown_book_loader.dart';
@@ -137,7 +139,7 @@ final readerEngineForBookProvider =
 });
 
 /// T2: 打开引擎后从 [BookTypographyRepository] 读该书最后一次保存的
-/// 排版并应用到 engine；无记录则保留引擎默认（`TypographySettings.defaults`）。
+/// 排版并应用到 engine；无记录则按平台默认（mobile=compact / desktop=wide）。
 Future<void> _applyPersistedTypography(
   ReaderEngine engine,
   String bookId,
@@ -149,7 +151,31 @@ Future<void> _applyPersistedTypography(
   if (engine.state is! ReaderEngineReady) return;
 
   final saved = await repo.getForBook(bookId);
-  if (saved != null) {
-    await engine.setTypography(saved);
-  }
+  await engine.setTypography(resolveDefaultTypography(persisted: saved));
+}
+
+/// UX-C（spec §2.3）: 决定"无持久化记录"或"已有记录"时使用何种默认排版。
+///
+/// 行为矩阵:
+/// | Platform | Persisted | Result                                       |
+/// |----------|-----------|----------------------------------------------|
+/// | Mobile   | null      | defaults().copyWith(pageMargin: compact(8))  |
+/// | Mobile   | set       | respect persisted                            |
+/// | Desktop  | null      | TypographySettings.defaults() (wide=72)      |
+/// | Desktop  | set       | respect persisted                            |
+///
+/// 仅在应用层做平台分支，reader_engine 包的 `TypographySettings.defaults()`
+/// 保持不变（避免破坏包测试）。Mobile 新书自动落到 compact，已存在的
+/// v1.9.0-alpha 用户保留其持久化 margin。
+///
+/// 平台判定走 [PlatformInfo.isMobile]，测试通过 `debugDefaultTargetPlatformOverride`
+/// 切换（详见 platform_info.dart）。
+TypographySettings resolveDefaultTypography({
+  required TypographySettings? persisted,
+}) {
+  if (persisted != null) return persisted;
+  final defaults = TypographySettings.defaults();
+  return PlatformInfo.isMobile
+      ? defaults.copyWith(pageMargin: PageMargin.compact)
+      : defaults;
 }
