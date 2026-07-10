@@ -33,7 +33,7 @@
 
 ### Android
 
-- **v1.8.0-alpha APK**（[zhiyue-1.8.0.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.8.0-alpha)）— sideload 安装，含移动端响应式 UX 全部能力。
+- **v1.8.0-alpha APK**（[zhiyue-1.8.0-alpha.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.8.0-alpha)）— sideload 安装，含移动端响应式 UX 全部能力。
 - **v1.1.0-alpha APK**（[zhiyue-1.1.0.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.1.0-alpha)）— 旧版（v1.0 GA 同款 APK）。
 - Android 8+ 需在「设置 → 应用 → 特殊访问权限 → 安装未知应用」中允许浏览器安装 APK。
 - 安装后在文件管理器点击 .epub / .pdf，选「智阅」打开。
@@ -113,7 +113,7 @@
 
 ## 测试与质量
 
-- **测试**：1069 通过 + 3 skipped（app 888 / reader_engine 50 / reader_engine_epub_view 86 / reader_engine_pdf_view 45；3 skipped：macOS-only golden + Windows release-build smoke + 1 字体环境相关）
+- **测试**：~1200 通过 + 3 skipped + 12 pre-existing baseline 失败（v1.8.0-alpha；细分见 [release-notes](docs/releases/release-notes-v1.8.0-alpha.md)）
 - **静态分析**：0 errors / 0 warnings / 0 info（M2.4/T4 已清零；既有 cascade/const 风格 lint 已通过 dart fix --apply + 手工处理）
 - **文档**：836 行 maintainer's runbook + 16 milestone spec + 17 plan + 项目级 review
 - **CI**：手动（每 milestone 完成跑全量回归 + analyze）

@@ -15,7 +15,7 @@ M7 sprint 期间发现本机未安装 Android SDK，导致 `flutter build apk --
 1. 下载 [Android Studio](https://developer.android.com/studio)，安装时勾选 Android SDK + Android SDK Platform + Android Virtual Device。
 2. 首次启动，按 Setup Wizard 完成 SDK 安装（默认装最新的 stable API level）。
 3. 启动 Android Studio → Settings → Languages & Frameworks → Android SDK：
-   - SDK Platforms：勾 **Android 14.0 (API 34)**（项目 compileSdk）
+   - SDK Platforms：勾 **Android 14.0 (API 34)** + **Android 15+ (API 36)**（v1.8.0-alpha 起 `flutter_plugin_android_lifecycle` 要求 compileSdk 36）
    - SDK Tools：勾 **Android SDK Build-Tools 34.0.0** + **Android SDK Platform-Tools** + **Android Emulator**
 4. 设置环境变量：
    ```cmd
@@ -41,7 +41,7 @@ M7 sprint 期间发现本机未安装 Android SDK，导致 `flutter build apk --
    ```
 3. 重开终端，安装必需组件：
    ```cmd
-   sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+   sdkmanager "platform-tools" "platforms;android-34" "platforms;android-36" "build-tools;34.0.0"
    ```
 4. 接受许可：
    ```cmd
@@ -64,6 +64,30 @@ flutter doctor -v
 ```
 
 如果 `flutter doctor` 仍报 Android 相关错误，回到上述步骤检查。
+
+## compileSdk 36 plugin 补丁（v1.8.0-alpha 起强制）
+
+`flutter_plugin_android_lifecycle` 强制要求 compileSdk 36，但以下 5 个 plugin 默认仍是 34：
+
+| Plugin | 版本（v1.8.0-alpha 锁定） |
+|---|---|
+| connectivity_plus | 6.1.5 |
+| file_picker | 8.3.7 |
+| flutter_secure_storage | 9.2.4 |
+| just_audio | 0.9.46 |
+| webview_flutter_android | 3.16.9 |
+
+`flutter build apk` 时这 5 个 plugin 子项目会编译失败。当前 workaround 是直接 sed 改 pub cache：
+
+```bash
+for pkg in connectivity_plus-6.1.5 file_picker-8.3.7 flutter_secure_storage-9.2.4 just_audio-0.9.46 webview_flutter_android-3.16.9; do
+  f="$LOCALAPPDATA/Pub/Cache/hosted/pub.dev/$pkg/android/build.gradle"
+  # CRLF-safe: 只替换 compileSdk 34 这一行
+  sed -i 's/compileSdk 34/compileSdk 36/g' "$f"
+done
+```
+
+> **注意**：`flutter pub get` 重下 plugin 后补丁丢失，需重跑。Gradle 子项目级 `subprojects { afterEvaluate ... }` override 在 Flutter `evaluationDependsOn(":app")` 早评估下不生效（已试，3 次失败）。**长期方案**：S2 升级这 5 个 plugin 到默认 compileSdk 36 的版本。
 
 ## 下一步
 

@@ -688,6 +688,11 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             // T9 mobile tap-to-toggle: mobile 无 hover，单次点击阅读区切换 chrome 显隐。
             // translucent 让底层 SelectableRegion 与 ReaderScaffold 的翻页/拖拽手势
             // 仍能正常接收事件。桌面端此 detector 不注册 onTap，hover 行为不变。
+          //
+          // 接线契约（onTap = _isDesktopPlatform ? null : toggleChrome）只在 controller
+          // 层验证（test/features/reader/pages/reader_body_tap_toggle_test.dart 覆盖
+          // toggleChrome 行为）。完整 pump ReaderBody 需要 mock ReaderEngine /
+          // notesController / bookRepository 等，推 S2 AI 适配时一并做。
             onTap: _isDesktopPlatform
                 ? null
                 : () => ref

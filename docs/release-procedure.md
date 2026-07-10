@@ -102,7 +102,8 @@ powershell -ExecutionPolicy Bypass -File windows\installer\build-portable-zip.ps
 
 前置：
 - `app/android/app/keys/keystore.properties` 已生成（参考 [`app/android/app/keys/README.md`](../app/android/app/keys/README.md)）
-- Android SDK 34 已装（见 setup-android-sdk.md）
+- Android SDK 34 已装 + **Android SDK Platform 36（API 36）**（`flutter_plugin_android_lifecycle` 要求 compileSdk 36；见 setup-android-sdk.md）
+- **5 个 plugin pub cache 补丁**：connectivity_plus / file_picker / flutter_secure_storage / just_audio / webview_flutter_android 默认 `compileSdk 34`，需手动 sed 补丁到 36（见 setup-android-sdk.md 末段"compileSdk 36 plugin 补丁"）。**长期方案**：S2 升级 plugin 到默认 36 的版本，移除 sed 补丁
 - Gradle 镜像已配置（用户级 `~/.gradle/init.gradle` 指向腾讯/阿里云镜像，详见 `docs/maintainers-runbook.md` §3）
 
 ```cmd

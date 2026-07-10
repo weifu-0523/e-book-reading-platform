@@ -62,67 +62,7 @@ void main() {
     expect(find.byIcon(Icons.search), findsOneWidget);
   });
 
-  // Mobile MVP S1 — compact searching branch coverage (library_app_bar.dart:76-93).
-  // When searching=true on compact, the bar swaps:
-  //   leading: menu → arrow_back
-  //   title  : Text → TextField
-  //   actions: [add, more_vert] → [] (search toggle icon hidden)
-  group('compact searching branch', () {
-    testWidgets(
-        'searching=true at 390px shows arrow_back (not menu) + TextField + no search toggle',
-        (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      await tester.pumpWidget(buildBar(390, searching: true));
-      await tester.pump();
-
-      // arrow_back should be present as the leading icon (exit-search affordance).
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget,
-          reason: 'searching branch replaces hamburger with back arrow');
-      // menu icon should NOT be present (it's hidden in searching state).
-      expect(find.byIcon(Icons.menu), findsNothing,
-          reason: 'hamburger is hidden while searching');
-
-      // TextField should be mounted in the title slot.
-      expect(find.byType(TextField), findsOneWidget,
-          reason: 'searching branch renders a TextField as the title');
-
-      // The standalone search-toggle icon (Icons.search) is only rendered on
-      // the expanded branch when NOT searching. On compact searching the
-      // text field itself is the search affordance, so Icons.search must be
-      // absent to avoid duplicate / confusing affordances.
-      expect(find.byIcon(Icons.search), findsNothing,
-          reason: 'compact searching hides the search toggle icon');
-    });
-
-    testWidgets('tapping arrow_back in searching state fires onExitSearch',
-        (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      var exitSearchCalls = 0;
-      await tester.pumpWidget(buildBar(
-        390,
-        searching: true,
-        onExitSearch: () => exitSearchCalls++,
-      ));
-      await tester.pump();
-
-      // Initial state: no callback fired yet.
-      expect(exitSearchCalls, 0);
-
-      // Tap the arrow_back button — this is the only IconButton in the
-      // searching branch (actions is empty).
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pump();
-
-      expect(exitSearchCalls, 1,
-          reason: 'arrow_back tap should invoke onExitSearch exactly once');
-    });
-  });
+  // compact searching branch 在 library_app_bar_test.dart:97-108 已覆盖
+  // （arrow_back 显示 + search icon 隐藏 + tap arrow_back 触发 onExitSearch），
+  // 这里不重复。
 }

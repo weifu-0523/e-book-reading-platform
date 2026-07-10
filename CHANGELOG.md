@@ -35,7 +35,7 @@ v1.8.0-alpha 之后的新变更将记在此处。
 - iOS 仅 scaffold，build/CI 推 S3 之后
 - APK 单 APK 不做 ABI 拆分（体积 50-80MB，含 PDFium）
 - Golden 测试不覆盖 Android 渲染
-- 8 个 pre-existing 测试失败（不阻塞本版本）
+- 12 个 pre-existing 测试失败（router_test 1 + library_golden_test 4 + reader_page_test 4 + reader_flow_integration timeout 1 + reader_page_pdf_integration load 1 + reader_ai_drawer_integration load 1；全部 commit `1e0b497` 反向验证为 pre-mobile baseline）
 
 ## [1.7.1-alpha] — 2026-07-10
 
