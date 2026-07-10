@@ -43,6 +43,7 @@ import 'tables/book_tags.dart';
 import 'tables/bookmarks.dart';
 import 'tables/book_typography_overrides.dart';
 import 'tables/books.dart';
+import 'tables/freeform_notes.dart';
 import 'tables/qa_history.dart';
 import 'tables/reading_progress.dart';
 import 'tables/settings.dart';
@@ -72,6 +73,7 @@ part 'database.g.dart';
     Bookmarks,
     ChatSessions,
     ChatMessages,
+    FreeformNotes,
   ],
   daos: [
     BooksDao,
@@ -97,7 +99,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration {
@@ -157,6 +159,15 @@ class AppDatabase extends _$AppDatabase {
         // createAll() above created it because QaHistory is still registered
         // (DAO still referenced during M2.7 transition).
         await m.database.customStatement('DROP TABLE IF EXISTS qa_history');
+        // schema v13: freeform_notes (Bug #3, 2026-07-10) — 自由笔记
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_freeform_notes_book '
+          'ON freeform_notes(book_id, updated_at DESC)',
+        );
+        await m.database.customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_freeform_notes_updated '
+          'ON freeform_notes(updated_at DESC)',
+        );
       },
       onUpgrade: (m, from, to) async {
         if (from < 2) {
@@ -261,6 +272,18 @@ class AppDatabase extends _$AppDatabase {
           );
           // M2.7: 用户决定清空 qa_history 旧数据（被 chat_messages 取代）
           await m.database.customStatement('DROP TABLE IF EXISTS qa_history');
+        }
+        if (from < 13) {
+          // Bug #3 (2026-07-10): freeform_notes 自由笔记表
+          await m.createTable(freeformNotes);
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_freeform_notes_book '
+            'ON freeform_notes(book_id, updated_at DESC)',
+          );
+          await m.database.customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_freeform_notes_updated '
+            'ON freeform_notes(updated_at DESC)',
+          );
         }
       },
       beforeOpen: (details) async {
