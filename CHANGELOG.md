@@ -7,7 +7,38 @@
 
 ## [Unreleased]
 
-v1.8.0-alpha 之后的新变更将记在此处。
+v1.9.0-alpha 之后的新变更将记在此处。
+
+## [1.9.0-alpha] - 2026-07-10
+
+### 修复（用户测试 bug）
+
+- **sync**: 坚果云 WebDAV 上传 snapshot 到 `/zhiyue/snapshots/<uuid>.json` 时报
+  `WebDavException(409 at ...): <s:exception>AncestorsNotFound</s:exception>`
+  - 根因：jianguoyun 不像 Nextcloud 那样在 PUT 时自动创建父目录
+  - 修复：`WebDavClient.mkcol` + `ensureAncestors(filePath)`；首次 push 时
+    `getString` 抛 404 触发 MKCOL 链
+  - MKCOL 状态码语义：201 Created / 200 OK / 405 Method Not Allowed 均视为成功
+- **ai**: 聊天输入框发送（Enter 或按钮）后输入文字残留在输入框，必须手动删除
+  - 修复：`AiInputComposer._onSend` 先 capture text+attachment，clear controller
+    与 setState，再 await sendMessage
+
+### 新增
+
+- **notes**: 自由笔记（FreeformNote）—— 用户在阅读中保存 AI 金句或个人感悟
+  - drift schema v12 → v13（FreeformNotes 表 + idx_freeform_notes_book +
+    idx_freeform_notes_updated）
+  - per-book 入口：reader drawer note_add 按钮 + NotesPage FAB + section
+  - 全局入口：library drawer「全部自由笔记」→ GlobalFreeformNotesPage
+  - NoteEditPage：标题 + 内容（支持 Markdown）+ 编辑/预览切换 + 500ms
+    write-through debounce（参照 TypographyPersister，避开 exit(0) 截断）
+  - 跨设备同步：SyncRecordType.freeformNote + tier 1（与 bookNote 同级），
+    LWW via updated_at，端到端集成测试覆盖 create/update/delete round-trip
+
+### 已知问题
+
+- 与 1.8.0-alpha 相同（iOS scaffold、APK 单包、golden 不覆盖 Android）
+- 5 plugin pub-cache `sed` 补丁仍需手动执行（S2 升级 plugin 默认 compileSdk 36）
 
 ## [1.8.0-alpha] - 2026-07-10
 
