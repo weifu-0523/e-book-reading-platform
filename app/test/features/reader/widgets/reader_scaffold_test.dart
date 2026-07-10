@@ -109,6 +109,10 @@ void main() {
       ),
     );
 
+    // UX-B (Task 4): provider now defaults chromeVisible=true on all platforms.
+    // Establish known hidden state before testing toggle (hidden → visible).
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('reader_app_bar')), findsNothing);
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
@@ -135,6 +139,9 @@ void main() {
         ),
       ),
     );
+    // UX-B (Task 4): default chromeVisible=true; hide first, then toggle to reveal.
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpAndSettle();
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
 
@@ -162,6 +169,9 @@ void main() {
         ),
       ),
     );
+    // UX-B (Task 4): default chromeVisible=true; hide first, then toggle to reveal.
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpAndSettle();
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
 
@@ -192,6 +202,9 @@ void main() {
         ),
       ),
     );
+    // UX-B (Task 4): default chromeVisible=true; hide first, then toggle to reveal.
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpAndSettle();
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
 
@@ -222,6 +235,9 @@ void main() {
         ),
       ),
     );
+    // UX-B (Task 4): default chromeVisible=true; hide first, then toggle to reveal.
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpAndSettle();
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
 
@@ -252,6 +268,9 @@ void main() {
         ),
       ),
     );
+    // UX-B (Task 4): default chromeVisible=true; hide first, then toggle to reveal.
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpAndSettle();
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
 
@@ -286,6 +305,9 @@ void main() {
         ),
       ),
     );
+    // UX-B (Task 4): default chromeVisible=true; hide first, then toggle to reveal.
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpAndSettle();
     container.read(readerUiControllerProvider.notifier).toggleChrome();
     await tester.pumpAndSettle();
 

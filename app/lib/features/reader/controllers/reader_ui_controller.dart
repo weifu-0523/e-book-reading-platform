@@ -102,8 +102,10 @@ class ReaderUiController extends StateNotifier<ReaderUiState> {
   /// 选择，测试用 [NoopFullscreenController]。
   final FullscreenController fullscreenController;
 
-  ReaderUiController({required this.fullscreenController})
-      : super(ReaderUiState.defaults());
+  ReaderUiController({
+    required this.fullscreenController,
+    ReaderUiState? initialState,
+  }) : super(initialState ?? ReaderUiState.defaults());
 
   void toggleChrome() => state = state.copyWith(chromeVisible: !state.chromeVisible);
 
@@ -162,5 +164,8 @@ final readerUiControllerProvider =
   } else {
     fc = const NoopFullscreenController();
   }
-  return ReaderUiController(fullscreenController: fc);
+  return ReaderUiController(
+    fullscreenController: fc,
+    initialState: ReaderUiState.defaultsForPlatform(),
+  );
 });

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
+import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/widgets/reader_scaffold.dart';
 
 /// 2026-07-08 FEAT 4：scroll 模式下键盘上下键调用 onScrollBy 回调。
@@ -154,18 +155,27 @@ void main() {
   testWidgets('arrow keys DO paginate when no EditableText focused',
       (tester) async {
     // 对照组：非 EditableText 聚焦时，方向键仍翻页（M2.8/B1-fix 行为）。
+    // UX-B (Task 4): default chromeVisible=true makes the AppBar render and
+    // overflow this narrow test viewport. Hide chrome first to isolate the
+    // keyboard paging behavior under test.
     int prevCalls = 0;
     int nextCalls = 0;
-    await tester.pumpWidget(ProviderScope(child: MaterialApp(
-      home: Scaffold(
-        body: ReaderScaffold(
-          content: const Text('reader content'),
-          onTapPrev: () => prevCalls++,
-          onTapNext: () => nextCalls++,
-          title: 't',
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        home: Scaffold(
+          body: ReaderScaffold(
+            content: const Text('reader content'),
+            onTapPrev: () => prevCalls++,
+            onTapNext: () => nextCalls++,
+            title: 't',
+          ),
         ),
       ),
-    )));
+    ));
     await tester.pump();
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);

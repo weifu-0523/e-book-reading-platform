@@ -27,6 +27,7 @@ import 'package:zhiyue/core/providers.dart' show notesRepositoryProvider;
 import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/models/book_note.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
+import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_body.dart';
 import 'package:zhiyue/features/reader/providers/notes_controller.dart'
     show currentBookIdProvider;
@@ -76,12 +77,19 @@ void main() {
       ];
     final engine = ConcreteEpubReaderEngine(renderer: renderer);
 
+    // UX-B (Task 4): default chromeVisible=true makes the AppBar render and
+    // overflow this test's narrow viewport. Hide chrome before pumping so the
+    // highlight-bridge path under test stays in focus.
+    final container = ProviderContainer(overrides: [
+      notesRepositoryProvider.overrideWithValue(repo),
+      currentBookIdProvider.overrideWithValue('b1'),
+    ]);
+    addTearDown(container.dispose);
+    container.read(readerUiControllerProvider.notifier).hideChrome();
+
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          notesRepositoryProvider.overrideWithValue(repo),
-          currentBookIdProvider.overrideWithValue('b1'),
-        ],
+      UncontrolledProviderScope(
+        container: container,
         child: MaterialApp(
           locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,

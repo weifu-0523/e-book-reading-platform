@@ -287,7 +287,10 @@ void main() {
       container
           .read(readerUiControllerProvider.notifier)
           .setActiveDrawerTab(DrawerTab.notes);
-      // 测试环境默认 platform 非 desktop，chrome 默认隐藏；显式开启以便点击 AppBar。
+      // UX-B (Task 4): default chromeVisible=true on all platforms; hide first,
+      // then toggle to reveal (preserves original toggle-to-reveal semantics).
+      container.read(readerUiControllerProvider.notifier).hideChrome();
+      await tester.pump();
       container.read(readerUiControllerProvider.notifier).toggleChrome();
       await tester.pump();
       expect(container.read(readerUiControllerProvider).activeDrawerTab,

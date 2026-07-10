@@ -175,8 +175,13 @@ void main() {
 
   /// Center-tap 不再触发 chrome（T5 已移除该手势）。
   /// 测试通过 provider 直接切换 chromeVisible。
+  ///
+  /// UX-B (Task 4): default chromeVisible=true on all platforms. 隐藏后再
+  /// toggle 回到可见，保留"测试通过 provider 显式开启 chrome"的语义。
   void openChrome(ProviderContainer container) {
-    container.read(readerUiControllerProvider.notifier).toggleChrome();
+    container.read(readerUiControllerProvider.notifier)
+      ..hideChrome()
+      ..toggleChrome();
   }
 
   testWidgets(
