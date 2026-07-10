@@ -124,6 +124,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     final controller = ref.read(libraryControllerProvider.notifier);
 
     return Scaffold(
+      drawer: const _LibraryNavigationDrawer(),
       appBar: LibraryAppBar(
         viewMode: state.viewMode,
         sortBy: state.sortBy,
@@ -467,5 +468,42 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     } catch (_) {
       // 平台差异或路径缺失：失败静默，主流程已完成。
     }
+  }
+}
+
+/// Library 页面导航抽屉（移动端 hamburger → 弹出）。
+///
+/// 仅 compact/medium 可见；expanded 分支 top bar 已有 inline action。
+class _LibraryNavigationDrawer extends StatelessWidget {
+  const _LibraryNavigationDrawer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        children: [
+          const DrawerHeader(
+            decoration: BoxDecoration(color: Colors.blue),
+            child: Text('智阅', style: TextStyle(color: Colors.white, fontSize: 24)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.smart_toy_outlined),
+            title: const Text('AI 设置'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/settings/ai');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings_outlined),
+            title: const Text('设置'),
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/settings');
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
