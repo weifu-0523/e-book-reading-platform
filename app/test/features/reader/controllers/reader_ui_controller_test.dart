@@ -16,6 +16,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/features/reader/controllers/fullscreen_controller.dart';
 import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 
 void main() {
@@ -64,6 +65,48 @@ void main() {
       final s = ReaderUiState.defaults();
       expect(s.tocDrawerOpen, false);
       expect(s.typographyPanelOpen, false);
+    });
+  });
+
+  group('ReaderUiController.hideChrome', () {
+    // 用 Android 作为 mobile 锚点：chromeVisible 默认 false，符合 UX-B
+    // mobile 默认隐藏的契约。NoopFullscreenController 避免插件原生通道。
+    ReaderUiController buildMobileController() {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      return ReaderUiController(
+          fullscreenController: const NoopFullscreenController());
+    }
+
+    test('hideChrome sets chromeVisible to false', () {
+      final controller = buildMobileController();
+      controller.toggleChrome();
+      expect(controller.state.chromeVisible, isTrue,
+          reason: 'sanity: toggle from default false should reveal chrome');
+
+      controller.hideChrome();
+      expect(controller.state.chromeVisible, isFalse);
+    });
+
+    test('hideChrome is no-op when already hidden', () {
+      final controller = buildMobileController();
+      expect(controller.state.chromeVisible, isFalse,
+          reason: 'mobile default should start hidden');
+
+      controller.hideChrome();
+      expect(controller.state.chromeVisible, isFalse,
+          reason: 'idempotent: already-hidden state must not throw or flip');
+    });
+
+    test('toggleChrome flips chromeVisible state', () {
+      final controller = buildMobileController();
+      final initial = controller.state.chromeVisible;
+
+      controller.toggleChrome();
+      expect(controller.state.chromeVisible, equals(!initial));
+
+      controller.toggleChrome();
+      expect(controller.state.chromeVisible, equals(initial));
     });
   });
 }

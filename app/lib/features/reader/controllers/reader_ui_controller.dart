@@ -93,6 +93,13 @@ class ReaderUiController extends StateNotifier<ReaderUiState> {
       : super(ReaderUiState.defaults());
 
   void toggleChrome() => state = state.copyWith(chromeVisible: !state.chromeVisible);
+
+  /// 无条件将 chromeVisible 置为 false。
+  ///
+  /// 用于 UX-B 移动端 3s 自动隐藏定时器：定时器到期必须总是隐藏，
+  /// 而非 toggle 翻转。当已是 false 时为幂等 no-op（copyWith 不抛错）。
+  void hideChrome() => state = state.copyWith(chromeVisible: false);
+
   void openTocDrawer() => state = state.copyWith(tocDrawerOpen: true);
   void closeTocDrawer() => state = state.copyWith(tocDrawerOpen: false);
   void openTypographyPanel() => state = state.copyWith(typographyPanelOpen: true);
