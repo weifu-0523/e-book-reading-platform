@@ -7,7 +7,52 @@
 
 ## [Unreleased]
 
-v1.9.0-alpha 之后的新变更将记在此处。
+v1.9.1-alpha 之后的新变更将记在此处。
+
+## [1.9.1-alpha] - 2026-07-11
+
+### 修复（移动端 UX）
+
+- **UX-A**: 移动端 chrome tap-toggle 回归 ——「tap 唤出 chrome 后再 tap 无法隐藏」。
+  根因：`reader_body.dart` 中 `GestureDetector` 被埋进 `SelectableRegion`，
+  导致 tap 事件被 selection region 先消费。修复：把 `Listener` 提到 Stack 顶层，
+  使用 18px 拖拽阈值区分 tap/drag，并豁免 AppBar 区域（避免误触）。
+- **UX-B**: 移动端打开书后 chrome 默认可见（3 秒后自动隐藏）。
+  原行为：新书打开 chrome 立即隐藏，用户完全不知道有 AppBar 可用，
+  上手成本高。新行为：`chromeVisible=true` 默认值 + 3s 定时器 hideChrome；
+  任意用户交互（tap/scroll/selection）取消计时；app 进入后台取消计时；
+  controller dispose 取消计时。桌面行为不受影响（默认可见、不自动隐藏）。
+- **UX-C**: 移动端默认页边距从 wide(72px) 改为 compact(8px)。
+  原行为：手机小屏上 72px 双边让文字只有 ~250px 可读宽度过窄。
+  新行为：移动新书默认 compact；桌面默认仍是 wide；已存在书目保留
+  其持久化的 margin（向后兼容）。
+
+### 新增
+
+- `PlatformInfo.isMobile` / `isDesktop` 助手（`core/platform_info.dart`）
+  —— 尊重 `debugDefaultTargetPlatformOverride` 以便测试覆盖
+- `ReaderUiController.hideChrome()` 方法（与 `toggleChrome` 区分，
+  供 UX-B 计时器调用）
+- `ReaderUiState.defaultsForPlatform()` 工厂（chrome 按 UX-B 默认可见）
+- `ReaderUiController` 接受可选 `initialState` 参数（提升可测试性）
+- `resolveDefaultTypography()` 纯函数助手（按平台分支 margin 默认）
+- 新增 23 个测试覆盖：PlatformInfo (2) + hideChrome (3) +
+  defaultsForPlatform (2) + UX-A chrome toggle (5) +
+  UX-B auto-hide 生命周期 (5) + UX-C margin 平台分支 (6)
+
+### 已知问题
+
+- 与 1.9.0-alpha 相同（iOS scaffold、APK 单包、golden 不覆盖 Android、
+  5 plugin pub-cache `sed` 补丁）
+- 10 个 pre-existing 测试失败（router_test 1 + reader_page_test 4 +
+  reader_flow_integration timeout 1 + reader_page_pdf_integration load 1 +
+  reader_ai_drawer_integration load 1 + library_golden_test 2；全部
+  v1.8.0-alpha 12 baseline 反向验证为 pre-mobile，本轮 UX 修复未引入回归）
+
+### Tags
+
+- `v1.9.1-alpha`（本次发布）
+- 桌面稳定锚点：`desktop-stable-pre-mobile`（不变）
 
 ## [1.9.0-alpha] - 2026-07-10
 

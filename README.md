@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.9.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.9.0-alpha)
+[![Version](https://img.shields.io/badge/version-1.9.1--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.9.1-alpha)
 
 ## 项目状态
 
@@ -20,7 +20,8 @@
 - ✅ **v1.7.1-alpha**：typography 持久化修复——用户报告"调整字体设为默认后退出重开仍恢复预设"的 bug。根因：dispose-time fire-and-forget 被 `exit(0)` 截断。引入 `TypographyPersister` 即时落盘（stream + debounce 500ms），PDF `setTypography` 补 emit state$ 保持契约一致。
 - ✅ **v1.8.0-alpha**：移动端 MVP Spiral 1——M3 三档断点（compact <600 / medium 600-840 / expanded ≥840）+ `ResponsiveLayoutBuilder`（自研 ~80 行）+ `kDesktopDualPageBreakpoint=1100` 桌面 GA 行为常量 + `PlatformChromeController`（status bar + orientation 抽象）+ Library compact 分支（hamburger menu + overflow PopupMenu）+ Reader tap-to-toggle chrome + Android INTERNET 权限 + iOS 目录占位（不 build 不 CI）。桌面行为 100% 保留（hover / 双页阈值 / exit(0) 时序 / window chrome 不变）。
 - ✅ **v1.9.0-alpha**：用户测试 3 bug 修复 + 自由笔记——(1) 修坚果云 WebDAV 上传报 `AncestorsNotFound` (409)（MKCOL ensureAncestors）；(2) 修 AI 聊天发送后输入框文字残留（clear-on-send）；(3) 新增自由笔记：reader drawer `note_add` + NotesPage FAB + 全局入口（library drawer），drift schema v13 + 跨设备同步（tier 1，与 bookNote 同级）+ NoteEditPage（Markdown 编辑/预览切换 + 500ms write-through debounce）。
-- 下一步：**S2 AI 适配 + 5 plugin 升级**（IME / 流式 sheet / 软键盘避让 / 默认 compileSdk 36）→ v1.10.0-alpha。
+- ✅ **v1.9.1-alpha**：移动端 UX 热修——(1) UX-A 修移动 chrome tap-toggle 回归（tap 唤出后无法 tap 隐藏，`Listener` 提到 Stack 顶层 + 18px 拖拽阈值）；(2) UX-B 打开书后 chrome 默认可见 + 3s 自动隐藏（任意交互/后台/dispose 取消计时）；(3) UX-C 移动新书默认页边距从 wide(72px) 改为 compact(8px)。新增 `PlatformInfo.isMobile/isDesktop` + `hideChrome()` + `defaultsForPlatform()` + `resolveDefaultTypography()` 平台分支助手；桌面行为不变。
+- 下一步：**S2 5 plugin 升级 + IME/软键盘深度适配**（默认 compileSdk 36 / 流式 sheet / 全屏模式安全区）→ v1.10.0-alpha。
 
 ## 下载安装
 
@@ -115,7 +116,7 @@
 
 ## 测试与质量
 
-- **测试**：~1240 通过 + 3 skipped + 8 pre-existing baseline 失败（v1.9.0-alpha；细分见 [release-notes](docs/releases/release-notes-v1.9.0-alpha.md)）
+- **测试**：~1260 通过 + 3 skipped + 10 pre-existing baseline 失败（v1.9.1-alpha；细分见 [release-notes](docs/releases/release-notes-v1.9.1-alpha.md)）
 - **静态分析**：0 errors / 0 warnings / 0 info（M2.4/T4 已清零；既有 cascade/const 风格 lint 已通过 dart fix --apply + 手工处理）
 - **文档**：836 行 maintainer's runbook + 16 milestone spec + 17 plan + 项目级 review
 - **CI**：手动（每 milestone 完成跑全量回归 + analyze）
