@@ -178,6 +178,37 @@ void main() {
       expect(engine.pushOnly(), throwsA(isA<WebDavException>()));
       verifyNever(() => webdav.ensureAncestors(any()));
     });
+
+    // Regression (2026-07-11 user report): jianguoyun returns 409
+    // AncestorsNotFound from GET when the parent dir doesn't exist (e.g. fresh
+    // account that has no /zhiyue/snapshots/ yet). The 404-only catch let 409
+    // propagate to UI as sync failure. Treat both as firstPush.
+    test('calls ensureAncestors when getString returns 409 (ancestors missing)',
+        () async {
+      when(() => webdav.getString(any())).thenThrow(WebDavException(
+          409,
+          '/zhiyue/snapshots/device-A.jsonl',
+          '<?xml version="1.0" encoding="UTF-8"?>'
+              '<d:error xmlns:d="DAV:" xmlns:s="http://insjianguoyun.com">'
+              '<s:exception>AncestorsNotFound</s:exception>'
+              '<s:message>The ancestors of this location does not found</s:message>'
+              '</d:error>'));
+      when(() => webdav.ensureAncestors(any())).thenAnswer((_) async {});
+      when(() => webdav.putString(any(), any())).thenAnswer((_) async {});
+
+      await outbox.enqueue(
+        recordId: 'a1',
+        recordType: 'annotation',
+        payloadJson:
+            '{"id":"a1","type":"annotation","mtime":"2026-07-11T00:00:00.000Z","deleted":false,"payload":{}}',
+      );
+
+      await engine.pushOnly();
+
+      final captured =
+          verify(() => webdav.ensureAncestors(captureAny())).captured;
+      expect(captured, ['/zhiyue/snapshots/device-A.jsonl']);
+    });
   });
 
   group('pull', () {

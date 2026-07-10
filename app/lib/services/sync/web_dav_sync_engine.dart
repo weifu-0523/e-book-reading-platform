@@ -69,10 +69,11 @@ class WebDavSyncEngine implements SyncEngine {
     try {
       existing = await _rateLimiter.run(() => webdav.getString(_snapshotPath));
     } on WebDavException catch (e) {
-      if (e.statusCode != 404) rethrow;
-      // 404 = file doesn't exist yet, treat as empty.
-      // Also means the parent directory may not exist either (jianguoyun
-      // does NOT auto-create parents on PUT — Bug #1, 2026-07-10).
+      // 404 = file doesn't exist; 409 = ancestors missing (jianguoyun returns
+      // this from GET when the parent dir doesn't exist, e.g. fresh account).
+      // Either way: treat as firstPush and let ensureAncestors create the
+      // directory chain before PUT.
+      if (e.statusCode != 404 && e.statusCode != 409) rethrow;
       firstPush = true;
     }
 
