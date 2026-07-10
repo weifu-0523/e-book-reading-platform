@@ -24,6 +24,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/locator.dart';
 import '../../../core/providers.dart'
     show bookProvider, notesRepositoryProvider;
+import '../../../core/responsive_layout_builder.dart';
 import '../../../core/widgets/empty_view.dart';
 import '../../../core/widgets/error_view.dart';
 import '../../../core/widgets/loading_view.dart';
@@ -72,17 +73,23 @@ class NotesPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: annotationsAsync.when(
-        loading: () => const LoadingView(),
-        error: (e, _) {
-          debugPrint('notesPageAnnotationsProvider error: $e');
-          return ErrorView(
-            message: l10n.notesLoadFailed,
-            onRetry: () =>
-                ref.invalidate(notesPageAnnotationsProvider(bookId)),
+      body: ResponsiveLayoutBuilder(
+        builder: (context, sizeClass) {
+          // 当前所有尺寸都是单栏 list push detail。
+          // expanded 双栏 master-detail 留待未来 polish（v1.8.1+）。
+          return annotationsAsync.when(
+            loading: () => const LoadingView(),
+            error: (e, _) {
+              debugPrint('notesPageAnnotationsProvider error: $e');
+              return ErrorView(
+                message: l10n.notesLoadFailed,
+                onRetry: () =>
+                    ref.invalidate(notesPageAnnotationsProvider(bookId)),
+              );
+            },
+            data: (annotations) => _body(context, ref, annotations),
           );
         },
-        data: (annotations) => _body(context, ref, annotations),
       ),
     );
   }
