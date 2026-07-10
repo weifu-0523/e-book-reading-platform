@@ -77,7 +77,7 @@
 - APK 单包不拆 ABI（50-80 MB release，含 PDFium）
 - 5 plugin pub-cache `sed` 补丁仍需手动执行（S2 升级 plugin 默认 compileSdk 36）
 - Golden 测试不覆盖 Android 渲染
-- 12 个 pre-existing 测试失败沿用 v1.8.0-alpha baseline
+- 8 个 pre-existing 测试失败（router_test 1 + reader_page_test 4 + reader_flow_integration timeout 1 + reader_page_pdf_integration load 1 + reader_ai_drawer_integration load 1；v1.8.0-alpha 12 baseline 中 library_golden_test 4 已在 T7 修复 regen）
 
 ## 升级指南
 

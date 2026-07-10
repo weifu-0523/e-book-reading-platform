@@ -39,6 +39,7 @@ v1.9.0-alpha 之后的新变更将记在此处。
 
 - 与 1.8.0-alpha 相同（iOS scaffold、APK 单包、golden 不覆盖 Android）
 - 5 plugin pub-cache `sed` 补丁仍需手动执行（S2 升级 plugin 默认 compileSdk 36）
+- 8 个 pre-existing 测试失败（v1.8.0-alpha 12 baseline 中 library_golden_test 4 已在 T7 修复 regen）
 
 ## [1.8.0-alpha] - 2026-07-10
 
