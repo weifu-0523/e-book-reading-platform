@@ -7,7 +7,33 @@
 
 ## [Unreleased]
 
-v1.7.1-alpha 之后的新变更将记在此处。
+v1.8.0-alpha 之后的新变更将记在此处。
+
+## [1.8.0-alpha] - 2026-07-10
+
+### 新增
+
+- **移动端 MVP Spiral 1**：Android 端 reader + library + notes + settings 可用
+- **ResponsiveLayoutBuilder**（M3 三档断点 compact/medium/expanded）+ `kDesktopDualPageBreakpoint` 常量
+- **PlatformChromeController** 抽象（status bar + orientation），Desktop noop / Mobile SystemChrome
+- **iOS 目录 scaffold**（flutter create --platforms=ios，仅占位，不 build 不 CI）
+- **Library compact 分支**：hamburger menu + overflow PopupMenu（7 项入口）
+- **Library NavigationDrawer**：compact 下通过 hamburger 打开设置/AI 设置
+- **Reader tap-to-toggle chrome**：移动 tap 阅读区切换 top bar 显隐
+
+### 变更
+
+- `reader_body.dart` 3 处 `>= 1100` 硬编码 → `kDesktopDualPageBreakpoint` 常量
+- `library/notes` 的"打开文件夹" SnackBarAction 在 mobile 隐藏
+- `notes/settings` body 包 ResponsiveLayoutBuilder（双栏增强推 v1.8.1）
+- AndroidManifest 加显式 INTERNET + ACCESS_NETWORK_STATE 权限
+
+### 已知问题
+
+- iOS 仅 scaffold，build/CI 推 S3 之后
+- APK 单 APK 不做 ABI 拆分（体积 50-80MB，含 PDFium）
+- Golden 测试不覆盖 Android 渲染
+- 8 个 pre-existing 测试失败（不阻塞本版本）
 
 ## [1.7.1-alpha] — 2026-07-10
 
