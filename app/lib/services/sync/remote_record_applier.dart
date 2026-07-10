@@ -48,6 +48,8 @@ class RemoteRecordApplier {
         return _applyBook(record);
       case SyncRecordType.bookmark:
         return _applyBookmark(record);
+      case SyncRecordType.freeformNote:
+        return _applyFreeformNote(record);
     }
   }
 
@@ -90,6 +92,7 @@ class RemoteRecordApplier {
         case SyncRecordType.bookNote:
         case SyncRecordType.bookmark:
         case SyncRecordType.readingProgress:
+        case SyncRecordType.freeformNote:
           midTier.add(r);
           break;
         case SyncRecordType.annotation:
@@ -180,6 +183,52 @@ class RemoteRecordApplier {
         Variable.withString(source),
         Variable.withDateTime(record.mtime),
         Variable.withDateTime(record.mtime),
+      ],
+    );
+    return true;
+  }
+
+  /// Bug #3 (2026-07-10): apply a freeform note. Mirrors `_applyBookmark`:
+  /// SELECT existing updated_at → skip if remote is older (LWW) → INSERT OR
+  /// REPLACE / DELETE on local table. FK book_id is nullable (null = global
+  /// note); parent book (if any) is guaranteed to exist by the tier-1
+  /// ordering in `applyRecords` (books processed before midTier).
+  Future<bool> _applyFreeformNote(SyncRecord record) async {
+    final existing = await _db.customSelect(
+      'SELECT updated_at FROM freeform_notes WHERE id = ?',
+      variables: [Variable.withString(record.id)],
+    ).getSingleOrNull();
+    if (existing != null) {
+      final localMtime = existing.read<DateTime>('updated_at');
+      if (!record.mtime.isAfter(localMtime)) {
+        await _recordConflict(record, localMtime);
+        return false;
+      }
+    }
+
+    if (record.deleted) {
+      await _db.customStatement(
+        'DELETE FROM freeform_notes WHERE id = ?', [record.id]);
+      return true;
+    }
+
+    final p = record.payload;
+    final createdAtStr = p['createdAt'] as String?;
+    final createdAt = createdAtStr == null
+        ? record.mtime
+        : DateTime.parse(createdAtStr);
+
+    await _db.customInsert(
+      'INSERT OR REPLACE INTO freeform_notes(id, book_id, title, content, created_at, updated_at, color) '
+      'VALUES(?, ?, ?, ?, ?, ?, ?)',
+      variables: [
+        Variable.withString(record.id),
+        Variable<String>(p['bookId'] as String?),
+        Variable.withString(p['title'] as String),
+        Variable.withString(p['content'] as String),
+        Variable.withDateTime(createdAt),
+        Variable.withDateTime(record.mtime),
+        Variable.withInt(p['color'] as int? ?? 0),
       ],
     );
     return true;
