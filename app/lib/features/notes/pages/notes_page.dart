@@ -28,6 +28,7 @@ import '../../../core/responsive_layout_builder.dart';
 import '../../../core/widgets/empty_view.dart';
 import '../../../core/widgets/error_view.dart';
 import '../../../core/widgets/loading_view.dart';
+import '../../../data/local/database.dart' hide Annotation, BookNote;
 import '../../../data/models/annotation.dart';
 import '../../../data/models/book_note.dart';
 import '../../../gen_l10n/app_localizations.dart';
@@ -37,6 +38,7 @@ import '../providers/notes_page_providers.dart';
 import '../services/markdown_exporter.dart';
 import '../services/note_file_writer.dart';
 import '../widgets/annotation_context_sheet.dart';
+import 'note_edit_page.dart';
 
 /// 单本书的笔记页：按章节分组展示高亮与笔记。
 ///
@@ -58,6 +60,8 @@ class NotesPage extends ConsumerWidget {
     final annotationsAsync =
         ref.watch(notesPageAnnotationsProvider(bookId));
     final noteAsync = ref.watch(notesPageBookNoteProvider(bookId));
+    // Bug #3 (2026-07-10)：本书自由笔记，渲染在 annotations 上方。
+    final freeformAsync = ref.watch(bookFreeformNotesProvider(bookId));
 
     return Scaffold(
       appBar: AppBar(
@@ -73,6 +77,16 @@ class NotesPage extends ConsumerWidget {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'notes_page_freeform_fab',
+        tooltip: '新建自由笔记',
+        child: const Icon(Icons.note_add),
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => NoteEditPage(bookId: bookId),
+          ),
+        ),
+      ),
       body: ResponsiveLayoutBuilder(
         builder: (context, sizeClass) {
           // 当前所有尺寸都是单栏 list push detail。
@@ -87,7 +101,16 @@ class NotesPage extends ConsumerWidget {
                     ref.invalidate(notesPageAnnotationsProvider(bookId)),
               );
             },
-            data: (annotations) => _body(context, ref, annotations),
+            data: (annotations) => freeformAsync.when(
+              loading: () => const LoadingView(),
+              error: (e, _) => ErrorView(
+                message: l10n.notesLoadFailed,
+                onRetry: () =>
+                    ref.invalidate(bookFreeformNotesProvider(bookId)),
+              ),
+              data: (freeform) =>
+                  _body(context, ref, annotations, freeform),
+            ),
           );
         },
       ),
@@ -110,9 +133,9 @@ class NotesPage extends ConsumerWidget {
     return '《$stripped》笔记';
   }
 
-  Widget _body(
-      BuildContext context, WidgetRef ref, List<Annotation> annotations) {
-    if (annotations.isEmpty) {
+  Widget _body(BuildContext context, WidgetRef ref,
+      List<Annotation> annotations, List<FreeformNote> freeform) {
+    if (annotations.isEmpty && freeform.isEmpty) {
       final l10n = AppLocalizations.of(context)!;
       return EmptyView(
         title: l10n.notesEmptyTitle,
@@ -137,11 +160,11 @@ class NotesPage extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            '共 $highlights 条高亮 · $notes 条笔记 · 更新于 '
-            '${_latestDate(annotations)}',
+            '共 $highlights 条高亮 · $notes 条笔记 · ${freeform.length} 条自由笔记',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
+        if (freeform.isNotEmpty) _buildFreeformSection(context, freeform),
         for (final chapterIdx in sortedKeys) ...[
           ListTile(
             title: Text(
@@ -164,6 +187,50 @@ class NotesPage extends ConsumerWidget {
               onDelete: () => _confirmDeleteAnnotation(context, ref, a),
             ),
         ],
+      ],
+    );
+  }
+
+  /// Bug #3 (2026-07-10)：本书自由笔记 section。点击条目 → NoteEditPage 编辑。
+  Widget _buildFreeformSection(
+      BuildContext context, List<FreeformNote> notes) {
+    final sorted = [...notes]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              const Icon(Icons.note_outlined, size: 18),
+              const SizedBox(width: 6),
+              Text('自由笔记（${sorted.length}）',
+                  style:
+                      const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+        for (final n in sorted)
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.note_outlined, size: 20),
+            title: Text(n.title,
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              n.content.replaceAll('\n', ' '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    NoteEditPage(bookId: bookId, noteId: n.id),
+              ),
+            ),
+          ),
+        const Divider(height: 1),
       ],
     );
   }

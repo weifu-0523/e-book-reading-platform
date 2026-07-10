@@ -16,7 +16,9 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/providers.dart' show notesRepositoryProvider;
+import '../../../core/providers.dart'
+    show freeformNotesRepositoryProvider, notesRepositoryProvider;
+import '../../../data/local/database.dart' hide Annotation, BookNote;
 import '../../../data/models/annotation.dart';
 import '../../../data/models/book_note.dart';
 
@@ -34,4 +36,19 @@ final notesPageAnnotationsProvider =
 final notesPageBookNoteProvider =
     FutureProvider.autoDispose.family<BookNote?, String>(
   (ref, bookId) => ref.watch(notesRepositoryProvider).getNoteByBook(bookId),
+);
+
+/// Bug #3 (2026-07-10)：反应式订阅本书自由笔记。
+/// 供 [NotesPage] 与 reader drawer 使用。
+final bookFreeformNotesProvider =
+    StreamProvider.autoDispose.family<List<FreeformNote>, String>(
+  (ref, bookId) =>
+      ref.watch(freeformNotesRepositoryProvider).watchForBook(bookId),
+);
+
+/// Bug #3 (2026-07-10)：反应式订阅全部自由笔记（global 视图）。
+/// 供 GlobalFreeformNotesPage 使用。
+final allFreeformNotesProvider =
+    StreamProvider.autoDispose<List<FreeformNote>>(
+  (ref) => ref.watch(freeformNotesRepositoryProvider).watchAll(),
 );

@@ -8,13 +8,56 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zhiyue/core/locator.dart';
 import 'package:zhiyue/core/providers.dart'
-    show bookProvider, notesRepositoryProvider;
+    show bookProvider, freeformNotesRepositoryProvider, notesRepositoryProvider;
+import 'package:zhiyue/data/local/database.dart'
+    hide Annotation, Book, BookNote;
 import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/models/book_note.dart';
+import 'package:zhiyue/data/repositories/freeform_notes_repository.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/notes/pages/notes_page.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
+
+/// Empty freeform repo stub — existing notes_page_test cases don't exercise
+/// freeform section content; they just need the stream to emit [] and settle.
+class _EmptyFreeformRepo implements FreeformNotesRepository {
+  @override
+  Future<String> create({
+    required String? bookId,
+    required String title,
+    required String content,
+    int color = 0,
+  }) async =>
+      '';
+
+  @override
+  Future<void> update({
+    required String id,
+    String? title,
+    String? content,
+    int? color,
+  }) async {}
+
+  @override
+  Future<void> delete(String id) async {}
+
+  @override
+  Future<FreeformNote?> get(String id) async => null;
+
+  @override
+  Future<List<FreeformNote>> listForBook(String bookId) async => const [];
+
+  @override
+  Future<List<FreeformNote>> listAll() async => const [];
+
+  @override
+  Stream<List<FreeformNote>> watchForBook(String bookId) =>
+      Stream.value(const []);
+
+  @override
+  Stream<List<FreeformNote>> watchAll() => Stream.value(const []);
+}
 
 /// Fake [FilePicker] that returns a pre-configured directory path (or null to
 /// simulate user cancel). Mirrors the T5 pattern — file_picker 8.3.7 uses FFI
@@ -169,7 +212,9 @@ void main() {
             builder: (_, __) => ProviderScope(
                 overrides: [
                   notesRepositoryProvider
-                      .overrideWithValue(_FakeNotesRepository(annotations))
+                      .overrideWithValue(_FakeNotesRepository(annotations)),
+                  freeformNotesRepositoryProvider
+                      .overrideWith((ref) => _EmptyFreeformRepo()),
                 ],
                 child: const NotesPage(bookId: 'b1'))),
         GoRoute(
@@ -260,6 +305,8 @@ Widget _harness(List<Annotation> anns) {
   return ProviderScope(
     overrides: [
       notesRepositoryProvider.overrideWithValue(_FakeNotesRepository(anns)),
+      freeformNotesRepositoryProvider
+          .overrideWith((ref) => _EmptyFreeformRepo()),
       bookProvider('b1').overrideWith((ref) async => Book(
             id: 'b1',
             title: '测试书',

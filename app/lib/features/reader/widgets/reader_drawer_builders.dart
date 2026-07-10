@@ -20,12 +20,12 @@ import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine_pdf_view/pdf_reader_engine.dart';
 
-import '../../../core/providers.dart';
 import '../../../core/widgets/error_view.dart';
 import '../../../core/widgets/loading_view.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
 import '../../notes/pages/note_edit_page.dart';
+import '../../notes/providers/notes_page_providers.dart';
 import '../providers/notes_controller.dart';
 import 'notes_drawer.dart';
 import 'pdf_thumbnail_grid.dart';
@@ -161,8 +161,7 @@ class ReaderNotesDrawerWrapper extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notesAsync = ref.watch(notesControllerProvider);
     // Bug #3 (2026-07-10)：监听本书的自由笔记，渲染在 annotations 上方。
-    final freeformAsync =
-        ref.watch(freeformNotesRepositoryProvider.watchForBook(bookId));
+    final freeformAsync = ref.watch(bookFreeformNotesProvider(bookId));
     return notesAsync.when(
       data: (s) => freeformAsync.when(
         data: (freeform) => NotesDrawerContent(

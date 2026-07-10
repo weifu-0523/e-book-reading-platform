@@ -2,16 +2,57 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/core/providers.dart'
-    show bookProvider, notesRepositoryProvider;
+    show bookProvider, freeformNotesRepositoryProvider, notesRepositoryProvider;
 import 'package:zhiyue/core/widgets/empty_view.dart';
 import 'package:zhiyue/core/widgets/error_view.dart';
 import 'package:zhiyue/core/widgets/loading_view.dart';
+import 'package:zhiyue/data/local/database.dart'
+    hide Annotation, Book, BookNote;
 import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/models/book_note.dart';
+import 'package:zhiyue/data/repositories/freeform_notes_repository.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
 import 'package:zhiyue/features/notes/pages/notes_page.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
+
+class _EmptyFreeformRepo implements FreeformNotesRepository {
+  @override
+  Future<String> create({
+    required String? bookId,
+    required String title,
+    required String content,
+    int color = 0,
+  }) async =>
+      '';
+
+  @override
+  Future<void> update({
+    required String id,
+    String? title,
+    String? content,
+    int? color,
+  }) async {}
+
+  @override
+  Future<void> delete(String id) async {}
+
+  @override
+  Future<FreeformNote?> get(String id) async => null;
+
+  @override
+  Future<List<FreeformNote>> listForBook(String bookId) async => const [];
+
+  @override
+  Future<List<FreeformNote>> listAll() async => const [];
+
+  @override
+  Stream<List<FreeformNote>> watchForBook(String bookId) =>
+      Stream.value(const []);
+
+  @override
+  Stream<List<FreeformNote>> watchAll() => Stream.value(const []);
+}
 
 class _EmptyNotesRepository implements NotesRepository {
   @override
@@ -111,6 +152,8 @@ Widget _harness(NotesRepository repo) {
   return ProviderScope(
     overrides: [
       notesRepositoryProvider.overrideWithValue(repo),
+      freeformNotesRepositoryProvider
+          .overrideWith((ref) => _EmptyFreeformRepo()),
       bookProvider('b1').overrideWith((ref) async => Book(
             id: 'b1',
             title: '测试书',
