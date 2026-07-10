@@ -17,6 +17,10 @@ v1.9.1-alpha 之后的新变更将记在此处。
   根因：`reader_body.dart` 中 `GestureDetector` 被埋进 `SelectableRegion`，
   导致 tap 事件被 selection region 先消费。修复：把 `Listener` 提到 Stack 顶层，
   使用 18px 拖拽阈值区分 tap/drag，并豁免 AppBar 区域（避免误触）。
+- **UX-A.1** (review follow-up): 修复移动端 margin-tap 翻页与 chrome toggle 双发。
+  Stack 顶 `Listener` 不是手势 arena 参与者，会观察所有 pointer 事件，导致翻页时
+  chrome 闪烁。补丁：在 `_handleChromeTogglePointerUp` 加 page-zone 豁免
+  （左右 `zoneWidth` 内的 tap 由翻页 GestureDetector 独享）。新增 2 widget test。
 - **UX-B**: 移动端打开书后 chrome 默认可见（3 秒后自动隐藏）。
   原行为：新书打开 chrome 立即隐藏，用户完全不知道有 AppBar 可用，
   上手成本高。新行为：`chromeVisible=true` 默认值 + 3s 定时器 hideChrome；
@@ -36,8 +40,8 @@ v1.9.1-alpha 之后的新变更将记在此处。
 - `ReaderUiState.defaultsForPlatform()` 工厂（chrome 按 UX-B 默认可见）
 - `ReaderUiController` 接受可选 `initialState` 参数（提升可测试性）
 - `resolveDefaultTypography()` 纯函数助手（按平台分支 margin 默认）
-- 新增 23 个测试覆盖：PlatformInfo (2) + hideChrome (3) +
-  defaultsForPlatform (2) + UX-A chrome toggle (5) +
+- 新增 25 个测试覆盖：PlatformInfo (2) + hideChrome (3) +
+  defaultsForPlatform (2) + UX-A chrome toggle (5+2 page-zone exemption) +
   UX-B auto-hide 生命周期 (5) + UX-C margin 平台分支 (6)
 
 ### 已知问题

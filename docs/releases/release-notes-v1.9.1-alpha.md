@@ -22,6 +22,18 @@ hotfix 全部修复。桌面端行为完全不受影响（无新功能、无回�
   使用 18px 拖拽阈值区分 tap vs drag（避免左右翻页与 chrome toggle 互扰）；
   豁免 AppBar 命中区域（避免误触返回/收藏按钮反而触发 toggle）。
 
+### UX-A.1：margin-tap 翻页与 chrome toggle 双发（review follow-up）
+
+- **症状**：UX-A 修复后，移动端用户 tap 左右 margin 翻页时 chrome 也会闪烁
+  （toggle 被同时触发）。
+- **根因**：Stack 顶 `Listener` 不是手势 arena 参与者，会无条件观察所有
+  pointer 事件。翻页 zone 的 `GestureDetector` 即使在 arena 中获胜，
+  `Listener.onPointerUp` 仍会 fire，导致双发。
+- **修复**：在 `_handleChromeTogglePointerUp` 加 page-zone 豁免 —— 落在
+  左右 `zoneWidth`（= `marginPx.clamp(0, screenWidth/2)`）内的 tap 由
+  翻页 `GestureDetector` 独享，本 Listener 不 toggle。
+- **新增**：2 widget test（T5-6 左 zone + T5-7 右 zone）覆盖该不变量。
+
 ### UX-B：打开书后 chrome 默认可见 + 3s 自动隐藏
 
 - **症状**：v1.8.0-alpha 起移动端 reader 默认 chrome 隐藏（`chromeVisible=false`），
@@ -67,15 +79,17 @@ hotfix 全部修复。桌面端行为完全不受影响（无新功能、无回�
 - `f912fd3` fix(reader): chrome tap-toggle uses Stack-top Listener (UX-A / T5)
 - `0373ae7` feat(reader): 3s chrome auto-hide on mobile (UX-B / T6)
 - `7ce79f1` feat(reader): mobile default margin = compact (UX-C / T7)
+- `ad76659` chore(release): bump v1.9.1-alpha + changelog + readme + notes (T9)
+- `88cf646` fix(reader): chrome toggle exempts page zones (C1 follow-up to UX-A)
 
 ## 测试覆盖
 
-新增 23 个测试（v1.9.0-alpha 之后）：
+新增 25 个测试（v1.9.0-alpha 之后）：
 
 - `platform_info_test.dart`（2）：isMobile / isDesktop 各平台分支
 - `reader_ui_controller_test.dart`（+3）：hideChrome 幂等 / 与 toggle 互操作 / 已隐藏态 no-op
 - `reader_ui_state_defaults_test.dart`（2）：defaultsForPlatform 桌面/移动分支
-- `reader_scaffold_chrome_toggle_test.dart`（5）：UX-A tap 唤出后 tap 可隐藏 / 拖拽阈值 / AppBar 命中豁免 / 桌面无 toggle
+- `reader_scaffold_chrome_toggle_test.dart`（5+2）：UX-A tap 唤出后 tap 可隐藏 / 拖拽阈值 / AppBar 命中豁免 / 桌面无 toggle + C1 page-zone 豁免（左右 zone tap 翻页不 toggle）
 - `reader_chrome_auto_hide_test.dart`（5）：UX-B 计时器触发 / 用户交互取消 / app 后台取消 / dispose 取消 / 桌面不启动计时
 - `typography_default_margin_test.dart`（6）：UX-C 移动新书 compact / 桌面新书 wide / 存量书目保留持久化值 / 平台 override 互操作
 
