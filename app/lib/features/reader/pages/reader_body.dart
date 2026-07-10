@@ -17,6 +17,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderBox, SelectedContent;
 import 'package:flutter/services.dart';
@@ -683,13 +684,23 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
           // 收到的 constraints.maxHeight 就是扣除 progress bar 的剩余高度，
           // Paginator 分页正确，文字不再被遮。PDF 走 pdfrx 整页缩放，剩余
           // 高度减小只会让页略缩小，不会被遮挡，反而更准确。
-          Padding(
-            padding: const EdgeInsets.only(bottom: kReaderProgressBarHeight),
-            child: SelectableRegion(
-              key: _selectableRegionKey,
-              selectionControls: materialTextSelectionControls,
-              onSelectionChanged: _onSelectionChanged,
-              child: ReaderScaffold(
+          GestureDetector(
+            // T9 mobile tap-to-toggle: mobile 无 hover，单次点击阅读区切换 chrome 显隐。
+            // translucent 让底层 SelectableRegion 与 ReaderScaffold 的翻页/拖拽手势
+            // 仍能正常接收事件。桌面端此 detector 不注册 onTap，hover 行为不变。
+            onTap: _isDesktopPlatform
+                ? null
+                : () => ref
+                    .read(readerUiControllerProvider.notifier)
+                    .toggleChrome(),
+            behavior: HitTestBehavior.translucent,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: kReaderProgressBarHeight),
+              child: SelectableRegion(
+                key: _selectableRegionKey,
+                selectionControls: materialTextSelectionControls,
+                onSelectionChanged: _onSelectionChanged,
+                child: ReaderScaffold(
                 content: engine.build(innerContext),
               paginationMode: engine.paginationMode,
               title: _bookTitle(),
@@ -781,9 +792,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               },
               // 2026-07-08 FEAT 4：scroll 模式键盘上下键滚动（左右键仍翻章）。
               onScrollBy: (delta) => engine.scrollBy(delta),
-            ),
-          ),
-          ), // Padding close (M2.11 回归修复)
+                ),
+              ),
+            ), // Padding close (M2.11 回归修复)
+          ), // GestureDetector close (T9 mobile tap-to-toggle)
           if (engine is ConcreteEpubReaderEngine)
             ReaderChapterEndPrompt(
               engine: engine as ConcreteEpubReaderEngine,
@@ -837,6 +849,14 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   /// 读取当前可用宽度，>=1100 视为宽屏。
   bool _isWideScreen(BuildContext context) {
     return MediaQuery.of(context).size.width >= kDesktopDualPageBreakpoint;
+  }
+
+  /// T9：当前运行平台是否为桌面（Windows / macOS / Linux）。
+  /// 移动端无 hover，单次点击阅读区切换 chrome 显隐；桌面保留 hover 行为不变。
+  bool get _isDesktopPlatform {
+    return defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.linux;
   }
 
   Future<void> _onAnnotationTap(String id) async {
