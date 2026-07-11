@@ -1023,7 +1023,25 @@ git commit -m "feat(ai): AiInputComposer FocusNode retention + Scaffold resize a
 
 ---
 
-### Task 12: Fullscreen SafeArea audit
+### Task 12: Fullscreen SafeArea audit (NO-OP — verified by user)
+
+**Audit (2026-07-11):**
+
+- Fullscreen entry: `ReaderScaffold` F11 keyboard handler (line 683) + AppBar
+  toggle icon (line 614-618). State in `ReaderUiController.isFullscreen`.
+- MobileFullscreenController uses `SystemUiMode.immersiveSticky` (hide) /
+  `SystemUiMode.edgeToEdge` (restore). Correct.
+- Chrome overlay AppBar wrapped in `SafeArea` (reader_scaffold.dart:480) —
+  inset auto-adapts (zero in fullscreen, status-bar height otherwise).
+- endDrawer (AI tab) wrapped in `SafeArea` (reader_body.dart:551).
+- Content layer (engine.build) fills entire screen; the user's real-device
+  test on v1.9.2-alpha confirmed no overlap with status bar / notch /
+  dynamic island in either fullscreen or non-fullscreen mode.
+
+User verdict: "暂时手机端没发现问题" (no issues found on mobile). T12 is a
+no-op — no code changes needed.
+
+**Original plan (for reference):**
 
 **Files:**
 - Modify: `app/lib/features/reader/pages/reader_body.dart` (if needed)
