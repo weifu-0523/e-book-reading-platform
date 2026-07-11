@@ -320,4 +320,107 @@ void main() {
           reason: 'default behavior unchanged when streamingMessageId omitted');
     });
   });
+
+  // T18 (2026-07-11): Chat auto-scroll respects user-pinned state.
+  // Implementation already exists in _AiMessageListState (lines 47-89):
+  // _userPinned is set true when offset < max - 80px. While pinned,
+  // didUpdateWidget skips the post-frame jumpTo.
+  //
+  // These tests lock in the contract so a future refactor can't silently
+  // break the "user scrolled up to read history → don't yank them back"
+  // behavior.
+  group('T18 auto-scroll respects user-pinned state', () {
+    testWidgets('does NOT auto-scroll when user scrolled up (pinned)',
+        (tester) async {
+      // Build a list long enough to actually scroll.
+      final messages = [
+        for (var i = 0; i < 30; i++)
+          _msg(id: 'm$i', role: i % 2 == 0 ? 'user' : 'ai', content: 'msg $i'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 200,
+            child: AiMessageList(messages: messages),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // Scroll up away from bottom (simulate user reading history).
+      await tester.drag(find.byType(AiMessageList), const Offset(0, 300));
+      await tester.pumpAndSettle();
+
+      final scrollAfterDrag = tester.widget<Scrollable>(
+        find.byType(Scrollable),
+      ).controller!;
+      expect(
+        scrollAfterDrag.offset <
+            scrollAfterDrag.position.maxScrollExtent - 80,
+        isTrue,
+        reason: 'precondition: drag actually moved us off-bottom (user-pinned)',
+      );
+
+      // Append a new message — list should NOT auto-scroll because user
+      // is pinned.
+      final pinnedMessages = [
+        ...messages,
+        _msg(id: 'm_new', role: 'ai', content: 'newcomer'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 200,
+            child: AiMessageList(messages: pinnedMessages),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // User-pinned state is internal, but we can verify the new message
+      // is NOT scrolled into view by checking that the new content is
+      // not yet visible (i.e., user is still reading history).
+      expect(find.text('newcomer'), findsNothing,
+          reason: 'T18: when user scrolled up, new messages should not '
+              'yank the view back to bottom');
+    });
+
+    testWidgets('DOES auto-scroll when user at bottom (not pinned)',
+        (tester) async {
+      // Counter-test: same setup, but skip the scroll-up. After appending
+      // a new message, the list should jumpTo bottom and "newcomer" should
+      // be visible.
+      final messages = [
+        for (var i = 0; i < 30; i++)
+          _msg(id: 'm$i', role: i % 2 == 0 ? 'user' : 'ai', content: 'msg $i'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 200,
+            child: AiMessageList(messages: messages),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      final pinnedMessages = [
+        ...messages,
+        _msg(id: 'm_new', role: 'ai', content: 'newcomer'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 200,
+            child: AiMessageList(messages: pinnedMessages),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('newcomer'), findsOneWidget,
+          reason: 'T18 control: when at bottom, auto-scroll should bring '
+              'new messages into view');
+    });
+  });
 }
