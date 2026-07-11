@@ -36,16 +36,17 @@ import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_body.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
-/// M2.10/Bug C1 regression tests: a bookmark "add" entry point (FAB) must be
-/// visible when chrome is hidden (fullscreen / user-toggled), since the only
-/// other entry — the AppBar IconButton in `_buildChrome` — is gated behind
-/// `ui.chromeVisible` and otherwise vanishes.
+/// Regression (2026-07-11 user report): on mobile (narrow viewport), tapping
+/// the AppBar AI icon did nothing because `_toggleAiDrawer` only flipped
+/// `_aiPanelOpen`, which controls the wide-screen inline panel only. The
+/// narrow path requires `Scaffold.of(context).openEndDrawer()`.
 ///
-/// Contract:
-/// - chromeVisible == false → FloatingActionButton(bookmark_add_outlined) present
-/// - chromeVisible == true  → FAB absent (AppBar button takes over, no dup)
-/// - tapping the FAB triggers `_onAddBookmark` → opens ReaderBookmarkDialog
-///   (provided `_currentLocation` is non-null)
+/// Companion fix: the bottom-right FAB (previously "add bookmark", shown only
+/// when chrome is hidden) is repurposed as an AI drawer entry — bookmark FAB
+/// required chrome to be visible to use the AppBar button, but with chrome
+/// auto-hide on mobile the user has no quick AI entry. AI is the more
+/// frequently-needed action; bookmark remains in the AppBar when chrome is
+/// visible.
 
 class _FakeReaderEngine implements ReaderEngine {
   _FakeReaderEngine();
@@ -97,9 +98,9 @@ class _FakeReaderEngine implements ReaderEngine {
   bool previousPage() => false;
   @override
   Future<void> setPaginationMode(PaginationMode mode) async {}
-
   @override
-  void scrollBy(double delta, {Duration duration = const Duration(milliseconds: 200)}) {}
+  void scrollBy(double delta,
+      {Duration duration = const Duration(milliseconds: 200)}) {}
   @override
   Future<void> setTypography(TypographySettings settings) async {}
   @override
@@ -130,19 +131,20 @@ class _FakeBookRepo implements BookRepository {
 void main() {
   late _FakeReaderEngine engine;
 
-  Future<ProviderContainer> pumpBody(
+  Future<ProviderContainer> pumpNarrowBody(
     WidgetTester tester, {
-    required bool chromeVisible,
+    Size size = const Size(390, 844),
   }) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     engine = _FakeReaderEngine();
     final container = ProviderContainer(overrides: [
       notesRepositoryProvider.overrideWithValue(_NoopRepo()),
       bookRepositoryProvider.overrideWithValue(_FakeBookRepo()),
     ]);
-    // Force chrome state.
-    container
-        .read(readerUiControllerProvider.notifier)
-        .setActiveDrawerTab(DrawerTab.toc); // no-op init touch
     addTearDown(container.dispose);
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -157,79 +159,82 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 10));
-    // Apply chrome visibility after pump so the controller reflects it.
-    if (chromeVisible) {
-      // defaults() on desktop sets chromeVisible true, but the test host
-      // platform may not be desktop. Force it explicitly:
-      // toggleChrome flips the boolean; to GUARANTEE true we may need to
-      // flip from the current value. Read current and flip if needed.
-    } else {
-      // Ensure hidden.
-    }
     return container;
   }
 
   testWidgets(
-      'bookmark FAB is present when chrome is hidden (Bug C1: no add entry)',
+      'Bug 2a: tapping AppBar AI icon opens endDrawer on narrow viewport',
       (tester) async {
-    final container = await pumpBody(tester, chromeVisible: false);
-    // Force chrome hidden regardless of host platform default.
-    // toggleChrome flips; we want chromeVisible == false. defaults() sets it
-    // per-platform; on a non-desktop test host it's already false. To be
-    // deterministic, set it via the notifier by toggling to false.
+    final container = await pumpNarrowBody(tester);
+    // Force chrome visible so the AppBar (and its AI icon) is tappable.
     final notifier = container.read(readerUiControllerProvider.notifier);
-    // If currently visible, toggle off.
+    if (!container.read(readerUiControllerProvider).chromeVisible) {
+      notifier.toggleChrome();
+    }
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('toggle_ai_drawer')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('toggle_ai_drawer')));
+    await tester.pumpAndSettle();
+
+    final scaffoldState =
+        tester.state<ScaffoldState>(find.byType(Scaffold).first);
+    expect(scaffoldState.isEndDrawerOpen, isTrue,
+        reason: 'Bug 2a: on narrow viewport, AppBar AI icon must call '
+            'Scaffold.of(context).openEndDrawer(), not flip _aiPanelOpen '
+            '(which only affects the wide-screen inline panel).');
+  });
+
+  testWidgets(
+      'Bug 2b: when chrome hidden on narrow viewport, FAB is AI (not bookmark)',
+      (tester) async {
+    final container = await pumpNarrowBody(tester);
+    final notifier = container.read(readerUiControllerProvider.notifier);
     if (container.read(readerUiControllerProvider).chromeVisible) {
       notifier.toggleChrome();
     }
     await tester.pumpAndSettle();
 
-    expect(find.byType(FloatingActionButton), findsOneWidget,
-        reason: 'M2.10/Bug C1: when chrome is hidden, the AppBar (and its '
-            'bookmark IconButton) disappears, leaving no add-bookmark entry. '
-            'A FAB must fill that gap.');
-    expect(find.byIcon(Icons.bookmark_add_outlined), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(find.byIcon(Icons.smart_toy_outlined), findsOneWidget,
+        reason: 'Bug 2b: FAB is repurposed from bookmark to AI drawer entry');
+    expect(find.byIcon(Icons.bookmark_add_outlined), findsNothing,
+        reason: 'Bug 2b: bookmark FAB replaced — bookmark is AppBar-only now');
   });
 
   testWidgets(
-      'bookmark FAB is absent when chrome is visible (no duplicate entry)',
+      'Bug 2b: AI FAB is absent when chrome is visible (AppBar is the entry)',
       (tester) async {
-    final container = await pumpBody(tester, chromeVisible: true);
+    final container = await pumpNarrowBody(tester);
     final notifier = container.read(readerUiControllerProvider.notifier);
-    // Force chrome visible.
     if (!container.read(readerUiControllerProvider).chromeVisible) {
       notifier.toggleChrome();
     }
     await tester.pumpAndSettle();
 
     expect(find.byType(FloatingActionButton), findsNothing,
-        reason: 'when chrome is visible, the AppBar bookmark IconButton is '
-            'the entry point; the FAB must be hidden to avoid a duplicate');
+        reason: 'when chrome is visible, the AppBar AI IconButton is the '
+            'entry point; the FAB must be hidden to avoid a duplicate.');
   });
 
-  testWidgets('tapping bookmark FAB opens the add-bookmark dialog',
+  testWidgets(
+      'Bug 2b: tapping the AI FAB opens endDrawer on narrow viewport',
       (tester) async {
-    final container = await pumpBody(tester, chromeVisible: false);
+    final container = await pumpNarrowBody(tester);
     final notifier = container.read(readerUiControllerProvider.notifier);
     if (container.read(readerUiControllerProvider).chromeVisible) {
       notifier.toggleChrome();
     }
-    // _onAddBookmark reads _currentLocation; if null it shows a SnackBar and
-    // aborts. Emit a locator so the dialog path is taken.
-    engine._locationController.add(const EpubCfiLocator(
-      cfi: 'fake',
-      chapterIndex: 0,
-    ));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
 
-    // ReaderBookmarkDialog contains a TextField for the label + an 'Add'
-    // (添加) button. The dialog title/label field presence confirms the
-    // add flow was triggered.
-    expect(find.byType(AlertDialog), findsOneWidget,
-        reason: 'tapping the FAB must trigger _onAddBookmark, which opens '
-            'ReaderBookmarkDialog when _currentLocation is non-null');
+    final scaffoldState =
+        tester.state<ScaffoldState>(find.byType(Scaffold).first);
+    expect(scaffoldState.isEndDrawerOpen, isTrue,
+        reason: 'Bug 2b: FAB tap must open the AI drawer (replaces the old '
+            'bookmark-add FAB action).');
   });
 }

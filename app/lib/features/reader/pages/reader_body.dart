@@ -188,12 +188,21 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   _ReaderBodyState() : _engineState = const ReaderEngineUnloaded();
 
   /// M2.7/T21: 切换宽屏右侧 AI 面板的展开/收起。
-  /// 同时驱动窄屏 endDrawer 的开关（窄屏 endDrawer 由 AppBar 直接 open，
-  /// 此处仅切换宽屏 inline panel 的可见性）。
+  /// 窄屏走 `Scaffold.of(innerContext).openEndDrawer()`（endDrawer 由 AppBar 触发，
+  /// 此处不能只翻转 inline panel 的 flag）。
+  ///
+  /// Bug 2a (2026-07-11): 原实现只 `setState(() => _aiPanelOpen = !...)`，
+  /// 仅驱动宽屏 inline panel，移动端点 AppBar AI 图标无反应。补窄屏分支。
+  /// Bug 2a.1 (2026-07-11): 用 `innerContext`（Builder 提供，位于 Scaffold 之下）
+  /// 而非 State.context，否则 `Scaffold.of` 找不到祖先 Scaffold。
   ///
   /// 调用方：ReaderScaffold AppBar 的 onToggleAiDrawer 回调（M2.7/T22 注入）。
-  void _toggleAiDrawer() {
-    setState(() => _aiPanelOpen = !_aiPanelOpen);
+  void _toggleAiDrawer(BuildContext innerContext) {
+    if (_isWideScreen(innerContext)) {
+      setState(() => _aiPanelOpen = !_aiPanelOpen);
+    } else {
+      Scaffold.of(innerContext).openEndDrawer();
+    }
   }
 
   @override
@@ -780,7 +789,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
                     t.copyWith(fontSize: (t.fontSize + 1).clamp(12.0, 32.0))));
               },
               // M2.7/T22: 单一 AI 抽屉 toggle（替代原 AI 导读 + 问答 入口）。
-              onToggleAiDrawer: _toggleAiDrawer,
+              onToggleAiDrawer: () => _toggleAiDrawer(innerContext),
               onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
               onAddBookmark: _onAddBookmark,
               // M3c/任务 6b：弹出书架对话框选书切换。
@@ -818,7 +827,7 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             stackSize: _stackSize(),
             onExcerpt: _openExcerptSheet,
             onCopy: _onCopySelection,
-            onAskAi: _onAskAi,
+            onAskAi: () => _onAskAi(innerContext),
           ),
           // 底栏始终可见，显示阅读进度。
           Positioned(
@@ -827,21 +836,25 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             bottom: 0,
             child: ReaderProgressBar(engine: engine),
           ),
-          // M2.10/Bug C1: chrome 隐藏（全屏 / 用户切换）时 AppBar 消失，添加
-          // 书签的唯一入口（AppBar 里的 IconButton）也消失，用户找不到添加入口。
-          // 补一个右下 FAB，仅 !chromeVisible 时显示（chrome 可见时不渲染，
-          // 避免与 AppBar 按钮重复）。复用 _onAddBookmark。FAB 放在
-          // _buildReaderStack 的 Stack（窄宽屏共用），宽屏路径下落在 Expanded
-          // 内的右下，不跨 sidebar。
+          // Bug 2b (2026-07-11): chrome 隐藏时（全屏 / 3s auto-hide / 用户切换）
+          // AppBar 消失，AI 抽屉的唯一入口也消失。原 M2.10/Bug C1 在此放书签 FAB，
+          // 但 AI 是更频繁的操作，且右滑抽屉与系统返回手势冲突 → 改为 AI 入口。
+          // 书签仍可通过 chrome 可见时的 AppBar 图标添加。
           if (!ui.chromeVisible)
             Positioned(
               bottom: 56, // 避让底部进度条（~36px）+ 间距
               right: 16,
               child: FloatingActionButton(
-                heroTag: 'readerAddBookmark',
-                onPressed: _onAddBookmark,
-                tooltip: '添加书签',
-                child: const Icon(Icons.bookmark_add_outlined),
+                heroTag: 'readerOpenAiDrawer',
+                onPressed: () {
+                  if (_isWideScreen(innerContext)) {
+                    setState(() => _aiPanelOpen = true);
+                  } else {
+                    Scaffold.of(innerContext).openEndDrawer();
+                  }
+                },
+                tooltip: 'AI 抽屉',
+                child: const Icon(Icons.smart_toy_outlined),
               ),
             ),
           // typography 面板的触发器（不可见 listener）。
@@ -1357,16 +1370,19 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   /// 在下一帧消费 `pendingInput` 字段填入 TextEditingController。
   /// post-frame 是为了让 endDrawer / panel 完成挂载后再写 state，避免
   /// 抽屉还未监听就被覆盖。
-  Future<void> _onAskAi() async {
+  Future<void> _onAskAi(BuildContext innerContext) async {
     final sel = _selection;
     if (sel == null || sel.plainText.isEmpty) return;
     final text = sel.plainText;
 
     // 1. 唤出 AI 抽屉（narrow: endDrawer; wide: 切 inline panel）。
-    if (_isWideScreen(context)) {
+    // Bug 2a.1 (2026-07-11): 用 innerContext（Builder 提供，位于 Scaffold 之下），
+    // 否则 `Scaffold.of(State.context)` 找不到祖先 Scaffold → 选区 Ask AI 在
+    // 移动端同样无反应（与 _toggleAiDrawer 同根因，一并修）。
+    if (_isWideScreen(innerContext)) {
       setState(() => _aiPanelOpen = true);
     } else {
-      Scaffold.of(context).openEndDrawer();
+      Scaffold.of(innerContext).openEndDrawer();
     }
 
     // 2. 选中文本以 block quote 形式预填到输入框（不直接发送）。
