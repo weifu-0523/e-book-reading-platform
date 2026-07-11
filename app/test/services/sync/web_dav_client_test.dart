@@ -129,6 +129,71 @@ void main() {
     });
   });
 
+  group('mkcol 409 disambiguation', () {
+    test('swallows 409 when PROPFIND verifies existence', () async {
+      final calls = <String>[];
+      final client = WebDavClient(
+        baseUrl: 'https://example.com/dav/user',
+        username: 'u',
+        password: 'p',
+        httpClient: MockClient((request) async {
+          calls.add('${request.method} ${request.url.path}');
+          if (request.method == 'MKCOL') {
+            return http.Response(
+              '<?xml version="1.0"?><d:error xmlns:d="DAV:"><s:exception>AncestorsNotFound</s:exception></d:error>',
+              409,
+            );
+          }
+          // PROPFIND
+          return http.Response(
+            '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/dav/user/zhiyue/</d:href></d:response></d:multistatus>',
+            207,
+            headers: {'content-type': 'application/xml'},
+          );
+        }),
+      );
+      await client.mkcol('/zhiyue');
+      expect(calls, contains('MKCOL /dav/user/zhiyue'));
+      expect(calls, contains('PROPFIND /dav/user/zhiyue'));
+    });
+
+    test('rethrows 409 when PROPFIND also fails (truly missing)', () async {
+      final client = WebDavClient(
+        baseUrl: 'https://example.com/dav/user',
+        username: 'u',
+        password: 'p',
+        httpClient: MockClient((request) async {
+          if (request.method == 'MKCOL') {
+            return http.Response('<error>AncestorsNotFound</error>', 409);
+          }
+          return http.Response('<error>Not Found</error>', 404);
+        }),
+      );
+      await expectLater(
+        client.mkcol('/zhiyue'),
+        throwsA(isA<WebDavException>()),
+      );
+    });
+
+    test('still throws on 401/403/500 without PROPFIND', () async {
+      for (final status in [401, 403, 500]) {
+        final client = WebDavClient(
+          baseUrl: 'https://example.com/dav/user',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            expect(request.method, 'MKCOL'); // No PROPFIND expected
+            return http.Response('<error/>', status);
+          }),
+        );
+        await expectLater(
+          client.mkcol('/zhiyue'),
+          throwsA(isA<WebDavException>()),
+        );
+      }
+    });
+  });
+
   group('ensureAncestors', () {
     test('MKCOLs every directory segment except the file name', () async {
       final capturedPaths = <String>[];

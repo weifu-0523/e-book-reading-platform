@@ -103,21 +103,30 @@ class WebDavClient {
   ///
   /// Status code semantics (RFC 4918 §9.3 + jianguoyun observed behavior):
   /// - 201 Created: directory created
-  /// - 200 OK: rare, but some servers return this on MKCOL
+  /// - 200 OK: rare
   /// - 405 Method Not Allowed: directory already exists (RFC 4918 §9.3)
+  /// - 409 Conflict: jianguoyun deviation — may mean "already exists" OR
+  ///   "parent missing". Disambiguate via PROPFIND: if PROPFIND 207 → dir
+  ///   actually exists, treat MKCOL as no-op; otherwise rethrow original
+  ///   409 so caller sees the real error.
   ///
-  /// Any other status throws [WebDavException]. Notably 409 (AncestorsNotFound)
-  /// means the parent path doesn't exist — callers should ensure parents first
-  /// via [ensureAncestors].
+  /// Any other status throws [WebDavException] without PROPFIND.
   Future<void> mkcol(String path) async {
     final request = http.Request('MKCOL', _uri(path))
       ..headers['authorization'] = _authHeader['authorization']!;
     final response = await _httpClient.send(request);
     final body = await response.stream.bytesToString();
     final status = response.statusCode;
-    if (status != 201 && status != 200 && status != 405) {
-      throw WebDavException(status, path, body);
+    if (status == 201 || status == 200 || status == 405) return;
+    if (status == 409) {
+      try {
+        await listFiles(path);
+        return; // PROPFIND succeeded → dir actually exists
+      } on WebDavException {
+        throw WebDavException(status, path, body);
+      }
     }
+    throw WebDavException(status, path, body);
   }
 
   /// Ensure every ancestor directory of [filePath] exists. [filePath] is a
