@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
@@ -359,5 +361,101 @@ void main() {
       expect(conflicts.first.winnerDevice, 'device-A');
       expect(conflicts.first.loserDevice, 'device-B');
     });
+  });
+
+  // S3 T5 regression guard (2026-07-11): end-to-end first-push on a
+  // jianguoyun-shaped HTTP mock. Stubs the raw HTTP layer (MockClient) and
+  // wires a real WebDavClient into the engine, exercising the full failure
+  // chain the user reported on desktop:
+  //   GET /zhiyue/snapshots/X.jsonl → 409 AncestorsNotFound (jianguoyun
+  //     deviation: returns 409 instead of 404 when the parent dir is missing)
+  //   ensureAncestors → MKCOL /zhiyue → 409 (jianguoyun deviation: returns
+  //     409 for "already exists" too) → PROPFIND /zhiyue → 207 (disambiguate)
+  //   ensureAncestors → MKCOL /zhiyue/snapshots → 201 (created)
+  //   PUT /zhiyue/snapshots/X.jsonl → 201
+  //   → SyncResult.success(pushedCount: 1)
+  // Requires T2 fix (mkcol 409 disambiguation via PROPFIND). Without it, the
+  // first MKCOL /zhiyue 409 would propagate and the push would fail.
+  test(
+      'integration: full pushOnly on jianguoyun-shaped mock (GET 409 + MKCOL 409 + PROPFIND 207 + MKCOL 201 + PUT 201)',
+      () async {
+    final calls = <String>[];
+    final realClient = WebDavClient(
+      baseUrl: 'https://dav.jianguoyun.com/dav/user@example.com',
+      username: 'user@example.com',
+      password: 'app-password',
+      httpClient: MockClient((request) async {
+        final method = request.method;
+        final path = request.url.path;
+        calls.add('$method $path');
+
+        // GET snapshot → 409 (jianguoyun deviation: missing parent → 409, not 404)
+        if (method == 'GET' && path.contains('/snapshots/')) {
+          return http.Response(
+            '<?xml version="1.0"?><d:error xmlns:d="DAV:">'
+            '<s:exception>AncestorsNotFound</s:exception>'
+            '</d:error>',
+            409,
+          );
+        }
+        // MKCOL /zhiyue → 409 (jianguoyun deviation: already-exists → 409, not 405)
+        if (method == 'MKCOL' && path.endsWith('/zhiyue')) {
+          return http.Response('<err>AncestorsNotFound</err>', 409);
+        }
+        // PROPFIND /zhiyue → 207 (verify exists; mkcol disambiguation path)
+        if (method == 'PROPFIND' && path.endsWith('/zhiyue')) {
+          return http.Response(
+            '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">'
+            '<d:response><d:href>/dav/user@example.com/zhiyue/</d:href>'
+            '</d:response></d:multistatus>',
+            207,
+            headers: {'content-type': 'application/xml'},
+          );
+        }
+        // MKCOL /zhiyue/snapshots → 201 (created)
+        if (method == 'MKCOL' && path.endsWith('/snapshots')) {
+          return http.Response('', 201);
+        }
+        // PUT snapshot → 201
+        if (method == 'PUT' && path.contains('/snapshots/')) {
+          return http.Response('', 201);
+        }
+        return http.Response('', 500);
+      }),
+    );
+
+    final integrationEngine = WebDavSyncEngine(
+      database: db,
+      outbox: outbox,
+      webdav: realClient,
+      deviceId: 'device-X',
+      rateLimiterInterval: Duration.zero,
+    );
+
+    await outbox.enqueue(
+      recordId: 'a1',
+      recordType: 'annotation',
+      payloadJson:
+          '{"id":"a1","type":"annotation","mtime":"2026-07-11T00:00:00.000Z","deleted":false,"payload":{}}',
+    );
+
+    final result = await integrationEngine.pushOnly();
+
+    expect(result.success, true,
+        reason: 'pushOnly should succeed on jianguoyun chain');
+    expect(result.pushedCount, 1);
+
+    // Verify the full call sequence happened. The disambiguation PROPFIND is
+    // the load-bearing step — without T2's fix, the first MKCOL /zhiyue 409
+    // would propagate and PROPFIND would never be issued.
+    expect(calls, contains('GET /dav/user@example.com/zhiyue/snapshots/device-X.jsonl'));
+    expect(calls, contains('MKCOL /dav/user@example.com/zhiyue'));
+    expect(calls, contains('PROPFIND /dav/user@example.com/zhiyue'));
+    expect(calls, contains('MKCOL /dav/user@example.com/zhiyue/snapshots'));
+    expect(calls, contains('PUT /dav/user@example.com/zhiyue/snapshots/device-X.jsonl'));
+
+    // Outbox row must be marked pushed (no orphans on success).
+    final pending = await outbox.getPending();
+    expect(pending, isEmpty);
   });
 }
