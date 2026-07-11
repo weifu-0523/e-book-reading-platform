@@ -7,7 +7,42 @@
 
 ## [Unreleased]
 
-v1.10.0-alpha 之后的新变更将记在此处。
+v1.10.1-alpha 之后的新变更将记在此处。
+
+## [1.10.1-alpha] - 2026-07-12
+
+紧急 hotfix：修复坚果云 WebDAV 同步从 day 1（M2.0a T14，commit e0a3efc）
+就存在的 baseUrl bug。无功能新增，1 行代码改动。
+
+### 修复
+
+- **jianguoyun WebDAV baseUrl 不应包含 username 路径段**：原代码把 baseUrl
+  拼成 `https://dav.jianguoyun.com/dav/<邮箱>`，但坚果云 WebDAV 通过 HTTP
+  Basic Auth 解析账号，URL 路径里**没有** username 段。错的 URL 导致：
+  - PROPFIND `/dav/<邮箱>/` 返回 404（根就不存在）
+  - 所有 MKCOL / PUT / GET 在 `/dav/<邮箱>/zhiyue/...` 下返回 409
+    AncestorsNotFound（因为整个父级路径不存在）
+
+  修复：`baseUrl = 'https://dav.jianguoyun.com/dav'`（无 username 段）。
+  验证：用真实账号 curl 探测 4 个 endpoint，全部返回正确状态码（207 / 201 /
+  201 / 204）；dev 机端到端实测同步成功。
+
+### 影响
+
+此 bug 从 v0.6.0-alpha（M2.0a，首次引入同步）一直存在到 v1.10.0-alpha。
+期间所有「坚果云 AncestorsNotFound」报告——v1.9.0-alpha、v1.9.2-alpha、
+v1.10.0-alpha S3 WS1 的 PROPFIND disambiguate 修复——都是这个 baseUrl
+bug 的症状，不是坚果云的偏差。
+
+S3 WS1 PROPFIND disambiguate 代码（commit `d76aca8`）现已成为 dead code
+（用正确 URL 时坚果云 MKCOL 始终返 201，无论目录是否已存在）。清理延后到
+后续版本。
+
+### 升级
+
+- 桌面 / Android：直接覆盖安装。无 schema 变更（v13 沿用）。
+- 已配置同步的用户：升级后第一次「立即同步」会成功（之前的 outbox 队列
+  会一次性 flush 到云端）。
 
 ## [1.10.0-alpha] - 2026-07-11
 
