@@ -7,7 +7,51 @@
 
 ## [Unreleased]
 
-v1.9.1-alpha 之后的新变更将记在此处。
+v1.9.2-alpha 之后的新变更将记在此处。
+
+## [1.9.2-alpha] - 2026-07-11
+
+### 修复（移动端上手测试 hotfix）
+
+- **Bug 1**: 坚果云 WebDAV 同步在切换账号后报 `409 AncestorsNotFound`。
+  根因：`WebDavSyncEngine.pushOnly` 在初始 GET 失败时只 catch 404，但坚果云
+  对「父目录不存在的文件」GET 会返回 409（与 RFC 推荐的 404 不同），导致 409
+  被识别为「非 404」直接 rethrow，同步永远到不了 `ensureAncestors` 那一步。
+  修复：catch 404 OR 409，都视作 firstPush。
+- **Bug 2a**: 移动端 AppBar 「AI 抽屉」图标点击无反应。根因：`_toggleAiDrawer`
+  只翻转 `_aiPanelOpen`（仅驱动宽屏 inline panel），未补窄屏分支调
+  `Scaffold.of(context).openEndDrawer()`。
+- **Bug 2a.1**: 即便补了分支，`Scaffold.of(State.context)` 仍会因 State 上下文
+  位于 Scaffold 之上而抛 `no Scaffold ancestor`。修复：复用现有 `Builder` 提供
+  的 `innerContext`（与 line 756/771 的 TOC openDrawer 同模式）。同时预防性修
+  `_onAskAi`（同根因，未在移动端被触发的潜在 bug）。
+- **Bug 2b**: 替换右下悬浮按钮（FAB）从「添加书签」改为「呼出 AI 抽屉」。
+  原书签 FAB（M2.10/Bug C1）的目的是 chrome 隐藏时给一个书签入口，但移动端
+  AI 是更频繁操作，且右滑抽屉与系统返回手势冲突 → 改为 AI 入口。书签仍可
+  通过 chrome 可见时的 AppBar 图标添加。
+- **Bug 4**: 移动端左右抽屉（TOC + AI）顶部文字与状态栏 / 灵动岛 / 挖孔重叠，
+  重叠区域无法点击。根因：抽屉内容未包 `SafeArea`。修复：左侧 `ReaderDrawer`
+  与右侧 AI `Drawer` 的 child 均加 `SafeArea`（Drawer 背景延伸到边，仅内容让出）。
+- **Bug 5**: AI 抽屉在移动端从默认 304px（≈屏幕 78%）改为 98% 屏宽。原宽度
+  让阅读区只剩 22%（不可读），改 98% 让 chat 近全屏，符合移动端 chat 习惯。
+  用户决策：保留右侧滑出（拒绝底部滑出方案，见 v1.9.2-alpha 评估记录）。
+
+### 评估（未实施）
+
+- **底部抽屉评估**（用户晨测提出）：评估了把 AI 抽屉改为底部 sheet 的收益/
+  损失（拇指可达 / 消除系统手势冲突 / 聊天 UX 对齐 vs 阅读上下文压缩 /
+  布局重写 / 键盘叠层 / 跨端不一致）。决策：**保留右侧**，只改宽度。底部方案
+  可作为 S2 Part 2 的独立任务（<600px 走 bottom sheet，≥600px 保留右侧）。
+
+### 新增
+
+- 6 个 widget/unit 测试覆盖上述修复（`reader_body_ai_entry_test.dart` 共 6 个 +
+  WebDAV sync engine regression 1 个）。
+
+### 已知问题
+
+- 与 1.9.1-alpha 相同（iOS scaffold、APK 单包、golden 不覆盖 Android、
+  5 plugin pub-cache `sed` 补丁、reader_flow_integration timeout baseline）。
 
 ## [1.9.1-alpha] - 2026-07-11
 
