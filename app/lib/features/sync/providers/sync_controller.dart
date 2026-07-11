@@ -143,7 +143,12 @@ class SyncController extends StateNotifier<SyncState>
         creds.deviceId == null) {
       return null;
     }
-    final baseUrl = 'https://dav.jianguoyun.com/dav/${creds.username}';
+    // Jianguoyun WebDAV root does NOT take a username path segment — the
+    // account is resolved from HTTP Basic auth. Adding /<email> here produces
+    // 404 on root PROPFIND and 409 AncestorsNotFound on every MKCOL/PUT under
+    // it, because /dav/<email> does not exist as a resource. Verified
+    // 2026-07-12 against production jianguoyun with real credentials.
+    final baseUrl = 'https://dav.jianguoyun.com/dav';
     final webdav = WebDavClient(
       baseUrl: baseUrl,
       username: creds.username!,
