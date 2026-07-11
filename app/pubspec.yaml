@@ -26,7 +26,10 @@ dependencies:
   # 文件系统
   path: ^1.9.0
   path_provider: ^2.1.4
-  file_picker: ^8.1.2
+  # S3/T10: pinned to 10.3.3–10.3.8 range — 10.3.3 introduced flutter.compileSdkVersion
+  # (gives us compileSdk 36 default), but 10.3.9 silently removed FilePicker.platform
+  # (breaking API change). 10.3.8 is the highest safe version with old API intact.
+  file_picker: ">=10.3.3 <10.3.9"
 
   # 工具
   uuid: ^4.4.2
@@ -54,10 +57,12 @@ dependencies:
 
   # M2.0a: sync
   http: ^1.2.0
-  flutter_secure_storage: ^9.2.2
+  # S3/T10: bumped to ^10.0.0 — 10.x targets SDK 36 (no sed patch needed)
+  flutter_secure_storage: ^10.0.0
 
   # M2.0b: connectivity_plus for offline detection
-  connectivity_plus: ^6.0.5
+  # S3/T10: bumped to ^7.0.0 — 7.x defaults to compileSdk 36 (no sed patch needed)
+  connectivity_plus: ^7.0.0
 
   # i18n
   flutter_localizations:

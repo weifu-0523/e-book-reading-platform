@@ -67,27 +67,34 @@ flutter doctor -v
 
 ## compileSdk 36 plugin 补丁（v1.8.0-alpha 起强制）
 
-`flutter_plugin_android_lifecycle` 强制要求 compileSdk 36，但以下 5 个 plugin 默认仍是 34：
+`flutter_plugin_android_lifecycle` 强制要求 compileSdk 36，但少数 transitive plugin 默认仍是 34。
 
-| Plugin | 版本（v1.8.0-alpha 锁定） |
-|---|---|
-| connectivity_plus | 6.1.5 |
-| file_picker | 8.3.7 |
-| flutter_secure_storage | 9.2.4 |
-| just_audio | 0.9.46 |
-| webview_flutter_android | 3.16.9 |
+**v1.10.0-alpha 起，direct dep 已全部升级**，pubspec 锁定如下：
 
-`flutter build apk` 时这 5 个 plugin 子项目会编译失败。当前 workaround 是直接 sed 改 pub cache：
+| Direct dep | 锁定版本 | 默认 compileSdk |
+|---|---|---|
+| connectivity_plus | `^7.0.0`（resolved 7.2.0） | 36（`flutter.compileSdkVersion`） |
+| file_picker | `>=10.3.3 <10.3.9`（resolved 10.3.8） | 36（`flutter.compileSdkVersion`） |
+| flutter_secure_storage | `^10.0.0`（resolved 10.3.1） | 36（hardcoded） |
+
+剩余 transitive plugin 仍需手动补丁：
+
+| Transitive plugin | 版本 | 上游 issue |
+|---|---|---|
+| just_audio | 0.9.46 | 待升级（S4 候选） |
+| webview_flutter_android | 3.16.9 | 待升级（S4 候选） |
+
+`flutter build apk` 时这 2 个 transitive plugin 子项目会编译失败。当前 workaround 是直接 sed 改 pub cache：
 
 ```bash
-for pkg in connectivity_plus-6.1.5 file_picker-8.3.7 flutter_secure_storage-9.2.4 just_audio-0.9.46 webview_flutter_android-3.16.9; do
+for pkg in just_audio-0.9.46 webview_flutter_android-3.16.9; do
   f="$LOCALAPPDATA/Pub/Cache/hosted/pub.dev/$pkg/android/build.gradle"
   # CRLF-safe: 只替换 compileSdk 34 这一行
   sed -i 's/compileSdk 34/compileSdk 36/g' "$f"
 done
 ```
 
-> **注意**：`flutter pub get` 重下 plugin 后补丁丢失，需重跑。Gradle 子项目级 `subprojects { afterEvaluate ... }` override 在 Flutter `evaluationDependsOn(":app")` 早评估下不生效（已试，3 次失败）。**长期方案**：S2 升级这 5 个 plugin 到默认 compileSdk 36 的版本。
+> **注意**：`flutter pub get` 重下 plugin 后补丁丢失，需重跑。Gradle 子项目级 `subprojects { afterEvaluate ... }` override 在 Flutter `evaluationDependsOn(":app")` 早评估下不生效（已试，3 次失败）。**长期方案**：升级这 2 个 transitive plugin 到默认 compileSdk 36 的版本（S4 候选）。
 
 ## 下一步
 
