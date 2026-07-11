@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.9.2--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.9.2-alpha)
+[![Version](https://img.shields.io/badge/version-1.10.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.10.0-alpha)
 
 ## 项目状态
 
@@ -22,7 +22,8 @@
 - ✅ **v1.9.0-alpha**：用户测试 3 bug 修复 + 自由笔记——(1) 修坚果云 WebDAV 上传报 `AncestorsNotFound` (409)（MKCOL ensureAncestors）；(2) 修 AI 聊天发送后输入框文字残留（clear-on-send）；(3) 新增自由笔记：reader drawer `note_add` + NotesPage FAB + 全局入口（library drawer），drift schema v13 + 跨设备同步（tier 1，与 bookNote 同级）+ NoteEditPage（Markdown 编辑/预览切换 + 500ms write-through debounce）。
 - ✅ **v1.9.1-alpha**：移动端 UX 热修——(1) UX-A 修移动 chrome tap-toggle 回归（tap 唤出后无法 tap 隐藏，`Listener` 提到 Stack 顶层 + 18px 拖拽阈值）；(2) UX-B 打开书后 chrome 默认可见 + 3s 自动隐藏（任意交互/后台/dispose 取消计时）；(3) UX-C 移动新书默认页边距从 wide(72px) 改为 compact(8px)。新增 `PlatformInfo.isMobile/isDesktop` + `hideChrome()` + `defaultsForPlatform()` + `resolveDefaultTypography()` 平台分支助手；桌面行为不变。
 - ✅ **v1.9.2-alpha**：v1.9.1-alpha 上手测试 hotfix——(1) Bug 1 修坚果云换账号后同步 409（pushOnly catch 409 不只是 404）；(2) Bug 2 移动端 AppBar AI 图标无效 + 右下 FAB 从书签换为 AI 入口（同根因 `Scaffold.of(State.context)` 修 `_toggleAiDrawer` + `_onAskAi`）；(3) Bug 4 抽屉顶部与状态栏/灵动岛重叠（左右抽屉 child 加 SafeArea）；(4) Bug 5 AI 抽屉宽度 304px → 98% 屏宽（手机 chat 近全屏）。底部抽屉方案评估后保留右侧滑出。
-- 下一步：**S2 5 plugin 升级 + IME/软键盘深度适配**（默认 compileSdk 36 / 流式 sheet / 全屏模式安全区）→ v1.10.0-alpha。
+- ✅ **v1.10.0-alpha**：Mobile MVP Spiral 3 五工作流——(1) WS1 坚果云 MKCOL 409 PROPFIND 区分 AncestorsNotFound vs Already Exists；(2) WS2 移动生命周期同步 UI（`SyncButton` rotation + `ConflictListTile` overflow guard + `MobileLifecycleSyncController`）；(3) WS3 S2 Part 2 残留（3 直接 plugin compileSdk 36 + `ReaderUiState` value equality + `PlatformInfo` 抽象 + auto-hide timer restart-on-reshow）；(4) WS4 AI 流式优化（`AiMessage` 两阶段渲染 Text→MarkdownBody + auto-scroll 用户 pinned 锁 + `cancelStreaming` + dispose SSE leak 修复）；(5) WS5 TTS 可行性调研 1198 字（Phase 1 AI 响应朗读 3-5 天 / Phase 2 EPUB 章节 2-3 周 / Phase 3 audio_service 后台 1-2 周）。无 schema 变更。
+- 下一步：**S4.1 TTS Phase 1（AI 响应朗读）** + iOS scaffold build（CI 后续）→ v1.11.0-alpha。
 
 ## 下载安装
 
@@ -117,7 +118,7 @@
 
 ## 测试与质量
 
-- **测试**：~1267 通过 + 3 skipped + 10 pre-existing baseline 失败（v1.9.2-alpha；细分见 [release-notes](docs/releases/release-notes-v1.9.2-alpha.md)）
+- **测试**：~1293 通过 + 3 skipped + 10 pre-existing baseline 失败（v1.10.0-alpha；细分见 [release-notes](docs/releases/release-notes-v1.10.0-alpha.md)）
 - **静态分析**：0 errors / 0 warnings / 0 info（M2.4/T4 已清零；既有 cascade/const 风格 lint 已通过 dart fix --apply + 手工处理）
 - **文档**：836 行 maintainer's runbook + 16 milestone spec + 17 plan + 项目级 review
 - **CI**：手动（每 milestone 完成跑全量回归 + analyze）

@@ -7,9 +7,88 @@
 
 ## [Unreleased]
 
-v1.9.2-alpha 之后的新变更将记在此处。
+v1.10.0-alpha 之后的新变更将记在此处。
 
-## [1.9.2-alpha] - 2026-07-11
+## [1.10.0-alpha] - 2026-07-11
+
+Mobile MVP Spiral 3：5 工作流交付——WebDAV 同步健壮性 + 移动生命周期同步
+UI/UX + S2 Part 2 残留（5 plugin compileSdk 升级 / IME / SafeArea / 类型/平台
+抽象清理）+ AI 流式优化（两阶段渲染 + 用户滚动锁 + 取消 + dispose SSE 取消）
++ TTS 可行性调研。无 schema 变更（v13 沿用）。
+
+### 修复
+
+- **WS1 jianguoyun MKCOL 409 disambiguation**：坚果云对已存在目录的 MKCOL
+  返回 409（与 RFC 4918 推荐的 405 不同），原代码裸 catch 所有 409 视作
+  "重试 ensureAncestors"——但 "AncestorsNotFound" 409 与 "Already Exists" 409
+  在坚果云响应里 XML body 不同。修复：MKCOL 409 后用 PROPFIND depth=0 验证
+  目标是否真实存在，区分两种语义。
+- **T16 auto-hide timer restart on re-show**：用户 tap 唤出 chrome 后，原
+  实现的 3s 自动隐藏 timer 不会重启（用户报告"tap 出来后只能再 tap 隐藏，
+  不能等 3 秒自动隐藏"）。修复：reader_scaffold 加 `ref.listen`，chrome
+  visible 边沿触发 fresh 3s timer。
+- **T20 dispose SSE leak**：AI 抽屉关闭时 Riverpod autoDispose 释放
+  ChatSessionController，但只 cancel 了 watchMessages 订阅，未取消在飞
+  LLM SSE 请求——HTTP 流持续到服务端关闭（deepseek 30s+）。修复：dispose
+  调 `_llmCache?.cancel()`，selectSession 时 eager 缓存 LLM 客户端避免
+  dispose 时读已销毁 container。
+
+### 新增
+
+- **WS2 mobile lifecycle sync UI**：
+  - `SyncButton` widget（rotation 动画 + retry 状态）；
+  - `ConflictListTile` 移动端溢出守护 + widget test；
+  - `MobileLifecycleSyncController` 接到 main.dart（app 进入后台触发
+    syncNow）；
+  - `SyncController` AppLifecycleState 回归 guard（防止 pause/resume 期间
+    重复 trigger）。
+- **WS3 S2 Part 2 残留**：
+  - T10 升级 3 个直接 plugin 到 compileSdk 36 默认（connectivity_plus
+    6→7、file_picker 8→10、flutter_secure_storage 9→10），剩余 2 个
+    transitive plugin 仍需 pub-cache `sed` 补丁（just_audio / webview_flutter_android）；
+  - T13 `ReaderUiState` value equality + hashCode（防止 spurious rebuild）；
+  - T14 `PlatformInfo` 抽象统一桌面/移动分支（5 个 `defaultTargetPlatform`
+    比较点收敛到 `PlatformInfo.isDesktop`）。
+- **WS4 AI 流式优化**：
+  - T17 `AiMessage` 两阶段渲染（流式中渲染 `Text` 避免 markdown 反复解析，
+    完成后切换 `MarkdownBody`）；
+  - T18 chat auto-scroll 尊重用户 pinned 状态（用户上滑阅读历史时不
+    yank 回到底部）；
+  - T19 `ChatSessionController.cancelStreaming()` + `Icons.stop` 按钮
+    （`ChatLlmClient.cancel()` 协作取消 SSE）。
+- **WS5 TTS 可行性调研**：1198 字文档，6 节覆盖 plugin 选型 / 使用场景 /
+  高亮跟随 / 后台播放 / 平台限制 / 分阶段推荐路径。Phase 1（AI 响应朗读）
+  3-5 天可立即推进 S4.1；Phase 2（EPUB 章节朗读）2-3 周；Phase 3
+  （audio_service 后台 + 锁屏）移动端 1-2 周。
+
+### 重构
+
+- T11 IME 深度审计：plan bug #4（plan 路径错误）→ 现有 `FocusNode` 生命周期
+  已正确，no-op。
+- T12 全屏 SafeArea 审计：用户已验证现有覆盖足够，no-op。
+- T15 TypographyPersister 去重审计：plan bug #6（plan 描述的 API 不存在）→
+  现有 subscription 模式已含 dedup guard（lines 55/61），no-op。
+
+### 测试
+
+- 新增 ~26 测试：1 个 WS1 集成（jianguoyun first-push 409 链）+ 1 个 lifecycle
+  regression + 1 个 conflict tile overflow + 1 个 SyncButton widget + 3 个
+  plugin upgrade 相关 + 6 个 ReaderUiState equality + 4 个 T17 两阶段渲染 +
+  2 个 T18 pinned auto-scroll + 4 个 T19 stop button + 1 个 T19 controller
+  cancelStreaming + 1 个 T20 dispose SSE leak + 2 个 T21 drift 并发回归。
+- 完整回归：**~1293 pass / 3 skip / 10 baseline fail**（pre-existing
+  baseline 沿用 v1.9.2-alpha；本版无新增失败）。
+
+### 已知问题
+
+- 与 v1.9.2-alpha 相同（iOS scaffold、APK 单包、golden 不覆盖 Android、
+  2 个 transitive plugin pub-cache `sed` 补丁、reader_flow_integration
+  timeout baseline）。
+- **Regenerate（AI 长按重生成）**从 T19 scope 中延后——plan Step 4 spec
+  含 placeholder（`/* relative to message */`、未定义 `onRegenerate` 回调），
+  需产品决策 truncate-and-rewrite vs fresh-append 语义。下版（S4 或独立 hotfix）
+  跟进。
+- **Word-level TTS highlight** 延后 Phase 2.5——sentence-level 先验证 UX。
 
 ### 修复（移动端上手测试 hotfix）
 
