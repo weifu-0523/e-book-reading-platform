@@ -21,6 +21,7 @@ import 'package:go_router/go_router.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../models/sync_status.dart';
 import '../providers/sync_controller.dart';
+import '../widgets/sync_button.dart';
 
 class SyncSettingsPage extends ConsumerWidget {
   const SyncSettingsPage({super.key});
@@ -166,8 +167,6 @@ class _StatusSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isRunning = state.status == SyncStatus.pushing ||
-        state.status == SyncStatus.pulling;
     final lastRunText = state.lastSyncAt == null
         ? l10n.syncNever
         : '${l10n.syncLastRun}: ${state.lastSyncAt!.toLocal()}';
@@ -185,16 +184,10 @@ class _StatusSection extends StatelessWidget {
                     TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
         const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: isRunning ? null : () => controller.syncNow(),
-          icon: isRunning
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.sync),
-          label: Text(l10n.syncNow),
+        SyncButton(
+          status: state.status,
+          label: l10n.syncNow,
+          onPressed: () => controller.syncNow(),
         ),
       ],
     );
