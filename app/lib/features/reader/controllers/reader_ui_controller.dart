@@ -95,6 +95,31 @@ class ReaderUiState {
       isFullscreen: isFullscreen ?? this.isFullscreen,
     );
   }
+
+  /// I1 (2026-07-11): value equality so Riverpod StateNotifier can skip
+  /// emitting when `copyWith` produces an identical state. Without this,
+  /// every copyWith triggers a rebuild even when no field actually changed.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReaderUiState &&
+          runtimeType == other.runtimeType &&
+          chromeVisible == other.chromeVisible &&
+          tocDrawerOpen == other.tocDrawerOpen &&
+          typographyPanelOpen == other.typographyPanelOpen &&
+          activeDrawerTab == other.activeDrawerTab &&
+          tocSidebarCollapsed == other.tocSidebarCollapsed &&
+          isFullscreen == other.isFullscreen;
+
+  @override
+  int get hashCode => Object.hash(
+        chromeVisible,
+        tocDrawerOpen,
+        typographyPanelOpen,
+        activeDrawerTab,
+        tocSidebarCollapsed,
+        isFullscreen,
+      );
 }
 
 class ReaderUiController extends StateNotifier<ReaderUiState> {

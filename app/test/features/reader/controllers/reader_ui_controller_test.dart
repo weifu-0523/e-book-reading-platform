@@ -109,4 +109,67 @@ void main() {
       expect(controller.state.chromeVisible, equals(initial));
     });
   });
+
+  group('ReaderUiState equality + hashCode contract (I1)', () {
+    test('two states with same field values are equal', () {
+      final a = ReaderUiState(
+        chromeVisible: true,
+        tocDrawerOpen: false,
+        typographyPanelOpen: false,
+        activeDrawerTab: DrawerTab.toc,
+        tocSidebarCollapsed: false,
+        isFullscreen: false,
+      );
+      final b = ReaderUiState(
+        chromeVisible: true,
+        tocDrawerOpen: false,
+        typographyPanelOpen: false,
+        activeDrawerTab: DrawerTab.toc,
+        tocSidebarCollapsed: false,
+        isFullscreen: false,
+      );
+      expect(a, equals(b),
+          reason: 'same field values must be equal');
+      expect(a.hashCode, equals(b.hashCode),
+          reason: 'equal objects must have equal hashCode');
+    });
+
+    test('chromeVisible difference breaks equality', () {
+      final a = ReaderUiState(chromeVisible: true);
+      final b = ReaderUiState(chromeVisible: false);
+      expect(a, isNot(equals(b)));
+      expect(a.hashCode, isNot(equals(b.hashCode)));
+    });
+
+    test('activeDrawerTab difference breaks equality', () {
+      final a = ReaderUiState(activeDrawerTab: DrawerTab.toc);
+      final b = ReaderUiState(activeDrawerTab: DrawerTab.notes);
+      expect(a, isNot(equals(b)));
+    });
+
+    test('tocSidebarCollapsed difference breaks equality', () {
+      final a = ReaderUiState(tocSidebarCollapsed: false);
+      final b = ReaderUiState(tocSidebarCollapsed: true);
+      expect(a, isNot(equals(b)));
+    });
+
+    test('isFullscreen difference breaks equality', () {
+      final a = ReaderUiState(isFullscreen: false);
+      final b = ReaderUiState(isFullscreen: true);
+      expect(a, isNot(equals(b)));
+    });
+
+    test('copyWith no-op returns equal state (no spurious rebuild)', () {
+      final a = ReaderUiState(
+        chromeVisible: true,
+        activeDrawerTab: DrawerTab.bookmarks,
+        isFullscreen: true,
+      );
+      final b = a.copyWith(); // no args → all fields default to current
+      expect(a, equals(b),
+          reason:
+              'copyWith() with no args must yield equal state so Riverpod '
+              'StateNotifier can skip emitting');
+    });
+  });
 }
