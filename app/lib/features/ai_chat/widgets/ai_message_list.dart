@@ -35,9 +35,19 @@ import '../../../data/local/database.dart';
 /// - 若用户距底部 > 80px（pinned 状态），不强制 auto-scroll，让用户能查看历史。
 /// - 首次挂载且 messages 非空时（如切换 session）也滚到底部。
 class AiMessageList extends StatefulWidget {
-  const AiMessageList({super.key, required this.messages});
+  const AiMessageList({
+    super.key,
+    required this.messages,
+    this.streamingMessageId,
+  });
 
   final List<ChatMessage> messages;
+
+  /// T17 (2026-07-11): ID of the message currently being streamed. When
+  /// this matches a message's `id`, that message renders as plain Text
+  /// (cheap) instead of MarkdownBody (expensive parse on every token).
+  /// Null or no match → all messages render with MarkdownBody (default).
+  final String? streamingMessageId;
 
   @override
   State<AiMessageList> createState() => _AiMessageListState();
@@ -119,16 +129,22 @@ class _AiMessageListState extends State<AiMessageList> {
         controller: _controller,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         itemCount: widget.messages.length,
-        itemBuilder: (context, i) =>
-            _MessageBubble(message: widget.messages[i]),
+        itemBuilder: (context, i) => _MessageBubble(
+          message: widget.messages[i],
+          isStreaming: widget.streamingMessageId == widget.messages[i].id,
+        ),
       ),
     );
   }
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, this.isStreaming = false});
   final ChatMessage message;
+
+  /// T17: when true, render plain Text (cheap) instead of MarkdownBody
+  /// (expensive parse on every token). Default false preserves old behavior.
+  final bool isStreaming;
 
   @override
   Widget build(BuildContext context) {
@@ -200,6 +216,14 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
             if (isUser)
+              Text(
+                message.content,
+                style: Theme.of(context).textTheme.bodyMedium,
+              )
+            else if (isStreaming)
+              // T17 (2026-07-11): plain Text during stream — avoids
+              // MarkdownBody's parse+layout cost on every token. The
+              // outer SelectionArea still permits text selection.
               Text(
                 message.content,
                 style: Theme.of(context).textTheme.bodyMedium,

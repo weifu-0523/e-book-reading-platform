@@ -121,7 +121,10 @@ class _AiDrawerWidgetState extends ConsumerState<AiDrawerWidget> {
                         .clearError();
                   },
                 )
-              : AiMessageList(messages: state.messages),
+              : AiMessageList(
+                  messages: state.messages,
+                  streamingMessageId: state.streamingMessageId,
+                ),
         ),
         const Divider(height: 1),
         AiInputComposer(

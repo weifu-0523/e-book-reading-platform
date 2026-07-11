@@ -239,4 +239,85 @@ void main() {
         closeTo(scrollAfter.position.maxScrollExtent, 1),
         reason: '流式 content 增长后应自动滚到底');
   });
+
+  // T17 (2026-07-11): AiMessage two-phase render — plain Text during stream,
+  // MarkdownBody when done. Rationale: MarkdownBody parses + lays out the
+  // full markdown tree on every token, which is expensive at high token
+  // rates. Plain Text is significantly cheaper. Once the stream completes,
+  // we re-render as markdown for proper formatting (bold, code, lists).
+  group('T17 two-phase render (stream → markdown)', () {
+    testWidgets('streamingMessageId matches → renders Text (no MarkdownBody)',
+        (tester) async {
+      final messages = [
+        _msg(id: 'm1', role: 'ai', content: '**partial** markdown'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AiMessageList(
+            messages: messages,
+            streamingMessageId: 'm1',
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(find.byType(MarkdownBody), findsNothing,
+          reason: 'T17: while streaming, MarkdownBody must not render');
+      // Plain Text is rendered; original markdown symbols visible (no parse).
+      expect(find.text('**partial** markdown'), findsOneWidget);
+    });
+
+    testWidgets('streamingMessageId null on this message → renders MarkdownBody',
+        (tester) async {
+      final messages = [
+        _msg(id: 'm1', role: 'ai', content: '**done** markdown'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AiMessageList(
+            messages: messages,
+            streamingMessageId: null,
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(find.byType(MarkdownBody), findsOneWidget,
+          reason: 'T17: when not streaming, MarkdownBody renders normally');
+    });
+
+    testWidgets('streamingMessageId mismatch → renders MarkdownBody',
+        (tester) async {
+      final messages = [
+        _msg(id: 'm1', role: 'ai', content: '**done**'),
+        _msg(id: 'm2', role: 'ai', content: 'streaming now'),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: AiMessageList(
+            messages: messages,
+            streamingMessageId: 'm2', // only m2 is streaming
+          ),
+        ),
+      ));
+      await tester.pump();
+      // m1 done → MarkdownBody; m2 streaming → Text.
+      expect(find.byType(MarkdownBody), findsOneWidget,
+          reason: 'm1 is not streaming → MarkdownBody');
+      expect(find.text('streaming now'), findsOneWidget,
+          reason: 'm2 is streaming → plain Text');
+    });
+
+    testWidgets('default streamingMessageId (null) preserves old behavior',
+        (tester) async {
+      final messages = [
+        _msg(id: 'm1', role: 'ai', content: '**legacy**'),
+      ];
+      // No streamingMessageId argument → defaults to null → MarkdownBody.
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: AiMessageList(messages: messages)),
+      ));
+      await tester.pump();
+      expect(find.byType(MarkdownBody), findsOneWidget,
+          reason: 'default behavior unchanged when streamingMessageId omitted');
+    });
+  });
 }
