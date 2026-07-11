@@ -1165,7 +1165,28 @@ git commit -m "refactor(core): replace raw defaultTargetPlatform with PlatformIn
 
 ---
 
-### Task 15: I3 — TypographyPersister skip redundant
+### Task 15: I3 — TypographyPersister skip redundant (NO-OP — already implemented)
+
+**Audit (2026-07-11):**
+
+- File path correct: `app/lib/features/reader/services/typography_persister.dart`.
+- BUT plan's API (`persister.apply(settings)`, `fakeEngine.setTypographyCalls`)
+  is fictional — actual API is subscription-based (`start()` listens to
+  `stateSource: Stream<ReaderEngineState>`). Plan bug #6.
+- Implementation ALREADY has both dedup guards:
+  - Line 55: `if (current == _lastEmitted) return;` — skip if state unchanged
+  - Line 61: `if (settings == null || settings == _lastPersisted) return;`
+    — skip if already persisted
+- `TypographySettings.==` and `hashCode` already exist
+  (`reader_engine/lib/core/typography_settings.dart:140, 152`).
+- Regression test ALREADY exists: `T1.2 distinct — same typography skipped,
+  no save` (`typography_persister_test.dart:61-85`) covers the exact
+  behavior the plan asked for.
+
+No code changes. T15 is a no-op (plan was written against an imagined
+API that doesn't match reality).
+
+**Original plan (for reference):**
 
 **Files:**
 - Modify: `app/lib/features/reader/services/typography_persister.dart`
