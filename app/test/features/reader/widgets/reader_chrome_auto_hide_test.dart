@@ -136,15 +136,19 @@ void main() {
         expect(container.read(readerUiControllerProvider).chromeVisible, isTrue,
             reason: 'UX-A: tap toggled chrome back to visible');
 
-        // Now advance past 3s. If the original auto-hide timer were still
-        // pending, it would fire now and hide chrome. Since it was canceled
-        // by the first tap, chrome must stay visible.
+        // Now advance past 3s. T16 (2026-07-11): the first tap's cancel is
+        // still valid (original timer is dead), but re-showing chrome via
+        // the second tap starts a FRESH 3s auto-hide window. After 5s the
+        // fresh timer has fired, hiding chrome again.
         await tester.pump(const Duration(seconds: 5));
         await tester.pump();
 
-        expect(container.read(readerUiControllerProvider).chromeVisible, isTrue,
-            reason: 'UX-B: user interaction must cancel the 3s auto-hide '
-                'timer so it does not fire later and hide chrome unexpectedly');
+        expect(container.read(readerUiControllerProvider).chromeVisible, isFalse,
+            reason: 'UX-B + T16: user tap cancels the immediate pending '
+                'timer, but re-showing chrome schedules a new 3s auto-hide. '
+                'After 5s the new timer fires and hides chrome. '
+                '(Pre-T16 this test asserted chromeVisible=true, but T16 '
+                'changed the semantics so every show gets a fresh window.)');
       });
     });
 

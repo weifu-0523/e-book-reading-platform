@@ -283,5 +283,43 @@ void main() {
             reason: 'C1: page-zone tap must NOT toggle chrome');
       });
     });
+
+    group('UX-B auto-hide timer restart (T16)', () {
+      testWidgets('T16 auto-hide restarts when chrome re-shown after hide',
+          (tester) async {
+        await _withAndroid(tester, () async {
+          final (container, widget) = _harness(chromeVisible: true);
+          addTearDown(container.dispose);
+          await tester.pumpWidget(widget);
+          await tester.pumpAndSettle();
+
+          // Initial state: chrome visible, auto-hide timer running.
+          expect(
+              container.read(readerUiControllerProvider).chromeVisible, isTrue,
+              reason: 'precondition: chrome visible on mount');
+
+          // Advance 3s — initial auto-hide timer should fire.
+          await tester.pump(const Duration(seconds: 3));
+          expect(
+              container.read(readerUiControllerProvider).chromeVisible, isFalse,
+              reason: 'initial auto-hide should fire after 3s');
+
+          // User toggles chrome back on (programmatic, equivalent to tap).
+          container.read(readerUiControllerProvider.notifier).toggleChrome();
+          await tester.pumpAndSettle();
+          expect(
+              container.read(readerUiControllerProvider).chromeVisible, isTrue,
+              reason: 'precondition: user re-showed chrome');
+
+          // Advance 3s again — T16 fix: auto-hide must restart on re-show.
+          await tester.pump(const Duration(seconds: 3));
+          expect(
+              container.read(readerUiControllerProvider).chromeVisible, isFalse,
+              reason: 'T16: auto-hide timer must restart when chrome is '
+                  're-shown; without the fix chrome stays visible indefinitely '
+                  'after a single user toggle.');
+        });
+      });
+    });
   });
 }

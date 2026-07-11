@@ -280,6 +280,21 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold>
   @override
   Widget build(BuildContext context) {
     final ui = ref.watch(readerUiControllerProvider);
+    // T16 (2026-07-11): restart auto-hide timer whenever chrome transitions
+    // hidden → visible. Without this, the initial 3s timer (started in
+    // initState) fires once; if the user later toggles chrome back on, no
+    // new timer is scheduled and chrome stays visible indefinitely.
+    ref.listen<ReaderUiState>(
+      readerUiControllerProvider,
+      (previous, next) {
+        if (previous != null &&
+            !previous.chromeVisible &&
+            next.chromeVisible &&
+            !next.isFullscreen) {
+          _startAutoHideTimerIfNeeded();
+        }
+      },
+    );
     final size = MediaQuery.sizeOf(context);
     // Tap zone width clamped to [0, half of screen] so a misconfigured
     // marginPx (e.g., > screen/2) doesn't cause the two zones to overlap.
