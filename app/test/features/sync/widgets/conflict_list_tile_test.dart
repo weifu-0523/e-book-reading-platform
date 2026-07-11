@@ -81,4 +81,35 @@ void main() {
 
     expect(find.textContaining('device-X'), findsOneWidget);
   });
+
+  // S3 T7: regression guard for mobile compact width. Long device IDs must
+  // not push the subtitle off-screen — verified via maxLines + ellipsis on
+  // the subtitle Text widget in ConflictListTile.
+  testWidgets('renders without overflow at 360px width with long device id',
+      (tester) async {
+    tester.view.physicalSize = const Size(360 * 2, 800 * 2); // DPR=2 → 360x800 logical
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrapped(
+      ListView(
+        children: [
+          ConflictListTile(
+            data: _row(
+              id: 'rec-very-long-id-1234567890',
+              type: 'annotation',
+              preview: 'preview text',
+              loserDevice: 'device-very-long-id-1234567890-abcdef-xyz',
+            ),
+          ),
+        ],
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    expect(find.textContaining('device-very-long-id'), findsOneWidget);
+  });
 }

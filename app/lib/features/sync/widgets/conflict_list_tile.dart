@@ -56,6 +56,9 @@ class ConflictListTile extends StatelessWidget {
               '${data.localMtime.toLocal()} > ${data.remoteMtime.toLocal()} '
               '(${data.loserDevice})',
               style: theme.textTheme.bodySmall,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              softWrap: true,
             ),
           ],
         ),
