@@ -17,6 +17,8 @@
 // ignore_for_file: avoid_renaming_method_parameters
 // The didChangeAppLifecycleState parameter is renamed from `state` to
 // `lifecycle` to avoid shadowing the StateNotifier.state getter.
+import 'dart:developer' as developer;
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -147,6 +149,7 @@ class SyncController extends StateNotifier<SyncState>
       username: creds.username!,
       password: creds.password!,
       httpClient: _httpClient,
+      debugLog: (msg) => developer.log(msg, name: 'webdav'),
     );
     return WebDavSyncEngine(
       database: database,

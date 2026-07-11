@@ -232,5 +232,35 @@ void main() {
       await client.ensureAncestors('/file.jsonl');
       expect(callCount, 0);
     });
+
+    test('ensureAncestors logs each segment status on failure', () async {
+      final logMessages = <String>[];
+      final client = WebDavClient(
+        baseUrl: 'https://example.com/dav/user',
+        username: 'u',
+        password: 'p',
+        httpClient: MockClient((request) async {
+          // /zhiyue → MKCOL 409 + PROPFIND 404 (truly missing per T2 logic)
+          if (request.method == 'MKCOL' && request.url.path.endsWith('/zhiyue')) {
+            return http.Response('<err>AncestorsNotFound</err>', 409);
+          }
+          if (request.method == 'PROPFIND' && request.url.path.endsWith('/zhiyue')) {
+            return http.Response('<err>Not Found</err>', 404);
+          }
+          return http.Response('', 500);
+        }),
+        debugLog: logMessages.add,
+      );
+      await expectLater(
+        client.ensureAncestors('/zhiyue/snapshots/device.jsonl'),
+        throwsA(isA<WebDavException>()),
+      );
+      // Verify log captured the failure context
+      expect(
+        logMessages.any((m) => m.contains('MKCOL') && m.contains('/zhiyue')),
+        isTrue,
+      );
+      expect(logMessages.any((m) => m.contains('409')), isTrue);
+    });
   });
 }

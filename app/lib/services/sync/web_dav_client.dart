@@ -39,6 +39,7 @@ class WebDavClient {
     required this.username,
     required this.password,
     http.Client? httpClient,
+    this.debugLog,
   }) : _httpClient = httpClient ?? http.Client();
 
   /// Base URL up to (and including) the user-specific path segment,
@@ -47,6 +48,11 @@ class WebDavClient {
   final String username;
   final String password;
   final http.Client _httpClient;
+
+  /// Optional debug log sink. When set, [ensureAncestors] reports each
+  /// MKCOL segment's status on failure. Null = no logging (production
+  /// default if caller doesn't wire it).
+  final void Function(String)? debugLog;
 
   Uri _uri(String path) {
     final clean = path.startsWith('/') ? path : '/$path';
@@ -148,7 +154,12 @@ class WebDavClient {
     var path = '';
     for (final seg in segments.take(segments.length - 1)) {
       path += '/$seg';
-      await mkcol(path);
+      try {
+        await mkcol(path);
+      } on WebDavException catch (e) {
+        debugLog?.call('ensureAncestors MKCOL $path → ${e.statusCode}: ${e.body}');
+        rethrow;
+      }
     }
   }
 
