@@ -26,6 +26,7 @@ import 'package:window_manager/window_manager.dart';
 import 'bootstrap/chapter_end_prompt_default.dart';
 import 'core/app.dart';
 import 'core/app_providers.dart';
+import 'core/platform_info.dart';
 import 'core/providers.dart';
 import 'core/router.dart';
 import 'core/scaffold_messenger_key.dart';
@@ -58,9 +59,11 @@ void main(List<String> args) async {
   };
 
   // M2.5/T9：桌面平台初始化 window_manager（用于全屏模式切换）。
-  if (defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux) {
+  // I2 (2026-07-11): use PlatformInfo.isDesktop instead of raw
+  // defaultTargetPlatform comparison — PlatformInfo centralizes the
+  // desktop/mobile distinction and respects debugDefaultTargetPlatformOverride
+  // for tests.
+  if (PlatformInfo.isDesktop) {
     await windowManager.ensureInitialized();
     // M4.6-fix14: 拦截窗口关闭，强制 exit(0) 防止 pdfium native 死锁
     // 阻塞进程退出（用户报告"关闭程序后后台进程残留"）。setPreventClose(true)

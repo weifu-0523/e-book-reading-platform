@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 ZhiYue Open Source contributors
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/platform_info.dart';
 
 /// 系统级 chrome 控制（status bar style + orientation）。
 ///
@@ -75,12 +76,11 @@ class MobilePlatformChromeController implements PlatformChromeController {
   }
 }
 
-/// Provider：按 [defaultTargetPlatform] 自动选择实现。
+/// Provider：按平台自动选择实现。I2 (2026-07-11): 改用 [PlatformInfo.isDesktop]
+/// 替代 raw `defaultTargetPlatform` 比较——PlatformInfo 中心化桌面/移动判断
+/// 并尊重 `debugDefaultTargetPlatformOverride`（测试友好）。
 final platformChromeControllerProvider = Provider<PlatformChromeController>((ref) {
-  final platform = defaultTargetPlatform;
-  if (platform == TargetPlatform.windows ||
-      platform == TargetPlatform.macOS ||
-      platform == TargetPlatform.linux) {
+  if (PlatformInfo.isDesktop) {
     return const DesktopPlatformChromeController();
   }
   return const MobilePlatformChromeController();

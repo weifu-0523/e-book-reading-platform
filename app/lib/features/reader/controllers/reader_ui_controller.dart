@@ -17,6 +17,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/platform_info.dart';
 import 'fullscreen_controller.dart';
 
 /// Reader drawer 统一抽屉的 tab 选项（T7 起 drawer/endDrawer 合并为单 Drawer）。
@@ -49,13 +50,12 @@ class ReaderUiState {
 
   /// 平台相关的默认状态：桌面端 chrome 默认可见，移动端默认隐藏
   /// （移动端走全屏模式，由 T9 接管）。
+  ///
+  /// I2 (2026-07-11): 改用 [PlatformInfo.isDesktop] 替代 raw
+  /// `defaultTargetPlatform` 比较。
   factory ReaderUiState.defaults() {
-    final platform = defaultTargetPlatform;
-    final isDesktop = platform == TargetPlatform.windows ||
-        platform == TargetPlatform.macOS ||
-        platform == TargetPlatform.linux;
     return ReaderUiState(
-      chromeVisible: isDesktop,
+      chromeVisible: PlatformInfo.isDesktop,
       tocDrawerOpen: false,
       typographyPanelOpen: false,
       activeDrawerTab: DrawerTab.toc,
@@ -163,11 +163,10 @@ class ReaderUiController extends StateNotifier<ReaderUiState> {
       state = state.copyWith(isFullscreen: true, chromeVisible: false);
     } else {
       fullscreenController.exit();
-      final platform = defaultTargetPlatform;
-      final isDesktop = platform == TargetPlatform.windows ||
-          platform == TargetPlatform.macOS ||
-          platform == TargetPlatform.linux;
-      state = state.copyWith(isFullscreen: false, chromeVisible: isDesktop);
+      // I2 (2026-07-11): PlatformInfo.isDesktop respects
+      // debugDefaultTargetPlatformOverride for tests.
+      state = state.copyWith(
+          isFullscreen: false, chromeVisible: PlatformInfo.isDesktop);
     }
   }
 }
