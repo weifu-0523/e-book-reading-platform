@@ -35,6 +35,7 @@ class _FakeController extends ChatSessionController {
   String? lastText;
   String? lastAttachmentId;
   String? lastAttachmentSnap;
+  int cancelCount = 0;
 
   /// When non-null, sendMessage waits on this completer before returning,
   /// simulating the LLM streaming delay that production code awaits via
@@ -55,6 +56,19 @@ class _FakeController extends ChatSessionController {
     if (pendingSend != null) {
       await pendingSend!.future;
     }
+  }
+
+  /// T19 (2026-07-11): tracks cancelStreaming invocations from the UI.
+  @override
+  Future<void> cancelStreaming() async {
+    cancelCount++;
+  }
+
+  /// Test helper: flip isStreaming without going through the full
+  /// sendMessage chain. Used to set up the "stop button visible"
+  /// preconditions for T19 widget tests.
+  void setStreamingForTest(bool value) {
+    state = state.copyWith(isStreaming: value);
   }
 }
 
@@ -193,6 +207,52 @@ void main() {
     // Release the pending send to avoid hanging the test.
     fakeController.pendingSend!.complete();
     await tester.pump();
+  });
+
+  // T19 (2026-07-11): Cancel streaming. While ChatSessionState.isStreaming,
+  // the send button must flip from Icons.send → Icons.stop and route taps
+  // to ChatSessionController.cancelStreaming (not _onSend).
+  group('T19 stop button during streaming', () {
+    testWidgets('shows Icons.stop (not send) while streaming',
+        (tester) async {
+      fakeController.setStreamingForTest(true);
+      await pumpComposer(tester);
+
+      expect(find.byIcon(Icons.stop), findsOneWidget,
+          reason: 'T19: streaming → button must show stop icon');
+      expect(find.byIcon(Icons.send), findsNothing,
+          reason: 'T19: streaming → send icon must NOT show');
+    });
+
+    testWidgets('tapping stop calls cancelStreaming (not sendMessage)',
+        (tester) async {
+      fakeController.setStreamingForTest(true);
+      await pumpComposer(tester);
+
+      await tester.tap(find.byIcon(Icons.stop));
+      await tester.pump();
+
+      expect(fakeController.cancelCount, 1,
+          reason: 'T19: tapping stop must call cancelStreaming');
+      expect(fakeController.sendMessageCount, 0,
+          reason: 'T19: tapping stop must NOT trigger sendMessage');
+    });
+
+    testWidgets('when not streaming, tapping send routes to _onSend',
+        (tester) async {
+      // Sanity counter-test: default state (not streaming) still sends.
+      await pumpComposer(tester);
+      await tester.enterText(find.byType(TextField), 'hi');
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.send));
+      await tester.pump();
+
+      expect(fakeController.sendMessageCount, 1,
+          reason: 'T19: when not streaming, button must send');
+      expect(fakeController.cancelCount, 0,
+          reason: 'T19: send button must never trigger cancel');
+    });
   });
 }
 

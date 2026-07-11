@@ -17,6 +17,8 @@
 // machine for those flows is identical to sendMessage (set isStreaming,
 // catch, copyWith on error), so sendMessage coverage is sufficient.
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/daos/chat_repository.dart';
@@ -167,6 +169,24 @@ class _ThrowingLlm implements ChatLlmClient {
 
   @override
   Future<void> cancel() async {}
+}
+
+/// T19 (2026-07-11): LLM fake whose streamChat returns a long-lived stream
+/// that doesn't auto-close. cancel() records the call but does NOT close
+/// the stream — production cancel only signals the HTTP client to abort;
+/// the test owns stream lifecycle via [addTearDown] (controller.close()).
+class _ControllableLlm implements ChatLlmClient {
+  _ControllableLlm(this._stream);
+  final Stream<String> _stream;
+  int cancelCount = 0;
+
+  @override
+  Stream<String> streamChat(String prompt) => _stream;
+
+  @override
+  Future<void> cancel() async {
+    cancelCount++;
+  }
 }
 
 /// Trivial [ChapterGuideCache] that's never hit / never written in these
@@ -385,5 +405,77 @@ void main() {
     expect(container.read(runChapterGuideUseCaseProvider), isNotNull);
     expect(container.read(runSocraticBootstrapUseCaseProvider), isNotNull);
     expect(container.read(runRecapUseCaseProvider), isNotNull);
+  });
+
+  // T19 (2026-07-11): Cancel streaming. cancelStreaming() must (a) invoke
+  // chatLlmClientProvider.cancel() — cooperative cancel of the underlying
+  // HTTP request — and (b) immediately reset state.isStreaming so the UI
+  // can recover without waiting for the in-flight sendMessage to return.
+  test('T19: cancelStreaming calls llm.cancel and resets isStreaming',
+      () async {
+    final streamController = StreamController<String>();
+    addTearDown(streamController.close);
+    final llm = _ControllableLlm(streamController.stream);
+
+    final repo = _FakeRepo(sessions: [
+      ChatSession(
+        id: 'sess-1',
+        bookId: 'book-1',
+        title: 't',
+        mode: 'normal',
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1),
+        deletedAt: null,
+      ),
+    ]);
+    final container = ProviderContainer(overrides: [
+      chatRepositoryProvider.overrideWithValue(repo),
+      chatLlmClientProvider.overrideWithValue(llm),
+      chapterGuideCacheProvider.overrideWithValue(_NoOpCache()),
+      sendMessageUseCaseProvider.overrideWithValue(
+        SendMessageUseCase(repo: repo, llm: llm),
+      ),
+    ]);
+    addTearDown(container.dispose);
+
+    // autoDispose.family disposes the controller when zero listeners remain,
+    // which cancels the in-flight LLM stream subscription. Keep the provider
+    // alive for the test duration so cancelStreaming has something to act on.
+    final keepAlive = container.listen<ChatSessionState>(
+      chatSessionControllerProvider('book-1'),
+      (_, __) {},
+    );
+    addTearDown(keepAlive.close);
+
+    final notifier =
+        container.read(chatSessionControllerProvider('book-1').notifier);
+    await notifier.selectSession('sess-1');
+
+    // Start sendMessage without awaiting — it blocks on streamController's
+    // close (which we control). isStreaming should be true while pending.
+    final sendFuture = notifier.sendMessage(text: 'hi');
+    // Flush microtasks so the use case's `await for` enters & the controller
+    // has set isStreaming=true.
+    await Future<void>.delayed(Duration.zero);
+
+    final stateBefore =
+        container.read(chatSessionControllerProvider('book-1'));
+    expect(stateBefore.isStreaming, isTrue,
+        reason: 'precondition: stream must be in flight');
+    expect(llm.cancelCount, 0);
+
+    await notifier.cancelStreaming();
+
+    expect(llm.cancelCount, 1,
+        reason: 'T19: cancelStreaming must call chatLlmClient.cancel');
+    final stateAfter =
+        container.read(chatSessionControllerProvider('book-1'));
+    expect(stateAfter.isStreaming, isFalse,
+        reason: 'T19: cancelStreaming must reset isStreaming immediately '
+            '(UI recovers without waiting for in-flight sendMessage to return)');
+
+    // Cleanup: close stream so the pending sendMessage future completes.
+    await streamController.close();
+    await sendFuture;
   });
 }

@@ -1490,6 +1490,31 @@ GestureDetector(
 git commit -m "feat(ai): cancel streaming + regenerate response"
 ```
 
+> **2026-07-11 scope decision (T19 rescoped):** Only the Cancel half of this
+> task shipped in S3. Regenerate was deferred because the plan's Step 4 spec
+> has placeholders (`/* relative to message */`, undefined `onRegenerate`
+> callback) and the semantics need a product decision — does regenerate
+> truncate-and-rewrite (data loss risk) or just append a fresh AI reply?
+> Cancel itself delivers the high-value mobile UX win (long-running streams
+> can now be aborted without force-killing the drawer). Regenerate tracked
+> as follow-up; should not gate v1.10.0-alpha.
+>
+> **Plan bugs hit during T19:**
+> - Path `app/lib/features/ai/widgets/ai_input_composer.dart` is wrong —
+>   real path is `features/ai_chat/widgets/`.
+> - Plan's `StreamSubscription` tracking inside the widget is the wrong
+>   abstraction. The existing `ChatLlmClient.cancel()` interface (defined
+>   in `send_message_use_case.dart:38-40`) already provides cooperative
+>   cancel; the controller just needs a `cancelStreaming()` method that
+>   calls through to it.
+>
+> **Test gotcha discovered:** `chatSessionControllerProvider` is
+> `StateNotifierProvider.autoDispose.family`. Without a `container.listen`
+> keeping the provider alive, microtask flushes between delays cause
+> autoDispose to reap the controller mid-flight, cancelling the LLM
+> stream subscription. Tests that don't `await sendMessage` must add a
+> `container.listen(...)` keep-alive (see test file for the pattern).
+
 ---
 
 ### Task 20: AiDrawerWidget dispose SSE audit

@@ -381,6 +381,25 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
     final canSend = !state.isStreaming &&
         (_controller.text.isNotEmpty || _pendingAttachment != null);
 
+    // T19 (2026-07-11): While streaming, the send button flips to a stop
+    // icon and routes taps to ChatSessionController.cancelStreaming
+    // (cooperative cancel of the underlying SSE request). When not
+    // streaming, default send behavior applies.
+    final VoidCallback? onButtonPressed;
+    final IconData buttonIcon;
+    if (state.isStreaming) {
+      buttonIcon = Icons.stop;
+      onButtonPressed = () => ref
+          .read(chatSessionControllerProvider(widget.bookId).notifier)
+          .cancelStreaming();
+    } else if (canSend) {
+      buttonIcon = Icons.send;
+      onButtonPressed = _onSend;
+    } else {
+      buttonIcon = Icons.send;
+      onButtonPressed = null;
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -438,8 +457,8 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
               ),
               const SizedBox(width: 8),
               IconButton.filled(
-                icon: const Icon(Icons.send),
-                onPressed: canSend ? _onSend : null,
+                icon: Icon(buttonIcon),
+                onPressed: onButtonPressed,
               ),
             ],
           ),

@@ -312,6 +312,29 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
     state = state.copyWith(clearError: true);
   }
 
+  /// T19 (2026-07-11): Cancels any in-flight LLM stream and resets
+  /// [ChatSessionState.isStreaming] immediately.
+  ///
+  /// Cancellation is cooperative: [ChatLlmClient.cancel] signals the
+  /// underlying HTTP client to abort the SSE request. The use case's
+  /// `await for` then exits naturally, the in-flight sendMessage/etc.
+  /// returns from its try block, and the catch path skips the error
+  /// state write (state already cleared here). Safe to call when no
+  /// stream is active (no-op).
+  ///
+  /// UI: the input composer's send button flips to a stop icon while
+  /// [ChatSessionState.isStreaming] is true; tapping it routes here.
+  Future<void> cancelStreaming() async {
+    try {
+      await _ref.read(chatLlmClientProvider).cancel();
+    } catch (_) {
+      // cancel() should never throw, but defensive — UI must recover
+      // regardless of underlying client state.
+    }
+    if (!mounted) return;
+    state = state.copyWith(isStreaming: false);
+  }
+
   String _defaultTitle([String? chapterTitle]) {
     if (chapterTitle != null && chapterTitle.trim().isNotEmpty) {
       return chapterTitle.trim();
