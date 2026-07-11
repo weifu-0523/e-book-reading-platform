@@ -959,11 +959,27 @@ git commit -m "deps: upgrade 5 plugins to compileSdk 36 defaults, remove sed pat
 
 ---
 
-### Task 11: IME depth adaptation
+### Task 11: IME depth adaptation (NO-OP — verified pre-existing)
+
+**Audit (2026-07-11):**
+
+- Plan path `app/lib/features/ai/widgets/ai_input_composer.dart` was wrong;
+  the file lives at `app/lib/features/ai_chat/widgets/ai_input_composer.dart`.
+  Plan bug #4 (after #1-3 found in WS2).
+- AiInputComposer already retains FocusNode (lines 80, 103-116, 121-122, 428):
+  `late final FocusNode _focus`, `_focus.onKeyEvent = ...` for Enter handling,
+  disposed in `dispose()`, wired into `TextField(focusNode: _focus, ...)`.
+- `grep -rn 'resizeToAvoidBottomInset' app/lib` returned no matches → all
+  Scaffolds use the Flutter default (`true`), so keyboard properly resizes
+  layout on every page that surfaces a text field.
+- User real-device test on v1.9.2-alpha confirmed Chinese IME / rotation /
+  app-switch focus retention works ("暂时手机端没发现问题").
+
+No code changes needed. Task is a no-op.
+
+**Original plan (for reference):**
 
 **Files:**
-- Modify: `app/lib/features/ai/widgets/ai_input_composer.dart`
-- Modify: any Scaffold missing `resizeToAvoidBottomInset`
 
 - [ ] **Step 1: Audit all Scaffolds**
 
