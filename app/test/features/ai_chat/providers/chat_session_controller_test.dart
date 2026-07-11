@@ -478,4 +478,70 @@ void main() {
     await streamController.close();
     await sendFuture;
   });
+
+  // T20 (2026-07-11): dispose must cancel in-flight LLM stream. When the
+  // drawer closes mid-response, Riverpod autoDispose reaps the controller;
+  // without an explicit llm.cancel(), the SSE HTTP request leaks until
+  // the server closes the connection (can be 30s+ on slow endpoints).
+  test('T20: dispose cancels in-flight LLM stream', () async {
+    final streamController = StreamController<String>();
+    addTearDown(streamController.close);
+    final llm = _ControllableLlm(streamController.stream);
+
+    final repo = _FakeRepo(sessions: [
+      ChatSession(
+        id: 'sess-1',
+        bookId: 'book-1',
+        title: 't',
+        mode: 'normal',
+        createdAt: DateTime(2026, 1, 1),
+        updatedAt: DateTime(2026, 1, 1),
+        deletedAt: null,
+      ),
+    ]);
+    final container = ProviderContainer(overrides: [
+      chatRepositoryProvider.overrideWithValue(repo),
+      chatLlmClientProvider.overrideWithValue(llm),
+      chapterGuideCacheProvider.overrideWithValue(_NoOpCache()),
+      sendMessageUseCaseProvider.overrideWithValue(
+        SendMessageUseCase(repo: repo, llm: llm),
+      ),
+    ]);
+
+    final keepAlive = container.listen<ChatSessionState>(
+      chatSessionControllerProvider('book-1'),
+      (_, __) {},
+    );
+
+    final notifier =
+        container.read(chatSessionControllerProvider('book-1').notifier);
+    await notifier.selectSession('sess-1');
+
+    final sendFuture = notifier.sendMessage(text: 'hi');
+    await Future<void>.delayed(Duration.zero);
+
+    // Precondition: stream in flight, no cancel yet.
+    expect(
+        container.read(chatSessionControllerProvider('book-1')).isStreaming,
+        isTrue);
+    expect(llm.cancelCount, 0);
+
+    // Tear down the container — this triggers autoDispose → controller
+    // dispose → llm.cancel(). Simulates the AI drawer closing mid-stream.
+    keepAlive.close();
+    container.dispose();
+
+    expect(llm.cancelCount, greaterThanOrEqualTo(1),
+        reason: 'T20: dispose must cancel in-flight LLM stream so the '
+            'SSE HTTP request is aborted, not leaked');
+
+    // Cleanup: close stream so the pending sendMessage future completes
+    // (will likely throw StateError from .last on empty stream, swallow).
+    await streamController.close();
+    try {
+      await sendFuture;
+    } catch (_) {
+      // Expected: use case Stream closes with no events → .last throws.
+    }
+  });
 }

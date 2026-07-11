@@ -23,6 +23,7 @@ import '../../../data/local/daos/chat_repository.dart';
 import '../../../data/local/database.dart';
 import '../../../core/app_providers.dart' show chapterTextProviderFor;
 import '../../../core/providers.dart' show bookRepositoryProvider;
+import '../use_cases/send_message_use_case.dart' show ChatLlmClient;
 import 'chat_providers.dart';
 
 /// Immutable snapshot of the chat drawer's UI state for one (bookId, session).
@@ -106,17 +107,40 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
   final String bookId;
   StreamSubscription<List<ChatMessage>>? _msgSub;
 
+  // T20 (2026-07-11): cached on first use so dispose() can cancel any
+  // in-flight stream without reading from a container mid-teardown.
+  // (Reading providers during container.dispose throws "Bad state:
+  // Tried to read a provider from a ProviderContainer that was already
+  // disposed".) Null until the first sendMessage / cancelStreaming call.
+  ChatLlmClient? _llmCache;
+  ChatLlmClient get _llm {
+    _llmCache ??= _ref.read(chatLlmClientProvider);
+    return _llmCache!;
+  }
+
   ChatRepository get _repo => _ref.read(chatRepositoryProvider);
 
   @override
   void dispose() {
     _msgSub?.cancel();
+    // T20 (2026-07-11): abort any in-flight LLM stream so the SSE HTTP
+    // request doesn't leak when the AI drawer closes mid-response. Fire
+    // and forget — cancel() is fast and the controller is going away.
+    // Uses _llmCache (not the _llm getter) because _ref may be mid-teardown;
+    // if no message was ever sent, _llmCache is null and there's nothing
+    // to cancel.
+    _llmCache?.cancel();
     super.dispose();
   }
 
   /// Switches the active session to [sessionId] and subscribes to its
   /// message stream. Cancels any prior subscription.
   Future<void> selectSession(String sessionId) async {
+    // T20 (2026-07-11): eagerly capture the LLM client on first activity
+    // so dispose() can cancel any in-flight stream. selectSession is the
+    // earliest entry point (called from ensureSession on drawer open, and
+    // directly when the user picks a session in the dropdown).
+    _llmCache ??= _ref.read(chatLlmClientProvider);
     state = state.copyWith(currentSessionId: sessionId, clearError: true);
     await _msgSub?.cancel();
     final session = await _repo.getSession(sessionId);
@@ -326,7 +350,7 @@ class ChatSessionController extends StateNotifier<ChatSessionState> {
   /// [ChatSessionState.isStreaming] is true; tapping it routes here.
   Future<void> cancelStreaming() async {
     try {
-      await _ref.read(chatLlmClientProvider).cancel();
+      await _llm.cancel();
     } catch (_) {
       // cancel() should never throw, but defensive — UI must recover
       // regardless of underlying client state.
