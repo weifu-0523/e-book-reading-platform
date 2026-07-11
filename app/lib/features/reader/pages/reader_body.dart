@@ -541,15 +541,21 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
         }
       },
       // M2.7/T21: 窄屏 AI 抽屉。3-tab 容器（目录/书签/笔记）保留为左侧
-      // Scaffold.drawer，AI 抽屉挂在右侧 endDrawer。Drawer widget 默认宽度
-      // 304，AI 面板内容自适应。
+      // Scaffold.drawer，AI 抽屉挂在右侧 endDrawer。
+      // Bug 5 (2026-07-11): Drawer 宽度由默认 304 改为 98% 屏宽 —— 原默认
+      // 在 390px 手机上 = 78% 屏宽，留下 22% 给阅读区（不可读），改 98% 让
+      // AI 交互区近全屏，符合移动端 chat 习惯。
+      // Bug 4 (2026-07-11): SafeArea 包内容，避开状态栏 / 灵动岛 / 相机挖孔。
       endDrawer: Drawer(
-        child: AiDrawerWidget(
-          bookId: widget.bookId,
-          chapterIndex: _currentChapterIndex(),
-          wide: false,
-          textStyle: _readerTextStyle(),
-          chapterTitle: _currentChapterTitle(),
+        width: MediaQuery.of(context).size.width * 0.98,
+        child: SafeArea(
+          child: AiDrawerWidget(
+            bookId: widget.bookId,
+            chapterIndex: _currentChapterIndex(),
+            wide: false,
+            textStyle: _readerTextStyle(),
+            chapterTitle: _currentChapterTitle(),
+          ),
         ),
       ),
       body: _buildReaderStack(ui),

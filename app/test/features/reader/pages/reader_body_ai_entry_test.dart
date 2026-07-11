@@ -32,6 +32,7 @@ import 'package:zhiyue/data/models/annotation.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/data/repositories/notes_repository.dart';
+import 'package:zhiyue/features/ai_chat/widgets/ai_drawer_widget.dart';
 import 'package:zhiyue/features/reader/controllers/reader_ui_controller.dart';
 import 'package:zhiyue/features/reader/pages/reader_body.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
@@ -236,5 +237,54 @@ void main() {
     expect(scaffoldState.isEndDrawerOpen, isTrue,
         reason: 'Bug 2b: FAB tap must open the AI drawer (replaces the old '
             'bookmark-add FAB action).');
+  });
+
+  testWidgets(
+      'Bug 4: AI endDrawer wraps content in SafeArea for status bar avoidance',
+      (tester) async {
+    final container = await pumpNarrowBody(tester);
+    // Force chrome visible so AppBar AI icon is tappable, then open endDrawer.
+    final notifier = container.read(readerUiControllerProvider.notifier);
+    if (!container.read(readerUiControllerProvider).chromeVisible) {
+      notifier.toggleChrome();
+    }
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('toggle_ai_drawer')));
+    await tester.pumpAndSettle();
+
+    // AiDrawerWidget must have a SafeArea ancestor so its content respects
+    // the system status bar / dynamic island on iPhones and notches on Android.
+    final safeAreaAncestor = find.ancestor(
+      of: find.byType(AiDrawerWidget),
+      matching: find.byType(SafeArea),
+    );
+    expect(safeAreaAncestor, findsOneWidget,
+        reason: 'Bug 4: AiDrawerWidget must have a SafeArea ancestor (within '
+            'the Drawer) so its content respects the system status bar / '
+            'dynamic island on iPhones and notches on Android.');
+  });
+
+  testWidgets('Bug 5: AI endDrawer width is 98% of screen on narrow viewport',
+      (tester) async {
+    // 390px wide (iPhone 14). 0.98 * 390 = 382.2.
+    final container = await pumpNarrowBody(tester, size: const Size(390, 844));
+    final notifier = container.read(readerUiControllerProvider.notifier);
+    if (!container.read(readerUiControllerProvider).chromeVisible) {
+      notifier.toggleChrome();
+    }
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('toggle_ai_drawer')));
+    await tester.pumpAndSettle();
+
+    final aiDrawer = tester.widget<Drawer>(find.ancestor(
+      of: find.byType(AiDrawerWidget),
+      matching: find.byType(Drawer),
+    ));
+    expect(aiDrawer.width, closeTo(390 * 0.98, 0.5),
+        reason: 'Bug 5: AI endDrawer must occupy ~98% of screen width on '
+            'mobile so chat is usable; the previous default (~304 / 78%) '
+            'left the book barely readable behind the drawer.');
   });
 }

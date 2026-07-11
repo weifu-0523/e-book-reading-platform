@@ -101,7 +101,9 @@ class ReaderDrawer extends ConsumerWidget {
       // （Material + 主题 surface 色）由调用方负责。
       return child;
     }
-    return Drawer(width: 280, child: child);
+    // Bug 4 (2026-07-11): SafeArea 包内容，避免移动端 _DrawerTabBar 顶部
+    // 文字与状态栏 / 灵动岛 / 挖孔重叠（用户报告 iPhone 顶部图标区不可点击）。
+    return Drawer(width: 280, child: SafeArea(child: child));
   }
 }
 
