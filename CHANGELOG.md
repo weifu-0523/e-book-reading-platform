@@ -7,7 +7,47 @@
 
 ## [Unreleased]
 
-v1.11.0-alpha 之后的新变更将记在此处。
+v1.11.1-alpha 之后的新变更将记在此处。
+
+## [1.11.1-alpha] - 2026-07-12
+
+M2.8 紧急 hotfix：v1.11.0-alpha 用户上手测试发现两个同步 bug。
+
+### 修复
+
+- **Bug A：书籍 binary 文件从未上传到坚果云**。根因：
+  `BookFileSyncService.uploadBookFile` 直接调 `putBytes` 没先 `ensureAncestors`
+  创建 `/zhiyue/files/` 目录。坚果云 WebDAV 不像 Nextcloud / ownCloud 那样在
+  PUT 时自动建父目录，返回 409 AncestorsNotFound；该异常被
+  `uploadPendingFiles` 的 per-book try/catch 静默吞掉，因此用户看到「同步了
+  但坚果云只有两个 JSON 文件」。修复：`uploadBookFile` 在 `putBytes` 之前
+  调 `ensureAncestors(remotePath)`，幂等 MKCOL `/zhiyue` 和 `/zhiyue/files`
+  （405 = 已存在亦视为成功）。
+- **Bug B：新设备同步后中文书名显示为乱码**。根因：坚果云 WebDAV 返回
+  snapshot 文件时 `Content-Type: application/octet-stream` 不带 charset 参数。
+  Dart http 包的 `Response.body` getter 在没有显式 charset 时回退到 latin1
+  解码，破坏多字节 UTF-8 序列（中文标题字节被解码为孤立的 mojibake 字符）。
+  修复：`WebDavClient.getString` 改为 `utf8.decode(response.bodyBytes)` 显式
+  解码。同时 `putString` 加 `Content-Type: text/plain; charset=utf-8` 防御性
+  header（实际 Dart http 包对 String body 默认已 UTF-8 编码，此为防御性
+  冗余）。
+
+### 测试
+
+- 新增 3 个回归测试：`uploadBookFile` MKCOL 顺序验证 + `getString` UTF-8
+  解码验证（无 charset / 有 charset=utf-8 两场景）。
+- 更新 4 个 `BookFileSyncService` 旧测试：MockClient 加 MKCOL 分支（返回 201）。
+- 总测试数 1422 → 1425（+3 新增）。
+
+### 已知限制
+
+- **已 corrupted 的本地数据需手动恢复**：在 v1.11.0-alpha 期间已 pull 过
+  远程 snapshot 的设备，本地 SQLite 中 `books.title` 可能已是 mojibake。
+  修复后再次 sync 不会自动覆盖（books 表无 `updated_at`，applier 见到行已
+  存在就 skip）。受影响用户需在 Library 中手动删除乱码书条目，再触发 sync
+  重新 pull（修复后的 `getString` 会正确解码 UTF-8）。
+- **远程 snapshot 文件本身字节是正确的 UTF-8**（putString 一直发 UTF-8
+  bytes），无需重写远程数据。
 
 ## [1.11.0-alpha] - 2026-07-12
 
