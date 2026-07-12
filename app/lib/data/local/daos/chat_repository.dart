@@ -16,6 +16,7 @@
 
 import 'package:uuid/uuid.dart';
 
+import '../../../services/sync/sync_recorder.dart';
 import '../database.dart';
 import 'chat_messages_dao.dart';
 import 'chat_sessions_dao.dart';
@@ -27,11 +28,16 @@ import 'chat_sessions_dao.dart';
 /// - Auto-`touch` session.updatedAt on every message append
 /// - Provide a single entry point for use cases (no need to wire DAOs in UI)
 ///
-/// Sync-readiness: all write operations also write `updated_at`; soft-delete
-/// writes `deleted_at`. Schema is ready for M2.8 sync outbox wiring.
+/// Sync-readiness (M2.8, 2026-07-12): every write operation emits a sync
+/// record via [SyncRecorder] when one is injected. Streaming token appends
+/// are the one exception (would bloat outbox ~200x per AI response) — see
+/// [appendContentToMessage] and [completeStreamingMessage].
 class ChatRepository {
-  ChatRepository(this._db);
+  ChatRepository(this._db, {SyncRecorder? syncRecorder})
+      : _syncRecorder = syncRecorder;
+
   final AppDatabase _db;
+  final SyncRecorder? _syncRecorder;
 
   ChatSessionsDao get _sessions => _db.chatSessionsDao;
   ChatMessagesDao get _messages => _db.chatMessagesDao;
@@ -58,6 +64,14 @@ class ChatRepository {
       mode: mode,
       createdAt: at,
     );
+    await _syncRecorder?.recordChatSession(
+      id: sid,
+      bookId: bookId,
+      title: title,
+      mode: mode,
+      createdAt: at,
+      updatedAt: at,
+    );
     return sid;
   }
 
@@ -75,12 +89,36 @@ class ChatRepository {
   Future<List<ChatSession>> listSessionsForBook(String bookId) =>
       _sessions.listForBook(bookId);
 
-  Future<void> renameSession(String sessionId, String title) {
-    return _sessions.rename(sessionId, title, DateTime.now());
+  Future<void> renameSession(String sessionId, String title) async {
+    await _sessions.rename(sessionId, title, DateTime.now());
+    final updated = await _sessions.findById(sessionId);
+    if (updated != null) {
+      await _syncRecorder?.recordChatSession(
+        id: updated.id,
+        bookId: updated.bookId,
+        title: updated.title,
+        mode: updated.mode,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        deletedAt: updated.deletedAt,
+      );
+    }
   }
 
-  Future<void> setSessionMode(String sessionId, String mode) {
-    return _sessions.setMode(sessionId, mode, DateTime.now());
+  Future<void> setSessionMode(String sessionId, String mode) async {
+    await _sessions.setMode(sessionId, mode, DateTime.now());
+    final updated = await _sessions.findById(sessionId);
+    if (updated != null) {
+      await _syncRecorder?.recordChatSession(
+        id: updated.id,
+        bookId: updated.bookId,
+        title: updated.title,
+        mode: updated.mode,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        deletedAt: updated.deletedAt,
+      );
+    }
   }
 
   // --- Messages ---
@@ -114,25 +152,102 @@ class ChatRepository {
       createdAt: at,
     );
     await _sessions.touch(sessionId, at);
+    final row = await _messages.findById(mid);
+    if (row != null) {
+      await _syncRecorder?.recordChatMessage(
+        id: row.id,
+        sessionId: row.sessionId,
+        role: row.role,
+        content: row.content,
+        presetSource: row.presetSource,
+        attachmentNoteId: row.attachmentNoteId,
+        attachmentNoteSnapshot: row.attachmentNoteSnapshot,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      );
+    }
     return mid;
   }
 
   /// Appends text to an existing message's content (streaming use case).
   /// Note: also bumps message.updatedAt (raw SQL, see [ChatMessagesDao.appendContent]).
+  ///
+  /// Does NOT emit a sync record — per-token sync would bloat the outbox
+  /// ~200x per AI response. Callers must invoke [completeStreamingMessage]
+  /// once after the LLM stream closes to enqueue the final state.
   Future<void> appendContentToMessage(String id, String delta) {
     return _messages.appendContent(id, delta, DateTime.now());
   }
 
-  Future<void> softDeleteMessage(String id) {
-    return _messages.softDelete(id, DateTime.now());
+  /// Mark a streaming AI message as complete + emit a sync record with the
+  /// full accumulated content.
+  ///
+  /// Reads the row from DB because [appendContentToMessage] uses raw SQL
+  /// (`content = content || ?`) that bypasses in-memory state. The streaming
+  /// use cases (T3) invoke this once after the LLM stream closes; per-chunk
+  /// sync is intentionally skipped to avoid outbox bloat.
+  ///
+  /// No-op if the row is missing (e.g. caller passed a stale id after a
+  /// hard-delete). Returns without throwing so callers don't need to wrap
+  /// the call in defensive try/catch.
+  Future<void> completeStreamingMessage(String messageId) async {
+    final row = await _messages.findById(messageId);
+    if (row == null) return;
+    await _syncRecorder?.recordChatMessage(
+      id: row.id,
+      sessionId: row.sessionId,
+      role: row.role,
+      content: row.content,
+      presetSource: row.presetSource,
+      attachmentNoteId: row.attachmentNoteId,
+      attachmentNoteSnapshot: row.attachmentNoteSnapshot,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+    );
+  }
+
+  Future<void> softDeleteMessage(String id) async {
+    await _messages.softDelete(id, DateTime.now());
+    final row = await _messages.findById(id);
+    if (row != null) {
+      await _syncRecorder?.recordChatMessage(
+        id: row.id,
+        sessionId: row.sessionId,
+        role: row.role,
+        content: row.content,
+        presetSource: row.presetSource,
+        attachmentNoteId: row.attachmentNoteId,
+        attachmentNoteSnapshot: row.attachmentNoteSnapshot,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        deletedAt: row.deletedAt,
+      );
+    }
   }
 
   // --- Lifecycle (used by SessionLifecycleUseCases) ---
 
   /// Removes all messages for a session but keeps the session row (for `/clear`).
+  ///
+  /// Emits a chatSession record (updatedAt bump) so remote sessions stay in
+  /// sync with the local clear. Hard-deleted messages don't emit anything —
+  /// receiver detects them via the session's updatedAt change and reloads.
   Future<void> clearSession(String sessionId) async {
     await _messages.deleteAllForSession(sessionId);
     await _sessions.touch(sessionId, DateTime.now());
+    final updated = await _sessions.findById(sessionId);
+    if (updated != null) {
+      await _syncRecorder?.recordChatSession(
+        id: updated.id,
+        bookId: updated.bookId,
+        title: updated.title,
+        mode: updated.mode,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        deletedAt: updated.deletedAt,
+      );
+    }
   }
 
   /// Soft-deletes session + hard-removes messages (message tombstones would
@@ -140,6 +255,18 @@ class ChatRepository {
   Future<void> softDeleteSession(String sessionId) async {
     await _messages.deleteAllForSession(sessionId);
     await _sessions.softDelete(sessionId, DateTime.now());
+    final updated = await _sessions.findById(sessionId);
+    if (updated != null) {
+      await _syncRecorder?.recordChatSession(
+        id: updated.id,
+        bookId: updated.bookId,
+        title: updated.title,
+        mode: updated.mode,
+        createdAt: updated.createdAt,
+        updatedAt: updated.updatedAt,
+        deletedAt: updated.deletedAt,
+      );
+    }
   }
 
   // --- UUID ---

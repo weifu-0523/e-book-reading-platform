@@ -28,6 +28,7 @@ import '../../../data/models/book.dart';
 import '../../../services/ai/api_key_store.dart';
 import '../../../services/ai/book_reviewer.dart';
 import '../../../services/ai/open_ai_compatible_client.dart';
+import '../../../services/sync/sync_recorder.dart';
 import '../use_cases/run_chapter_guide_use_case.dart';
 import '../use_cases/run_recap_use_case.dart';
 import '../use_cases/run_socratic_bootstrap_use_case.dart';
@@ -38,8 +39,13 @@ import 'ai_summaries_cache_adapter.dart';
 import 'openai_chat_llm_adapter.dart';
 
 /// Shared [ChatRepository] singleton for the chat drawer + use cases.
+///
+/// M2.8 (2026-07-12): injects a [SyncRecorder] backed by the app's
+/// [SyncOutboxDao] so every chat mutation enqueues a sync record. Mirrors
+/// the wiring in `core/providers.dart` for the other repositories.
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {
-  return ChatRepository(ref.watch(appDatabaseProvider));
+  final db = ref.watch(appDatabaseProvider);
+  return ChatRepository(db, syncRecorder: SyncRecorder(db.syncOutboxDao));
 });
 
 /// Concrete [ChatLlmClient] wrapping [OpenAiCompatibleClient].

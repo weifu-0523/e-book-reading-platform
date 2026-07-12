@@ -39,6 +39,16 @@ class ChatMessagesDao extends DatabaseAccessor<AppDatabase>
     return q.get();
   }
 
+  /// Fetch a single message by id (any state, including soft-deleted).
+  ///
+  /// Used by [ChatRepository] to read post-stream state for sync record
+  /// construction. Includes deleted rows so [ChatRepository.softDeleteMessage]
+  /// can read `deletedAt` after marking the row.
+  Future<ChatMessage?> findById(String id) {
+    return (select(chatMessages)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+  }
+
   /// Reactive stream of active messages for [sessionId].
   /// Emits on any write to chat_messages (drift `.watch()` semantics).
   Stream<List<ChatMessage>> watchForSession(String sessionId) {
