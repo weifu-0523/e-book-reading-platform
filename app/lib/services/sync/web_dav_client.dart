@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -79,11 +80,41 @@ class WebDavClient {
     return _parsePropfindFilenames(body);
   }
 
+  /// PROPFIND on a directory, return map of `{filename: sizeInBytes}` for
+  /// each file (not directory). Used by T9 BookFileSyncService for quota
+  /// display + progress UI.
+  ///
+  /// Entries are skipped when:
+  /// - `<resourcetype>` contains `<collection/>` (it's a directory)
+  /// - `<getcontentlength>` is absent (some servers omit for unknown size)
+  /// - `<getcontentlength>` is not parseable as int
+  Future<Map<String, int>> listFilesWithSize(String dirPath) async {
+    final response = await _httpClient.send(http.Request('PROPFIND', _uri(dirPath))
+      ..headers['authorization'] = _authHeader['authorization']!
+      ..headers['depth'] = '1'
+      ..headers['content-type'] = 'application/xml; charset=utf-8'
+      ..body = '''<?xml version="1.0" encoding="utf-8"?>
+<D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/><D:getcontentlength/></D:prop></D:propfind>''');
+    final body = await response.stream.bytesToString();
+    if (response.statusCode != 207) {
+      throw WebDavException(response.statusCode, dirPath, body);
+    }
+    return _parsePropfindFilesWithSize(body);
+  }
+
   /// GET a file's content as UTF-8 string.
   Future<String> getString(String path) async {
     final response = await _httpClient.get(_uri(path), headers: _authHeader);
     _ensureOk(response.statusCode, path, response.body);
     return response.body;
+  }
+
+  /// GET a file's content as raw bytes (binary). For EPUB / PDF / image
+  /// files where UTF-8 decoding would corrupt the payload.
+  Future<Uint8List> getBytes(String path) async {
+    final response = await _httpClient.get(_uri(path), headers: _authHeader);
+    _ensureOk(response.statusCode, path, response.body);
+    return response.bodyBytes;
   }
 
   /// PUT a string to a file. Creates or overwrites.
@@ -92,6 +123,24 @@ class WebDavClient {
       _uri(path),
       headers: _authHeader,
       body: body,
+    );
+    _ensureOk(response.statusCode, path, response.body);
+  }
+
+  /// PUT raw bytes to a file. Creates or overwrites. For binary content
+  /// (EPUB / PDF / images) — sends `Content-Type: application/octet-stream`.
+  ///
+  /// On 507 Insufficient Storage (quota exceeded) the [WebDavException]
+  /// propagates with `statusCode == 507`; caller decides retry / user
+  /// messaging. We do NOT special-case it here.
+  Future<void> putBytes(String path, List<int> bytes) async {
+    final response = await _httpClient.put(
+      _uri(path),
+      headers: {
+        ..._authHeader,
+        'content-type': 'application/octet-stream',
+      },
+      body: bytes,
     );
     _ensureOk(response.statusCode, path, response.body);
   }
@@ -183,6 +232,47 @@ class WebDavClient {
       if (last.endsWith('.jsonl')) {
         result.add(last);
       }
+    }
+    return result;
+  }
+
+  /// Parse a PROPFIND multistatus body into `{filename: sizeInBytes}`.
+  ///
+  /// Splits on `<D:response>` blocks, then for each block extracts href +
+  /// resourcetype + getcontentlength. Skips:
+  /// - collection entries (directories)
+  /// - entries without a parseable getcontentlength
+  ///
+  /// Regex-based (consistent with [_parsePropfindFilenames]) — avoids adding
+  /// a `package:xml` dependency. WebDAV XML is well-structured enough that
+  /// regex is reliable for this scope; a streaming XML parser would be
+  /// over-engineering until we see real-world breakage.
+  Map<String, int> _parsePropfindFilesWithSize(String xmlBody) {
+    final result = <String, int>{};
+    final responseRegex = RegExp(
+      r'<(?:D|d):response>([\s\S]*?)</(?:D|d):response>',
+    );
+    final hrefRegex = RegExp(r'<(?:D|d):href>([^<]+)</(?:D|d):href>');
+    final collectionRegex =
+        RegExp(r'<(?:D|d):collection\s*/?>');
+    final sizeRegex =
+        RegExp(r'<(?:D|d):getcontentlength>([^<]+)</(?:D|d):getcontentlength>');
+
+    for (final match in responseRegex.allMatches(xmlBody)) {
+      final block = match.group(1)!;
+      // Skip directory entries.
+      if (collectionRegex.hasMatch(block)) continue;
+      final hrefMatch = hrefRegex.firstMatch(block);
+      if (hrefMatch == null) continue;
+      final href = Uri.decodeFull(hrefMatch.group(1)!);
+      final segments = href.split('/').where((s) => s.isNotEmpty).toList();
+      if (segments.isEmpty) continue;
+      final filename = segments.last;
+      final sizeMatch = sizeRegex.firstMatch(block);
+      if (sizeMatch == null) continue;
+      final size = int.tryParse(sizeMatch.group(1)!.trim());
+      if (size == null) continue;
+      result[filename] = size;
     }
     return result;
   }

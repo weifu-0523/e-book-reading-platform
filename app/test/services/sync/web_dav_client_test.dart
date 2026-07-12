@@ -6,6 +6,52 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:zhiyue/services/sync/web_dav_client.dart';
 
+const _propfindWithSizeResponse = '''<?xml version="1.0" encoding="utf-8" ?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response>
+    <D:href>/dav/user/zhiyue/files/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype><D:collection/></D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/user/zhiyue/files/book1.epub</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype/>
+        <D:getcontentlength>1024</D:getcontentlength>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/user/zhiyue/files/book2.pdf</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype/>
+        <D:getcontentlength>2048</D:getcontentlength>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>''';
+
+const _propfindEmptyDirResponse = '''<?xml version="1.0" encoding="utf-8" ?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response>
+    <D:href>/dav/user/zhiyue/files/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype><D:collection/></D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>''';
+
 const _propfindResponse = '''<?xml version="1.0" encoding="UTF-8"?>
 <d:multistatus xmlns:d="DAV:">
   <d:response>
@@ -261,6 +307,185 @@ void main() {
         isTrue,
       );
       expect(logMessages.any((m) => m.contains('409')), isTrue);
+    });
+  });
+
+  group('getBytes', () {
+    test('returns binary content as bytes', () async {
+      final mock = MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, contains('/zhiyue/files/book1.epub'));
+        return http.Response.bytes(
+          Uint8List.fromList([0x50, 0x4B, 0x03, 0x04]),
+          200,
+          headers: {'content-type': 'application/octet-stream'},
+        );
+      });
+      client = build(mock);
+      final bytes = await client.getBytes('/zhiyue/files/book1.epub');
+      expect(bytes, [0x50, 0x4B, 0x03, 0x04]);
+    });
+
+    test('sends basic auth header', () async {
+      String? capturedAuth;
+      final mock = MockClient((request) async {
+        capturedAuth = request.headers['authorization'];
+        return http.Response.bytes(Uint8List.fromList([0x01]), 200);
+      });
+      client = build(mock);
+      await client.getBytes('/zhiyue/files/book.epub');
+      expect(capturedAuth, startsWith('Basic '));
+    });
+
+    test('throws WebDavException on 404', () async {
+      final mock = MockClient((request) async =>
+          http.Response('Not Found', 404));
+      client = build(mock);
+      await expectLater(
+        client.getBytes('/zhiyue/files/missing.epub'),
+        throwsA(isA<WebDavException>()),
+      );
+    });
+  });
+
+  group('putBytes', () {
+    test('issues PUT with binary body', () async {
+      String? capturedMethod;
+      String? capturedContentType;
+      List<int>? capturedBody;
+      final mock = MockClient((request) async {
+        capturedMethod = request.method;
+        capturedContentType = request.headers['content-type'];
+        capturedBody = request.bodyBytes;
+        return http.Response('', 201);
+      });
+      client = build(mock);
+      await client.putBytes(
+        '/zhiyue/files/book1.epub',
+        Uint8List.fromList([0x50, 0x4B, 0x03, 0x04]),
+      );
+      expect(capturedMethod, 'PUT');
+      expect(capturedContentType, 'application/octet-stream');
+      expect(capturedBody, [0x50, 0x4B, 0x03, 0x04]);
+    });
+
+    test('sends basic auth header', () async {
+      String? capturedAuth;
+      final mock = MockClient((request) async {
+        capturedAuth = request.headers['authorization'];
+        return http.Response('', 201);
+      });
+      client = build(mock);
+      await client.putBytes('/zhiyue/files/book.epub', Uint8List.fromList([0x01]));
+      expect(capturedAuth, startsWith('Basic '));
+    });
+
+    test('throws WebDavException on 507 Insufficient Storage', () async {
+      final mock = MockClient((request) async =>
+          http.Response('Insufficient Storage', 507));
+      client = build(mock);
+      try {
+        await client.putBytes('/zhiyue/files/big.epub', Uint8List.fromList([0x00]));
+        fail('expected WebDavException');
+      } on WebDavException catch (e) {
+        expect(e.statusCode, 507);
+      }
+    });
+
+    test('throws WebDavException on 401 unauthorized', () async {
+      final mock = MockClient((request) async =>
+          http.Response('Unauthorized', 401));
+      client = build(mock);
+      await expectLater(
+        client.putBytes('/zhiyue/files/book.epub', Uint8List.fromList([0x00])),
+        throwsA(isA<WebDavException>()),
+      );
+    });
+  });
+
+  group('listFilesWithSize', () {
+    test('parses PROPFIND response with sizes', () async {
+      String? capturedMethod;
+      String? capturedDepth;
+      final mock = MockClient((request) async {
+        capturedMethod = request.method;
+        capturedDepth = request.headers['depth'];
+        return http.Response(
+          _propfindWithSizeResponse,
+          207,
+          headers: {'content-type': 'application/xml; charset=utf-8'},
+        );
+      });
+      client = build(mock);
+      final result = await client.listFilesWithSize('/zhiyue/files/');
+      expect(capturedMethod, 'PROPFIND');
+      expect(capturedDepth, '1');
+      expect(result, {
+        'book1.epub': 1024,
+        'book2.pdf': 2048,
+      });
+    });
+
+    test('skips collection (directory) entries', () async {
+      final mock = MockClient((request) async =>
+          http.Response(_propfindWithSizeResponse, 207,
+              headers: {'content-type': 'application/xml'}));
+      client = build(mock);
+      final result = await client.listFilesWithSize('/zhiyue/files/');
+      // The directory entry itself (href ends with /) must NOT be in result.
+      expect(result, isNot(contains('files')));
+      expect(result, isNot(contains('')));
+      expect(result.length, 2);
+    });
+
+    test('returns empty map for directory with no files', () async {
+      final mock = MockClient((request) async =>
+          http.Response(_propfindEmptyDirResponse, 207,
+              headers: {'content-type': 'application/xml'}));
+      client = build(mock);
+      final result = await client.listFilesWithSize('/zhiyue/files/');
+      expect(result, isEmpty);
+    });
+
+    test('throws WebDavException on non-207 status', () async {
+      final mock = MockClient((request) async =>
+          http.Response('Not Found', 404));
+      client = build(mock);
+      await expectLater(
+        client.listFilesWithSize('/zhiyue/missing/'),
+        throwsA(isA<WebDavException>()),
+      );
+    });
+
+    test('skips entries without getcontentlength', () async {
+      const response = '''<?xml version="1.0" encoding="utf-8" ?>
+<D:multistatus xmlns:D="DAV:">
+  <D:response>
+    <D:href>/dav/user/zhiyue/files/no-size.bin</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype/>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/user/zhiyue/files/with-size.bin</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype/>
+        <D:getcontentlength>512</D:getcontentlength>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>''';
+      final mock = MockClient((request) async =>
+          http.Response(response, 207,
+              headers: {'content-type': 'application/xml'}));
+      client = build(mock);
+      final result = await client.listFilesWithSize('/zhiyue/files/');
+      expect(result, {'with-size.bin': 512});
     });
   });
 }
