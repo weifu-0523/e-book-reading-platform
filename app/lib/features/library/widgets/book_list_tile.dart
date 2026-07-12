@@ -19,6 +19,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/book.dart';
+import '../../../services/sync/book_file_sync_service.dart';
 import '../../ai/providers/book_preprocess_controller.dart';
 import '../models/book_cell_action.dart';
 import 'book_cell_action_menu.dart';
@@ -75,6 +76,14 @@ class BookListTile extends StatelessWidget {
                 right: 0,
                 bottom: 0,
                 child: _FormatChip(format: book.format),
+              ),
+            // M2.8 T11: needs-download overlay (see BookCard._NeedsDownloadBadge).
+            if (book.filePath ==
+                BookFileSyncService.needsDownloadSentinel)
+              const Positioned(
+                left: 0,
+                top: 0,
+                child: _NeedsDownloadBadge(),
               ),
             if (preprocess != null &&
                 (preprocess.status == PreprocessStatus.chunking ||
@@ -166,6 +175,28 @@ class _FormatChip extends StatelessWidget {
       child: Text(
         format.displayLabel,
         style: const TextStyle(color: Colors.white, fontSize: 10),
+      ),
+    );
+  }
+}
+
+/// M2.8 T11: cloud-download badge for list-tile leading covers. Mirrors
+/// BookCard._NeedsDownloadBadge but slightly smaller for the 48-px thumb.
+class _NeedsDownloadBadge extends StatelessWidget {
+  const _NeedsDownloadBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: const Icon(
+        Icons.cloud_download_outlined,
+        color: Colors.white,
+        size: 12,
       ),
     );
   }

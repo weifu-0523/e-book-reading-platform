@@ -25,6 +25,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/services/sync/background_sync_scheduler.dart';
+import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 import 'package:zhiyue/services/sync/conflict_recorder.dart';
 import 'package:zhiyue/services/sync/connectivity_service.dart';
 import 'package:zhiyue/services/sync/sync_credentials.dart';
@@ -84,6 +85,11 @@ class SyncController extends StateNotifier<SyncState>
     ConnectivityService? connectivity,
     SyncIntervalPref? intervalPref,
     DateTime Function()? clock,
+    // M2.8 T11: path to the local library dir (FileStorage.libraryDir).
+    // When set, the controller builds a BookFileSyncService for cross-device
+    // binary file download on tap and periodic uploadPendingFiles in sync.
+    // Null = pre-M2.8 behaviour (no binary sync).
+    this.localFilesDir,
   })  : _httpClient = httpClient,
         _connectivity = connectivity ?? ConnectivityPlusService(),
         _intervalPref = intervalPref ?? SyncIntervalPref(),
@@ -109,6 +115,7 @@ class SyncController extends StateNotifier<SyncState>
     required SyncIntervalPrefLike intervalPref,
     required BackgroundSyncScheduler scheduler,
     required DateTime Function() clock,
+    this.localFilesDir,
   })  : _httpClient = httpClient,
         _connectivity = connectivity,
         // Tests pass the Like-interface; wrap so production field keeps
@@ -125,8 +132,14 @@ class SyncController extends StateNotifier<SyncState>
   final ConnectivityService _connectivity;
   final SyncIntervalPref _intervalPref;
   final DateTime Function() _clock;
+  /// M2.8 T11: local library dir for downloaded binaries. Null in tests
+  /// and pre-M2.8 builds — disables binary sync.
+  final String? localFilesDir;
   late final BackgroundSyncScheduler _scheduler;
   SyncEngine? _engine;
+  // M2.8 T11: lazily-built binary file syncer. Mirrors _engine's lifecycle
+  // (cleared on credential clear). Built once per session.
+  BookFileSyncService? _bookFileSync;
   bool _isSyncing = false;
 
   Future<void> _initInterval() async {
@@ -156,6 +169,16 @@ class SyncController extends StateNotifier<SyncState>
       httpClient: _httpClient,
       debugLog: (msg) => developer.log(msg, name: 'webdav'),
     );
+    // M2.8 T11: build the binary file syncer alongside, so sync() can upload
+    // pending binaries each cycle and the public downloadBookFile() can be
+    // served from the same instance.
+    if (localFilesDir != null && _bookFileSync == null) {
+      _bookFileSync = BookFileSyncService(
+        database: database,
+        webdav: webdav,
+        localFilesDir: localFilesDir!,
+      );
+    }
     return WebDavSyncEngine(
       database: database,
       outbox: database.syncOutboxDao,
@@ -163,7 +186,32 @@ class SyncController extends StateNotifier<SyncState>
       deviceId: creds.deviceId!,
       conflictSink:
           DaoConflictSink(database.syncConflictsDao, creds.deviceId!),
+      bookFileSync: _bookFileSync,
     );
+  }
+
+  /// M2.8 T11: download a book's binary file from the WebDAV store.
+  ///
+  /// Used by the Library page when the user taps a book whose `file_path`
+  /// is the `__needs_download__` sentinel (received from a peer device but
+  /// binary not yet local). On success, the local DB row's `file_path` is
+  /// updated to the actual local path and `file_synced_at` is stamped.
+  ///
+  /// Returns `true` on success, `false` on any failure (no credentials,
+  /// WebDAV error, local I/O error). The caller (UI) is responsible for
+  /// surfacing the error to the user — this method logs and swallows.
+  Future<bool> downloadBookFile(String bookId) async {
+    try {
+      await _buildEngine();
+      final fileSync = _bookFileSync;
+      if (fileSync == null) return false; // no credentials / no localFilesDir
+      await fileSync.downloadBookFile(bookId);
+      return true;
+    } catch (e, st) {
+      developer.log('downloadBookFile failed for $bookId: $e\n$st',
+          name: 'sync');
+      return false;
+    }
   }
 
   Future<void> saveCredentials({
@@ -182,6 +230,7 @@ class SyncController extends StateNotifier<SyncState>
   Future<void> clearCredentials() async {
     await credentials.clear();
     _engine = null;
+    _bookFileSync = null; // M2.8 T11: rebuild on next _buildEngine
   }
 
   Future<bool> hasCredentials() async {

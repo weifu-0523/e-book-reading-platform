@@ -202,6 +202,8 @@ class _NoOpQaHistoryDao implements QaHistoryDaoLike {
 /// M2.0a：注入 [SyncController]（依赖 [appDatabaseProvider] + [SyncCredentials]）。
 /// Riverpod 会延迟求值，所以 SyncController 真正实例化时 AppDatabase 已就绪。
 /// M1.5a：注入 [AiGuideController]（依赖 [aiGuideProvider]）。
+/// M2.8 T11：注入 [localFilesDir]（FileStorage.libraryDir.path）—— 用于
+/// 跨端 binary 文件下载（SyncController.downloadBookFile）。
 final providers = <Override>[
   syncControllerProvider.overrideWith(
     (ref) => SyncController(
@@ -210,6 +212,7 @@ final providers = <Override>[
       httpClient: ref.watch(httpClientProvider),
       connectivity: ConnectivityPlusService(),
       intervalPref: SyncIntervalPref(),
+      localFilesDir: ref.watch(localFilesDirProvider),
     ),
   ),
   aiGuideControllerProvider.overrideWith(

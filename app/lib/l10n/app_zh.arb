@@ -525,5 +525,17 @@
   "exportFilterTimeWindowLast90Days": "近 90 天",
   "@exportFilterTimeWindowLast90Days": {},
   "exportFilterTimeWindowThisYear": "今年",
-  "@exportFilterTimeWindowThisYear": {}
+  "@exportFilterTimeWindowThisYear": {},
+  "m28Downloading": "正在下载：{title}",
+  "@m28Downloading": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "m28DownloadFailed": "下载失败：{title}",
+  "@m28DownloadFailed": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  }
 }

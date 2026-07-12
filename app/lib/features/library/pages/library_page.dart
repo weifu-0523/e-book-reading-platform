@@ -26,7 +26,9 @@ import '../../../core/providers.dart';
 import '../../../data/models/book.dart';
 import '../../../data/models/book_note.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
+import '../../../features/sync/providers/sync_controller.dart';
 import '../../../gen_l10n/app_localizations.dart';
+import '../../../services/sync/book_file_sync_service.dart';
 import '../../notes/services/vault_exporter.dart';
 import '../models/library_mode.dart';
 import '../models/library_state.dart';
@@ -178,12 +180,55 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       return s.status == PreprocessStatus.idle ? null : s;
     }
 
-    void onTap(String id) {
+    Future<void> onTap(String id) async {
       if (isSelecting) {
         controller.toggleSelection(id);
-      } else {
-        context.push('/book/$id');
+        return;
       }
+      // M2.8 T11: if the book binary has not been downloaded yet (metadata
+      // received from a peer device but file not local), trigger download
+      // before navigating to the reader. The reader cannot open the
+      // sentinel path.
+      final book = state.books.firstWhere(
+        (b) => b.id == id,
+        orElse: () => Book(
+          id: id,
+          title: '',
+          author: null,
+          format: BookFormat.epub,
+          filePath: '',
+          fileHash: '',
+          fileSizeBytes: 0,
+          coverPath: null,
+          addedAt: DateTime.now(),
+          lastReadAt: null,
+        ),
+      );
+      if (book.filePath == BookFileSyncService.needsDownloadSentinel) {
+        // Capture context-dependent values synchronously before any await
+        // to avoid using BuildContext across async gaps.
+        final messenger = ScaffoldMessenger.of(context);
+        final l10n = AppLocalizations.of(context);
+        final sync = ref.read(syncControllerProvider.notifier);
+        final ok = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _BookDownloadDialog(
+            title: book.title,
+            onDownload: () => sync.downloadBookFile(book.id),
+          ),
+        );
+        if (ok != true) {
+          messenger.showSnackBar(
+            SnackBar(
+                content: Text(l10n?.m28DownloadFailed(book.title) ??
+                    '下载失败：${book.title}')),
+          );
+          return;
+        }
+      }
+      if (!mounted) return;
+      unawaited(context.push('/book/$id'));
     }
 
     Future<void> onLongPress(String id) async {
@@ -514,6 +559,57 @@ class _LibraryNavigationDrawer extends StatelessWidget {
               Navigator.pop(context);
               context.push('/settings');
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// M2.8 T11: progress dialog shown while a book's binary file is being
+/// downloaded from WebDAV. Blocks interaction (barrierDismissible=false)
+/// because tapping the book again would queue a second download. On
+/// completion pops with `true` on success or `false` on failure.
+class _BookDownloadDialog extends StatefulWidget {
+  const _BookDownloadDialog({
+    required this.title,
+    required this.onDownload,
+  });
+
+  final String title;
+  final Future<bool> Function() onDownload;
+
+  @override
+  State<_BookDownloadDialog> createState() => _BookDownloadDialogState();
+}
+
+class _BookDownloadDialogState extends State<_BookDownloadDialog> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final ok = await widget.onDownload();
+      if (mounted) {
+        Navigator.of(context).pop(ok);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      content: Row(
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Text(
+              l10n?.m28Downloading(widget.title) ??
+                  '正在下载：${widget.title}',
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
+            ),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/library/widgets/book_card.dart';
 import 'package:zhiyue/features/library/widgets/book_list_tile.dart';
+import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 
 void main() {
   final book = Book(
@@ -136,5 +137,84 @@ void main() {
       ),
     ));
     expect(find.byIcon(Icons.drag_handle), findsOneWidget);
+  });
+
+  // M2.8 T11: needs-download overlay is shown on book cells whose binary
+  // file has been received via metadata sync but not yet downloaded locally.
+  // Tap → LibraryPage shows progress dialog → SyncController.downloadBookFile.
+  group('M2.8 T11 needs-download overlay', () {
+    testWidgets('BookCard shows cloud-download icon when file_path = sentinel',
+        (tester) async {
+      final needsDownloadBook = Book(
+        id: 'b-remote',
+        title: 'Cross-device',
+        author: null,
+        format: BookFormat.epub,
+        filePath: BookFileSyncService.needsDownloadSentinel,
+        fileHash: 'h-remote',
+        fileSizeBytes: 1000,
+        coverPath: null,
+        addedAt: DateTime(2026, 1, 1),
+        lastReadAt: null,
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: BookCard(
+            book: needsDownloadBook,
+            coverFile: null,
+            onTap: () {},
+            onLongPress: () {},
+          ),
+        ),
+      ));
+
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+    });
+
+    testWidgets('BookCard hides overlay when file_path is a real path',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: BookCard(
+            book: book, // filePath: '/x.epub' from top-level fixture
+            coverFile: null,
+            onTap: () {},
+            onLongPress: () {},
+          ),
+        ),
+      ));
+
+      expect(find.byIcon(Icons.cloud_download_outlined), findsNothing);
+    });
+
+    testWidgets('BookListTile shows cloud-download icon when sentinel',
+        (tester) async {
+      final needsDownloadBook = Book(
+        id: 'b-remote',
+        title: 'Cross-device',
+        author: null,
+        format: BookFormat.epub,
+        filePath: BookFileSyncService.needsDownloadSentinel,
+        fileHash: 'h-remote',
+        fileSizeBytes: 1000,
+        coverPath: null,
+        addedAt: DateTime(2026, 1, 1),
+        lastReadAt: null,
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: BookListTile(
+            book: needsDownloadBook,
+            coverFile: null,
+            onTap: () {},
+            onLongPress: () {},
+          ),
+        ),
+      ));
+
+      expect(find.byIcon(Icons.cloud_download_outlined), findsOneWidget);
+    });
   });
 }

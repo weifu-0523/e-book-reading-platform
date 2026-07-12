@@ -711,4 +711,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get exportFilterTimeWindowThisYear => '今年';
+
+  @override
+  String m28Downloading(String title) {
+    return '正在下载：$title';
+  }
+
+  @override
+  String m28DownloadFailed(String title) {
+    return '下载失败：$title';
+  }
 }

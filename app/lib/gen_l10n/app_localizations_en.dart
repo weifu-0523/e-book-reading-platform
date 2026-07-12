@@ -725,4 +725,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get exportFilterTimeWindowThisYear => 'This year';
+
+  @override
+  String m28Downloading(String title) {
+    return 'Downloading: $title';
+  }
+
+  @override
+  String m28DownloadFailed(String title) {
+    return 'Download failed: $title';
+  }
 }

@@ -403,5 +403,17 @@
   "exportFilterTimeWindowLast90Days": "Last 90 days",
   "@exportFilterTimeWindowLast90Days": {},
   "exportFilterTimeWindowThisYear": "This year",
-  "@exportFilterTimeWindowThisYear": {}
+  "@exportFilterTimeWindowThisYear": {},
+  "m28Downloading": "Downloading: {title}",
+  "@m28Downloading": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  },
+  "m28DownloadFailed": "Download failed: {title}",
+  "@m28DownloadFailed": {
+    "placeholders": {
+      "title": { "type": "String" }
+    }
+  }
 }

@@ -19,6 +19,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../data/models/book.dart';
+import '../../../services/sync/book_file_sync_service.dart';
 import '../../ai/providers/book_preprocess_controller.dart';
 import '../models/book_cell_action.dart';
 import 'book_cell_action_menu.dart';
@@ -81,6 +82,16 @@ class BookCard extends StatelessWidget {
                         right: 4,
                         bottom: 4,
                         child: _FormatChip(format: book.format),
+                      ),
+                    // M2.8 T11: needs-download overlay. Binary file is on a
+                    // peer device but not local — tapping the card triggers
+                    // a download dialog before opening the reader.
+                    if (book.filePath ==
+                        BookFileSyncService.needsDownloadSentinel)
+                      const Positioned(
+                        left: 4,
+                        top: 4,
+                        child: _NeedsDownloadBadge(),
                       ),
                     if (preprocess != null &&
                         (preprocess.status == PreprocessStatus.chunking ||
@@ -156,6 +167,29 @@ class _FormatChip extends StatelessWidget {
       child: Text(
         format.displayLabel,
         style: const TextStyle(color: Colors.white, fontSize: 10),
+      ),
+    );
+  }
+}
+
+/// M2.8 T11: badge shown on book cells whose binary file has not yet been
+/// downloaded from a peer device. Cloud-download icon on a translucent dark
+/// background so it remains visible across arbitrary cover artwork.
+class _NeedsDownloadBadge extends StatelessWidget {
+  const _NeedsDownloadBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Icon(
+        Icons.cloud_download_outlined,
+        color: Colors.white,
+        size: 16,
       ),
     );
   }

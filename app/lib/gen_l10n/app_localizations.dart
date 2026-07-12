@@ -1393,6 +1393,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'今年'**
   String get exportFilterTimeWindowThisYear;
+
+  /// No description provided for @m28Downloading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在下载：{title}'**
+  String m28Downloading(String title);
+
+  /// No description provided for @m28DownloadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载失败：{title}'**
+  String m28DownloadFailed(String title);
 }
 
 class _AppLocalizationsDelegate

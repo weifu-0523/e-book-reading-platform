@@ -53,6 +53,19 @@ final fileStorageProvider = FutureProvider<FileStorage>((ref) async {
   return FileStorage.create();
 });
 
+/// M2.8 T11: sync provider that returns the absolute path to the local
+/// library directory (where book binary files are stored). Set by main.dart
+/// during boot via [localFilesDirOverride] before [ProviderContainer] is
+/// constructed — this keeps [SyncController] construction synchronous (it
+/// needs the path to wire [BookFileSyncService] into the WebDAV engine for
+/// cross-device binary download). Defaults to '' which disables binary
+/// sync (matches pre-M2.8 behaviour).
+String localFilesDirOverride = '';
+
+final localFilesDirProvider = Provider<String>((ref) {
+  return localFilesDirOverride;
+});
+
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return LocalBookRepository(db, syncRecorder: SyncRecorder(db.syncOutboxDao));

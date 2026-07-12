@@ -30,6 +30,7 @@ import 'core/platform_info.dart';
 import 'core/providers.dart';
 import 'core/router.dart';
 import 'core/scaffold_messenger_key.dart';
+import 'data/local/file_storage.dart';
 import 'services/ai/api_key_store.dart';
 import 'services/book_open_bridge.dart';
 
@@ -75,6 +76,17 @@ void main(List<String> args) async {
   }
 
   unawaited(pdfrxFlutterInitialize()); // M4: pdfrx 引擎初始化
+
+  // M2.8 T11: eagerly resolve the library dir path before ProviderContainer
+  // is built, so SyncController can be constructed synchronously with the
+  // path wired into BookFileSyncService (for cross-device binary download).
+  try {
+    final storage = await FileStorage.create();
+    localFilesDirOverride = storage.libraryDir.path;
+  } catch (e) {
+    // path_provider not available (e.g. widget test env) — leave as '' so
+    // binary sync is disabled. App still works for the metadata-only path.
+  }
 
   // runZonedGuarded 包住整个 runApp，捕获异步未捕获异常。
   // 注意：zone 内的同步错误由 FlutterError.onError 接，异步错误（future.reject、
