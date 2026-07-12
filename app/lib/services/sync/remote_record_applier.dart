@@ -50,19 +50,20 @@ class RemoteRecordApplier {
         return _applyBookmark(record);
       case SyncRecordType.freeformNote:
         return _applyFreeformNote(record);
-      // M2.8 (2026-07-12): chat + tags types arrive here from new snapshots,
-      // but the actual appliers are added in T5 (RemoteRecordApplier tier
-      // reorder + 3 new appliers). Until then, skip silently so old clients
-      // pulling M2.8 snapshots don't crash — records stay queued for a
-      // future pull after upgrade. Return false = "not applied".
+      // M2.8 T5 (2026-07-12): chat + tags receivers. Real implementations
+      // replace the T1 no-op stubs. See _applyChatSession / _applyChatMessage
+      // / _applyBookTag below.
       case SyncRecordType.chatSession:
+        return _applyChatSession(record);
       case SyncRecordType.chatMessage:
+        return _applyChatMessage(record);
       case SyncRecordType.bookTag:
-        return false;
+        return _applyBookTag(record);
     }
   }
 
-  /// Apply a batch of records in two phases to satisfy foreign-key ordering:
+  /// Apply a batch of records in three FK-ordered tiers so children always
+  /// find their parents regardless of input order.
   /// **Phase 1**: parent tables (`book`, `bookNote`) — child rows reference
   /// these via FK (`annotations.book_note_id → book_notes.id`,
   /// `book_notes.book_id → books.id`).
@@ -82,8 +83,11 @@ class RemoteRecordApplier {
     // Three-tier FK ordering under `PRAGMA foreign_keys = ON`:
     //   tier 0: books           (no FK deps)
     //   tier 1: book_notes       (→ books), bookmarks (→ books),
-    //                            reading_progress (→ books)
-    //   tier 2: annotations      (→ book_notes)
+    //                            reading_progress (→ books), freeform_notes
+    //                            (→ books nullable), book_tags (→ books),
+    //                            chat_sessions (→ books)
+    //   tier 2: annotations      (→ book_notes),
+    //            chat_messages    (→ chat_sessions)
     //
     // We split into three passes to guarantee parents exist before children
     // regardless of input order. Pull snapshots arrive as JSON Lines in push
@@ -91,8 +95,8 @@ class RemoteRecordApplier {
     // arrives before its parent book_note would hit a FK violation and be
     // silently dropped by [WebDavSyncEngine]'s old per-line catch.
     final books = <SyncRecord>[];
-    final midTier = <SyncRecord>[]; // book_notes, bookmarks, reading_progress
-    final annotations = <SyncRecord>[];
+    final midTier = <SyncRecord>[]; // tier 1
+    final annotations = <SyncRecord>[]; // tier 2
     for (final r in records) {
       switch (r.type) {
         case SyncRecordType.book:
@@ -102,19 +106,13 @@ class RemoteRecordApplier {
         case SyncRecordType.bookmark:
         case SyncRecordType.readingProgress:
         case SyncRecordType.freeformNote:
+        case SyncRecordType.bookTag:
+        case SyncRecordType.chatSession:
           midTier.add(r);
           break;
         case SyncRecordType.annotation:
-          annotations.add(r);
-          break;
-        // M2.8 (2026-07-12): chat + tags records not yet wired into tiered
-        // apply — T5 will assign them to the correct tier (chat_session
-        // likely tier 1, chat_message tier 2 under chat_session FK,
-        // book_tag tier 1 alongside book_notes). Until then, drop from
-        // the apply batch (the per-record `apply()` also returns false).
-        case SyncRecordType.chatSession:
         case SyncRecordType.chatMessage:
-        case SyncRecordType.bookTag:
+          annotations.add(r);
           break;
       }
     }
@@ -405,6 +403,135 @@ class RemoteRecordApplier {
         Variable<String>(p['coverPath'] as String?),
       ],
     );
+    return true;
+  }
+
+  /// M2.8 T5 (2026-07-12): apply a chat_session row. Soft-delete signal is
+  /// `payload.deletedAt` (ISO string); the record envelope itself is never a
+  /// tombstone (see [SyncRecorder.recordChatSession]). LWW checks
+  /// `chat_sessions.updated_at` against `record.mtime`. If the row is absent
+  /// but a soft-delete arrives, we INSERT a tombstone row so a later un-delete
+  /// from another device can still compete on LWW.
+  Future<bool> _applyChatSession(SyncRecord record) async {
+    final existing = await _db.customSelect(
+      'SELECT updated_at FROM chat_sessions WHERE id = ?',
+      variables: [Variable.withString(record.id)],
+    ).getSingleOrNull();
+    if (existing != null) {
+      final localMtime = existing.read<DateTime>('updated_at');
+      if (!record.mtime.isAfter(localMtime)) {
+        await _recordConflict(record, localMtime);
+        return false;
+      }
+    }
+
+    final p = record.payload;
+    final createdAtStr = p['createdAt'] as String?;
+    final createdAt = createdAtStr == null
+        ? record.mtime
+        : DateTime.parse(createdAtStr);
+    final deletedAtStr = p['deletedAt'] as String?;
+    final deletedAt = deletedAtStr == null
+        ? null
+        : DateTime.parse(deletedAtStr);
+
+    // INSERT OR REPLACE so the tombstone-when-absent case works: a row that
+    // soft-deletes on a device that has never seen the session still records
+    // a deleted_at so future un-deletes compete by mtime.
+    await _db.customInsert(
+      'INSERT OR REPLACE INTO chat_sessions'
+      '(id, book_id, title, mode, created_at, updated_at, deleted_at) '
+      'VALUES(?, ?, ?, ?, ?, ?, ?)',
+      variables: [
+        Variable.withString(record.id),
+        Variable.withString(p['bookId'] as String),
+        Variable.withString(p['title'] as String? ?? ''),
+        Variable.withString(p['mode'] as String? ?? 'normal'),
+        Variable.withDateTime(createdAt),
+        Variable.withDateTime(record.mtime),
+        Variable<DateTime>(deletedAt),
+      ],
+    );
+    return true;
+  }
+
+  /// M2.8 T5 (2026-07-12): apply a chat_message row. Same LWW + soft-delete
+  /// pattern as [_applyChatSession]. Optional columns preset_source /
+  /// attachment_note_id / attachment_note_snapshot are written as NULL when
+  /// the payload omits them (FK session_id must already exist — guaranteed
+  /// by tier-2 ordering in [applyRecords]).
+  Future<bool> _applyChatMessage(SyncRecord record) async {
+    final existing = await _db.customSelect(
+      'SELECT updated_at FROM chat_messages WHERE id = ?',
+      variables: [Variable.withString(record.id)],
+    ).getSingleOrNull();
+    if (existing != null) {
+      final localMtime = existing.read<DateTime>('updated_at');
+      if (!record.mtime.isAfter(localMtime)) {
+        await _recordConflict(record, localMtime);
+        return false;
+      }
+    }
+
+    final p = record.payload;
+    final createdAtStr = p['createdAt'] as String?;
+    final createdAt = createdAtStr == null
+        ? record.mtime
+        : DateTime.parse(createdAtStr);
+    final deletedAtStr = p['deletedAt'] as String?;
+    final deletedAt = deletedAtStr == null
+        ? null
+        : DateTime.parse(deletedAtStr);
+
+    await _db.customInsert(
+      'INSERT OR REPLACE INTO chat_messages'
+      '(id, session_id, role, content, preset_source, attachment_note_id, '
+      'attachment_note_snapshot, created_at, updated_at, deleted_at) '
+      'VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      variables: [
+        Variable.withString(record.id),
+        Variable.withString(p['sessionId'] as String),
+        Variable.withString(p['role'] as String),
+        Variable.withString(p['content'] as String? ?? ''),
+        Variable<String>(p['presetSource'] as String?),
+        Variable<String>(p['attachmentNoteId'] as String?),
+        Variable<String>(p['attachmentNoteSnapshot'] as String?),
+        Variable.withDateTime(createdAt),
+        Variable.withDateTime(record.mtime),
+        Variable<DateTime>(deletedAt),
+      ],
+    );
+    return true;
+  }
+
+  /// M2.8 T5 (2026-07-12): apply a book_tag row. Composite PK (book_id, tag),
+  /// no `updated_at` column → no LWW. Tombstone = [SyncRecord.deleted] = true
+  /// (hard DELETE on receiver — matches [SyncRecorder.recordBookTagDeletion]).
+  /// id format is `"${bookId}__${tag}"`; the `__` separator is reserved at the
+  /// TagEditor UI (T6) to keep this parse unambiguous.
+  Future<bool> _applyBookTag(SyncRecord record) async {
+    final parts = record.id.split('__');
+    if (parts.length != 2) {
+      // Malformed id — refuse to apply rather than risk corrupting the table
+      // by inserting with wrong composite key.
+      return false;
+    }
+    final bookId = parts[0];
+    final tag = parts[1];
+
+    if (record.deleted) {
+      await _db.customStatement(
+        'DELETE FROM book_tags WHERE book_id = ? AND tag = ?',
+        [bookId, tag],
+      );
+    } else {
+      // INSERT OR IGNORE — idempotent re-application of an add record must
+      // not violate the composite PK on subsequent pulls.
+      await _db.customStatement(
+        'INSERT OR IGNORE INTO book_tags(book_id, tag) VALUES(?, ?)',
+        [bookId, tag],
+      );
+    }
     return true;
   }
 
