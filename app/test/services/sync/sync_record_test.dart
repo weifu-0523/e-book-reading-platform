@@ -45,5 +45,23 @@ void main() {
         expect(json, contains('"type":"${type.name}"'));
       }
     });
+
+    // M2.8 (2026-07-12): chat + tags sync scope expansion.
+    test('SyncRecordType includes M2.8 types', () {
+      expect(SyncRecordType.values, contains(SyncRecordType.chatSession));
+      expect(SyncRecordType.values, contains(SyncRecordType.chatMessage));
+      expect(SyncRecordType.values, contains(SyncRecordType.bookTag));
+    });
+
+    test('SyncRecord.fromJson throws FormatException for unknown type', () {
+      final json = <String, dynamic>{
+        'id': 'x',
+        'type': 'futureUnknownType',
+        'mtime': '2026-07-12T00:00:00.000Z',
+        'deleted': false,
+        'payload': <String, dynamic>{},
+      };
+      expect(() => SyncRecord.fromJson(json), throwsA(isA<FormatException>()));
+    });
   });
 }

@@ -50,6 +50,15 @@ class RemoteRecordApplier {
         return _applyBookmark(record);
       case SyncRecordType.freeformNote:
         return _applyFreeformNote(record);
+      // M2.8 (2026-07-12): chat + tags types arrive here from new snapshots,
+      // but the actual appliers are added in T5 (RemoteRecordApplier tier
+      // reorder + 3 new appliers). Until then, skip silently so old clients
+      // pulling M2.8 snapshots don't crash — records stay queued for a
+      // future pull after upgrade. Return false = "not applied".
+      case SyncRecordType.chatSession:
+      case SyncRecordType.chatMessage:
+      case SyncRecordType.bookTag:
+        return false;
     }
   }
 
@@ -97,6 +106,15 @@ class RemoteRecordApplier {
           break;
         case SyncRecordType.annotation:
           annotations.add(r);
+          break;
+        // M2.8 (2026-07-12): chat + tags records not yet wired into tiered
+        // apply — T5 will assign them to the correct tier (chat_session
+        // likely tier 1, chat_message tier 2 under chat_session FK,
+        // book_tag tier 1 alongside book_notes). Until then, drop from
+        // the apply batch (the per-record `apply()` also returns false).
+        case SyncRecordType.chatSession:
+        case SyncRecordType.chatMessage:
+        case SyncRecordType.bookTag:
           break;
       }
     }

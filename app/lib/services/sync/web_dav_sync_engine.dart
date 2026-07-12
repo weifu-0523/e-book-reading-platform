@@ -140,6 +140,10 @@ class WebDavSyncEngine implements SyncEngine {
           batch.add(SyncRecord.fromJson(json));
         } catch (_) {
           // Skip unparseable line — no metadata to emit as conflict.
+          // This also catches FormatException from SyncRecord.fromJson
+          // when an unknown SyncRecordType appears (M2.8 forward-compat:
+          // old clients silently ignore newer record types they don't
+          // recognise yet rather than crashing the entire pull).
         }
       }
       applied += await applier.applyRecords(batch);

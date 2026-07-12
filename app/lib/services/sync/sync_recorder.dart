@@ -227,6 +227,108 @@ class SyncRecorder {
     ));
   }
 
+  /// M2.8 (2026-07-12): chat session write/soft-delete. `deletedAt` is null
+  /// for active sessions, non-null for soft-deleted (kept for sync conflict
+  /// resolution). The tombstone flag is NOT set on soft-delete — receivers
+  /// need the payload to compare timestamps and decide winner.
+  Future<void> recordChatSession({
+    required String id,
+    required String bookId,
+    required String title,
+    required String mode,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    DateTime? deletedAt,
+  }) {
+    final payload = <String, dynamic>{
+      'id': id,
+      'bookId': bookId,
+      'title': title,
+      'mode': mode,
+      'createdAt': createdAt.toUtc().toIso8601String(),
+      'deletedAt': deletedAt?.toUtc().toIso8601String(),
+    };
+    return _enqueue(SyncRecord(
+      id: id,
+      type: SyncRecordType.chatSession,
+      mtime: updatedAt,
+      deleted: false, // soft-delete via payload.deletedAt; tombstone never used
+      payload: payload,
+    ));
+  }
+
+  /// M2.8 (2026-07-12): chat message write/soft-delete. `content` is the
+  /// FULL accumulated content at the time of recording (caller reads the
+  /// row post-stream for `completeStreamingMessage`). Optional fields are
+  /// preserved as null keys so the receiver can distinguish "absent" from
+  /// "explicitly cleared".
+  Future<void> recordChatMessage({
+    required String id,
+    required String sessionId,
+    required String role,
+    required String content,
+    String? presetSource,
+    String? attachmentNoteId,
+    String? attachmentNoteSnapshot,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    DateTime? deletedAt,
+  }) {
+    final payload = <String, dynamic>{
+      'id': id,
+      'sessionId': sessionId,
+      'role': role,
+      'content': content,
+      'presetSource': presetSource,
+      'attachmentNoteId': attachmentNoteId,
+      'attachmentNoteSnapshot': attachmentNoteSnapshot,
+      'createdAt': createdAt.toUtc().toIso8601String(),
+      'deletedAt': deletedAt?.toUtc().toIso8601String(),
+    };
+    return _enqueue(SyncRecord(
+      id: id,
+      type: SyncRecordType.chatMessage,
+      mtime: updatedAt,
+      deleted: false,
+      payload: payload,
+    ));
+  }
+
+  /// M2.8 (2026-07-12): book tag add. Composite PK (bookId, tag) encoded as
+  /// id = "$bookId__$tag". The `__` separator is reserved — the
+  /// TagEditor UI (T6) will reject user input containing `__`.
+  Future<void> recordBookTag({
+    required String bookId,
+    required String tag,
+  }) {
+    final compositeId = '${bookId}__$tag';
+    final payload = <String, dynamic>{
+      'bookId': bookId,
+      'tag': tag,
+    };
+    return _enqueue(SyncRecord(
+      id: compositeId,
+      type: SyncRecordType.bookTag,
+      mtime: DateTime.now(),
+      deleted: false,
+      payload: payload,
+    ));
+  }
+
+  /// M2.8 (2026-07-12): book tag remove (tombstone). Composite id same as
+  /// add — receiver matches by composite id and applies last-write-wins.
+  Future<void> recordBookTagDeletion({
+    required String bookId,
+    required String tag,
+  }) {
+    final compositeId = '${bookId}__$tag';
+    return _enqueue(SyncRecord.tombstone(
+      id: compositeId,
+      type: SyncRecordType.bookTag,
+      mtime: DateTime.now(),
+    ));
+  }
+
   Future<void> _enqueue(SyncRecord record) {
     return _outbox.enqueue(
       recordId: record.id,

@@ -25,6 +25,11 @@ enum SyncRecordType {
   readingProgress,
   bookmark,
   freeformNote,
+  // M2.8 (2026-07-12): chat + tags sync. Names are wire-format stable —
+  // never rename or these will crash old clients on pull.
+  chatSession,
+  chatMessage,
+  bookTag,
 }
 
 /// JSON envelope persisted in outbox + shipped over WebDAV.
@@ -64,9 +69,17 @@ class SyncRecord {
   }
 
   factory SyncRecord.fromJson(Map<String, dynamic> json) {
+    final typeName = json['type'] as String;
+    final type = SyncRecordType.values.asNameMap()[typeName];
+    if (type == null) {
+      // M2.8 (2026-07-12): tolerate unknown types so old clients don't
+      // crash when pulling snapshots containing newer record types.
+      // WebDavSyncEngine.pullOnly swallows this FormatException per-line.
+      throw FormatException('Unknown SyncRecordType: $typeName');
+    }
     return SyncRecord(
       id: json['id'] as String,
-      type: SyncRecordType.values.byName(json['type'] as String),
+      type: type,
       mtime: DateTime.parse(json['mtime'] as String),
       deleted: json['deleted'] as bool,
       payload: Map<String, dynamic>.from(json['payload'] as Map),
