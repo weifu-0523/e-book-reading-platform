@@ -254,9 +254,10 @@ void main() {
         ),
       ));
 
-      // The TagEditor sets a Keyed deleteIcon on each InputChip so the test
-      // can target the delete affordance robustly across Flutter versions.
-      await tester.tap(find.byKey(const ValueKey('tag-editor-delete-icon')).first);
+      // The TagEditor sets a Keyed deleteIcon per InputChip keyed by the tag
+      // value. Target the first chip's ('AI') delete icon directly.
+      await tester.tap(
+          find.byKey(const ValueKey('tag-editor-delete-icon-AI')));
       await tester.pumpAndSettle();
 
       expect(captured, isNotNull);

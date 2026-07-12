@@ -127,13 +127,12 @@ class _TagEditorState extends State<TagEditor> {
   }
 
   void _addSuggestion(String tag) {
-    // Reuse validator to defend against hosts that pass overlapping
-    // suggestions+tags. Even though we filter duplicates in `build`,
-    // double-validation keeps the contract self-contained.
-    final raw = <String>[...widget.tags, tag];
+    // Defensive duplicate check (build() already filters suggestions whose
+    // lowercase form matches an existing tag, but we re-check here in case
+    // the host's `tags` and `suggestions` overlap when this handler fires).
     final lower = tag.toLowerCase();
     if (widget.tags.any((t) => t.toLowerCase() == lower)) return;
-    widget.onChanged(raw);
+    widget.onChanged(<String>[...widget.tags, tag]);
   }
 
   @override
@@ -159,9 +158,13 @@ class _TagEditorState extends State<TagEditor> {
                     widget.tags.where((t) => t != tag).toList(),
                   );
                 },
-                deleteIcon: const Icon(
+                // Keyed delete icon so widget tests can target the delete
+                // affordance robustly. Each chip gets a unique key derived
+                // from the tag — `first` in tests selects the first chip's
+                // icon deterministically.
+                deleteIcon: Icon(
                   Icons.cancel,
-                  key: ValueKey('tag-editor-delete-icon'),
+                  key: ValueKey('tag-editor-delete-icon-$tag'),
                   size: 18,
                 ),
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
