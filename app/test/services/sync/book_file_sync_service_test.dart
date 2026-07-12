@@ -181,6 +181,58 @@ void main() {
       // should not throw
       await service.uploadBookFile('nonexistent');
     });
+
+    // Regression test for 2026-07-12 user-reported bug:
+    //   "坚果云文件夹内只有两个json文件，没有书籍文件"
+    // Root cause: uploadBookFile called putBytes directly without first
+    // ensuring /zhiyue/files/ exists. Jianguoyun returns 409
+    // AncestorsNotFound (it does NOT auto-create parent dirs on PUT — see
+    // web_dav_client.dart Bug #1 docstring). The 409 was caught + swallowed
+    // by uploadPendingFiles' per-book try/catch, so the upload silently
+    // never happened.
+    test(
+        'Bug A (2026-07-12): ensures /zhiyue/files/ exists before putBytes',
+        () async {
+      await insertBook(id: 'b1', format: 'epub');
+
+      final calls = <String>[];
+      final webdav = WebDavClient(
+        baseUrl: 'https://dav.example.com/dav',
+        username: 'u',
+        password: 'p',
+        httpClient: MockClient((request) async {
+          calls.add('${request.method} ${request.url.path}');
+          // MKCOL for /zhiyue and /zhiyue/files → 201 (created).
+          if (request.method == 'MKCOL') {
+            return http.Response('', 201);
+          }
+          // PUT for the binary → 201.
+          if (request.method == 'PUT') {
+            return http.Response('', 201);
+          }
+          return http.Response('', 404);
+        }),
+      );
+      final service = BookFileSyncService(
+        database: db,
+        webdav: webdav,
+        localFilesDir: booksDir,
+      );
+
+      await service.uploadBookFile('b1');
+
+      // MKCOL on /zhiyue/files MUST happen before the PUT.
+      final mkcolFilesIndex = calls.indexWhere(
+          (c) => c == 'MKCOL /dav/zhiyue/files');
+      final putIndex =
+          calls.indexWhere((c) => c.startsWith('PUT /dav/zhiyue/files/b1'));
+      expect(mkcolFilesIndex, greaterThanOrEqualTo(0),
+          reason: 'ensureAncestors should MKCOL /zhiyue/files before PUT');
+      expect(putIndex, greaterThanOrEqualTo(0),
+          reason: 'PUT /zhiyue/files/b1.epub should be issued');
+      expect(mkcolFilesIndex, lessThan(putIndex),
+          reason: 'MKCOL /zhiyue/files must come before PUT');
+    });
   });
 
   group('uploadPendingFiles', () {

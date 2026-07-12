@@ -129,6 +129,45 @@ void main() {
       final result = await client2.getString('/x');
       expect(result, 'content');
     });
+
+    // Regression test for 2026-07-12 user-reported bug:
+    //   "在新电脑同步后，出现了之前电脑的书籍，但书名是乱码"
+    // Root cause: jianguoyun returns snapshots with
+    //   Content-Type: application/octet-stream (no charset parameter).
+    // The Dart http package's Response.body getter decodes bodyBytes using
+    // the encoding inferred from the Content-Type header; without an
+    // explicit charset it falls back to latin1, which corrupts multibyte
+    // UTF-8 sequences (Chinese title bytes decode as isolated Mojibake
+    // chars). Fix: getString uses utf8.decode(response.bodyBytes) directly.
+    test(
+        'Bug B (2026-07-12): decodes UTF-8 even when Content-Type '
+        'lacks charset (application/octet-stream)', () async {
+      final mock = MockClient((request) async {
+        return http.Response.bytes(
+          Uint8List.fromList(utf8.encode('{"title":"华为主世界"}')),
+          200,
+          headers: {'content-type': 'application/octet-stream'},
+        );
+      });
+      client = build(mock);
+      final result = await client.getString('/zhiyue/snapshots/x.jsonl');
+      expect(result, '{"title":"华为主世界"}');
+    });
+
+    test(
+        'Bug B (2026-07-12): decodes UTF-8 when Content-Type has explicit '
+        'charset=utf-8', () async {
+      final mock = MockClient((request) async {
+        return http.Response.bytes(
+          Uint8List.fromList(utf8.encode('{"title":"华为主世界"}')),
+          200,
+          headers: {'content-type': 'application/octet-stream; charset=utf-8'},
+        );
+      });
+      client = build(mock);
+      final result = await client.getString('/zhiyue/snapshots/x.jsonl');
+      expect(result, '{"title":"华为主世界"}');
+    });
   });
 
   group('listFiles', () {

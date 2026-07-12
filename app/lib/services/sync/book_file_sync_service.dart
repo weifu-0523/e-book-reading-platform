@@ -97,6 +97,14 @@ class BookFileSyncService {
     final bytes = await file.readAsBytes();
     final remotePath = '$remoteFilesDir/$bookId.$format';
 
+    // Bug A fix (2026-07-12): jianguoyun WebDAV does NOT auto-create parent
+    // directories on PUT — without this MKCOL, PUT to
+    // /zhiyue/files/<bookId>.<format> returns 409 AncestorsNotFound and the
+    // upload is silently swallowed by uploadPendingFiles' per-book catch.
+    // ensureAncestors MKCOLs /zhiyue and /zhiyue/files idempotently (405 =
+    // already exists is fine).
+    await _webdav.ensureAncestors(remotePath);
+
     // Throws WebDavException on failure — caller (or uploadPendingFiles)
     // decides what to do. We intentionally do NOT special-case 507 here.
     await _webdav.putBytes(remotePath, bytes);

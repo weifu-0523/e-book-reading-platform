@@ -103,10 +103,18 @@ class WebDavClient {
   }
 
   /// GET a file's content as UTF-8 string.
+  ///
+  /// Bug B fix (2026-07-12): explicitly decode bodyBytes as UTF-8 rather
+  /// than relying on `response.body`. Jianguoyun returns snapshots with
+  /// `Content-Type: application/octet-stream` (no charset parameter); the
+  /// Dart http package falls back to latin1 in that case, which corrupts
+  /// multibyte UTF-8 sequences (Chinese book titles became mojibake on
+  /// the receiver side). The snapshot body is JSON we wrote ourselves
+  /// with `putString` (UTF-8), so utf8.decode is always correct here.
   Future<String> getString(String path) async {
     final response = await _httpClient.get(_uri(path), headers: _authHeader);
     _ensureOk(response.statusCode, path, response.body);
-    return response.body;
+    return utf8.decode(response.bodyBytes);
   }
 
   /// GET a file's content as raw bytes (binary). For EPUB / PDF / image
@@ -118,10 +126,20 @@ class WebDavClient {
   }
 
   /// PUT a string to a file. Creates or overwrites.
+  ///
+  /// Sends `Content-Type: text/plain; charset=utf-8` so the receiver (and
+  /// any intermediary) knows the body is UTF-8. The Dart http package
+  /// defaults to latin1 when encoding a String body without an explicit
+  /// content-type header — for ASCII-only bodies this is harmless, but
+  /// for our JSON snapshots (which contain Chinese book titles) we must
+  /// be explicit so bytes-on-the-wire are UTF-8 and round-trip cleanly.
   Future<void> putString(String path, String body) async {
     final response = await _httpClient.put(
       _uri(path),
-      headers: _authHeader,
+      headers: {
+        ..._authHeader,
+        'content-type': 'text/plain; charset=utf-8',
+      },
       body: body,
     );
     _ensureOk(response.statusCode, path, response.body);
