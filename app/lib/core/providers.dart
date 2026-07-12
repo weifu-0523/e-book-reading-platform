@@ -26,6 +26,7 @@ import '../data/repositories/local_notes_repository.dart';
 import '../data/repositories/local_reading_progress_repository.dart';
 import '../data/repositories/local_settings_repository.dart';
 import '../data/repositories/book_repository.dart';
+import '../data/repositories/book_tags_repository.dart';
 import '../data/repositories/bookmark_repository.dart';
 import '../data/repositories/freeform_notes_repository.dart';
 import '../data/repositories/notes_repository.dart';
@@ -92,6 +93,18 @@ final bookmarkRepositoryProvider = Provider<BookmarkRepository>((ref) {
 final freeformNotesRepositoryProvider = Provider<FreeformNotesRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return LocalFreeformNotesRepository(
+    db,
+    syncRecorder: SyncRecorder(db.syncOutboxDao),
+  );
+});
+
+/// M2.8 (2026-07-12): book tags repository. Mutations enqueue bookTag /
+/// bookTag-tombstone sync records. Reads delegate to [BookTagsDao].
+/// Library page continues to use the DAO directly for reads (no sync needed
+/// there); this provider is the canonical write path for tag mutations.
+final bookTagsRepositoryProvider = Provider<BookTagsRepository>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return LocalBookTagsRepository(
     db,
     syncRecorder: SyncRecorder(db.syncOutboxDao),
   );
