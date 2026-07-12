@@ -88,6 +88,9 @@ void main() {
         username: 'u',
         password: 'p',
         httpClient: MockClient((request) async {
+          if (request.method == 'MKCOL') {
+            return http.Response('', 201); // dir created / exists
+          }
           if (request.method == 'PUT') {
             uploadedBytes = request.bodyBytes;
             uploadedPath = request.url.path;
@@ -147,6 +150,10 @@ void main() {
         username: 'u',
         password: 'p',
         httpClient: MockClient((request) async {
+          // MKCOL (ensureAncestors) succeeds; the 507 comes from the PUT.
+          if (request.method == 'MKCOL') {
+            return http.Response('', 201);
+          }
           return http.Response('quota exceeded', 507);
         }),
       );
@@ -248,6 +255,9 @@ void main() {
         username: 'u',
         password: 'p',
         httpClient: MockClient((request) async {
+          if (request.method == 'MKCOL') {
+            return http.Response('', 201);
+          }
           if (request.method == 'PUT') {
             uploadCount++;
             return http.Response('', 201);
@@ -282,6 +292,9 @@ void main() {
         username: 'u',
         password: 'p',
         httpClient: MockClient((request) async {
+          if (request.method == 'MKCOL') {
+            return http.Response('', 201);
+          }
           if (request.method == 'PUT') {
             uploadCount++;
             return http.Response('', 201);
@@ -311,12 +324,21 @@ void main() {
         username: 'u',
         password: 'p',
         httpClient: MockClient((request) async {
-          if (request.url.path.contains('b1')) {
-            failCount++;
-            return http.Response('quota', 507);
+          // ensureAncestors MKCOLs /zhiyue and /zhiyue/files — these don't
+          // contain a bookId, so they fall through to the 201 default. We
+          // only count PUTs below (MKCOL is bookId-independent setup).
+          if (request.method == 'MKCOL') {
+            return http.Response('', 201);
           }
-          successCount++;
-          return http.Response('', 201);
+          if (request.method == 'PUT') {
+            if (request.url.path.contains('b1')) {
+              failCount++;
+              return http.Response('quota', 507);
+            }
+            successCount++;
+            return http.Response('', 201);
+          }
+          return http.Response('', 404);
         }),
       );
       final service = BookFileSyncService(
