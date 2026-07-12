@@ -98,8 +98,13 @@ class AppDatabase extends _$AppDatabase {
 
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
+  /// Opens the database against a custom [QueryExecutor] (e.g. a file-backed
+  /// NativeDatabase for migration tests). Used by integration/migration tests
+  /// that need to control the underlying storage.
+  AppDatabase.forExecutor(super.e);
+
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration {
@@ -283,6 +288,14 @@ class AppDatabase extends _$AppDatabase {
           await m.database.customStatement(
             'CREATE INDEX IF NOT EXISTS idx_freeform_notes_updated '
             'ON freeform_notes(updated_at DESC)',
+          );
+        }
+        if (from < 14) {
+          // M2.8 T7: track when a book's binary file was uploaded to WebDAV.
+          // NULL = not yet uploaded (or download pending on receiver side).
+          // Nullable so existing rows survive ALTER TABLE ADD COLUMN.
+          await m.database.customStatement(
+            'ALTER TABLE books ADD COLUMN file_synced_at INTEGER',
           );
         }
       },

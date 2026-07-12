@@ -31,6 +31,12 @@ class Books extends Table {
   /// M3.1：手动排序顺序；null = 不参与手动排序，按默认排序。
   IntColumn get sortOrder => integer().nullable()();
 
+  /// M2.8: Timestamp (ms since epoch) when the book's binary file was
+  /// successfully uploaded to WebDAV. NULL = not yet uploaded (or download
+  /// pending on receiver side). Receiver uses this + local file_path ==
+  /// '__needs_download__' to decide whether to fetch the binary.
+  IntColumn get fileSyncedAt => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
