@@ -18,6 +18,7 @@ import 'dart:convert';
 
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 import 'package:zhiyue/services/sync/conflict_sink.dart';
 import 'package:zhiyue/services/sync/rate_limiter.dart';
 import 'package:zhiyue/services/sync/remote_record_applier.dart';
@@ -43,10 +44,12 @@ class WebDavSyncEngine implements SyncEngine {
     required this.deviceId,
     ConflictSink? conflictSink,
     Duration? rateLimiterInterval,
+    BookFileSyncService? bookFileSync,
   })  : _conflictSink = conflictSink ?? const NullConflictSink(),
         _rateLimiter = RateLimiter(
           minInterval: rateLimiterInterval ?? const Duration(seconds: 2),
-        );
+        ),
+        _bookFileSync = bookFileSync;
 
   final AppDatabase database;
   final SyncOutboxDao outbox;
@@ -54,6 +57,11 @@ class WebDavSyncEngine implements SyncEngine {
   final String deviceId;
   final ConflictSink _conflictSink;
   final RateLimiter _rateLimiter;
+  // M2.8 T10: optional binary file syncer. When wired, each sync cycle scans
+  // for books whose binary has not been uploaded yet (file_synced_at IS NULL
+  // AND file_path != __needs_download__ sentinel) and uploads them. Null in
+  // tests and pre-binary-sync mode (M2.7 and earlier).
+  final BookFileSyncService? _bookFileSync;
 
   String get _snapshotPath => '/zhiyue/snapshots/$deviceId.jsonl';
 
@@ -156,6 +164,20 @@ class WebDavSyncEngine implements SyncEngine {
     final pushResult = await pushOnly();
     if (!pushResult.success) return pushResult;
     final pullResult = await pullOnly();
+    // M2.8 T10: best-effort upload of any pending binary files. Failures
+    // are surfaced via the BookFileSyncService's internal logging — they
+    // do NOT fail the sync cycle (metadata sync is the critical path).
+    // We upload AFTER pull so that a freshly-pulled remote book whose
+    // binary the user has not yet downloaded (file_path = sentinel) is
+    // not mistaken for a pending upload (uploadPendingFiles already
+    // excludes sentinels, but the ordering keeps the invariant obvious).
+    if (_bookFileSync != null) {
+      try {
+        await _bookFileSync.uploadPendingFiles();
+      } catch (_) {
+        // best-effort — metadata sync already succeeded
+      }
+    }
     return SyncResult(
       success: pullResult.success,
       pushedCount: pushResult.pushedCount,

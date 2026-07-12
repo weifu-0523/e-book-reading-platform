@@ -16,6 +16,7 @@
 
 import 'package:drift/drift.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 import 'package:zhiyue/services/sync/conflict_sink.dart';
 import 'package:zhiyue/services/sync/sync_record.dart';
 
@@ -390,6 +391,11 @@ class RemoteRecordApplier {
     }
 
     final p = record.payload;
+    // M2.8 T10: receiver has not yet downloaded the binary file from remote.
+    // Set file_path to the sentinel so T11 UI overlay can surface a download
+    // affordance and the reader-open flow can trigger downloadBookFile.
+    // file_synced_at stays NULL (default) — it is only stamped after a
+    // successful upload or download by BookFileSyncService.
     await _db.customInsert(
       'INSERT OR IGNORE INTO books(id, title, author, format, file_path, file_hash, file_size_bytes, cover_path) VALUES(?, ?, ?, ?, ?, ?, ?, ?)',
       variables: [
@@ -397,7 +403,7 @@ class RemoteRecordApplier {
         Variable.withString(p['title'] as String),
         Variable<String>(p['author'] as String?),
         Variable.withString(p['format'] as String),
-        Variable.withString('synced'), // filePath not synced; placeholder
+        Variable.withString(BookFileSyncService.needsDownloadSentinel),
         Variable.withString(p['fileHash'] as String),
         Variable.withInt(p['fileSizeBytes'] as int),
         Variable<String>(p['coverPath'] as String?),

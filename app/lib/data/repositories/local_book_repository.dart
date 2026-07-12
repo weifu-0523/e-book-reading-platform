@@ -26,13 +26,23 @@ class LocalBookRepository implements BookRepository {
   final BooksDao _dao;
   final BookTagsDao _tagsDao;
   final SyncRecorder? _syncRecorder;
+  // M2.8 T10: optional hook to delete the remote binary file before the
+  // local row goes away. Wired to BookFileSyncService.deleteRemoteFile in
+  // production; null in tests / pre-sync-mode. Best-effort — failure to
+  // delete the remote file must NOT block local delete (the row tombstone
+  // still propagates via outbox so receivers delete their copies, leaving
+  // an orphaned binary on the WebDAV store which is wasted space but not a
+  // correctness issue).
+  final Future<void> Function(String bookId)? _remoteFileDeleter;
 
   LocalBookRepository(
     db.AppDatabase database, {
     SyncRecorder? syncRecorder,
+    Future<void> Function(String bookId)? remoteFileDeleter,
   })  : _dao = BooksDao(database),
         _tagsDao = BookTagsDao(database),
-        _syncRecorder = syncRecorder;
+        _syncRecorder = syncRecorder,
+        _remoteFileDeleter = remoteFileDeleter;
 
   @override
   Future<List<Book>> getAll({
@@ -122,6 +132,17 @@ class LocalBookRepository implements BookRepository {
       mtime: DateTime.now(),
       deleted: true,
     );
+    // M2.8 T10: best-effort delete the remote binary while we still have
+    // the row (need format for the extension). Swallow errors so local
+    // delete is not blocked by a flaky WebDAV — orphaned remote files are
+    // a space leak, not a correctness bug.
+    if (_remoteFileDeleter != null) {
+      try {
+        await _remoteFileDeleter(id);
+      } catch (_) {
+        // best-effort — tombstone above still propagates deletion to peers
+      }
+    }
     await _dao.deleteBook(id);
   }
 
@@ -141,6 +162,18 @@ class LocalBookRepository implements BookRepository {
         mtime: now,
         deleted: true,
       );
+    }
+    // M2.8 T10: best-effort delete each remote binary. Sequential — avoids
+    // hammering the WebDAV server with parallel requests. Same swallow-on-
+    // error contract as delete().
+    if (_remoteFileDeleter != null) {
+      for (final id in ids) {
+        try {
+          await _remoteFileDeleter(id);
+        } catch (_) {
+          // best-effort
+        }
+      }
     }
     await _dao.deleteBooks(ids);
   }

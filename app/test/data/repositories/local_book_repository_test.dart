@@ -157,4 +157,70 @@ void main() {
     final pending = await outbox.getPending();
     expect(pending, isEmpty); // no recorder → no outbox row
   });
+
+  // M2.8 T10: when wired, delete() invokes the remote-file deleter hook
+  // BEFORE the local row goes away (so the hook can still read the format
+  // column to compute the remote path extension). Best-effort — errors
+  // from the hook must NOT block the local delete (tombstone still goes
+  // to outbox, receivers still delete their copies).
+  group('M2.8 T10 remoteFileDeleter hook', () {
+    test('delete() invokes remoteFileDeleter before local row delete', () async {
+      final invocations = <String>[];
+      final repoWithDeleter = LocalBookRepository(
+        db,
+        syncRecorder: recorder,
+        remoteFileDeleter: (bookId) async {
+          invocations.add(bookId);
+        },
+      );
+
+      await repoWithDeleter.delete('b1');
+
+      expect(invocations, ['b1']);
+      expect(await repoWithDeleter.getById('b1'), isNull);
+    });
+
+    test('delete() swallows remoteFileDeleter errors (best-effort)', () async {
+      final repoWithFailingDeleter = LocalBookRepository(
+        db,
+        syncRecorder: recorder,
+        remoteFileDeleter: (bookId) async {
+          throw Exception('WebDAV down');
+        },
+      );
+
+      // Must NOT throw — local delete still completes.
+      await repoWithFailingDeleter.delete('b1');
+      expect(await repoWithFailingDeleter.getById('b1'), isNull);
+
+      // Tombstone still enqueued — receivers still delete their copies.
+      final pending = await outbox.getPending();
+      expect(pending.any((r) => r.recordId == 'b1'), isTrue);
+    });
+
+    test('deleteBooks() invokes remoteFileDeleter for each id', () async {
+      final invocations = <String>[];
+      final repoWithDeleter = LocalBookRepository(
+        db,
+        syncRecorder: recorder,
+        remoteFileDeleter: (bookId) async {
+          invocations.add(bookId);
+        },
+      );
+
+      await repoWithDeleter.deleteBooks({'b1', 'b2', 'b3'});
+
+      expect(invocations.toSet(), {'b1', 'b2', 'b3'});
+      expect((await repoWithDeleter.getAll()).map((b) => b.id).toSet(),
+          {'b4'});
+    });
+
+    test('delete() does not invoke remoteFileDeleter when hook is null',
+        () async {
+      // repoWithSync was constructed without remoteFileDeleter — delete
+      // must not crash. This is the M2.7-backwards-compat path.
+      await repoWithSync.delete('b1');
+      expect(await repoWithSync.getById('b1'), isNull);
+    });
+  });
 }

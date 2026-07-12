@@ -5,6 +5,7 @@ import 'package:http/testing.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 import 'package:zhiyue/services/sync/conflict_recorder.dart';
 import 'package:zhiyue/services/sync/sync_record.dart';
 import 'package:zhiyue/services/sync/web_dav_client.dart';
@@ -458,4 +459,79 @@ void main() {
     final pending = await outbox.getPending();
     expect(pending, isEmpty);
   });
+
+  // M2.8 T10: when a BookFileSyncService is wired in, each sync() cycle
+  // invokes uploadPendingFiles() after pull. Best-effort — failures from
+  // the file sync must not fail the overall sync (metadata sync already
+  // succeeded by that point).
+  group('M2.8 T10 bookFileSync hook', () {
+    test('sync() invokes uploadPendingFiles when wired', () async {
+      when(() => webdav.getString(any()))
+          .thenAnswer((_) async => ''); // empty snapshot
+      when(() => webdav.putString(any(), any()))
+          .thenAnswer((_) async {});
+      when(() => webdav.listFiles(any()))
+          .thenAnswer((_) async => <String>[]);
+
+      var uploadCalls = 0;
+      final bookFileSync = _CountingBookFileSyncStub()
+        ..onUploadPending = () async {
+          uploadCalls++;
+        };
+
+      final wiredEngine = WebDavSyncEngine(
+        database: db,
+        outbox: outbox,
+        webdav: webdav,
+        deviceId: 'device-A',
+        rateLimiterInterval: Duration.zero,
+        bookFileSync: bookFileSync,
+      );
+
+      await wiredEngine.sync();
+
+      expect(uploadCalls, 1);
+    });
+
+    test('sync() swallows bookFileSync errors (best-effort)', () async {
+      when(() => webdav.getString(any()))
+          .thenAnswer((_) async => '');
+      when(() => webdav.putString(any(), any()))
+          .thenAnswer((_) async {});
+      when(() => webdav.listFiles(any()))
+          .thenAnswer((_) async => <String>[]);
+
+      final bookFileSync = _CountingBookFileSyncStub()
+        ..onUploadPending = () async {
+          throw Exception('WebDAV 507 quota');
+        };
+
+      final wiredEngine = WebDavSyncEngine(
+        database: db,
+        outbox: outbox,
+        webdav: webdav,
+        deviceId: 'device-A',
+        rateLimiterInterval: Duration.zero,
+        bookFileSync: bookFileSync,
+      );
+
+      final result = await wiredEngine.sync();
+      // Metadata sync must still report success — file upload is best-effort.
+      expect(result.success, true);
+    });
+  });
+}
+
+/// Minimal stub for [BookFileSyncService] used by the T10 hook tests.
+/// Only [uploadPendingFiles] is exercised — other methods throw so any
+/// accidental call surfaces clearly.
+class _CountingBookFileSyncStub implements BookFileSyncService {
+  late Future<void> Function() onUploadPending;
+
+  @override
+  Future<void> uploadPendingFiles() => onUploadPending();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('unsupported: ${invocation.memberName}');
 }
