@@ -5,10 +5,12 @@ import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/ai/providers/book_preprocess_controller.dart';
 import 'package:zhiyue/features/library/pages/book_detail_page.dart';
+import 'package:zhiyue/features/library/widgets/tag_editor.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
 import 'package:zhiyue/services/ai/book_preprocessor.dart';
 
 import '../../../fakes/fake_book_repository.dart';
+import '../../../fakes/fake_book_tags_repository.dart';
 
 /// Inert preprocessor used to satisfy [bookPreprocessControllerProvider] in
 /// widget tests that don't care about preprocessing behavior.
@@ -22,6 +24,7 @@ class _NoOpPreprocessor implements BookPreprocessorLike {
 
 void main() {
   late FakeBookRepository fakeRepo;
+  late FakeBookTagsRepository fakeTagsRepo;
   late ProviderContainer container;
 
   final book = Book(
@@ -40,9 +43,11 @@ void main() {
   setUp(() async {
     fakeRepo = FakeBookRepository();
     await fakeRepo.save(book);
+    fakeTagsRepo = FakeBookTagsRepository();
     container = ProviderContainer(
       overrides: [
         bookRepositoryProvider.overrideWith((ref) => fakeRepo),
+        bookTagsRepositoryProvider.overrideWith((ref) => fakeTagsRepo),
         bookPreprocessControllerProvider('b1').overrideWith(
           (ref) => BookPreprocessController(_NoOpPreprocessor()),
         ),
@@ -128,5 +133,59 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fakeRepo.deletedIds, contains('b1'));
+  });
+
+  group('TagsSection', () {
+    testWidgets('renders TagEditor section header', (tester) async {
+      await tester.pumpWidget(
+          buildHarness(const BookDetailPage(bookId: 'b1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('标签'), findsOneWidget);
+      expect(find.byType(TagEditor), findsOneWidget);
+    });
+
+    testWidgets('add tag via UI persists through repository',
+        (tester) async {
+      await tester.pumpWidget(
+          buildHarness(const BookDetailPage(bookId: 'b1')));
+      await tester.pumpAndSettle();
+
+      // Tap the add button inside TagEditor
+      await tester.tap(find.byKey(const Key('tag-editor-add-btn')));
+      await tester.pumpAndSettle();
+
+      // Enter a valid tag and submit via done action
+      await tester.enterText(
+        find.byKey(const Key('tag-editor-input')),
+        '科幻',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      // Repository should have been asked to persist ['科幻'] for b1
+      expect(fakeTagsRepo.replaceCalls, isNotEmpty);
+      final last = fakeTagsRepo.replaceCalls.last;
+      expect(last.bookId, 'b1');
+      expect(last.tags, contains('科幻'));
+
+      // The new chip should be visible after the FutureBuilder refetches.
+      expect(find.byKey(const ValueKey('tag-editor-chip-科幻')),
+          findsOneWidget);
+    });
+
+    testWidgets('loads existing tags from repository on mount',
+        (tester) async {
+      // Pre-seed repository with two tags
+      await fakeTagsRepo.replaceTagsForBook(
+          bookId: 'b1', tags: const ['AI', '历史']);
+
+      await tester.pumpWidget(
+          buildHarness(const BookDetailPage(bookId: 'b1')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('AI'), findsOneWidget);
+      expect(find.text('历史'), findsOneWidget);
+    });
   });
 }

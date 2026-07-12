@@ -10,6 +10,7 @@ import 'package:zhiyue/gen_l10n/app_localizations.dart';
 import 'package:zhiyue/services/ai/book_preprocessor.dart';
 
 import '../../../fakes/fake_book_repository.dart';
+import '../../../fakes/fake_book_tags_repository.dart';
 
 /// Inert preprocessor used to satisfy [bookPreprocessControllerProvider].
 class _NoOpPreprocessor implements BookPreprocessorLike {
@@ -22,12 +23,18 @@ class _NoOpPreprocessor implements BookPreprocessorLike {
 
 void main() {
   late FakeBookRepository fakeRepo;
+  late FakeBookTagsRepository fakeTagsRepo;
   late ProviderContainer container;
 
   setUp(() {
     fakeRepo = FakeBookRepository();
+    fakeTagsRepo = FakeBookTagsRepository();
     container = ProviderContainer(overrides: [
       bookRepositoryProvider.overrideWith((ref) => fakeRepo),
+      // M2.8 T6: BookDetailPage now embeds a TagEditor wired to
+      // [bookTagsRepositoryProvider]. Override it with a fake so these UX
+      // tests don't pull in a real drift database.
+      bookTagsRepositoryProvider.overrideWith((ref) => fakeTagsRepo),
       bookPreprocessControllerProvider('missing').overrideWith(
         (ref) => BookPreprocessController(_NoOpPreprocessor()),
       ),

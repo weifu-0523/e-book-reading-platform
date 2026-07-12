@@ -26,6 +26,7 @@ import '../../../core/widgets/loading_view.dart';
 import '../../../data/local/database.dart' hide Book;
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
+import '../../../features/library/widgets/tag_editor.dart';
 import '../../../services/ai/book_preprocessor.dart';
 
 /// 书籍详情页。
@@ -169,6 +170,11 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         Text(AppLocalizations.of(context)!.bookDetailFieldAddedAt(book.addedAt.toLocal().toString())),
         if (book.lastReadAt != null)
           Text(AppLocalizations.of(context)!.bookDetailFieldLastReadAt(book.lastReadAt!.toLocal().toString())),
+        const Divider(),
+        // M2.8 (2026-07-12): 标签编辑区。Inline TagEditor 通过
+        // [bookTagsRepositoryProvider] 持久化；FutureBuilder 保证每次
+        // 编辑后 UI 立即 re-fetch 与底层 drift 表对齐。
+        _TagsSection(bookId: widget.bookId),
         const Divider(),
         _PreprocessPanel(
           state: preprocess,
@@ -362,5 +368,78 @@ class _PreprocessPanel extends ConsumerWidget {
     container
         .read(bookPreprocessControllerProvider(bookId).notifier)
         .start(book);
+  }
+}
+
+/// Inline 标签编辑区，嵌入 [BookDetailPage] 主体列表中。
+///
+/// M2.8 (2026-07-12) T6：使用 [TagEditor] + [bookTagsRepositoryProvider]。
+/// 每次变更后通过 [_fetchNonce] 触发 [FutureBuilder] 重新拉取最新 tags，
+/// 让 UI 与 drift 表保持一致（无需 stream 订阅）。所有持久化逻辑都在
+/// repository 层，本 widget 只负责显示 + 转发改动事件。
+class _TagsSection extends ConsumerStatefulWidget {
+  const _TagsSection({required this.bookId});
+
+  final String bookId;
+
+  @override
+  ConsumerState<_TagsSection> createState() => _TagsSectionState();
+}
+
+class _TagsSectionState extends ConsumerState<_TagsSection> {
+  /// Bumped on every successful mutation so the keyed FutureBuilder rebuilds
+  /// with a fresh Future and re-fetches the latest tag list. Avoids relying
+  /// on drift Stream subscriptions here (this widget is short-lived and the
+  /// Future pattern is sufficient for a synchronous-ish edit flow).
+  int _fetchNonce = 0;
+
+  Future<List<String>> _loadTags() {
+    return ref.read(bookTagsRepositoryProvider).tagsOfBook(widget.bookId);
+  }
+
+  Future<void> _onChanged(List<String> newTags) async {
+    await ref
+        .read(bookTagsRepositoryProvider)
+        .replaceTagsForBook(bookId: widget.bookId, tags: newTags);
+    if (!mounted) return;
+    setState(() => _fetchNonce++);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('标签', style: theme.textTheme.titleSmall),
+          ),
+          // Keyed FutureBuilder: changing the key forces a brand-new
+          // FutureBuilder instance (and therefore a fresh future), which is
+          // simpler and more reliable than fighting FutureBuilder's identity
+          // comparison on every parent rebuild.
+          FutureBuilder<List<String>>(
+            key: ValueKey('tags-future-$_fetchNonce'),
+            future: _loadTags(),
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              }
+              return TagEditor(
+                tags: snap.data ?? const <String>[],
+                onChanged: _onChanged,
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
