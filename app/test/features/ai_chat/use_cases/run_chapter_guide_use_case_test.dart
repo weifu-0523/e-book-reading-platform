@@ -39,6 +39,10 @@ class _StoredMsg {
 class _FakeRepo implements ChatRepository {
   final List<_StoredMsg> _messages = [];
 
+  /// Records every `completeStreamingMessage` call's messageId arg.
+  /// M2.8 T3 verifies the streaming use cases hook the sync trigger in.
+  final List<String> completeStreamingCalls = [];
+
   @override
   Future<String> appendMessage({
     required String sessionId,
@@ -85,6 +89,11 @@ class _FakeRepo implements ChatRepository {
       .where((m) => m.inner.sessionId == sid)
       .map((m) => m.inner)
       .toList();
+
+  @override
+  Future<void> completeStreamingMessage(String messageId) async {
+    completeStreamingCalls.add(messageId);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
@@ -262,5 +271,62 @@ void main() {
     final messages = await repo.messagesFor('s1');
     final aiMessages = messages.where((m) => m.role == 'ai').toList();
     expect(aiMessages.first.presetSource, '/chapter');
+  });
+
+  // M2.8 T3: streaming use cases must call completeStreamingMessage after the
+  // LLM stream closes so the final accumulated content gets enqueued for sync.
+  // Without this hook, only the initial empty AI placeholder would sync.
+  test(
+      'completeStreamingMessage is called once with the AI message id '
+      'after the stream closes (M2.8 T3)', () async {
+    await useCase.run(
+      sessionId: 's1',
+      bookId: 'b1',
+      chapterIndex: 0,
+      source: 'card.chapter',
+    ).last;
+
+    // The fake assigns ids 'msg-0', 'msg-1', ... in insertion order.
+    // No prior messages in this session, so the AI placeholder is 'msg-0'.
+    expect(repo.completeStreamingCalls, ['msg-0']);
+  });
+
+  test('completeStreamingMessage fires even on empty LLM stream (M2.8 T3)',
+      () async {
+    final emptyLlm = _CapturingLlm(<String>[]);
+    final uc = RunChapterGuideUseCase(
+      repo: repo,
+      llm: emptyLlm,
+      cache: cache,
+      chapterTextProvider: (bookId, idx) async => 'Chapter $idx text',
+    );
+    // Drain the stream (cannot use .last on an empty stream).
+    await uc.run(
+      sessionId: 's1',
+      bookId: 'b1',
+      chapterIndex: 0,
+      source: 'card.chapter',
+    ).toList();
+    expect(repo.completeStreamingCalls, ['msg-0']);
+  });
+
+  test(
+      'cache hit does NOT call completeStreamingMessage '
+      '(no streaming AI placeholder inserted)', () async {
+    const chapterText = 'Chapter 0 text for b1';
+    final hash = _hash(chapterText);
+    await cache.put(
+        bookId: 'b1', mode: 'chapter', sourceHash: hash, value: 'CACHED_GUIDE');
+
+    await useCase.run(
+      sessionId: 's1',
+      bookId: 'b1',
+      chapterIndex: 0,
+      source: 'card.chapter',
+    ).last;
+
+    // Cache-hit path inserts via appendMessage with the full content; no
+    // streaming, so completeStreamingMessage must NOT be called.
+    expect(repo.completeStreamingCalls, isEmpty);
   });
 }

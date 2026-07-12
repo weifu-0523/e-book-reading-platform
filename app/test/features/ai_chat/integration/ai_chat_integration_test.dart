@@ -214,6 +214,12 @@ class _FakeRepo implements ChatRepository {
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
 
+  // M2.8 T3: SendMessageUseCase calls repo.completeStreamingMessage once
+  // after the LLM stream closes. The fake doesn't model sync, so this is
+  // a no-op; the call just needs to be admitted (not throw).
+  @override
+  Future<void> completeStreamingMessage(String messageId) async {}
+
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError(
         '_FakeRepo.${invocation.memberName}: not stubbed',

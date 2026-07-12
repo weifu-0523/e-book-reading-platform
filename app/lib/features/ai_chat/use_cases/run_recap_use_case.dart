@@ -140,7 +140,14 @@ class RunRecapUseCase {
       yield chunk;
     }
 
-    // 4. Write cache. Even an empty stream writes an empty cache row, which
+    // 4. Mark streaming complete + enqueue the final accumulated content for
+    //    sync. Per-chunk sync was intentionally skipped inside
+    //    appendContentToMessage (would bloat the outbox ~200x per reply), so
+    //    this single trailing call is the only path that materializes the AI
+    //    message's final state to the sync outbox.
+    await repo.completeStreamingMessage(aiMsgId);
+
+    // 5. Write cache. Even an empty stream writes an empty cache row, which
     //    is intentional — saves a wasted LLM call next time if the model
     //    legitimately returned nothing.
     await cache.put(

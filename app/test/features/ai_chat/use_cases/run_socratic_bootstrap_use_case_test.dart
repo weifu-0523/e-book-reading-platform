@@ -43,6 +43,10 @@ class _StoredMsg {
 class _FakeRepo implements ChatRepository {
   final List<_StoredMsg> _messages = [];
 
+  /// Records every `completeStreamingMessage` call's messageId arg.
+  /// M2.8 T3 verifies the streaming use cases hook the sync trigger in.
+  final List<String> completeStreamingCalls = [];
+
   @override
   Future<String> appendMessage({
     required String sessionId,
@@ -94,6 +98,11 @@ class _FakeRepo implements ChatRepository {
   @override
   Future<List<ChatMessage>> listMessages(String sessionId) async {
     return messagesFor(sessionId);
+  }
+
+  @override
+  Future<void> completeStreamingMessage(String messageId) async {
+    completeStreamingCalls.add(messageId);
   }
 
   @override
@@ -348,5 +357,44 @@ void main() {
     // 空 chapter guide 不应被采用，回落到 recap。
     expect(llm.prompts.single, contains('本章回顾'));
     expect(llm.prompts.single, contains('要点 A'));
+  });
+
+  // M2.8 T3: streaming use cases must call completeStreamingMessage after the
+  // LLM stream closes so the final accumulated content gets enqueued for sync.
+  // Without this hook, only the initial empty AI placeholder would sync.
+  test(
+      'completeStreamingMessage is called once with the AI message id '
+      'after the stream closes (M2.8 T3)', () async {
+    await useCase
+        .run(
+          sessionId: 's1',
+          bookId: 'b1',
+          chapterIndex: 0,
+          source: 'card.socratic',
+        )
+        .last;
+
+    // No prior messages, so AI placeholder is 'msg-0'.
+    expect(repo.completeStreamingCalls, ['msg-0']);
+  });
+
+  test('completeStreamingMessage fires even on empty LLM stream (M2.8 T3)',
+      () async {
+    final emptyLlm = _CapturingLlm(<String>[]);
+    final uc = RunSocraticBootstrapUseCase(
+      repo: repo,
+      llm: emptyLlm,
+      recapProvider: (bookId, idx) async => 'recap-text',
+    );
+    // Drain the stream (cannot use .last on an empty stream).
+    await uc
+        .run(
+          sessionId: 's1',
+          bookId: 'b1',
+          chapterIndex: 0,
+          source: 'card.socratic',
+        )
+        .toList();
+    expect(repo.completeStreamingCalls, ['msg-0']);
   });
 }

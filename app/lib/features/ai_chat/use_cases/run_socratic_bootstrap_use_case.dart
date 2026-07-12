@@ -122,5 +122,12 @@ class RunSocraticBootstrapUseCase {
       await repo.appendContentToMessage(aiMsgId, chunk);
       yield chunk;
     }
+
+    // 5. Mark streaming complete + enqueue the final accumulated content for
+    //    sync. Per-chunk sync was intentionally skipped inside
+    //    appendContentToMessage (would bloat the outbox ~200x per reply), so
+    //    this single trailing call is the only path that materializes the AI
+    //    message's final state to the sync outbox.
+    await repo.completeStreamingMessage(aiMsgId);
   }
 }

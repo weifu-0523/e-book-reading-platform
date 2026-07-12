@@ -37,6 +37,10 @@ class _FakeRepo implements ChatRepository {
   final List<_StoredMsg> _messages = [];
   final Map<String, ChatSession> _sessions = {};
 
+  /// Records every `completeStreamingMessage` call's messageId arg.
+  /// M2.8 T3 verifies the streaming use cases hook the sync trigger in.
+  final List<String> completeStreamingCalls = [];
+
   @override
   Future<String> appendMessage({
     required String sessionId,
@@ -101,6 +105,11 @@ class _FakeRepo implements ChatRepository {
         updatedAt: DateTime.now(),
       );
     }
+  }
+
+  @override
+  Future<void> completeStreamingMessage(String messageId) async {
+    completeStreamingCalls.add(messageId);
   }
 
   @override
@@ -237,5 +246,28 @@ void main() {
     final messages = await repo.listMessages('s1');
     final aiMsg = messages.firstWhere((m) => m.role == 'ai');
     expect(aiMsg.content, '');
+  });
+
+  // M2.8 T3: streaming use cases must call completeStreamingMessage after the
+  // LLM stream closes so the final accumulated content gets enqueued for sync.
+  // Without this hook, only the initial empty AI placeholder would sync.
+  test(
+      'completeStreamingMessage is called once with the AI message id '
+      'after the stream closes (M2.8 T3)', () async {
+    await useCase.run(sessionId: 's1', userContent: 'q').last;
+
+    // The fake assigns ids 'msg-0', 'msg-1', ... in insertion order.
+    // Run order: appendMessage(user) -> appendMessage(ai placeholder) -> stream.
+    // So the AI message id is 'msg-1'.
+    expect(repo.completeStreamingCalls, ['msg-1']);
+  });
+
+  test('completeStreamingMessage fires even on empty stream (M2.8 T3)',
+      () async {
+    final llm = _CapturingLlm(<String>[]);
+    final uc = SendMessageUseCase(repo: repo, llm: llm);
+    // Drain the stream (cannot use .last on an empty stream).
+    await uc.run(sessionId: 's1', userContent: 'q').toList();
+    expect(repo.completeStreamingCalls, ['msg-1']);
   });
 }
