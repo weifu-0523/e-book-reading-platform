@@ -7,7 +7,103 @@
 
 ## [Unreleased]
 
-v1.10.1-alpha 之后的新变更将记在此处。
+v1.11.0-alpha 之后的新变更将记在此处。
+
+## [1.11.0-alpha] - 2026-07-12
+
+M2.8 跨端同步范围扩展：让用户「在电脑上看的书和聊天可以在手机上接着」。
+新增 **AI 聊天历史同步** + **书籍标签同步** + **书籍 binary 文件同步**，
+覆盖 metadata-only 同步之外的三类核心数据。13 任务 TDD，~50 新测试，schema
+v13 → v14。
+
+### 新增
+
+#### Phase 2：metadata-only sync（低风险）
+
+- **AI 聊天会话 / 消息同步**（`chat_sessions` / `chat_messages`）：双向同步，
+  支持流式追加。策略：`appendContent` 不写 outbox（避免 200+ 行 bloat），
+  新增 `ChatRepository.completeStreamingMessage` 在 stream 结束时统一 emit；
+  4 个 streaming use cases（chapter_guide / recap / socratic_bootstrap /
+  send_message）在 stream-end 调用。
+- **书籍标签同步**（`book_tags` 表）：双向同步，复合主键 `(bookId, tag)` 编码
+  为 id = `"${bookId}__${tag}"`；硬 delete 通过 `record.deleted=true` tombstone。
+- **TagEditor widget**：BookDetailPage 内联编辑标签。校验拒绝空 / 含 `__`
+  子串（与复合主键冲突）/ 长度 > 32 / 重复（case-insensitive）。
+
+#### Phase 3：binary file sync（新基础设施）
+
+- **BookFileSyncService**：协调 binary 文件上传/下载/删除。
+  - 远程路径 `/zhiyue/files/<bookId>.<format>`
+  - 本地路径 `<libraryDir>/<bookId>.<format>`
+  - Sentinel `books.file_path = '__needs_download__'` 表示 metadata 已同步
+    但 binary 未下载
+  - `uploadPendingFiles`：扫描 `file_synced_at IS NULL` 的书，逐个上传；
+    单本失败（如 507 quota）不阻塞其余
+  - `deleteRemoteFile`：idempotent（404 swallowed）
+- **WebDavClient bytes API**：`getBytes` / `putBytes` / `listFilesWithSize`
+- **跨端 binary 上传链路**：每个 sync 周期 `WebDavSyncEngine.sync` 调用
+  `uploadPendingFiles`（best-effort，不阻塞 metadata sync）
+- **跨端 binary 下载链路**：Library `BookCard` / `BookListTile` 显示
+  cloud-download 徽章 + tap 触发 `_BookDownloadDialog` 进度框 →
+  `SyncController.downloadBookFile` → 写入本地 + 更新 `file_path` 跳转 reader
+
+### Schema 变更
+
+- **v13 → v14**：`books` 表新增 `file_synced_at INTEGER`（nullable）。
+  Migration 走 `ALTER TABLE ADD COLUMN`，老数据 NULL = 未同步。
+
+### 改进
+
+- **`SyncRecord.fromJson` 容错**：未知 `type` 值从抛异常改为 skip（M2.8
+  forward-compat：老客户端 pull 到 M2.8 snapshot 不会 crash，只是忽略新
+  类型记录）。
+- **`LocalBookRepository` 接受可选 `remoteFileDeleter` 钩子**：在删除本地 row
+  之前 best-effort 删除远程 binary。失败不阻塞本地删除（tombstone 仍走
+  outbox，peers 仍会清理）。
+- **`RemoteRecordApplier` tier 重排**：tier 1 加入 `bookTags` + `chatSessions`，
+  tier 2 加入 `chatMessages`，保证 FK 安全。
+
+### 测试覆盖
+
+- 19 新测试 `BookFileSyncService`（upload / download / delete / scan /
+  localFileExists / getLocalPath）
+- 4 新测试 `RemoteRecordApplier._applyBook`（sentinel + LWW + tombstone）
+- 4 新测试 `LocalBookRepository` remoteFileDeleter hook（best-effort contract）
+- 2 新测试 `WebDavSyncEngine` bookFileSync hook（uploadPending + best-effort）
+- 3 新测试 `BookCard` / `BookListTile` needs-download overlay
+- 2 新测试 cross-device chat continuation（A push → B pull）
+- 2 新测试 cross-device book file transfer（A upload → B pull+download +
+  tombstone propagation）
+
+总测试数：v1.10.1-alpha 的 ~1383 → v1.11.0-alpha 的 ~1420。
+
+### 已知限制
+
+- **`books.file_path` 为 `__needs_download__` 时不支持后台下载**：必须在 UI
+  前台完成（用户必须等待 dialog）。失败 → SnackBar 错误。后续 v1.12+ 加
+  后台下载 + 通知。
+- **删除书籍时的远程 binary 清理为 best-effort**：若 WebDAV 不可达，远程
+  binary 会成 orphan（空间泄漏，非正确性问题）。
+- **配额管理 UI 不做**：用户决策（2026-07-12 AskUserQuestion）。WebDAV 507
+  错误从 BookFileSyncService 上浮，未来若用户反馈需要再加 UI。
+- **流式 chat 中途被 cancel 不进入 outbox**：用户重发 → 走完整流程。接受
+  这个 trade-off：实现简单 + 不破坏一致性。
+- **S3 WS1 PROPFIND disambiguate dead code 清理**：延后到后续版本。
+
+### 升级
+
+- **桌面 / Android**：直接覆盖安装。schema 自动迁移 v13 → v14（add nullable
+  column）。
+- **WebDAV 服务端**：第一次 sync 时自动 `MKCOL /zhiyue/files/` 创建目录。
+- **老版本（v1.10.1-alpha 及以下）**：不识别 `chatSession` / `chatMessage`
+  / `bookTag` 三种新 SyncRecordType。`SyncRecord.fromJson` 已改为容错，
+  老客户端 pull 到 M2.8 snapshot 时会 skip 这些记录（不 crash）。
+
+### 下一节点
+
+- TTS 集成（M2.9，已在 S4 路线图）
+- 跨书 AI 伴读（v1.12+）
+- iOS 端 binary 同步 + CI
 
 ## [1.10.1-alpha] - 2026-07-12
 
