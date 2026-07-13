@@ -35,6 +35,7 @@ import 'package:reader_engine/rendering/renderer.dart';
 
 import 'cfi_codec.dart';
 import 'epub_image_inliner.dart';
+import 'plain_text_utils.dart';
 import 'html_chapter_source.dart';
 import 'html_highlight_injector.dart';
 import 'html_slicer.dart';
@@ -780,7 +781,7 @@ class EpubxRenderer implements EpubRenderer {
     // MD/TXT 路径（_book == null，_chapters 由 openChapters 填充）用扁平 TOC。
     final book = _book;
     if (book != null) {
-      return TableOfContents(entries: _chaptersToToc(book.Chapters ?? const [], 0));
+      return TableOfContents(entries: _chaptersToToc(book.Chapters ?? const []));
     }
     if (_chapters.isEmpty) return TableOfContents.empty();
     return TableOfContents(entries: _flatChaptersToToc());
@@ -802,42 +803,65 @@ class EpubxRenderer implements EpubRenderer {
 
   /// 把 epubx 的 EpubChapter 树转 TocEntry 树。
   ///
-  /// chapterIndex 走 flatChapters 的扁平索引（与 cfi_codec 对齐）。
-  /// startIndex 是当前 subtree 在扁平序列中的起始偏移。
-  List<TocEntry> _chaptersToToc(List<EpubChapter> chapters, int startIndex) {
+  /// 每个 navPoint 的 locator 用：
+  /// - chapterIndex：按 ContentFileName 在 [_chapters] 中的去重索引
+  ///   （[_contentFileToChapterIndex] 查表）
+  /// - charOffset：anchor 在该章 HTML 中对应的 plain-text 偏移
+  ///   （[PlainTextUtils.anchorToPlainOffset]）。
+  ///
+  /// 这样多个 navPoint 共享同一 html 文件时，TOC 仍保留每个 navPoint
+  /// 的层级与标题，但 locator 都指向唯一去重章节内的不同字符偏移——
+  /// 点击 TOC 跳转到正确的位置而非章节开头。
+  ///
+  /// anchor 为 null 或在 html 中找不到时，charOffset 回退到 0。
+  List<TocEntry> _chaptersToToc(List<EpubChapter> chapters) {
     final result = <TocEntry>[];
-    var flatIndex = startIndex;
     for (final ch in chapters) {
-      final selfIndex = flatIndex;
+      final locator = _locatorForChapter(ch);
       result.add(TocEntry(
         title: ch.Title ?? '(无标题)',
-        locator: EpubCfiLocator(
-          cfi: encode(selfIndex, 0),
-          chapterIndex: selfIndex,
-        ),
-        children: _chaptersToSubEntries(ch.SubChapters ?? const [], selfIndex),
+        locator: locator,
+        children: _chaptersToSubEntries(ch.SubChapters ?? const []),
       ));
-      flatIndex += 1 + _countFlat(ch.SubChapters ?? const []);
     }
     return result;
   }
 
-  List<TocEntry> _chaptersToSubEntries(List<EpubChapter> subChapters, int parentFlatIndex) {
+  List<TocEntry> _chaptersToSubEntries(List<EpubChapter> subChapters) {
     final result = <TocEntry>[];
-    var flatIndex = parentFlatIndex + 1;
     for (final ch in subChapters) {
-      final selfIndex = flatIndex;
+      final locator = _locatorForChapter(ch);
       result.add(TocEntry(
         title: ch.Title ?? '(无标题)',
-        locator: EpubCfiLocator(
-          cfi: encode(selfIndex, 0),
-          chapterIndex: selfIndex,
-        ),
-        children: _chaptersToSubEntries(ch.SubChapters ?? const [], selfIndex),
+        locator: locator,
+        children: _chaptersToSubEntries(ch.SubChapters ?? const []),
       ));
-      flatIndex += 1 + _countFlat(ch.SubChapters ?? const []);
     }
     return result;
+  }
+
+  /// 为单个 EpubChapter（可能共享 ContentFileName）构造 deduped locator。
+  ///
+  /// - 若 ContentFileName 在 [_contentFileToChapterIndex] 中：用 map 的
+  ///   deduped index；anchor 通过 [PlainTextUtils.anchorToPlainOffset]
+  ///   解析为 plain-text charOffset。
+  /// - 若 ContentFileName 为空 / 不在 map 中（test fixture 或异常情况）：
+  ///   回退 dedupedIdx = 0 + charOffset = 0。
+  /// - anchor 为 null / 空字符串 / 在 html 中找不到：charOffset 回退到 0。
+  EpubCfiLocator _locatorForChapter(EpubChapter ch) {
+    final contentFile = ch.ContentFileName ?? '';
+    final dedupedIdx = _contentFileToChapterIndex[contentFile] ?? 0;
+    final anchor = ch.Anchor;
+    var charOffset = 0;
+    if (anchor != null && anchor.isNotEmpty) {
+      final html = flatChapterHtmlAt(dedupedIdx);
+      final resolved = PlainTextUtils.anchorToPlainOffset(html, anchor);
+      if (resolved != null) charOffset = resolved;
+    }
+    return EpubCfiLocator(
+      cfi: encode(dedupedIdx, charOffset),
+      chapterIndex: dedupedIdx,
+    );
   }
 
   int _countFlat(List<EpubChapter> chapters) {
