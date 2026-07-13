@@ -66,6 +66,55 @@ class PlainTextUtils {
     return (plain.toString(), offsets);
   }
 
+  /// Locates an HTML anchor id (e.g., `<p id="ch1">` or `<a name="ch1">`)
+  /// and returns the corresponding plain-text character offset within the
+  /// same coordinate system as [htmlToPlainWithOffsets].
+  ///
+  /// Used to resolve NCX TOC fragment anchors (e.g., Calibre's
+  /// `#filepos16764`) to a charOffset for `EpubCfiLocator`.
+  ///
+  /// Returns `null` when the anchor id is not present in `html`. Returns `0`
+  /// when the anchor is at the very start of plain text.
+  ///
+  /// Matching rules:
+  /// - Recognizes `id="X"`, `id='X'`, `name="X"`, `name='X'` (any case for
+  ///   the attribute name; X must be quoted and exactly equal to `anchor`).
+  /// - Uses the position of the **opening `<` of the element containing the
+  ///   attribute** as the html offset, then maps it to plain coordinates.
+  /// - When multiple matches exist, uses the first occurrence.
+  static int? anchorToPlainOffset(String html, String anchor) {
+    final patterns = [
+      RegExp("id=[\"']${RegExp.escape(anchor)}[\"']"),
+      RegExp("name=[\"']${RegExp.escape(anchor)}[\"']"),
+    ];
+    int? attrStart;
+    for (final p in patterns) {
+      final m = p.firstMatch(html);
+      if (m != null) {
+        attrStart = m.start;
+        break;
+      }
+    }
+    if (attrStart == null) return null;
+
+    final lt = html.lastIndexOf('<', attrStart);
+    final htmlOffset = lt < 0 ? 0 : lt;
+
+    final (_, offsets) = htmlToPlainWithOffsets(html);
+    if (offsets.isEmpty) return 0;
+    var lo = 0, hi = offsets.length - 1, ans = -1;
+    while (lo <= hi) {
+      final mid = lo + (hi - lo) ~/ 2;
+      if (offsets[mid] <= htmlOffset) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return ans + 1;
+  }
+
   static String? _decodeEntity(String entity) {
     switch (entity) {
       case 'amp':

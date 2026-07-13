@@ -40,4 +40,43 @@ void main() {
     final (plain, _) = PlainTextUtils.htmlToPlainWithOffsets('<p>a b</p>');
     expect(plain, 'a b');
   });
+
+  group('anchorToPlainOffset', () {
+    test('returns null when anchor id not present in html', () {
+      const html = '<p>hello</p><p>world</p>';
+      expect(PlainTextUtils.anchorToPlainOffset(html, 'missing'), isNull);
+    });
+
+    test('returns 0 when anchor is at the very start of plain text', () {
+      const html = '<p id="ch1">第一章</p><p>正文内容</p>';
+      expect(PlainTextUtils.anchorToPlainOffset(html, 'ch1'), 0);
+    });
+
+    test('returns plain-text char count before the anchor element', () {
+      const html = '<p>前言</p><p id="ch1">第一章</p>';
+      expect(PlainTextUtils.anchorToPlainOffset(html, 'ch1'), 2);
+    });
+
+    test('handles anchor with leading whitespace text before it', () {
+      const html = '<p>前言</p>\n<p id="ch1">第一章</p>';
+      final offset = PlainTextUtils.anchorToPlainOffset(html, 'ch1');
+      expect(offset, isNotNull);
+      expect(offset! >= 2, isTrue, reason: 'offset must include chars before anchor');
+    });
+
+    test('matches Calibre-style filepos anchor id', () {
+      const html = '<p id="filepos10737">前言</p>'
+          '<p id="filepos16682">道经</p>'
+          '<p id="filepos16764">第一章 众妙之门</p>';
+      final first = PlainTextUtils.anchorToPlainOffset(html, 'filepos16764');
+      expect(first, isNotNull);
+      expect(first!, greaterThan(0),
+          reason: 'filepos16764 is after filepos10737 and filepos16682');
+    });
+
+    test('matches single-quoted id="...anchor..." attribute', () {
+      const html = "<p>intro</p><p id='ch2'>chapter two</p>";
+      expect(PlainTextUtils.anchorToPlainOffset(html, 'ch2'), 5);
+    });
+  });
 }
