@@ -592,8 +592,12 @@ class EpubxRenderer implements EpubRenderer {
     final map = <String, int>{};
     for (final c in flat) {
       final key = c.ContentFileName ?? '';
-      if (map.containsKey(key)) continue;
-      map[key] = result.length;
+      // Chapters without ContentFileName cannot be deduped — treat each as
+      // unique. This preserves test-fixture behavior (synthetic EpubChapter
+      // objects without ContentFileName) and any future source that omits it.
+      // Real EPUBs always have ContentFileName set by the epubx parser.
+      if (key.isNotEmpty && map.containsKey(key)) continue;
+      if (key.isNotEmpty) map[key] = result.length;
       result.add(HtmlChapterSource(
         title: c.Title ?? '',
         html: inliner?.inline(
