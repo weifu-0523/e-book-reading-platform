@@ -7,7 +7,78 @@
 
 ## [Unreleased]
 
-v1.11.4-alpha 之后的新变更将记在此处。
+v1.11.5-alpha 之后的新变更将记在此处。
+
+## [1.11.5-alpha] - 2026-07-13
+
+EPUB 锚点目录跳转修复：用户报告《老子道德经-老子》点击目录条目
+无反应，且该书「似乎没有分章节」。定位为 Calibre EPUB 生成器的
+`#fileposNNNNN` 锚点约定未被渲染器识别。
+
+### 修复
+
+- **Bug：Calibre 风格 EPUB 目录跳转失效**。Calibre 把所有章节塞进
+  单个 html 文件（如 `index_split_001.html`），靠 `<p
+  id="fileposNNNNN">` 锚点区分章节边界。渲染器两层缺陷：(1) 把每个
+  navPoint 当独立章节，共享 html 被重复加载 80+ 次；(2) 锚点被忽略，
+  locator 永远 `cfi='N:0'`，点击任何条目都跳到章节首。
+
+- **修复（3 层）**：
+  - **T1**：`PlainTextUtils.anchorToPlainOffset(html, anchor)` 把
+    `id=/name=` 锚点解析为 plain-text 字符偏移。用 `lastIndexOf('<',
+    attrStart)` 定位元素起始，再用 `htmlToPlainWithOffsets` 的 offsets
+    数组二分查找对应 plain index。与 `cfi_codec` 的 `charOffset` 同
+    坐标系。正则 `caseSensitive: false` 兼容 `ID=` / `Id=`。
+  - **T2**：`EpubxRenderer._buildDedupedChaptersAndMap` 按
+    `ContentFileName` 去重——80 个共享 `index_split_001.html` 的
+    navPoints → 1 个 `_chapters` 条目。同时构造反查 map
+    `_contentFileToChapterIndex`（file path → deduped index）。
+    空 `ContentFileName` 不参与去重（test fixture 兼容）。
+  - **T3**：`_chaptersToToc` 改写为 `_locatorForChapter(ch)`：
+    - dedupedIdx = `_contentFileToChapterIndex[contentFile] ?? 0`
+    - charOffset = `anchorToPlainOffset(html, anchor)`（null/空/找不到
+      时回退 0）
+    - locator = `EpubCfiLocator(cfi: 'dedupedIdx:charOffset',
+      chapterIndex: dedupedIdx)`
+
+  这样目录条目「第一章 众妙之门」（`#filepos16764`）的 locator 变成
+  `0:8`（去重章 0 的字符偏移 8），`gotoLocator` 滚动到正确位置。
+
+### 测试
+
+新增 14 个测试（T1: 6 + T2: 2 + T3: 6）：
+
+| 任务 | 新测试数 | 文件 |
+|---|---|---|
+| T1 anchorToPlainOffset | 6 | plain_text_utils_test |
+| T2 章节去重 | 2 | epubx_renderer_test |
+| T3 anchor TOC 集成 | 6 | epubx_renderer_anchor_toc_test（新文件） |
+
+**总测试**：renderer 包 206 pass + 8 skip + 15 baseline fail（pre-existing
+paged/dual-page/perf）；app 包 1449 pass + 14 skip + 10 baseline fail
+（pre-existing reader_page widget 编译错误）。
+
+baseline fail 全部 pre-existing，与本次改动无关。
+
+### 已知限制
+
+- **HTML 注释/CDATA 误报**：`anchorToPlainOffset` 用简单的 regex 找
+  `id=/name=` 属性，不解析 HTML AST。如果锚点 id 出现在 `<!-- -->`
+  注释或 `<script>` 字符串里，会误匹配。Calibre 风格 EPUB 不存在此
+  问题（锚点是真实的 `<p id=...>` 元素），记入 docstring 限制。
+- **属性值含 `<`**：继承自 `htmlToPlainWithOffsets` 的限制。常规 EPUB
+  不存在此问题。
+
+### 升级指引
+
+直接覆盖安装即可。无 schema 变更，无配置变更。
+
+打开 v1.11.5-alpha 后：
+
+- **Calibri 风格 EPUB 目录正常跳转**：《道德经》等单 html 多锚点 EPUB
+  点击目录条目跳转到对应位置（不再卡在章首）。
+- **其他 EPUB 不受影响**：每章独立 html 文件的标准 EPUB 行为不变
+  （去重后 chapterIndex 与原一致）。
 
 ## [1.11.4-alpha] - 2026-07-13
 
