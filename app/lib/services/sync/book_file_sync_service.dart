@@ -32,6 +32,11 @@ import 'package:zhiyue/services/sync/web_dav_client.dart';
 /// when the user opens the book (T11 will wire this into the reader open
 /// bridge).
 ///
+/// Cover binaries follow a parallel scheme at
+/// `/zhiyue/covers/<bookId>.png`, local `<coversDir>/<bookId>.png`.
+/// `books.cover_path` uses [needsCoverDownloadSentinel] on the receiver
+/// side; the coverLoaderProvider triggers [downloadCoverFile] lazily.
+///
 /// Caller contract:
 /// - On book import (local file present): `file_path = <absolute>`,
 ///   `file_synced_at = NULL`. The next [uploadPendingFiles] pass uploads
@@ -39,30 +44,49 @@ import 'package:zhiyue/services/sync/web_dav_client.dart';
 /// - On remote-apply of a book record (received from another device):
 ///   `file_path = __needs_download__`, `file_synced_at = NULL`. Reader
 ///   open triggers [downloadBookFile], which writes the binary + updates
-///   `file_path` + stamps `file_synced_at`.
+///   `file_path` + stamps `file_synced_at`. Same flow for cover_path +
+///   [needsCoverDownloadSentinel] via [downloadCoverFile].
 /// - On book delete: caller invokes [deleteRemoteFile] before deleting the
-///   local DB row so we still know the format (extension).
+///   local DB row so we still know the format (extension). Cover delete
+///   is piggybacked — no separate delete API.
 class BookFileSyncService {
   BookFileSyncService({
     required AppDatabase database,
     required WebDavClient webdav,
     required String localFilesDir,
+    String? coversDir,
   })  : _db = database,
         _webdav = webdav,
-        _localFilesDir = localFilesDir;
+        _localFilesDir = localFilesDir,
+        _coversDir = coversDir;
 
   final AppDatabase _db;
   final WebDavClient _webdav;
   final String _localFilesDir;
+  final String? _coversDir;
 
   /// Sentinel value placed in `books.file_path` when the book's metadata
   /// has been received via sync but the binary file has not yet been
   /// downloaded locally. Reader-open should trigger [downloadBookFile].
   static const String needsDownloadSentinel = '__needs_download__';
 
+  /// Sentinel value placed in `books.cover_path` when a remote book record
+  /// indicates a cover exists but the cover binary has not yet been
+  /// downloaded. coverLoaderProvider triggers [downloadCoverFile].
+  static const String needsCoverDownloadSentinel = '__needs_cover_download__';
+
   /// Remote directory under which all book binary files are stored. Each
   /// file is named `<bookId>.<format>` (e.g. `b1.epub`).
   static const String remoteFilesDir = '/zhiyue/files';
+
+  /// Remote directory under which all cover binaries are stored. Each
+  /// file is named `<bookId>.png` (cover format is always PNG — see
+  /// [_coverExtension]).
+  static const String remoteCoversDir = '/zhiyue/covers';
+
+  /// Cover file extension. EPUB cover extraction always writes PNG (see
+  /// `EpubCoverExtractor`); PDFs have no cover (`cover_path = NULL`).
+  static const String _coverExtension = 'png';
 
   /// Upload a single book's binary file to WebDAV.
   ///
@@ -118,6 +142,24 @@ class BookFileSyncService {
     await (_db.update(_db.books)
           ..where((t) => t.id.equals(bookId)))
         .write(BooksCompanion(fileSyncedAt: Value(now)));
+
+    // T2 (2026-07-13): piggyback cover upload. Best-effort — binary is
+    // already on remote, so cover failure must NOT roll back / block.
+    // Cover is decorative; the book is still openable without it.
+    await _uploadCoverBestEffort(bookId);
+  }
+
+  /// Best-effort cover upload. Swallows all errors — caller (uploadBookFile
+  /// piggyback) must not be blocked by cover failures.
+  Future<void> _uploadCoverBestEffort(String bookId) async {
+    if (_coversDir == null) return;
+    try {
+      await uploadCoverFile(bookId);
+    } catch (e) {
+      // Cover is decorative — log + swallow.
+      stderr.writeln('BookFileSyncService._uploadCoverBestEffort: '
+          'cover upload failed for $bookId: $e');
+    }
   }
 
   /// Scan all books where `file_synced_at IS NULL` AND `file_path` is not
@@ -219,6 +261,17 @@ class BookFileSyncService {
       // idempotent.
       if (e.statusCode != 404) rethrow;
     }
+
+    // T2 (2026-07-13): piggyback cover delete. Best-effort — book binary
+    // delete already succeeded; cover leftover is a space leak only.
+    if (_coversDir != null) {
+      try {
+        await deleteCoverFile(bookId);
+      } catch (e) {
+        stderr.writeln('BookFileSyncService.deleteRemoteFile: '
+            'cover delete failed for $bookId: $e');
+      }
+    }
   }
 
   /// Does the local file exist for this book?
@@ -261,5 +314,111 @@ class BookFileSyncService {
       return '$_localFilesDir/$bookId.$format';
     }
     return currentPath;
+  }
+
+  // T2 (2026-07-13): cover binary sync. See class dartdoc for the remote /
+  // local path scheme. Cover is decorative — failures are best-effort on
+  // the piggyback paths (uploadBookFile / deleteRemoteFile) but thrown on
+  // direct calls so coverLoaderProvider can react.
+
+  /// Upload a single book's cover binary to WebDAV.
+  ///
+  /// - Skips silently if the book is not in the DB.
+  /// - Skips silently if [coversDir] is null (cover sync disabled).
+  /// - Skips silently if `cover_path` is null (PDF — no cover) or the
+  ///   [needsCoverDownloadSentinel] (receiver-side placeholder — nothing
+  ///   local to upload).
+  /// - Throws [FileSystemException] if the local cover file is missing.
+  /// - Throws [WebDavException] on any non-2xx HTTP status.
+  Future<void> uploadCoverFile(String bookId) async {
+    if (_coversDir == null) return;
+
+    final row = await _db.customSelect(
+      'SELECT cover_path FROM books WHERE id = ?',
+      variables: [Variable.withString(bookId)],
+    ).getSingleOrNull();
+    if (row == null) return;
+
+    final coverPath = row.readNullable<String>('cover_path');
+    if (coverPath == null) return; // PDF — no cover.
+    if (coverPath == needsCoverDownloadSentinel) return; // receiver-side.
+
+    final file = File(coverPath);
+    if (!await file.exists()) {
+      throw FileSystemException('Local cover not found', coverPath);
+    }
+
+    final bytes = await file.readAsBytes();
+    final remotePath = '$remoteCoversDir/$bookId.$_coverExtension';
+    await _webdav.ensureAncestors(remotePath);
+    await _webdav.putBytes(remotePath, bytes);
+  }
+
+  /// Download a single book's cover binary from WebDAV.
+  ///
+  /// - Skips silently if the book is not in the DB.
+  /// - Skips silently if [coversDir] is null.
+  /// - Skips silently (idempotent success) if `cover_path` is null (PDF).
+  /// - Skips silently (idempotent success) if `cover_path` is already a
+  ///   local path pointing at an existing file.
+  /// - On 200: writes `<coversDir>/<bookId>.png` + DSL UPDATE
+  ///   `cover_path = localPath` so `select(books).watch()` re-emits and
+  ///   coverLoaderProvider resolves immediately.
+  /// - On 404 (sender never uploaded a cover, or cover upload failed):
+  ///   DSL UPDATE `cover_path = NULL` so the loader short-circuits to the
+  ///   placeholder and we stop retrying every cycle.
+  /// - Rethrows any other [WebDavException].
+  Future<void> downloadCoverFile(String bookId) async {
+    if (_coversDir == null) return;
+
+    final row = await _db.customSelect(
+      'SELECT cover_path FROM books WHERE id = ?',
+      variables: [Variable.withString(bookId)],
+    ).getSingleOrNull();
+    if (row == null) return;
+
+    final currentPath = row.readNullable<String>('cover_path');
+    if (currentPath == null) return; // PDF — no cover expected.
+    if (currentPath != needsCoverDownloadSentinel) {
+      // Already a local path — idempotent if file exists.
+      if (File(currentPath).existsSync()) return;
+      // else fall through: local file gone, re-download.
+    }
+
+    final remotePath = '$remoteCoversDir/$bookId.$_coverExtension';
+    final localPath = '$_coversDir/$bookId.$_coverExtension';
+
+    try {
+      final bytes = await _webdav.getBytes(remotePath);
+      final file = File(localPath);
+      await file.create(recursive: true);
+      await file.writeAsBytes(bytes);
+      await (_db.update(_db.books)
+            ..where((t) => t.id.equals(bookId)))
+          .write(BooksCompanion(coverPath: Value(localPath)));
+    } on WebDavException catch (e) {
+      if (e.statusCode == 404) {
+        // Sender has no cover for this book — clear sentinel so the loader
+        // shows placeholder and we don't retry forever.
+        await (_db.update(_db.books)
+              ..where((t) => t.id.equals(bookId)))
+            .write(BooksCompanion(coverPath: Value<String?>(null)));
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  /// Delete a book's remote cover binary. Idempotent — 404 swallowed.
+  ///
+  /// No DB lookup needed (cover path is always `<id>.png` on remote).
+  /// Caller is [deleteRemoteFile] piggyback — book row may already be gone.
+  Future<void> deleteCoverFile(String bookId) async {
+    final remotePath = '$remoteCoversDir/$bookId.$_coverExtension';
+    try {
+      await _webdav.delete(remotePath);
+    } on WebDavException catch (e) {
+      if (e.statusCode != 404) rethrow;
+    }
   }
 }

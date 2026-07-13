@@ -22,12 +22,15 @@ void main() {
   late AppDatabase db;
   late Directory tmpDir;
   late String booksDir;
+  late String coversDir;
 
   setUp(() async {
     db = _newDb();
     tmpDir = await Directory.systemTemp.createTemp('zhiyue_file_sync_test_');
     booksDir = '${tmpDir.path}/books';
     await Directory(booksDir).create();
+    coversDir = '${tmpDir.path}/covers';
+    await Directory(coversDir).create();
   });
 
   tearDown(() async {
@@ -42,22 +45,33 @@ void main() {
   /// Otherwise the local file is written with [content] (default
   /// `'EPUB-CONTENT'`) and the row's `file_size_bytes` is set to the
   /// content length.
+  ///
+  /// If [coverPath] is non-null and not sentinel, a fake cover file is
+  /// written with [coverBytes] (default `[1, 2, 3]`) and `cover_path` is
+  /// set on the row. If `coverPath` is the sentinel
+  /// `BookFileSyncService.needsCoverDownloadSentinel`, no file is written
+  /// but the column is set so download can be exercised.
   Future<void> insertBook({
     required String id,
     required String format, // 'epub' | 'pdf'
     String? filePath,
     int? fileSyncedAt,
     String content = 'EPUB-CONTENT',
+    String? coverPath,
+    List<int> coverBytes = const [1, 2, 3],
   }) async {
     final path = filePath ?? '$booksDir/$id.$format';
     final isSentinel = path.startsWith('__');
     if (!isSentinel) {
       await File(path).writeAsString(content);
     }
+    if (coverPath != null && !coverPath.startsWith('__')) {
+      await File(coverPath).writeAsBytes(coverBytes);
+    }
     await db.customStatement(
-      '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, file_synced_at)
-         VALUES(?, 't', ?, ?, ?, ?, ?)''',
-      [id, format, path, 'h_$id', content.length, fileSyncedAt],
+      '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, file_synced_at, cover_path)
+         VALUES(?, 't', ?, ?, ?, ?, ?, ?)''',
+      [id, format, path, 'h_$id', content.length, fileSyncedAt, coverPath],
     );
   }
 
@@ -697,6 +711,353 @@ void main() {
       expect(emitted.last, contains('b-stream-dl.epub'));
 
       await sub.cancel();
+    });
+  });
+
+  // T2 (2026-07-13): cover binaries sync via WebDAV at
+  // /zhiyue/covers/{bookId}.png, mirroring the book binary flow.
+  // cover_path uses a parallel sentinel `__needs_cover_download__` so the
+  // receiver-side coverLoaderProvider can trigger downloadCoverFile
+  // lazily. PDFs have no cover (cover_path = NULL) and never trigger.
+  group('cover sync (T2)', () {
+    Future<String?> coverPathOf(String bookId) async {
+      final row = await db.customSelect(
+        'SELECT cover_path FROM books WHERE id = ?',
+        variables: [Variable.withString(bookId)],
+      ).getSingle();
+      return row.readNullable<String>('cover_path');
+    }
+
+    test('uploadCoverFile PUTs bytes to /zhiyue/covers/{id}.png', () async {
+      await insertBook(
+        id: 'cv-up',
+        format: 'epub',
+        coverPath: '$coversDir/cv-up.png',
+        coverBytes: const [10, 20, 30],
+      );
+
+      List<int>? uploadedBytes;
+      String? uploadedPath;
+      List<String> mkcolPaths = [];
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'MKCOL') {
+              mkcolPaths.add(request.url.path);
+              return http.Response('', 201);
+            }
+            if (request.method == 'PUT') {
+              uploadedBytes = request.bodyBytes;
+              uploadedPath = request.url.path;
+              return http.Response('', 201);
+            }
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.uploadCoverFile('cv-up');
+
+      expect(uploadedPath, endsWith('/zhiyue/covers/cv-up.png'));
+      expect(uploadedBytes, const [10, 20, 30]);
+      // MKCOL must have happened for ancestor dirs (/zhiyue + /zhiyue/covers).
+      expect(mkcolPaths.any((p) => p.contains('/zhiyue/covers')), isTrue);
+    });
+
+    test('uploadCoverFile skips when cover_path is null', () async {
+      await insertBook(id: 'cv-null', format: 'pdf');
+      var anyPut = false;
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://x',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'PUT') anyPut = true;
+            return http.Response('', 201);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.uploadCoverFile('cv-null');
+      expect(anyPut, isFalse);
+    });
+
+    test('uploadCoverFile skips when cover_path is sentinel', () async {
+      await insertBook(
+        id: 'cv-sent',
+        format: 'epub',
+        coverPath: BookFileSyncService.needsCoverDownloadSentinel,
+      );
+      var anyPut = false;
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://x',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'PUT') anyPut = true;
+            return http.Response('', 201);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.uploadCoverFile('cv-sent');
+      expect(anyPut, isFalse);
+    });
+
+    test('uploadCoverFile skips when coversDir is null (disabled)', () async {
+      await insertBook(
+        id: 'cv-nodir',
+        format: 'epub',
+        coverPath: '$coversDir/cv-nodir.png',
+      );
+      var anyPut = false;
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://x',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'PUT') anyPut = true;
+            return http.Response('', 201);
+          }),
+        ),
+        localFilesDir: booksDir,
+        // coversDir deliberately null — covers sync disabled.
+      );
+      await service.uploadCoverFile('cv-nodir');
+      expect(anyPut, isFalse);
+    });
+
+    test('downloadCoverFile GETs cover + writes local + updates cover_path',
+        () async {
+      await insertBook(
+        id: 'cv-dl',
+        format: 'epub',
+        coverPath: BookFileSyncService.needsCoverDownloadSentinel,
+      );
+
+      String? getPath;
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'GET') {
+              getPath = request.url.path;
+              return http.Response.bytes(const [99, 99, 99], 200);
+            }
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.downloadCoverFile('cv-dl');
+
+      expect(getPath, endsWith('/zhiyue/covers/cv-dl.png'));
+      final localFile = File('$coversDir/cv-dl.png');
+      expect(await localFile.exists(), isTrue);
+      expect(await localFile.readAsBytes(), const [99, 99, 99]);
+      expect(await coverPathOf('cv-dl'), '$coversDir/cv-dl.png');
+    });
+
+    test('downloadCoverFile idempotent when local file already exists',
+        () async {
+      // Pre-existing local cover + cover_path already points to it.
+      await insertBook(
+        id: 'cv-idem',
+        format: 'epub',
+        coverPath: '$coversDir/cv-idem.png',
+        coverBytes: const [7, 7, 7],
+      );
+      var anyGet = false;
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://x',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'GET') anyGet = true;
+            return http.Response('', 200);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.downloadCoverFile('cv-idem');
+      expect(anyGet, isFalse);
+      // File untouched.
+      expect(await File('$coversDir/cv-idem.png').readAsBytes(),
+          const [7, 7, 7]);
+    });
+
+    test('downloadCoverFile sets cover_path = NULL on 404 (no remote cover)',
+        () async {
+      await insertBook(
+        id: 'cv-404',
+        format: 'epub',
+        coverPath: BookFileSyncService.needsCoverDownloadSentinel,
+      );
+
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://x',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.downloadCoverFile('cv-404');
+
+      // Sentinel cleared to NULL so the loader short-circuits to placeholder.
+      expect(await coverPathOf('cv-404'), isNull);
+    });
+
+    test('deleteCoverFile DELETEs /zhiyue/covers/{id}.png (idempotent on 404)',
+        () async {
+      await insertBook(id: 'cv-del', format: 'epub');
+
+      String? deletePath;
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              deletePath = request.url.path;
+              return http.Response('', 404); // already gone — must be idempotent
+            }
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.deleteCoverFile('cv-del');
+      expect(deletePath, endsWith('/zhiyue/covers/cv-del.png'));
+    });
+
+    test('uploadBookFile piggybacks cover upload after binary PUT', () async {
+      await insertBook(
+        id: 'cv-pig',
+        format: 'epub',
+        coverPath: '$coversDir/cv-pig.png',
+        coverBytes: const [42, 42],
+      );
+
+      final uploadedPaths = <String>[];
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'MKCOL') return http.Response('', 201);
+            if (request.method == 'PUT') {
+              uploadedPaths.add(request.url.path);
+              return http.Response('', 201);
+            }
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.uploadBookFile('cv-pig');
+
+      expect(uploadedPaths.any((p) => p.endsWith('/zhiyue/files/cv-pig.epub')),
+          isTrue);
+      expect(uploadedPaths.any((p) => p.endsWith('/zhiyue/covers/cv-pig.png')),
+          isTrue);
+    });
+
+    test('uploadBookFile swallows cover upload failure (best-effort)',
+        () async {
+      await insertBook(
+        id: 'cv-fail',
+        format: 'epub',
+        coverPath: '$coversDir/cv-fail.png',
+      );
+
+      // Binary PUT 201, cover PUT 507.
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'MKCOL') return http.Response('', 201);
+            if (request.method == 'PUT') {
+              if (request.url.path.contains('/covers/')) {
+                return http.Response('', 507);
+              }
+              return http.Response('', 201);
+            }
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      // Must NOT throw — cover failure is best-effort.
+      await service.uploadBookFile('cv-fail');
+
+      // Binary stamp still applied.
+      expect(await fileSyncedAt('cv-fail'), isNotNull);
+    });
+
+    test('deleteRemoteFile piggybacks cover delete', () async {
+      await insertBook(id: 'cv-rmdel', format: 'epub');
+
+      final deletedPaths = <String>[];
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'DELETE') {
+              deletedPaths.add(request.url.path);
+              return http.Response('', 204);
+            }
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+        coversDir: coversDir,
+      );
+      await service.deleteRemoteFile('cv-rmdel');
+
+      expect(deletedPaths.any((p) => p.endsWith('/zhiyue/files/cv-rmdel.epub')),
+          isTrue);
+      expect(
+          deletedPaths.any((p) => p.endsWith('/zhiyue/covers/cv-rmdel.png')),
+          isTrue);
     });
   });
 }
