@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import '../../features/library/models/sort_by.dart';
+import '../../services/sync/book_file_sync_service.dart';
 import '../../services/sync/sync_recorder.dart';
 import '../local/database.dart' as db;
 import '../local/daos/book_tags_dao.dart';
@@ -167,6 +168,11 @@ class LocalBookRepository implements BookRepository {
     // referenced by any other book row — safe to delete. Errors (file
     // locked by AV / OneDrive / external handle) become orphan, not crash.
     await _deleteLocalLibraryFile(row);
+    // T5 (2026-07-13): best-effort delete the local cover binary.
+    // Mirrors _deleteLocalLibraryFile. Cover is per-book (not hash-content-
+    // addressed), so the path is just `cover_path` directly. Sentinel +
+    // null are skipped — there's no local file in those cases.
+    await _deleteLocalCoverFile(row);
   }
 
   @override
@@ -209,6 +215,8 @@ class LocalBookRepository implements BookRepository {
     // binary. Sequential — same reason as remote deleter above.
     for (final row in rows) {
       await _deleteLocalLibraryFile(row);
+      // T5 (2026-07-13): best-effort delete each local cover binary.
+      await _deleteLocalCoverFile(row);
     }
   }
 
@@ -228,6 +236,25 @@ class LocalBookRepository implements BookRepository {
       // Common cause: file locked by another process (AV scan / OneDrive
       // sync in progress / file open in another zhiyue window). User can
       // clear via OS file explorer if needed.
+    }
+  }
+
+  /// T5 (2026-07-13): best-effort delete of the local cover binary for
+  /// [row]. Mirrors [_deleteLocalLibraryFile]. Skips when:
+  /// - [_fileStorage] is null (widget test scenario)
+  /// - [row] is null (book already gone)
+  /// - `cover_path` is null (PDF / 404-cleared — no local file)
+  /// - `cover_path` is [BookFileSyncService.needsCoverDownloadSentinel]
+  ///   (receiver-side placeholder — no local file to delete)
+  Future<void> _deleteLocalCoverFile(db.Book? row) async {
+    if (_fileStorage == null || row == null) return;
+    final coverPath = row.coverPath;
+    if (coverPath == null) return;
+    if (coverPath == BookFileSyncService.needsCoverDownloadSentinel) return;
+    try {
+      await _fileStorage.deleteCoverFile(coverPath);
+    } catch (_) {
+      // best-effort — orphan cover may remain (space leak only).
     }
   }
 

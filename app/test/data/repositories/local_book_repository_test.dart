@@ -11,6 +11,7 @@ import 'package:zhiyue/data/local/file_storage.dart';
 import 'package:zhiyue/data/repositories/local_book_repository.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/library/models/sort_by.dart';
+import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 import 'package:zhiyue/services/sync/sync_recorder.dart';
 
 void main() {
@@ -518,5 +519,125 @@ void main() {
       },
       testOn: 'windows',
     );
+  });
+
+  // T5 (2026-07-13): delete() / deleteBooks() must also clean up the local
+  // cover binary. Mirrors the library-binary cleanup group above. Skips
+  // NULL (PDF) and sentinel (receiver-side placeholder) cover_paths.
+  group('Regression 2026-07-13: delete cleans local cover file (T5)', () {
+    late Directory tempRoot;
+    late FileStorage storage;
+
+    setUp(() async {
+      tempRoot = await Directory.systemTemp.createTemp('zhiyue_cover_test_');
+      storage = FileStorage(rootDir: tempRoot);
+    });
+
+    tearDown(() async {
+      if (tempRoot.existsSync()) {
+        if (Platform.isWindows) {
+          await Process.run(
+            'attrib',
+            ['-R', '${tempRoot.path}\\*.*', '/S'],
+          );
+        }
+        await tempRoot.delete(recursive: true);
+      }
+    });
+
+    test('delete() removes the local cover file', () async {
+      const bookId = 'b_cov_single';
+      final coverPath = p.join(storage.coversDir.path, '$bookId.png');
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, cover_path)
+           VALUES(?, 'Cov Single', 'epub', '/c.epub', 'h_cs', 11, ?)''',
+        [bookId, coverPath],
+      );
+      final coverFile = File(coverPath);
+      await coverFile.writeAsBytes([1, 2, 3]);
+      expect(coverFile.existsSync(), isTrue);
+
+      final repoWithStorage =
+          LocalBookRepository(db, fileStorage: storage);
+      await repoWithStorage.delete(bookId);
+
+      expect(await repoWithStorage.getById(bookId), isNull);
+      expect(coverFile.existsSync(), isFalse,
+          reason: 'delete() must remove the local cover file');
+    });
+
+    test('deleteBooks() removes each local cover file', () async {
+      const bookId1 = 'b_cov_batch1';
+      const bookId2 = 'b_cov_batch2';
+      final coverPath1 = p.join(storage.coversDir.path, '$bookId1.png');
+      final coverPath2 = p.join(storage.coversDir.path, '$bookId2.png');
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, cover_path)
+           VALUES(?, 'Cov Batch 1', 'epub', '/cb1.epub', 'h_cb1', 11, ?)''',
+        [bookId1, coverPath1],
+      );
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, cover_path)
+           VALUES(?, 'Cov Batch 2', 'epub', '/cb2.epub', 'h_cb2', 22, ?)''',
+        [bookId2, coverPath2],
+      );
+      final c1 = File(coverPath1);
+      final c2 = File(coverPath2);
+      await c1.writeAsBytes([10]);
+      await c2.writeAsBytes([20]);
+
+      final repoWithStorage =
+          LocalBookRepository(db, fileStorage: storage);
+      await repoWithStorage.deleteBooks({bookId1, bookId2});
+
+      expect(c1.existsSync(), isFalse);
+      expect(c2.existsSync(), isFalse);
+    });
+
+    test('delete() skips when cover_path is null (PDF)', () async {
+      const bookId = 'b_cov_pdf';
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, cover_path)
+           VALUES(?, 'Cov PDF', 'pdf', '/p.pdf', 'h_pdf', 11, NULL)''',
+        [bookId],
+      );
+      final repoWithStorage =
+          LocalBookRepository(db, fileStorage: storage);
+      await repoWithStorage.delete(bookId);
+      expect(await repoWithStorage.getById(bookId), isNull);
+    });
+
+    test('delete() skips when cover_path is sentinel (receiver-side)', () async {
+      const bookId = 'b_cov_sent';
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, cover_path)
+           VALUES(?, 'Cov Sent', 'epub', '/s.epub', 'h_sent', 11, ?)''',
+        [bookId, BookFileSyncService.needsCoverDownloadSentinel],
+      );
+      final repoWithStorage =
+          LocalBookRepository(db, fileStorage: storage);
+      await repoWithStorage.delete(bookId);
+      expect(await repoWithStorage.getById(bookId), isNull);
+    });
+
+    test('delete() with no fileStorage leaves cover file (backwards compat)',
+        () async {
+      const bookId = 'b_cov_nostore';
+      final coverPath = p.join(storage.coversDir.path, '$bookId.png');
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes, cover_path)
+           VALUES(?, 'No Store', 'epub', '/ns.epub', 'h_ns', 11, ?)''',
+        [bookId, coverPath],
+      );
+      final coverFile = File(coverPath);
+      await coverFile.writeAsBytes([1]);
+
+      // repo is the default (no fileStorage) — used by widget tests.
+      await repo.delete(bookId);
+
+      expect(await repo.getById(bookId), isNull);
+      expect(coverFile.existsSync(), isTrue,
+          reason: 'without fileStorage wired, cover file must remain');
+    });
   });
 }
