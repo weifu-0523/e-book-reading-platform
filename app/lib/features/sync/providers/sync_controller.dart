@@ -90,6 +90,11 @@ class SyncController extends StateNotifier<SyncState>
     // binary file download on tap and periodic uploadPendingFiles in sync.
     // Null = pre-M2.8 behaviour (no binary sync).
     this.localFilesDir,
+    // T4 (2026-07-13): path to the local covers dir (FileStorage.coversDir).
+    // When set + localFilesDir set, BookFileSyncService syncs cover binaries
+    // piggybacked on book binary upload / delete. Null = covers sync disabled
+    // (cover_path stays as received — placeholder shown).
+    this.coversDir,
   })  : _httpClient = httpClient,
         _connectivity = connectivity ?? ConnectivityPlusService(),
         _intervalPref = intervalPref ?? SyncIntervalPref(),
@@ -116,6 +121,7 @@ class SyncController extends StateNotifier<SyncState>
     required BackgroundSyncScheduler scheduler,
     required DateTime Function() clock,
     this.localFilesDir,
+    this.coversDir,
   })  : _httpClient = httpClient,
         _connectivity = connectivity,
         // Tests pass the Like-interface; wrap so production field keeps
@@ -135,6 +141,10 @@ class SyncController extends StateNotifier<SyncState>
   /// M2.8 T11: local library dir for downloaded binaries. Null in tests
   /// and pre-M2.8 builds — disables binary sync.
   final String? localFilesDir;
+
+  /// T4 (2026-07-13): local covers dir for downloaded cover binaries.
+  /// Null in tests / pre-T4 builds — disables covers sync.
+  final String? coversDir;
   late final BackgroundSyncScheduler _scheduler;
   SyncEngine? _engine;
   // M2.8 T11: lazily-built binary file syncer. Mirrors _engine's lifecycle
@@ -177,6 +187,7 @@ class SyncController extends StateNotifier<SyncState>
         database: database,
         webdav: webdav,
         localFilesDir: localFilesDir!,
+        coversDir: coversDir,
       );
     }
     return WebDavSyncEngine(
@@ -209,6 +220,31 @@ class SyncController extends StateNotifier<SyncState>
       return true;
     } catch (e, st) {
       developer.log('downloadBookFile failed for $bookId: $e\n$st',
+          name: 'sync');
+      return false;
+    }
+  }
+
+  /// T4 (2026-07-13): download a book's cover binary from the WebDAV store.
+  ///
+  /// Used by [coverLoaderProvider] when `books.cover_path` is the
+  /// `__needs_cover_download__` sentinel (received from a peer device but
+  /// cover binary not yet local). On success, `cover_path` is updated to
+  /// the local path. On 404 (peer never had a cover, or upload failed),
+  /// `cover_path` is cleared to NULL so the loader short-circuits.
+  ///
+  /// Returns `true` on success, `false` on any failure (no credentials,
+  /// WebDAV error, 404, local I/O error). The caller is responsible for
+  /// surfacing — this method logs and swallows.
+  Future<bool> downloadCoverFile(String bookId) async {
+    try {
+      await _buildEngine();
+      final fileSync = _bookFileSync;
+      if (fileSync == null) return false; // no credentials / no localFilesDir
+      await fileSync.downloadCoverFile(bookId);
+      return true;
+    } catch (e, st) {
+      developer.log('downloadCoverFile failed for $bookId: $e\n$st',
           name: 'sync');
       return false;
     }

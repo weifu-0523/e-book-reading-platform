@@ -174,4 +174,15 @@ class FakeBookRepository implements BookRepository {
       _controller.add(List.unmodifiable(_books));
     }
   }
+
+  /// 测试辅助：直接替换 book 的 coverPath，模拟 T4 sentinel 下载成功
+  /// 后 drift DSL UPDATE `cover_path = localPath` 的行为。用于
+  /// [coverLoaderProvider] 测试场景。
+  Future<void> updateCoverPath(String bookId, String? coverPath) async {
+    final idx = _books.indexWhere((b) => b.id == bookId);
+    if (idx >= 0) {
+      _books[idx] = _books[idx].copyWith(coverPath: coverPath);
+      _controller.add(List.unmodifiable(_books));
+    }
+  }
 }
