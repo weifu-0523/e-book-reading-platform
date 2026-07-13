@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.11.5--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.11.5-alpha)
+[![Version](https://img.shields.io/badge/version-1.11.6--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.11.6-alpha)
 
 ## 项目状态
 
@@ -30,6 +30,7 @@
 - ✅ **v1.11.3-alpha**：重新导入失败 hotfix——用户报告「清空书架 + 删除坚果云 JSON 后，重新导入同一本书失败 `PathAccessException errno=5`」。根因双层：(1) `LocalBookRepository.delete` / `deleteBooks` 只删 DB 行不删 `library/{hash}.{ext}` 内容寻址文件，清空书架后文件残留为孤儿；(2) 重新导入同 hash 时若目标文件被外部工具标 ReadOnly attribute，Windows `CreateFileW(GENERIC_WRITE)` 必返回 `ERROR_ACCESS_DENIED = errno=5`。修复：repo `delete` 在删 DB row 之前 capture fileHash+format，之后 best-effort 删本地 library 文件（hash 内容寻址+UNIQUE 索引，安全）；`FileStorage.storeLibraryFileFromBytes` / `deleteLibraryFile` 在 errno=5 时 `attrib -R` 清 ReadOnly 再重试一次。6 个回归测试（含 Windows-only ReadOnly 场景）。
 - ✅ **v1.11.4-alpha**：跨设备封面同步 + drift stream 通知修复——用户在手机端测试 v1.11.3-alpha 同步时报告两个 bug：(1) 同步书架云图标不消失 + 每次点书都重新下载；(2) 跨设备同步的书籍封面缺失（PC 绝对路径 + 漏掉封面 binary 同步）。根因 1：drift DSL 写才触发 `select(books).watch()` stream 通知，但 `RemoteRecordApplier._applyBook` 和 `BookFileSyncService.uploadBookFile` / `downloadBookFile` 用 `customStatement` / `customInsert` 绕过 DSL，stream 不知道 DB 已变。根因 2：`SyncRecorder.recordBook` 把 `books.cover_path`（PC 绝对路径）原样写入 payload，接收端 `existsSync()` 始终 false。修复：3 个 books 表写位改 drift DSL（INSERT/UPDATE/DELETE）+ 封面走平行 binary 同步（`/zhiyue/covers/{id}.png` + sentinel `__needs_cover_download__` + coverLoaderProvider 懒下载）+ wire format 用 `hasCover: bool`（不再传 PC 绝对路径）+ 删书联动 cover 文件。28 个新测试（含 stream emit + cover sync 全场景）。
 - ✅ **v1.11.5-alpha**：EPUB 锚点目录跳转修复——用户报告《老子道德经-老子》点击目录条目无反应，且该书「似乎没有分章节」。根因：Calibre 生成的 EPUB 把所有章节塞进单个 html 文件，靠 `#fileposNNNNN` 锚点区分章节边界，但渲染器把每个 navPoint 当独立章节（共享 html 被重复加载 80+ 次）+ 锚点被忽略（locator 永远 `cfi='N:0'`）。修复 3 层：(T1) `PlainTextUtils.anchorToPlainOffset` 把 `id=/name=` 锚点解析为 plain-text 字符偏移（与 `cfi_codec` 同坐标系，二分查找 + html 最后一个 `<` 定位）；(T2) `EpubxRenderer` 按 `ContentFileName` 去重章节（80 navPoints → 1 章节）+ 反查 map `_contentFileToChapterIndex`；(T3) `_chaptersToToc` 改写为 `_locatorForChapter(ch)`：dedupedIdx 查 map + charOffset 解析锚点，TOC 条目 locator 形如 `0:4`（去重章 0 的偏移 4），点击跳转到对应位置而非章首。6 个新测试覆盖 Calibre 模式（共享 html + 锚点解析 + 缺失锚点回退 + gotoLocator 不崩溃）。
+- ✅ **v1.11.6-alpha**：手机竖屏 chrome 横向滚动修复——用户报告手机端顶部导航条图标堆叠，平板正常。根因：AppBar 固定 `leadingWidth=192` + 8-9 个 48px IconButton 总宽 ~600px，远超手机屏宽（360-412dp），AppBar 内部 Row 溢出。修复：检测 `WindowSizeClass.compact`（width < 600，手机竖屏），改用 `SingleChildScrollView(horizontal) + Row` 替代 AppBar 三段布局，所有按钮排成一行可左右拖动；medium/expanded（≥600dp，平板/桌面）保持现有 AppBar 不变。提取 `_chromeLeadingButtons` / `_chromeActions` 共享 helper，wide 和 compact 共用按钮列表。窄屏不显示 ReaderClock（手机用户用状态栏看时间）。2 个新测试 + 3 个旧测试调整（drag 到 AI 按钮可见再 tap）。
 - 下一步：TTS 集成（M2.9，已在 S4 路线图）/ 跨书 AI 伴读（v1.12+）/ iOS 端 binary 同步 + CI。
 
 ## 下载安装

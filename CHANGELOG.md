@@ -7,7 +7,45 @@
 
 ## [Unreleased]
 
-v1.11.5-alpha 之后的新变更将记在此处。
+v1.11.6-alpha 之后的新变更将记在此处。
+
+## [1.11.6-alpha] - 2026-07-13
+
+手机竖屏 chrome 横向滚动修复：用户报告手机端顶部导航条图标堆叠。
+定位为 AppBar 固定 `leadingWidth=192` + 8-9 个 48px IconButton 总宽
+~600px，超出手机屏宽（360-412dp），AppBar 内部 Row 溢出。
+
+### 修复
+
+- **Bug：手机竖屏 chrome 图标堆叠**。修复方式：检测
+  `WindowSizeClass.compact`（width < 600，手机竖屏），改用
+  `SingleChildScrollView(horizontal: true) + Row` 替代 AppBar 三段
+  布局，所有按钮排成一行可左右拖动。medium/expanded（≥600dp，平板
+  横竖屏 / 桌面）保持现有 AppBar 不变（byte-for-byte）。
+
+- **实现**：
+  - 提取 `_chromeLeadingButtons()` / `_chromeActionButtons()` 两个
+    helper 返回 `List<Widget>`，compact 滚动 Row 和 wide AppBar 共用
+  - `_buildChrome` 顶部按 `windowSizeClassOf(context)` 切分支
+  - compact 分支：`SizedBox(kToolbarHeight) + SingleChildScrollView +
+    Row(leading + actions)`，窄屏不显示 ReaderClock 节省空间
+    （手机用户用状态栏看时间）
+
+- **测试**：新增 `reader_scaffold_compact_scroll_test.dart` 2 case
+  （360dp 视口验证横向 scrollable + 全屏按钮 drag 后可见；800dp 验证
+  保持 AppBar 无 scrollable）。调整 `reader_body_ai_entry_test.dart`
+  3 case（Bug 2a/4/5），tap AI 按钮前先 drag scroll 到可见。
+
+- **回归**：1451 pass / 14 skip / 10 baseline fail（与 v1.11.5-alpha
+  同 fail 集合，全 pre-existing），0 新回归。
+
+### 已知限制
+
+- 窄屏不显示中央时钟（ReaderClock）。手机用户用状态栏看时间，节省
+  横向空间留给按钮。
+- AI 按钮在 actions 区第 6 位，默认可能在屏外。手机用户：(1) chrome
+  隐藏时用 FAB（AI 入口）直达；(2) chrome 可见时横向拖动到按钮。这
+  是 trade-off——保持按钮顺序与宽屏一致（不破坏桌面端 muscle memory）。
 
 ## [1.11.5-alpha] - 2026-07-13
 
