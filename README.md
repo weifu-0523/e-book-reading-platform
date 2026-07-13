@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.11.2--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.11.2-alpha)
+[![Version](https://img.shields.io/badge/version-1.11.3--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.11.3-alpha)
 
 ## 项目状态
 
@@ -27,6 +27,7 @@
 - ✅ **v1.11.0-alpha**：M2.8 跨端同步范围扩展——让用户「在电脑上看的书和聊天可以在手机上接着」。新增 AI 聊天历史同步 + 书籍标签同步 + 书籍 binary 文件同步，覆盖 metadata-only 同步之外的三类核心数据。13 任务 TDD，~50 新测试，schema v13 → v14（`books.file_synced_at`）。
 - ✅ **v1.11.1-alpha**：M2.8 紧急 hotfix——v1.11.0-alpha 用户上手测试发现两个同步 bug：(1) `BookFileSyncService.uploadBookFile` 缺 `ensureAncestors` 致 `/zhiyue/files/` 目录从未创建，PUT 全部 409 静默失败，binary 文件从未真正上传；(2) 坚果云 WebDAV 返回 snapshot 时 `Content-Type: application/octet-stream` 无 charset，Dart http 默认 latin1 解码致中文书名 mojibake。3 个回归测试 + 4 个旧测试更新。
 - ✅ **v1.11.2-alpha**：删书静默失败 hotfix——用户报告「弹了确认框，点确认后书没被删除」。根因：9 个子表（book_notes / annotations / reading_progress_table / book_typography_overrides / ai_summaries / bookmarks / chat_sessions / chat_messages / freeform_notes）的 FK to `books(id)` 都缺 `ON DELETE CASCADE`（drift 默认 NO ACTION），`PRAGMA foreign_keys = ON` 下 `DELETE FROM books` 触发 `FOREIGN KEY constraint failed` 异常，从 `_confirmDelete` 冒到 Flutter framework 被静默吞掉。修复：`BooksDao.deleteBookCascade` / `deleteBooksCascade` 在事务里按依赖顺序清子表再删 books；`_confirmDelete` 加 try/catch + SnackBar 显示未来错误。2 个回归测试覆盖 9 个子表。
+- ✅ **v1.11.3-alpha**：重新导入失败 hotfix——用户报告「清空书架 + 删除坚果云 JSON 后，重新导入同一本书失败 `PathAccessException errno=5`」。根因双层：(1) `LocalBookRepository.delete` / `deleteBooks` 只删 DB 行不删 `library/{hash}.{ext}` 内容寻址文件，清空书架后文件残留为孤儿；(2) 重新导入同 hash 时若目标文件被外部工具标 ReadOnly attribute，Windows `CreateFileW(GENERIC_WRITE)` 必返回 `ERROR_ACCESS_DENIED = errno=5`。修复：repo `delete` 在删 DB row 之前 capture fileHash+format，之后 best-effort 删本地 library 文件（hash 内容寻址+UNIQUE 索引，安全）；`FileStorage.storeLibraryFileFromBytes` / `deleteLibraryFile` 在 errno=5 时 `attrib -R` 清 ReadOnly 再重试一次。6 个回归测试（含 Windows-only ReadOnly 场景）。
 - 下一步：TTS 集成（M2.9，已在 S4 路线图）/ 跨书 AI 伴读（v1.12+）/ iOS 端 binary 同步 + CI。
 
 ## 下载安装

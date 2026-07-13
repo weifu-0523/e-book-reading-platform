@@ -7,7 +7,54 @@
 
 ## [Unreleased]
 
-v1.11.2-alpha 之后的新变更将记在此处。
+v1.11.3-alpha 之后的新变更将记在此处。
+
+## [1.11.3-alpha] - 2026-07-13
+
+重新导入失败 hotfix：用户报告「清空书架 + 删除坚果云 JSON 文件后，重新
+导入同一本书失败」。
+
+### 修复
+
+- **Bug：重新导入 errno=5 PathAccessException**。根因两层：
+  1. `LocalBookRepository.delete` / `deleteBooks` 只删数据库行，**不删
+     `library/{hash}.{ext}` 内容寻址文件**。清空书架后这些文件作为孤儿
+     残留在 `C:\Users\1\Documents\library\`，永远不缩。
+  2. 重新导入同 hash 时 `FileStorage.storeLibraryFileFromBytes` 写已存在
+     文件；若该文件被外部工具（OneDrive / 杀软 / 备份）或早期版本标记
+     ReadOnly attribute，Windows 上 `CreateFileW(GENERIC_WRITE)` 必返回
+     `ERROR_ACCESS_DENIED = errno=5`，Dart 抛 `PathAccessException`。
+- **修复（双层）**：
+  - **根因层**：`LocalBookRepository.delete` / `deleteBooks` 在删 DB row
+    之前 capture `fileHash + format`，删 row 之后 best-effort 删本地
+    library 文件。Hash 内容寻址 + `idx_books_file_hash` UNIQUE，文件只被
+    一本书引用，删除安全。`fileStorage` 经由 `globalFileStorage`（main.dart
+    boot 时 set）注入；widget 测试 / null 场景下跳过文件删除（向后兼容）。
+  - **表层 resilient**：`FileStorage.storeLibraryFileFromBytes` /
+    `deleteLibraryFile` 在 `PathAccessException` errno=5 + 文件已存在时
+    调 `attrib -R` 清 ReadOnly 再重试一次。处理历史脏文件 + 第三方工具
+    干扰。POSIX 平台 no-op（ReadOnly 不阻塞 POSIX 写）。
+
+### 测试
+
+- 新增 6 个回归测试：
+  - `file_storage_test.dart`：storeFromBytes + delete 清 ReadOnly
+    retry（Windows-only，POSIX skip）。
+  - `local_book_repository_test.dart`：delete 删本地 library 文件 +
+    deleteBooks 删每个 + 无 fileStorage 时文件保留（向后兼容）+
+    ReadOnly 文件下 delete 仍成功（v1.11.2 + v1.11.3 复合回归）。
+- 总测试数 1427 → 1433（+6 新增）。
+
+### 已知限制
+
+- **历史孤儿文件不自动清理**：本修复保证未来删书时同时删本地文件，但
+  旧版本残留的孤儿文件不会自动扫描清除。用户可手动删
+  `C:\Users\1\Documents\library\` 下不再被数据库引用的文件，或直接清空
+  整个目录（重新导入时会重建）。
+- **errno=5 非 ReadOnly 原因仍会失败**：例如文件被另一进程独占打开（zhiyue
+  自身的 reader 句柄泄漏 / 杀软实时扫描 / OneDrive 上传中），`attrib -R`
+  后再写仍会 errno=5。这种场景下异常会向上传播，由 import 调用方提示用户。
+  未来可加 file-lock 等待重试（v1.12+）。
 
 ## [1.11.2-alpha] - 2026-07-13
 
