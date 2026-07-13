@@ -23,6 +23,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 
 import '../../../core/platform_info.dart';
+import '../../../core/responsive_layout_builder.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../controllers/reader_ui_controller.dart';
 import 'reader_clock.dart';
@@ -485,6 +486,7 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold>
 
   Widget _buildChrome(BuildContext context) {
     final ui = ref.watch(readerUiControllerProvider);
+    final isCompact = windowSizeClassOf(context) == WindowSizeClass.compact;
     return Positioned(
       top: 0,
       left: 0,
@@ -493,195 +495,235 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold>
         key: const Key('reader_app_bar'),
         color: Colors.black54,
         child: SafeArea(
-          child: AppBar(
-            // M3c/任务 3：顶栏中间显示实时时钟（每秒刷新）。chrome 隐藏时
-            // _buildChrome 不调用，ReaderClock 不挂载，Timer 不启动。
-            title: const ReaderClock(),
-            centerTitle: true,
-            // M3e/Q4：书架 + 字号± 按钮挪到时钟左边（leading 区）。
-            // 原 M3c 全放在右侧 actions，用户反馈希望挪到时间左边更顺手。
-            // leading 作为 Row 容纳 4 个按钮：返回 / 书架 / 字号- / 字号+。
-            // leadingWidth 放宽到容纳 4 个 48px 图标（AppBar 默认 leadingWidth=56）。
-            leadingWidth: 192,
-            leading: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () {
-                    (widget.onBack ?? () => Navigator.maybePop(context))();
-                    _reclaimFocus();
-                  },
-                ),
-                // M3c/任务 6b：书架入口。点击弹出书架对话框选书切换。
-                IconButton(
-                  key: const Key('reader_open_bookshelf'),
-                  icon: const Icon(Icons.collections_bookmark_outlined),
-                  tooltip: '书架',
-                  onPressed: widget.onOpenBookshelf == null
-                      ? null
-                      : () {
-                          widget.onOpenBookshelf!.call();
-                          _reclaimFocus();
-                        },
-                ),
-                // M3c/任务 6a：字号减小。与排版面板同 clamp 范围（12-32）。
-                IconButton(
-                  key: const Key('reader_font_decrease'),
-                  icon: const Icon(Icons.text_decrease),
-                  tooltip: '字号减小',
-                  onPressed: widget.onFontDecrease == null
-                      ? null
-                      : () {
-                          widget.onFontDecrease!();
-                          _reclaimFocus();
-                        },
-                ),
-                // M3c/任务 6a：字号增大。
-                IconButton(
-                  key: const Key('reader_font_increase'),
-                  icon: const Icon(Icons.text_increase),
-                  tooltip: '字号增大',
-                  onPressed: widget.onFontIncrease == null
-                      ? null
-                      : () {
-                          widget.onFontIncrease!();
-                          _reclaimFocus();
-                        },
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.list),
-                tooltip: '目录',
-                onPressed: widget.onOpenToc == null
-                    ? null
-                    : () {
-                        widget.onOpenToc!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              IconButton(
-                icon: const Icon(Icons.text_fields),
-                tooltip: '排版',
-                onPressed: widget.onOpenTypography == null
-                    ? null
-                    : () {
-                        widget.onOpenTypography!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              IconButton(
-                key: const Key('toggle_pagination_mode'),
-                icon: Icon(widget.paginationMode == PaginationMode.scroll
-                    ? Icons.auto_stories
-                    : Icons.view_agenda),
-                tooltip: widget.paginationMode == PaginationMode.scroll
-                    ? '切换到翻页模式'
-                    : '切换到滚动模式',
-                onPressed: widget.onTogglePaginationMode == null
-                    ? null
-                    : () {
-                        widget.onTogglePaginationMode!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              IconButton(
-                icon: const Icon(Icons.menu_book),
-                tooltip: '笔记',
-                onPressed: widget.onOpenNotes == null
-                    ? null
-                    : () {
-                        widget.onOpenNotes!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              // T12：添加书签。v1 不做「当前页已加书签」检测，统一显示
-              // bookmark_add_outlined 图标，点击弹 dialog 录入 label + note。
-              IconButton(
-                key: const Key('toggle_bookmark'),
-                icon: const Icon(Icons.bookmark_add_outlined),
-                tooltip: '添加书签',
-                onPressed: widget.onAddBookmark == null
-                    ? null
-                    : () {
-                        widget.onAddBookmark!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              // M2.7/T22: 单一「AI 抽屉」入口（替代原 AI 导读 + 问答 两个图标）。
-              // wide 模式切 _aiPanelOpen，narrow 模式 openEndDrawer。
-              IconButton(
-                key: const Key('toggle_ai_drawer'),
-                icon: const Icon(Icons.smart_toy_outlined),
-                tooltip: 'AI 抽屉',
-                onPressed: widget.onToggleAiDrawer == null
-                    ? null
-                    : () {
-                        widget.onToggleAiDrawer!.call();
-                        _reclaimFocus();
-                      },
-              ),
-              // T9：全屏模式切换。全屏下 chrome 默认隐藏，需先通过中央
-              // double-tap 唤出 chrome 才能点击此图标退出。
-              IconButton(
-                key: const Key('toggle_fullscreen'),
-                icon: Icon(ui.isFullscreen
-                    ? Icons.fullscreen_exit
-                    : Icons.fullscreen),
-                tooltip: ui.isFullscreen ? '退出全屏' : '全屏',
-                onPressed: () {
-                  ref
-                      .read(readerUiControllerProvider.notifier)
-                      .toggleFullscreen();
-                  _reclaimFocus();
-                },
-              ),
-              // M2.6/T2 (Bug #4): PDF 双页独立切换按钮。仅 PDF 引擎时父组件
-              // 传入回调；null 时不渲染。v1.5.1 不持久化，每次启动默认 false。
-              if (widget.onToggleDualPage != null)
-                IconButton(
-                  key: const Key('toggle_dual_page'),
-                  icon: Icon(widget.isDualPageMode
-                      ? Icons.menu_book_outlined
-                      : Icons.menu_book),
-                  tooltip: widget.isDualPageMode ? '切到单页' : '切到双页',
-                  onPressed: () {
-                    widget.onToggleDualPage!();
-                    _reclaimFocus();
-                  },
-                ),
-              if (widget.onOpenReview != null)
-                PopupMenuButton<String>(
-                  key: const Key('reader_overflow_menu'),
-                  icon: const Icon(Icons.more_vert),
-                  tooltip:
-                      AppLocalizations.of(context)!.reviewCurrentChapterMenuLabel,
-                  onSelected: (value) {
-                    if (value == 'review_current') {
-                      widget.onOpenReview!();
-                    }
-                    _reclaimFocus();
-                  },
-                  itemBuilder: (ctx) => [
-                    PopupMenuItem<String>(
-                      value: 'review_current',
-                      child: ListTile(
-                        leading: const Icon(Icons.rate_review_outlined),
-                        title: Text(
-                            AppLocalizations.of(ctx)!.reviewCurrentChapterMenuLabel),
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
+          // v1.11.6-alpha：手机竖屏（width < 600，WindowSizeClass.compact）
+          // 下 AppBar 的 leadingWidth=192 + 8-9 个 action IconButton（每个 48px）
+          // 总宽 ~600+px，远超手机屏宽 → 内部 Row 溢出 → 用户感知「堆叠」。
+          // compact 模式改用横向 SingleChildScrollView + Row，所有按钮排一行
+          // 可左右拖动；medium/expanded 模式保持现有 AppBar 三段布局不变。
+          child: isCompact
+              ? _buildCompactChromeBar(context, ui)
+              : _buildWideChromeBar(context, ui),
         ),
       ),
     );
+  }
+
+  /// 宽屏 chrome（width ≥ 600，medium + expanded）：保持 v1.11.5-alpha 起
+  /// 的 AppBar 三段布局（leading 时钟左侧 4 按钮 / centerTitle 时钟 /
+  /// actions 8-9 按钮）。byte-for-byte 不变。
+  Widget _buildWideChromeBar(BuildContext context, ReaderUiState ui) {
+    return AppBar(
+      // M3c/任务 3：顶栏中间显示实时时钟（每秒刷新）。chrome 隐藏时
+      // _buildChrome 不调用，ReaderClock 不挂载，Timer 不启动。
+      title: const ReaderClock(),
+      centerTitle: true,
+      // M3e/Q4：书架 + 字号± 按钮挪到时钟左边（leading 区）。
+      // 原 M3c 全放在右侧 actions，用户反馈希望挪到时间左边更顺手。
+      // leading 作为 Row 容纳 4 个按钮：返回 / 书架 / 字号- / 字号+。
+      // leadingWidth 放宽到容纳 4 个 48px 图标（AppBar 默认 leadingWidth=56）。
+      leadingWidth: 192,
+      leading: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: _chromeLeadingButtons(context),
+      ),
+      actions: _chromeActionButtons(context, ui),
+    );
+  }
+
+  /// 窄屏 chrome（width < 600，compact）：所有按钮排一行可横向拖动。
+  ///
+  /// ReaderClock 在窄屏不显示（节省横向空间，手机用户看时间用状态栏即可）。
+  /// 按钮顺序与宽屏一致（leading 4 + actions 8-9）。
+  Widget _buildCompactChromeBar(BuildContext context, ReaderUiState ui) {
+    return SizedBox(
+      height: kToolbarHeight,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            ..._chromeLeadingButtons(context),
+            ..._chromeActionButtons(context, ui),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// chrome leading 区按钮（宽屏 AppBar.leading / 窄屏滚动 Row 前段共用）。
+  /// 顺序：返回 / 书架 / 字号- / 字号+。
+  List<Widget> _chromeLeadingButtons(BuildContext context) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () {
+          (widget.onBack ?? () => Navigator.maybePop(context))();
+          _reclaimFocus();
+        },
+      ),
+      // M3c/任务 6b：书架入口。点击弹出书架对话框选书切换。
+      IconButton(
+        key: const Key('reader_open_bookshelf'),
+        icon: const Icon(Icons.collections_bookmark_outlined),
+        tooltip: '书架',
+        onPressed: widget.onOpenBookshelf == null
+            ? null
+            : () {
+                widget.onOpenBookshelf!.call();
+                _reclaimFocus();
+              },
+      ),
+      // M3c/任务 6a：字号减小。与排版面板同 clamp 范围（12-32）。
+      IconButton(
+        key: const Key('reader_font_decrease'),
+        icon: const Icon(Icons.text_decrease),
+        tooltip: '字号减小',
+        onPressed: widget.onFontDecrease == null
+            ? null
+            : () {
+                widget.onFontDecrease!();
+                _reclaimFocus();
+              },
+      ),
+      // M3c/任务 6a：字号增大。
+      IconButton(
+        key: const Key('reader_font_increase'),
+        icon: const Icon(Icons.text_increase),
+        tooltip: '字号增大',
+        onPressed: widget.onFontIncrease == null
+            ? null
+            : () {
+                widget.onFontIncrease!();
+                _reclaimFocus();
+              },
+      ),
+    ];
+  }
+
+  /// chrome actions 区按钮（宽屏 AppBar.actions / 窄屏滚动 Row 后段共用）。
+  /// 顺序：目录 / 排版 / 翻页模式 / 笔记 / 书签 / AI / 全屏 / (双页) / (回顾)。
+  List<Widget> _chromeActionButtons(BuildContext context, ReaderUiState ui) {
+    return [
+      IconButton(
+        icon: const Icon(Icons.list),
+        tooltip: '目录',
+        onPressed: widget.onOpenToc == null
+            ? null
+            : () {
+                widget.onOpenToc!.call();
+                _reclaimFocus();
+              },
+      ),
+      IconButton(
+        icon: const Icon(Icons.text_fields),
+        tooltip: '排版',
+        onPressed: widget.onOpenTypography == null
+            ? null
+            : () {
+                widget.onOpenTypography!.call();
+                _reclaimFocus();
+              },
+      ),
+      IconButton(
+        key: const Key('toggle_pagination_mode'),
+        icon: Icon(widget.paginationMode == PaginationMode.scroll
+            ? Icons.auto_stories
+            : Icons.view_agenda),
+        tooltip: widget.paginationMode == PaginationMode.scroll
+            ? '切换到翻页模式'
+            : '切换到滚动模式',
+        onPressed: widget.onTogglePaginationMode == null
+            ? null
+            : () {
+                widget.onTogglePaginationMode!.call();
+                _reclaimFocus();
+              },
+      ),
+      IconButton(
+        icon: const Icon(Icons.menu_book),
+        tooltip: '笔记',
+        onPressed: widget.onOpenNotes == null
+            ? null
+            : () {
+                widget.onOpenNotes!.call();
+                _reclaimFocus();
+              },
+      ),
+      // T12：添加书签。v1 不做「当前页已加书签」检测，统一显示
+      // bookmark_add_outlined 图标，点击弹 dialog 录入 label + note。
+      IconButton(
+        key: const Key('toggle_bookmark'),
+        icon: const Icon(Icons.bookmark_add_outlined),
+        tooltip: '添加书签',
+        onPressed: widget.onAddBookmark == null
+            ? null
+            : () {
+                widget.onAddBookmark!.call();
+                _reclaimFocus();
+              },
+      ),
+      // M2.7/T22: 单一「AI 抽屉」入口（替代原 AI 导读 + 问答 两个图标）。
+      // wide 模式切 _aiPanelOpen，narrow 模式 openEndDrawer。
+      IconButton(
+        key: const Key('toggle_ai_drawer'),
+        icon: const Icon(Icons.smart_toy_outlined),
+        tooltip: 'AI 抽屉',
+        onPressed: widget.onToggleAiDrawer == null
+            ? null
+            : () {
+                widget.onToggleAiDrawer!.call();
+                _reclaimFocus();
+              },
+      ),
+      // T9：全屏模式切换。全屏下 chrome 默认隐藏，需先通过中央
+      // double-tap 唤出 chrome 才能点击此图标退出。
+      IconButton(
+        key: const Key('toggle_fullscreen'),
+        icon: Icon(ui.isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen),
+        tooltip: ui.isFullscreen ? '退出全屏' : '全屏',
+        onPressed: () {
+          ref.read(readerUiControllerProvider.notifier).toggleFullscreen();
+          _reclaimFocus();
+        },
+      ),
+      // M2.6/T2 (Bug #4): PDF 双页独立切换按钮。仅 PDF 引擎时父组件
+      // 传入回调；null 时不渲染。v1.5.1 不持久化，每次启动默认 false。
+      if (widget.onToggleDualPage != null)
+        IconButton(
+          key: const Key('toggle_dual_page'),
+          icon: Icon(widget.isDualPageMode
+              ? Icons.menu_book_outlined
+              : Icons.menu_book),
+          tooltip: widget.isDualPageMode ? '切到单页' : '切到双页',
+          onPressed: () {
+            widget.onToggleDualPage!();
+            _reclaimFocus();
+          },
+        ),
+      if (widget.onOpenReview != null)
+        PopupMenuButton<String>(
+          key: const Key('reader_overflow_menu'),
+          icon: const Icon(Icons.more_vert),
+          tooltip: AppLocalizations.of(context)!.reviewCurrentChapterMenuLabel,
+          onSelected: (value) {
+            if (value == 'review_current') {
+              widget.onOpenReview!();
+            }
+            _reclaimFocus();
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem<String>(
+              value: 'review_current',
+              child: ListTile(
+                leading: const Icon(Icons.rate_review_outlined),
+                title: Text(
+                    AppLocalizations.of(ctx)!.reviewCurrentChapterMenuLabel),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+            ),
+          ],
+        ),
+    ];
   }
 
   /// T9/T10：键盘事件处理。在全屏/翻页输入间协调：

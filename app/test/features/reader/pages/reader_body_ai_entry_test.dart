@@ -176,6 +176,9 @@ void main() {
 
     expect(find.byKey(const Key('toggle_ai_drawer')), findsOneWidget);
 
+    // v1.11.6-alpha：窄屏 chrome 横向滚动，AI 按钮在 actions 区第 6 位，
+    // 默认 off-screen，先 drag 让其可见再 tap（模拟用户真实操作）。
+    await _scrollAiButtonIntoView(tester);
     await tester.tap(find.byKey(const Key('toggle_ai_drawer')));
     await tester.pumpAndSettle();
 
@@ -250,6 +253,7 @@ void main() {
     }
     await tester.pumpAndSettle();
 
+    await _scrollAiButtonIntoView(tester);
     await tester.tap(find.byKey(const Key('toggle_ai_drawer')));
     await tester.pumpAndSettle();
 
@@ -275,6 +279,7 @@ void main() {
     }
     await tester.pumpAndSettle();
 
+    await _scrollAiButtonIntoView(tester);
     await tester.tap(find.byKey(const Key('toggle_ai_drawer')));
     await tester.pumpAndSettle();
 
@@ -287,4 +292,19 @@ void main() {
             'mobile so chat is usable; the previous default (~304 / 78%) '
             'left the book barely readable behind the drawer.');
   });
+}
+
+/// v1.11.6-alpha：窄屏（compact, width < 600）下 chrome 横向滚动，
+/// AI 按钮在 actions 区第 6 位（前有 4 leading + 5 actions），默认
+/// off-screen。tap 前先 drag 让其可见，模拟用户真实操作。
+Future<void> _scrollAiButtonIntoView(WidgetTester tester) async {
+  final scrollableFinder = find.descendant(
+    of: find.byKey(const Key('reader_app_bar')),
+    matching: find.byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.right,
+    ),
+  );
+  if (tester.widgetList(scrollableFinder).isEmpty) return;
+  await tester.drag(scrollableFinder, const Offset(-300, 0));
+  await tester.pumpAndSettle();
 }
