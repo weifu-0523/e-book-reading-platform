@@ -402,7 +402,7 @@ class BookFileSyncService {
         // shows placeholder and we don't retry forever.
         await (_db.update(_db.books)
               ..where((t) => t.id.equals(bookId)))
-            .write(BooksCompanion(coverPath: Value<String?>(null)));
+            .write(const BooksCompanion(coverPath: Value<String?>(null)));
         return;
       }
       rethrow;

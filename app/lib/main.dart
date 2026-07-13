@@ -87,6 +87,9 @@ void main(List<String> args) async {
     final storage = await FileStorage.create();
     localFilesDirOverride = storage.libraryDir.path;
     globalFileStorage = storage;
+    // T4 (2026-07-13): publish covers dir so SyncController can wire it
+    // into BookFileSyncService for cross-device cover binary sync.
+    globalCoversDirOverride = storage.coversDir.path;
   } catch (e) {
     // path_provider not available (e.g. widget test env) — leave as '' so
     // binary sync is disabled. App still works for the metadata-only path.

@@ -204,6 +204,8 @@ class _NoOpQaHistoryDao implements QaHistoryDaoLike {
 /// M1.5a：注入 [AiGuideController]（依赖 [aiGuideProvider]）。
 /// M2.8 T11：注入 [localFilesDir]（FileStorage.libraryDir.path）—— 用于
 /// 跨端 binary 文件下载（SyncController.downloadBookFile）。
+/// T4 (2026-07-13)：注入 [coversDir]（FileStorage.coversDir.path）—— 用于
+/// 跨端封面 binary 同步（SyncController.downloadCoverFile）。
 final providers = <Override>[
   syncControllerProvider.overrideWith(
     (ref) => SyncController(
@@ -213,6 +215,7 @@ final providers = <Override>[
       connectivity: ConnectivityPlusService(),
       intervalPref: SyncIntervalPref(),
       localFilesDir: ref.watch(localFilesDirProvider),
+      coversDir: ref.watch(coversDirProvider),
     ),
   ),
   aiGuideControllerProvider.overrideWith(

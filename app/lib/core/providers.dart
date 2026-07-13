@@ -66,6 +66,16 @@ final localFilesDirProvider = Provider<String>((ref) {
   return localFilesDirOverride;
 });
 
+/// T4 (2026-07-13): sync provider that returns the absolute path to the
+/// local covers directory (where book cover binaries are stored). Set by
+/// main.dart during boot via [globalCoversDirOverride]. Defaults to ''
+/// which disables cover sync (matches pre-T4 behaviour).
+String globalCoversDirOverride = '';
+
+final coversDirProvider = Provider<String>((ref) {
+  return globalCoversDirOverride;
+});
+
 /// 2026-07-13 v1.11.3-alpha: eagerly-resolved [FileStorage] singleton set
 /// by main.dart during boot. Used by [bookRepositoryProvider] to wire
 /// local library file deletion into [LocalBookRepository.delete] / deleteBooks.
