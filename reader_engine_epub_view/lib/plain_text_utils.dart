@@ -82,10 +82,21 @@ class PlainTextUtils {
   /// - Uses the position of the **opening `<` of the element containing the
   ///   attribute** as the html offset, then maps it to plain coordinates.
   /// - When multiple matches exist, uses the first occurrence.
+  ///
+  /// Known limitations:
+  /// - Anchor ids appearing inside HTML comments (`<!-- id="x" -->`), CDATA,
+  ///   `<script>`, or `<style>` blocks may produce false-positive matches.
+  ///   Real-world EPUBs rarely embed `id="anchor"` patterns in these
+  ///   contexts, so impact is limited.
+  /// - Attribute values containing `<` (e.g., `<p title="a<b">`) confuse the
+  ///   walk-back-to-`<` step. Inherited from [htmlToPlainWithOffsets]'s
+  ///   tag-skip parser; EPUBs don't produce these in practice.
+  /// - Whitespace around `=` (e.g., `id = "x"`) and unquoted values
+  ///   (`id=x`) are not matched — anchor must be in a quoted attribute.
   static int? anchorToPlainOffset(String html, String anchor) {
     final patterns = [
-      RegExp("id=[\"']${RegExp.escape(anchor)}[\"']"),
-      RegExp("name=[\"']${RegExp.escape(anchor)}[\"']"),
+      RegExp("id=[\"']${RegExp.escape(anchor)}[\"']", caseSensitive: false),
+      RegExp("name=[\"']${RegExp.escape(anchor)}[\"']", caseSensitive: false),
     ];
     int? attrStart;
     for (final p in patterns) {
