@@ -171,4 +171,85 @@ void main() {
     ).get();
     expect(rows, isEmpty);
   });
+
+  // T1 (2026-07-13): drift DSL writes (insert + delete) must trigger
+  // `select(books).watch()` re-emission — the previous `customInsert` /
+  // `customStatement` writes bypassed drift's StreamQueryStore, so the
+  // library UI didn't see newly-synced books until app restart.
+  group('drift stream notification (T1)', () {
+    test('apply new remote book emits via select(books).watch()', () async {
+      final emitted = <int>[];
+      final sub = db
+          .select(db.books)
+          .watch()
+          .map((rows) => rows.length)
+          .listen(emitted.add);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.length, 1);
+      expect(emitted.first, 0);
+
+      final remote = SyncRecord(
+        id: 'b-stream-new',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 13, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-stream-new',
+          'title': 'Stream Emit Test',
+          'author': null,
+          'format': 'epub',
+          'fileHash': 'h-stream-new',
+          'fileSizeBytes': 1024,
+          'coverPath': null,
+        },
+      );
+
+      await applier.apply(remote);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.last, 1);
+
+      await sub.cancel();
+    });
+
+    test('apply book tombstone emits via select(books).watch()', () async {
+      await db.customInsert(
+        'INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes) '
+        'VALUES(?, ?, ?, ?, ?, ?)',
+        variables: [
+          Variable.withString('b-stream-del'),
+          Variable.withString('To Stream-Delete'),
+          Variable.withString('epub'),
+          Variable.withString('/tmp/books/b-stream-del.epub'),
+          Variable.withString('h-stream-del'),
+          Variable.withInt(0),
+        ],
+      );
+
+      final emitted = <int>[];
+      final sub = db
+          .select(db.books)
+          .watch()
+          .map((rows) => rows.length)
+          .listen(emitted.add);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.length, 1);
+      expect(emitted.first, 1);
+
+      final tombstone = SyncRecord(
+        id: 'b-stream-del',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 13, 11),
+        deleted: true,
+        payload: const {},
+      );
+
+      await applier.apply(tombstone);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.last, 0);
+
+      await sub.cancel();
+    });
+  });
 }

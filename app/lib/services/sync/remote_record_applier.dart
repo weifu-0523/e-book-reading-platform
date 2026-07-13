@@ -373,20 +373,21 @@ class RemoteRecordApplier {
     // Books excluded from conflict log — would be pure noise.
     if (existing != null) {
       if (record.deleted) {
-        await _db.customStatement(
-          'DELETE FROM books WHERE id = ?',
-          [record.id],
-        );
+        // T1 (2026-07-13): DSL delete for stream notification — UI watches
+        // `select(books)` and must observe the row disappearing immediately,
+        // otherwise the library page keeps a stale card until restart.
+        await (_db.delete(_db.books)
+              ..where((t) => t.id.equals(record.id)))
+            .go();
         return true;
       }
       return false;
     }
 
     if (record.deleted) {
-      await _db.customStatement(
-        'DELETE FROM books WHERE id = ?',
-        [record.id],
-      );
+      await (_db.delete(_db.books)
+            ..where((t) => t.id.equals(record.id)))
+          .go();
       return true;
     }
 
@@ -396,19 +397,23 @@ class RemoteRecordApplier {
     // affordance and the reader-open flow can trigger downloadBookFile.
     // file_synced_at stays NULL (default) — it is only stamped after a
     // successful upload or download by BookFileSyncService.
-    await _db.customInsert(
-      'INSERT OR IGNORE INTO books(id, title, author, format, file_path, file_hash, file_size_bytes, cover_path) VALUES(?, ?, ?, ?, ?, ?, ?, ?)',
-      variables: [
-        Variable.withString(record.id),
-        Variable.withString(p['title'] as String),
-        Variable<String>(p['author'] as String?),
-        Variable.withString(p['format'] as String),
-        Variable.withString(BookFileSyncService.needsDownloadSentinel),
-        Variable.withString(p['fileHash'] as String),
-        Variable.withInt(p['fileSizeBytes'] as int),
-        Variable<String>(p['coverPath'] as String?),
-      ],
-    );
+    //
+    // T1 (2026-07-13): DSL insert (insertOrIgnore) so `select(books).watch()`
+    // streams re-emit on the receiver — `customInsert` bypassed drift's
+    // stream notification path, which forced a restart to see synced books.
+    await (_db.into(_db.books).insert(
+          BooksCompanion.insert(
+            id: record.id,
+            title: p['title'] as String,
+            author: Value<String?>(p['author'] as String?),
+            format: p['format'] as String,
+            filePath: BookFileSyncService.needsDownloadSentinel,
+            fileHash: p['fileHash'] as String,
+            fileSizeBytes: p['fileSizeBytes'] as int,
+            coverPath: Value<String?>(p['coverPath'] as String?),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        ));
     return true;
   }
 

@@ -611,4 +611,92 @@ void main() {
       expect(await service.getLocalPath('b1'), '$booksDir/b1.pdf');
     });
   });
+
+  // T1 (2026-07-13): drift DSL writes to `books` must trigger
+  // `select(books).watch()` re-emission — the previous `customStatement`
+  // UPDATEs bypassed drift's StreamQueryStore, which left the library UI
+  // showing stale `file_path` / `file_synced_at` until app restart.
+  group('drift stream notification (T1)', () {
+    test('uploadBookFile emits new file_synced_at via select(books).watch()',
+        () async {
+      await insertBook(id: 'b-stream-up', format: 'epub');
+
+      final emitted = <int?>[];
+      final sub = (db.select(db.books)
+            ..where((t) => t.id.equals('b-stream-up')))
+          .watch()
+          .map((rows) => rows.isEmpty ? null : rows.first.fileSyncedAt)
+          .listen(emitted.add);
+      // pump initial emit
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.length, 1);
+      expect(emitted.first, isNull);
+
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'MKCOL') return http.Response('', 201);
+            if (request.method == 'PUT') return http.Response('', 201);
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+      );
+      await service.uploadBookFile('b-stream-up');
+
+      // pump post-update emit
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.length, greaterThan(1));
+      expect(emitted.last, isNotNull);
+
+      await sub.cancel();
+    });
+
+    test('downloadBookFile emits new file_path via select(books).watch()',
+        () async {
+      await insertBook(
+        id: 'b-stream-dl',
+        format: 'epub',
+        filePath: BookFileSyncService.needsDownloadSentinel,
+      );
+
+      final emitted = <String?>[];
+      final sub = (db.select(db.books)
+            ..where((t) => t.id.equals('b-stream-dl')))
+          .watch()
+          .map((rows) => rows.isEmpty ? null : rows.first.filePath)
+          .listen(emitted.add);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.length, 1);
+      expect(emitted.first, BookFileSyncService.needsDownloadSentinel);
+
+      final service = BookFileSyncService(
+        database: db,
+        webdav: WebDavClient(
+          baseUrl: 'https://dav.example.com/dav',
+          username: 'u',
+          password: 'p',
+          httpClient: MockClient((request) async {
+            if (request.method == 'GET') {
+              return http.Response.bytes('REMOTE-EPUB'.codeUnits, 200);
+            }
+            return http.Response('', 404);
+          }),
+        ),
+        localFilesDir: booksDir,
+      );
+      await service.downloadBookFile('b-stream-dl');
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(emitted.length, greaterThan(1));
+      expect(emitted.last, isNot(BookFileSyncService.needsDownloadSentinel));
+      expect(emitted.last, contains('b-stream-dl.epub'));
+
+      await sub.cancel();
+    });
+  });
 }

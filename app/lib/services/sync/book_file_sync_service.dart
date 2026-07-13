@@ -109,10 +109,15 @@ class BookFileSyncService {
     // decides what to do. We intentionally do NOT special-case 507 here.
     await _webdav.putBytes(remotePath, bytes);
 
-    await _db.customStatement(
-      'UPDATE books SET file_synced_at = ? WHERE id = ?',
-      [DateTime.now().millisecondsSinceEpoch, bookId],
-    );
+    // T1 (2026-07-13): drift DSL write so `select(books).watch()` streams
+    // re-emit. The previous `customStatement` UPDATE bypassed drift's
+    // stream notification path (streamSqlUpdates is OFF in this project),
+    // which left the library UI showing stale `file_path` until app
+    // restart. DSL writes notify StreamQueryStore automatically.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (_db.update(_db.books)
+          ..where((t) => t.id.equals(bookId)))
+        .write(BooksCompanion(fileSyncedAt: Value(now)));
   }
 
   /// Scan all books where `file_synced_at IS NULL` AND `file_path` is not
@@ -177,10 +182,14 @@ class BookFileSyncService {
     await file.create(recursive: true);
     await file.writeAsBytes(bytes);
 
-    await _db.customStatement(
-      'UPDATE books SET file_path = ?, file_synced_at = ? WHERE id = ?',
-      [localPath, DateTime.now().millisecondsSinceEpoch, bookId],
-    );
+    // T1 (2026-07-13): see uploadBookFile — DSL write for stream notification.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await (_db.update(_db.books)
+          ..where((t) => t.id.equals(bookId)))
+        .write(BooksCompanion(
+      filePath: Value(localPath),
+      fileSyncedAt: Value(now),
+    ));
   }
 
   /// Delete a book's remote binary file. Idempotent — 404 (file already
