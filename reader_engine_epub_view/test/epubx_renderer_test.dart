@@ -340,4 +340,61 @@ void main() {
       await renderer.dispose();
     },
   );
+
+  group('dedupe chapters by ContentFileName (anchor TOC fix)', () {
+    test('collapses 3 navPoints sharing one html file into 1 _chapters entry',
+        () async {
+      const sharedHtml =
+          '<p id="filepos10737">前言内容</p>'
+          '<p id="filepos16682">道经</p>'
+          '<p id="filepos16764">第一章 众妙之门</p>'
+          '<p>正文</p>';
+      final book = EpubBook()
+        ..Title = 'TestDedup'
+        ..Chapters = [
+          EpubChapter()
+            ..Title = '前言'
+            ..ContentFileName = 'index_split_001.html'
+            ..Anchor = null
+            ..HtmlContent = sharedHtml,
+          EpubChapter()
+            ..Title = '道经'
+            ..ContentFileName = 'index_split_001.html'
+            ..Anchor = 'filepos16682'
+            ..HtmlContent = sharedHtml,
+          EpubChapter()
+            ..Title = '第一章 众妙之门'
+            ..ContentFileName = 'index_split_001.html'
+            ..Anchor = 'filepos16764'
+            ..HtmlContent = sharedHtml,
+        ];
+
+      final r = EpubxRenderer();
+      r.bookForTesting = book;
+
+      expect(r.chapterCount, 1,
+          reason: '3 navPoints sharing one html file must dedupe to 1 chapter');
+      await r.dispose();
+    });
+
+    test('keeps separate chapters when ContentFileName differs', () async {
+      final book = EpubBook()
+        ..Title = 'TestNoDedup'
+        ..Chapters = [
+          EpubChapter()
+            ..Title = 'Ch1'
+            ..ContentFileName = 'a.html'
+            ..HtmlContent = '<p>a</p>',
+          EpubChapter()
+            ..Title = 'Ch2'
+            ..ContentFileName = 'b.html'
+            ..HtmlContent = '<p>b</p>',
+        ];
+      final r = EpubxRenderer();
+      r.bookForTesting = book;
+      expect(r.chapterCount, 2,
+          reason: 'Different ContentFileName must NOT dedupe');
+      await r.dispose();
+    });
+  });
 }

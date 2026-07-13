@@ -96,6 +96,11 @@ class EpubxRenderer implements EpubRenderer {
   /// 渲染管道，EPUB 路径零回归（openFile 仍走 epubx，填充本字段后委托渲染）。
   List<HtmlChapterSource> _chapters = const [];
 
+  /// Map from `EpubChapter.ContentFileName` to its deduped index in
+  /// [_chapters]. Populated by [_buildDedupedChaptersAndMap]. Empty for
+  /// MD/TXT path (openChapters) — those sources have no ContentFileName.
+  Map<String, int> _contentFileToChapterIndex = const {};
+
   /// Read-only access to the current [TypographySettings].
   ///
   /// M2.6/T3: exposed so [ConcreteEpubReaderEngine.typography] can forward
@@ -531,17 +536,13 @@ class EpubxRenderer implements EpubRenderer {
     _imageInliner = book == null ? null : EpubImageInliner(book);
     // M4.5: 与 openFile 同步填充 _chapters，让走 bookForTesting 的测试也覆盖
     // 格式无关数据源路径（渲染逻辑只读 _chapters）。
+    _contentFileToChapterIndex = const {};
     _chapters = book == null
         ? const []
-        : _flattenChapters(book.Chapters ?? const [])
-            .map((c) => HtmlChapterSource(
-                  title: c.Title ?? '',
-                  html: _imageInliner!.inline(
-                    c.HtmlContent ?? '',
-                    chapterContentFileName: c.ContentFileName,
-                  ),
-                ))
-            .toList();
+        : _buildDedupedChaptersAndMap(
+            _flattenChapters(book.Chapters ?? const []),
+            _imageInliner,
+          );
     _currentChapterIndex = 0;
     _chapterEndFiredForCurrentChapter = false;
     _beginChapterSwitch();
@@ -569,6 +570,44 @@ class EpubxRenderer implements EpubRenderer {
     return result;
   }
 
+  /// Builds the deduped [_chapters] list — one entry per unique
+  /// `ContentFileName` — plus the reverse lookup map.
+  ///
+  /// **Why dedupe:** epubx's `EpubChapterRef.readHtmlContent` returns the
+  /// entire HTML file regardless of NCX anchor fragment. When multiple
+  /// navPoints share a `ContentFileName` (Calibre-generated EPUBs often
+  /// put 80+ chapters as `#fileposNNNNN` anchors inside one html file),
+  /// each EpubChapter ends up with a full duplicate of the same HTML.
+  /// Without dedupe, [_chapters] would contain 80 entries with identical
+  /// content — clicking TOC visually stays on the same content.
+  ///
+  /// First occurrence wins (navPoints typically appear in reading order).
+  /// Subsequent duplicates are dropped from [_chapters] but still get a
+  /// TOC entry via the reverse map.
+  List<HtmlChapterSource> _buildDedupedChaptersAndMap(
+    List<EpubChapter> flat,
+    EpubImageInliner? inliner,
+  ) {
+    final result = <HtmlChapterSource>[];
+    final map = <String, int>{};
+    for (final c in flat) {
+      final key = c.ContentFileName ?? '';
+      if (map.containsKey(key)) continue;
+      map[key] = result.length;
+      result.add(HtmlChapterSource(
+        title: c.Title ?? '',
+        html: inliner?.inline(
+              c.HtmlContent ?? '',
+              chapterContentFileName: c.ContentFileName,
+            ) ??
+            c.HtmlContent ??
+            '',
+      ));
+    }
+    _contentFileToChapterIndex = Map.unmodifiable(map);
+    return List.unmodifiable(result);
+  }
+
   void _setState(ReaderEngineState next) {
     _state = next;
     _stateController.add(next);
@@ -592,15 +631,10 @@ class EpubxRenderer implements EpubRenderer {
       // M4.5: 同步填充格式无关数据源（扁平化 epubx 章节 → HtmlChapterSource），
       // 让渲染/分页/高亮/TOC 走统一路径。EPUB 路径 toc getter 仍读 _book 以
       // 保留嵌套 SubChapters 树（flatChapters 只展平、不丢层级信息给 TOC）。
-      _chapters = _flattenChapters(book.Chapters ?? const [])
-          .map((c) => HtmlChapterSource(
-                title: c.Title ?? '',
-                html: _imageInliner!.inline(
-                  c.HtmlContent ?? '',
-                  chapterContentFileName: c.ContentFileName,
-                ),
-              ))
-          .toList();
+      _chapters = _buildDedupedChaptersAndMap(
+        _flattenChapters(book.Chapters ?? const []),
+        _imageInliner,
+      );
       _currentChapterIndex = 0;
       _chapterEndFiredForCurrentChapter = false;
       _scrollController.removeListener(_onScroll);  // prevent duplicate on repeated calls
@@ -640,6 +674,7 @@ class EpubxRenderer implements EpubRenderer {
       _cachedBreaks = null;
       _pendingJumpToLastPage = false;
       _book = null; // MD/TXT 路径无 epubx book；toc getter 据此走扁平分支
+      _contentFileToChapterIndex = const {}; // Reset for MD/TXT path (no ContentFileName)
       _chapters = List<HtmlChapterSource>.unmodifiable(chapters);
       _currentChapterIndex = 0;
       _chapterEndFiredForCurrentChapter = false;
