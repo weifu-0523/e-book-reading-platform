@@ -76,6 +76,14 @@ void main() {
       localFilesDir: dirB,
     );
     registerFallbackValue(SyncRecordType.annotation);
+    // T2 (2026-07-13): uploadBookFile calls ensureAncestors before putBytes;
+    // deleteRemoteFile calls delete for both binary + cover. Without these
+    // stubs mocktail returns null which throws
+    // `type 'Null' is not a subtype of type 'Future<void>'`.
+    when(() => webdavA.ensureAncestors(any())).thenAnswer((_) async {});
+    when(() => webdavB.ensureAncestors(any())).thenAnswer((_) async {});
+    when(() => webdavA.delete(any())).thenAnswer((_) async {});
+    when(() => webdavB.delete(any())).thenAnswer((_) async {});
   });
   tearDown(() async {
     await dbA.close();
@@ -119,7 +127,7 @@ void main() {
       format: format,
       fileHash: 'h-$bookId',
       fileSizeBytes: bookBytes.length,
-      coverPath: null,
+      hasCover: false,
       mtime: DateTime.utc(2026, 7, 12, 10),
     );
 
@@ -227,7 +235,7 @@ void main() {
       format: '',
       fileHash: '',
       fileSizeBytes: 0,
-      coverPath: null,
+      hasCover: false,
       mtime: DateTime.utc(2026, 7, 12, 11),
       deleted: true,
     );

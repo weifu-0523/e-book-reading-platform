@@ -252,4 +252,109 @@ void main() {
       await sub.cancel();
     });
   });
+
+  // T3 (2026-07-13): wire format carries `hasCover` (bool) instead of the
+  // legacy absolute `coverPath` string. hasCover=true → receiver writes
+  // cover_path = [BookFileSyncService.needsCoverDownloadSentinel] so
+  // coverLoaderProvider triggers lazy download. hasCover=false (PDF) →
+  // cover_path = NULL. Legacy snapshots still carrying `coverPath` are
+  // tolerated via [_sanitizeLegacyCoverPath].
+  group('cover contract (T3)', () {
+    Future<String?> coverPathOf(String bookId) async {
+      final row = await db.customSelect(
+        'SELECT cover_path FROM books WHERE id = ?',
+        variables: [Variable.withString(bookId)],
+      ).getSingle();
+      return row.readNullable<String>('cover_path');
+    }
+
+    test('hasCover=true → cover_path = needsCoverDownloadSentinel', () async {
+      final remote = SyncRecord(
+        id: 'b-cover-true',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 13, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-cover-true',
+          'title': 'Cover True',
+          'author': null,
+          'format': 'epub',
+          'fileHash': 'h-cover-true',
+          'fileSizeBytes': 1024,
+          'hasCover': true,
+        },
+      );
+      await applier.apply(remote);
+      expect(await coverPathOf('b-cover-true'),
+          BookFileSyncService.needsCoverDownloadSentinel);
+    });
+
+    test('hasCover=false → cover_path = NULL (PDF)', () async {
+      final remote = SyncRecord(
+        id: 'b-cover-false',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 13, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-cover-false',
+          'title': 'Cover False PDF',
+          'author': null,
+          'format': 'pdf',
+          'fileHash': 'h-cover-false',
+          'fileSizeBytes': 1024,
+          'hasCover': false,
+        },
+      );
+      await applier.apply(remote);
+      expect(await coverPathOf('b-cover-false'), isNull);
+    });
+
+    test('legacy coverPath non-empty → treated as hasCover=true', () async {
+      // Old snapshot from a pre-T3 build: cover_path is the sender's PC
+      // absolute path. _sanitizeLegacyCoverPath must derive hasCover=true
+      // and DISCARD the path (write sentinel, never the absolute path).
+      final remote = SyncRecord(
+        id: 'b-legacy-cov',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 13, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-legacy-cov',
+          'title': 'Legacy Cover Snapshot',
+          'author': null,
+          'format': 'epub',
+          'fileHash': 'h-legacy-cov',
+          'fileSizeBytes': 1024,
+          // Legacy wire format — absolute PC path. Must NOT leak into the
+          // local row.
+          'coverPath': r'C:\Users\sender\Documents\covers\b-legacy-cov.png',
+        },
+      );
+      await applier.apply(remote);
+      final coverPath = await coverPathOf('b-legacy-cov');
+      // Receiver-side sentinel — never the sender's absolute path.
+      expect(coverPath, BookFileSyncService.needsCoverDownloadSentinel);
+      expect(coverPath, isNot(contains(r'C:\Users')));
+    });
+
+    test('legacy coverPath null → treated as hasCover=false', () async {
+      final remote = SyncRecord(
+        id: 'b-legacy-null',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 13, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-legacy-null',
+          'title': 'Legacy Null Cover',
+          'author': null,
+          'format': 'pdf',
+          'fileHash': 'h-legacy-null',
+          'fileSizeBytes': 1024,
+          'coverPath': null,
+        },
+      );
+      await applier.apply(remote);
+      expect(await coverPathOf('b-legacy-null'), isNull);
+    });
+  });
 }

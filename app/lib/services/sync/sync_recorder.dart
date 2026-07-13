@@ -127,10 +127,17 @@ class SyncRecorder {
     required String format,
     required String fileHash,
     required int fileSizeBytes,
-    String? coverPath,
+    required bool hasCover,
     required DateTime mtime,
     bool deleted = false,
   }) {
+    // T3 (2026-07-13): wire format carries `hasCover` (bool) instead of
+    // the legacy absolute `coverPath` string. The PC absolute path is
+    // meaningless on the receiver (different FS layout), and worse — it
+    // leaked user directory structure. Cover binaries now sync via the
+    // parallel WebDAV channel (`/zhiyue/covers/<id>.png`); the receiver
+    // only needs to know whether to expect a cover. Old snapshots with
+    // `coverPath` are tolerated by `_sanitizeLegacyCoverPath` on apply.
     final payload = <String, dynamic>{
       'id': id,
       'title': title,
@@ -138,7 +145,7 @@ class SyncRecorder {
       'format': format,
       'fileHash': fileHash,
       'fileSizeBytes': fileSizeBytes,
-      'coverPath': coverPath,
+      'hasCover': hasCover,
     };
     return _enqueue(SyncRecord(
       id: id,

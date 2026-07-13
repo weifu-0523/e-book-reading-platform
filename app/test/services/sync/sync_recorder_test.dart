@@ -85,12 +85,13 @@ void main() {
       format: 'epub',
       fileHash: 'h',
       fileSizeBytes: 1024,
-      coverPath: '/covers/b1.png',
+      hasCover: true,
       mtime: DateTime.utc(2026, 6, 28, 10),
     );
     final pending = await outbox.getPending();
     expect(pending.first.recordType, 'book');
     expect(pending.first.payloadJson, contains('"title":"Title"'));
+    expect(pending.first.payloadJson, contains('"hasCover":true'));
   });
 
   // M2.8 (2026-07-12): chat + tags sync scope expansion.

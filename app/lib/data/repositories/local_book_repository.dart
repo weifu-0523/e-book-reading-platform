@@ -117,7 +117,12 @@ class LocalBookRepository implements BookRepository {
       format: book.format.dbValue,
       fileHash: book.fileHash,
       fileSizeBytes: book.fileSizeBytes,
-      coverPath: book.coverPath,
+      // T3 (2026-07-13): wire format carries hasCover instead of PC
+      // absolute coverPath. Any non-null local cover (including the
+      // sentinel __needs_cover_download__ that a receiver may have on a
+      // re-save) means "a cover exists remotely" — receiver sets
+      // cover_path = sentinel and lazy-downloads via BookFileSyncService.
+      hasCover: book.coverPath != null,
       mtime: DateTime.now(),
     );
   }
@@ -141,7 +146,7 @@ class LocalBookRepository implements BookRepository {
       format: '',
       fileHash: '',
       fileSizeBytes: 0,
-      coverPath: null,
+      hasCover: false,
       mtime: DateTime.now(),
       deleted: true,
     );
@@ -182,7 +187,7 @@ class LocalBookRepository implements BookRepository {
         format: '',
         fileHash: '',
         fileSizeBytes: 0,
-        coverPath: null,
+        hasCover: false,
         mtime: now,
         deleted: true,
       );

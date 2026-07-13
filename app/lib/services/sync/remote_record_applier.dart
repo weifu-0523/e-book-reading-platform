@@ -401,6 +401,18 @@ class RemoteRecordApplier {
     // T1 (2026-07-13): DSL insert (insertOrIgnore) so `select(books).watch()`
     // streams re-emit on the receiver — `customInsert` bypassed drift's
     // stream notification path, which forced a restart to see synced books.
+    //
+    // T3 (2026-07-13): wire format carries `hasCover` (bool). On receiver,
+    // `hasCover=true` → cover_path = [needsCoverDownloadSentinel] so
+    // coverLoaderProvider triggers [BookFileSyncService.downloadCoverFile]
+    // lazily. `hasCover=false` (e.g. PDF) → cover_path = NULL.
+    // [_sanitizeLegacyCoverPath] tolerates old snapshots that still carry
+    // the absolute `coverPath` string.
+    final hasCover =
+        (p['hasCover'] as bool?) ?? _sanitizeLegacyCoverPath(p['coverPath']);
+    final coverPathToWrite = hasCover
+        ? BookFileSyncService.needsCoverDownloadSentinel
+        : null;
     await (_db.into(_db.books).insert(
           BooksCompanion.insert(
             id: record.id,
@@ -410,10 +422,22 @@ class RemoteRecordApplier {
             filePath: BookFileSyncService.needsDownloadSentinel,
             fileHash: p['fileHash'] as String,
             fileSizeBytes: p['fileSizeBytes'] as int,
-            coverPath: Value<String?>(p['coverPath'] as String?),
+            coverPath: Value<String?>(coverPathToWrite),
           ),
           mode: InsertMode.insertOrIgnore,
         ));
+    return true;
+  }
+
+  /// T3 (2026-07-13): tolerate legacy snapshot records that carry the
+  /// absolute `coverPath` string instead of the new `hasCover` bool.
+  /// Non-null `coverPath` → `hasCover=true` (receiver lazy-downloads the
+  /// cover). Null/absent → `hasCover=false` (PDF or never-extracted).
+  /// Sender's PC absolute path is discarded — never written to the local
+  /// row (would be a broken cross-device pointer).
+  bool _sanitizeLegacyCoverPath(Object? legacyCoverPath) {
+    if (legacyCoverPath == null) return false;
+    if (legacyCoverPath is String && legacyCoverPath.isEmpty) return false;
     return true;
   }
 
