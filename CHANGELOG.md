@@ -7,7 +7,109 @@
 
 ## [Unreleased]
 
-v1.11.3-alpha 之后的新变更将记在此处。
+v1.11.4-alpha 之后的新变更将记在此处。
+
+## [1.11.4-alpha] - 2026-07-13
+
+跨设备封面同步 + drift stream 通知修复：用户在手机端测试 v1.11.3-alpha
+同步时报告两个问题（书架云图标不消失 + 封面缺失），定位为两层根因。
+
+### 修复
+
+- **Bug 1：同步书架不刷新需重启**。drift 数据库默认不启用
+  `streamSqlUpdates`，但 `RemoteRecordApplier._applyBook` 和
+  `BookFileSyncService.uploadBookFile` / `downloadBookFile` 用
+  `customStatement` / `customInsert` 写 books 表——绕过了 drift 的
+  StreamQueryStore 通知路径。`select(books).watch()` stream 不知道
+  DB 已变，widget 显示陈旧状态，必须重启 app 才看到同步书。**同一根
+  因也导致每次点同步书都重新下载**：downloadBookFile 用 DSL 改完后
+  stream 通知 cover_path 已是本地路径，第二次 tap 直接打开。
+- **修复**：3 个位点改为 drift DSL：
+  - `_applyBook` INSERT + 2 个 DELETE 分支 → `into(books).insert`
+    + `delete(books)..where().go()`
+  - `uploadBookFile` stamp `file_synced_at` → `update(books)..where().write()`
+  - `downloadBookFile` UPDATE `file_path + file_synced_at` →
+    `update(books)..where().write()`
+
+- **Bug 2：跨设备封面缺失**。`SyncRecorder.recordBook` 此前把
+  `books.cover_path`（PC 绝对路径如
+  `C:\Users\1\Documents\covers\{bookId}.png`）原样写入 sync payload。
+  接收端 `cover_path` 指向发送方机器上不存在的路径，
+  `File(path).existsSync()` 始终 false，UI 回退到纯色 + 第一字占位图。
+  M2.8 的 binary 同步体系完全漏掉了封面。
+- **修复**：封面走 binary 同步（仿 M2.8 binary file 体系）：
+  - 远程：`/zhiyue/covers/{bookId}.png`（PNG 是 EpubCoverExtractor 的固定输出）
+  - 本地：`<coversDir>/{bookId}.png`（`FileStorage.coversDir`，M2.8 已存在）
+  - sentinel：`books.cover_path = '__needs_cover_download__'` 表示元数据
+    已同步但封面 binary 未拉取，`coverLoaderProvider` 懒触发下载
+  - 上传：`uploadBookFile` piggyback（best-effort，binary PUT 成功后，
+    cover PUT 失败不阻塞——封面是装饰性）
+  - 下载：`downloadCoverFile` 单独方法，404 时清空 `cover_path = NULL`
+    避免无限重试
+  - 删除：`deleteRemoteFile` piggyback cover delete
+
+- **wire format 变更**：`recordBook` payload 删除 `coverPath`（绝对路径
+  字符串），改为 `hasCover`（bool）。理由：
+  1. PC 绝对路径在接收方毫无意义（不同 OS / 不同用户目录）
+  2. 路径泄露用户目录结构
+  3. 接收方只需知道「是否有封面」即可触发懒下载
+  - 向后兼容：`_sanitizeLegacyCoverPath` 兜底——旧 snapshot 的非空
+    `coverPath` 字符串视为 `hasCover=true`，路径被丢弃，绝不写入本地行。
+
+- **删书联动 cover 文件**：`LocalBookRepository.delete` / `deleteBooks`
+  此前只删 library binary（v1.11.3-alpha 修复），不删 cover binary。
+  本版本加 `_deleteLocalCoverFile` helper，best-effort 删本地封面文件。
+  sentinel / null cover_path 跳过（无本地文件可删）。
+
+### 测试
+
+新增 / 扩展覆盖：
+- T1 drift stream emit：4 个新测试（`book_file_sync_service_test.dart` +
+  `remote_record_applier_book_test.dart`），断言 `select(books).watch()`
+  在 uploadBookFile / downloadBookFile / apply 新书 / apply tombstone
+  后 emit。
+- T2 cover 同步：12 个新测试（upload skip cases / download idempotency /
+  404 → NULL / piggyback on binary lifecycle / best-effort failure
+  swallow）。
+- T3 cover 契约：4 个新测试（hasCover true/false + legacy path 非空 +
+  legacy path null）。
+- T4 coverLoaderProvider sentinel：3 个新测试（成功返回 File / 失败返回
+  null / 404-cleared NULL）。
+- T5 删书联动 cover：5 个新测试（delete single / deleteBooks batch /
+  null cover_path skip / sentinel skip / no-fileStorage backwards compat）。
+
+总测试：1473（1449 pass + 14 skip + 10 baseline fail，baseline fail 全部
+pre-existing——router_test / book_import_service_test fixture / reader_page
+系列 / 3 个 reader widget 编译错误，与本次改动无关）。
+
+### 升级指引
+
+直接覆盖安装即可。schema 无变更（仍 v14），无需迁移。
+
+打开 v1.11.4-alpha 后：
+
+- **跨设备同步的书籍封面正常显示**：电脑端导入 epub → 同步 → 手机端
+  书架出现 + 封面自动下载后显示真实图（不再纯色 + 第一字）。
+- **同步书架立即刷新**：拉取元数据后无需重启，drift DSL 写触发 stream
+  通知，widget 立即看到新书 / 删书 / file_path 更新。
+- **不再每次重新下载**：第一次点同步书下载 binary 后，drift DSL 写
+  `file_path = localPath`，stream 通知 widget，第二次点直接打开（不再
+  弹下载框），节省 WebDAV 流量。
+- **配额满时封面 best-effort**：若坚果云配额已满，binary PUT 成功但
+  cover PUT 507 时，书籍可用但封面缺（显示占位图）。重新导入同书在
+  另一台设备会重新推封面。
+
+### 已知限制
+
+- **历史孤儿封面不自动清理**：本修复保证未来删书时同时删本地封面，
+  但旧版本残留的孤儿封面（`<coversDir>/*.png`）不会自动扫描清除。
+  用户可手动删 `<coversDir>/` 下不再被数据库引用的文件，或清空整个
+  目录（重新同步时会按需下载）。
+- **legacy snapshot 含绝对 coverPath**：本版本兼容旧 snapshot，但发送方
+  PC 绝对路径在 _sanitizeLegacyCoverPath 后被丢弃——接收方会触发懒
+  下载封面，如果发送方未真正上传过封面 binary（旧版本无 T2 upload
+  piggyback），下载 404 后 cover_path 设为 NULL，UI 显示占位图。这是
+  正确行为（"装饰性"语义）。
 
 ## [1.11.3-alpha] - 2026-07-13
 
