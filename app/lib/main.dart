@@ -80,9 +80,13 @@ void main(List<String> args) async {
   // M2.8 T11: eagerly resolve the library dir path before ProviderContainer
   // is built, so SyncController can be constructed synchronously with the
   // path wired into BookFileSyncService (for cross-device binary download).
+  // 2026-07-13 v1.11.3-alpha: also publish the FileStorage instance via
+  // globalFileStorage so bookRepositoryProvider can wire it into
+  // LocalBookRepository for local binary delete-on-book-delete.
   try {
     final storage = await FileStorage.create();
     localFilesDirOverride = storage.libraryDir.path;
+    globalFileStorage = storage;
   } catch (e) {
     // path_provider not available (e.g. widget test env) — leave as '' so
     // binary sync is disabled. App still works for the metadata-only path.

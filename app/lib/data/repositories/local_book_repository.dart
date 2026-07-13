@@ -19,6 +19,7 @@ import '../../services/sync/sync_recorder.dart';
 import '../local/database.dart' as db;
 import '../local/daos/book_tags_dao.dart';
 import '../local/daos/books_dao.dart';
+import '../local/file_storage.dart';
 import '../models/book.dart';
 import 'book_repository.dart';
 
@@ -34,15 +35,23 @@ class LocalBookRepository implements BookRepository {
   // an orphaned binary on the WebDAV store which is wasted space but not a
   // correctness issue).
   final Future<void> Function(String bookId)? _remoteFileDeleter;
+  // 2026-07-13 v1.11.3-alpha: optional FileStorage to delete the local
+  // library binary on book delete. Null in tests / pre-boot — best-effort
+  // like _remoteFileDeleter. Hash is content-addressed + unique
+  // (idx_books_file_hash), so the file is referenced by exactly one book
+  // row; deleting it on book delete is safe.
+  final FileStorage? _fileStorage;
 
   LocalBookRepository(
     db.AppDatabase database, {
     SyncRecorder? syncRecorder,
     Future<void> Function(String bookId)? remoteFileDeleter,
+    FileStorage? fileStorage,
   })  : _dao = BooksDao(database),
         _tagsDao = BookTagsDao(database),
         _syncRecorder = syncRecorder,
-        _remoteFileDeleter = remoteFileDeleter;
+        _remoteFileDeleter = remoteFileDeleter,
+        _fileStorage = fileStorage;
 
   @override
   Future<List<Book>> getAll({
@@ -115,6 +124,10 @@ class LocalBookRepository implements BookRepository {
 
   @override
   Future<void> delete(String id) async {
+    // 2026-07-13 v1.11.3-alpha: capture fileHash + format BEFORE dao
+    // delete — after deleteBookCascade the row is gone so we can't read
+    // the columns needed to compute the library file path.
+    final row = await _dao.getById(id);
     // Enqueue tombstone BEFORE dao delete: if the dao write fails we still
     // have a queued row, but the book is still local — outbox push is
     // idempotent (applier sees deleted=true and DELETEs remote, which is
@@ -144,11 +157,22 @@ class LocalBookRepository implements BookRepository {
       }
     }
     await _dao.deleteBookCascade(id);
+    // 2026-07-13 v1.11.3-alpha: best-effort delete the local library
+    // binary. Hash is content-addressed + unique, so this file is not
+    // referenced by any other book row — safe to delete. Errors (file
+    // locked by AV / OneDrive / external handle) become orphan, not crash.
+    await _deleteLocalLibraryFile(row);
   }
 
   @override
   Future<void> deleteBooks(Set<String> ids) async {
     if (ids.isEmpty) return;
+    // Capture rows BEFORE dao delete — same reason as delete().
+    final rows = <db.Book>[];
+    for (final id in ids) {
+      final row = await _dao.getById(id);
+      if (row != null) rows.add(row);
+    }
     final now = DateTime.now();
     for (final id in ids) {
       await _syncRecorder?.recordBook(
@@ -176,6 +200,30 @@ class LocalBookRepository implements BookRepository {
       }
     }
     await _dao.deleteBooksCascade(ids);
+    // 2026-07-13 v1.11.3-alpha: best-effort delete each local library
+    // binary. Sequential — same reason as remote deleter above.
+    for (final row in rows) {
+      await _deleteLocalLibraryFile(row);
+    }
+  }
+
+  /// Best-effort delete of the local library binary for [row]. Swallows
+  /// all errors — see inline comments in [delete] / [deleteBooks]. Null
+  /// row (book already gone) or null [_fileStorage] is a no-op.
+  Future<void> _deleteLocalLibraryFile(db.Book? row) async {
+    if (_fileStorage == null || row == null) return;
+    final format = bookFormatFromDb(row.format);
+    try {
+      await _fileStorage.deleteLibraryFile(
+        hash: row.fileHash,
+        extension: format.fileExtension,
+      );
+    } catch (_) {
+      // best-effort — orphan file may remain on disk (space leak only).
+      // Common cause: file locked by another process (AV scan / OneDrive
+      // sync in progress / file open in another zhiyue window). User can
+      // clear via OS file explorer if needed.
+    }
   }
 
   @override

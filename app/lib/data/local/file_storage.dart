@@ -111,13 +111,27 @@ class FileStorage {
   /// 调用方（如 BookImportService）通常已 readAsBytes 一次计算 hash，
   /// 复用 bytes 写入可彻底绕过 source path 相关的 Win32 异常
   /// （Sync 目录 reparse point、长路径等）。
+  ///
+  /// 2026-07-13 v1.11.3-alpha: errno=5 (ERROR_ACCESS_DENIED) 兜底——
+  /// 重新导入同 hash 时若已存在文件被外部工具（OneDrive / 杀软 / 备份）
+  /// 或早期版本标记 ReadOnly，`CreateFileW(GENERIC_WRITE)` 在 Windows
+  /// 必拒。检测到此场景先 `attrib -R` 清 ReadOnly 再重试一次。
   Future<File> storeLibraryFileFromBytes({
     required List<int> bytes,
     required String fileHash,
     required String extension,
   }) async {
     final dest = File(p.join(libraryDir.path, '$fileHash.$extension'));
-    await dest.writeAsBytes(bytes, flush: true);
+    try {
+      await dest.writeAsBytes(bytes, flush: true);
+    } on PathAccessException catch (e) {
+      if (e.osError?.errorCode == 5 && await dest.exists()) {
+        await _clearReadOnlyAttribute(dest);
+        await dest.writeAsBytes(bytes, flush: true);
+      } else {
+        rethrow;
+      }
+    }
     return dest;
   }
 
@@ -136,7 +150,20 @@ class FileStorage {
     required String extension,
   }) async {
     final file = File(p.join(libraryDir.path, '$hash.$extension'));
-    if (await file.exists()) await file.delete();
+    if (!await file.exists()) return;
+    try {
+      await file.delete();
+    } on PathAccessException catch (e) {
+      // 2026-07-13: errno=5 on existing file = ReadOnly attribute (Windows).
+      // Clear and retry once. Best-effort: callers (delete book) swallow
+      // remaining errors so a locked file becomes an orphan, not a crash.
+      if (e.osError?.errorCode == 5 && Platform.isWindows) {
+        await _clearReadOnlyAttribute(file);
+        await file.delete();
+      } else {
+        rethrow;
+      }
+    }
   }
 
   /// Delete a cover file by its full path (as returned by [storeCover] /
@@ -156,6 +183,27 @@ class FileStorage {
     if (cacheDir.existsSync()) {
       await cacheDir.delete(recursive: true);
       await cacheDir.create(recursive: true);
+    }
+  }
+
+  /// Windows-only: clear the ReadOnly attribute via `attrib -R`.
+  ///
+  /// 2026-07-13 v1.11.3-alpha: introduced for [storeLibraryFileFromBytes] /
+  /// [deleteLibraryFile] errno=5 retry. OneDrive / AV / 备份工具或早期版本
+  /// 可能把 library 文件标 ReadOnly；dart:io 没有跨平台 attribute API，
+  /// 直接调系统 `attrib` 最稳妥。POSIX 平台 ReadOnly 不阻塞写，no-op。
+  ///
+  /// Throws [PathAccessException] if attrib exits non-zero (caller decides
+  /// fallback); file-not-found 由调用方在调用前 exists() 检查。
+  Future<void> _clearReadOnlyAttribute(File file) async {
+    if (!Platform.isWindows) return;
+    final result = await Process.run('attrib', ['-R', file.path]);
+    if (result.exitCode != 0) {
+      throw PathAccessException(
+        file.path,
+        OSError('attrib -R failed (exit ${result.exitCode}): ${result.stderr}'),
+        'Cannot clear ReadOnly attribute',
+      );
     }
   }
 }

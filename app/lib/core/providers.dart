@@ -66,9 +66,20 @@ final localFilesDirProvider = Provider<String>((ref) {
   return localFilesDirOverride;
 });
 
+/// 2026-07-13 v1.11.3-alpha: eagerly-resolved [FileStorage] singleton set
+/// by main.dart during boot. Used by [bookRepositoryProvider] to wire
+/// local library file deletion into [LocalBookRepository.delete] / deleteBooks.
+/// Null in widget tests or when path_provider is unavailable — repository
+/// treats null as "skip local file delete" (best-effort).
+FileStorage? globalFileStorage;
+
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
-  return LocalBookRepository(db, syncRecorder: SyncRecorder(db.syncOutboxDao));
+  return LocalBookRepository(
+    db,
+    syncRecorder: SyncRecorder(db.syncOutboxDao),
+    fileStorage: globalFileStorage,
+  );
 });
 
 /// 单本书的 [Book] 元数据。用于 NotesPage 等场景以查询单本书的真实信息。

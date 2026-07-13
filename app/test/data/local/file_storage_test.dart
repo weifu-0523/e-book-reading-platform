@@ -15,6 +15,10 @@ void main() {
 
   tearDown(() async {
     if (tempRoot.existsSync()) {
+      // tearDown 前清掉所有 ReadOnly attribute，否则 Windows 上递归删除失败。
+      if (Platform.isWindows) {
+        await Process.run('attrib', ['-R', '$tempRoot\\library\\*.*', '/S']);
+      }
       await tempRoot.delete(recursive: true);
     }
   });
@@ -76,4 +80,75 @@ void main() {
     // 触发一次 getter，证明缓存实例就是已创建的那个。
     expect(fresh.libraryDir.existsSync(), isTrue);
   });
+
+  // Regression 2026-07-13 v1.11.3-alpha: 重新导入同 hash 时若已存在文件
+  // 被外部工具（OneDrive / 杀软 / 备份）或早期版本标记 ReadOnly，
+  // writeAsBytes 在 Windows 抛 errno=5 (ERROR_ACCESS_DENIED)。
+  // storeLibraryFileFromBytes 应 detect 此场景 + attrib -R + retry。
+  // POSIX 平台 skip（ReadOnly 不阻塞 POSIX 写）。
+  test(
+    'Regression 2026-07-13: storeLibraryFileFromBytes clears ReadOnly on retry',
+    () async {
+      if (!Platform.isWindows) {
+        // POSIX 上 chmod 0444 文件对 owner 写仍可能 errno=13 (EACCES)，
+        // 但 _clearReadOnlyAttribute 是 no-op，逻辑路径不进入 retry。
+        // 测试本身只在 Windows 上有意义。
+        return;
+      }
+      // 预置：写一个文件 + 标 ReadOnly（模拟外部工具行为）。
+      final dest =
+          File(p.join(storage.libraryDir.path, 'ro_hash.epub'));
+      await dest.writeAsBytes([10, 20, 30]);
+      final setResult = await Process.run(
+        'attrib',
+        ['+R', dest.path],
+      );
+      expect(setResult.exitCode, 0,
+          reason: 'attrib +R setup failed: ${setResult.stderr}');
+
+      // 触发：storeLibraryFileFromBytes 同 hash 同 ext 覆盖。
+      final stored = await storage.storeLibraryFileFromBytes(
+        bytes: [99, 98, 97],
+        fileHash: 'ro_hash',
+        extension: 'epub',
+      );
+
+      // 验证：文件内容是新 bytes（不是旧的 [10,20,30]）。
+      expect(stored.path, dest.path);
+      expect(await stored.readAsBytes(), [99, 98, 97]);
+
+      // 验证：ReadOnly 已被清（attribute 不再含 ReadOnly）。
+      final verify = await Process.run('attrib', [dest.path]);
+      expect(verify.stdout, isNot(contains('R')));
+    },
+    testOn: 'windows',
+  );
+
+  // Regression 2026-07-13 v1.11.3-alpha: deleteLibraryFile 对 ReadOnly 文件
+  // 同样会 errno=5；retry 路径与 storeLibraryFileFromBytes 一致。
+  test(
+    'Regression 2026-07-13: deleteLibraryFile clears ReadOnly on retry',
+    () async {
+      if (!Platform.isWindows) {
+        return;
+      }
+      final dest =
+          File(p.join(storage.libraryDir.path, 'del_ro.epub'));
+      await dest.writeAsBytes([1]);
+      final setResult = await Process.run(
+        'attrib',
+        ['+R', dest.path],
+      );
+      expect(setResult.exitCode, 0,
+          reason: 'attrib +R setup failed: ${setResult.stderr}');
+
+      await storage.deleteLibraryFile(
+        hash: 'del_ro',
+        extension: 'epub',
+      );
+
+      expect(dest.existsSync(), isFalse);
+    },
+    testOn: 'windows',
+  );
 }

@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart' show Variable;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:zhiyue/data/local/daos/book_tags_dao.dart';
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart' hide Book;
+import 'package:zhiyue/data/local/file_storage.dart';
 import 'package:zhiyue/data/repositories/local_book_repository.dart';
 import 'package:zhiyue/data/models/book.dart';
 import 'package:zhiyue/features/library/models/sort_by.dart';
@@ -382,5 +385,138 @@ void main() {
       await repoWithSync.delete('b1');
       expect(await repoWithSync.getById('b1'), isNull);
     });
+  });
+
+  // Regression 2026-07-13 v1.11.3-alpha: 重新导入同 hash 失败的根因——
+  // 删书流程只删 DB 行，不删 library/{hash}.{ext} 文件。清空书架后
+  // 用户重新导入同一本书时 hash 命中已存在文件，若该文件被外部工具
+  // 标 ReadOnly 则 writeAsBytes 抛 errno=5；即使非 ReadOnly 也会因
+  // 文件残留造成空间泄漏（书架已清空但 library/ 永远不缩）。
+  //
+  // 修复：delete() / deleteBooks() 在删 DB row 之前 capture fileHash +
+  // format，删 row 之后 best-effort 删本地 library 文件。
+  group('Regression 2026-07-13: delete cleans local library file', () {
+    late Directory tempRoot;
+    late FileStorage storage;
+
+    setUp(() async {
+      tempRoot = await Directory.systemTemp.createTemp('zhiyue_lib_test_');
+      storage = FileStorage(rootDir: tempRoot);
+    });
+
+    tearDown(() async {
+      if (tempRoot.existsSync()) {
+        // tearDown 前清掉 ReadOnly，否则 Windows 上递归删除会失败。
+        if (Platform.isWindows) {
+          await Process.run(
+            'attrib',
+            ['-R', '${tempRoot.path}\\library\\*.*', '/S'],
+          );
+        }
+        await tempRoot.delete(recursive: true);
+      }
+    });
+
+    test('delete() removes the local library binary', () async {
+      const hash = 'h_del_single';
+      const bookId = 'b_del_single';
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes)
+           VALUES(?, 'Del Single', 'epub', '/d.epub', ?, 11)''',
+        [bookId, hash],
+      );
+      final libFile = File(p.join(storage.libraryDir.path, '$hash.epub'));
+      await libFile.writeAsBytes([1, 2, 3]);
+      expect(libFile.existsSync(), isTrue);
+
+      final repoWithStorage =
+          LocalBookRepository(db, fileStorage: storage);
+      await repoWithStorage.delete(bookId);
+
+      expect(await repoWithStorage.getById(bookId), isNull);
+      expect(libFile.existsSync(), isFalse,
+          reason: 'delete() must remove the local library file');
+    });
+
+    test('deleteBooks() removes each local library binary', () async {
+      const hash1 = 'h_batch_1';
+      const hash2 = 'h_batch_2';
+      const bookId1 = 'b_batch_lib1';
+      const bookId2 = 'b_batch_lib2';
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes)
+           VALUES(?, 'Batch Lib 1', 'pdf', '/p1.pdf', ?, 11)''',
+        [bookId1, hash1],
+      );
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes)
+           VALUES(?, 'Batch Lib 2', 'epub', '/p2.epub', ?, 22)''',
+        [bookId2, hash2],
+      );
+      final lib1 = File(p.join(storage.libraryDir.path, '$hash1.pdf'));
+      final lib2 = File(p.join(storage.libraryDir.path, '$hash2.epub'));
+      await lib1.writeAsBytes([10]);
+      await lib2.writeAsBytes([20, 30]);
+
+      final repoWithStorage =
+          LocalBookRepository(db, fileStorage: storage);
+      await repoWithStorage.deleteBooks({bookId1, bookId2});
+
+      expect(lib1.existsSync(), isFalse);
+      expect(lib2.existsSync(), isFalse);
+    });
+
+    test('delete() with no fileStorage leaves library file (backwards compat)',
+        () async {
+      // Pre-fix behaviour: when fileStorage is null (default, e.g. widget
+      // tests), delete() must NOT crash and must NOT touch the filesystem.
+      const hash = 'h_nostorage';
+      const bookId = 'b_nostorage';
+      await db.customStatement(
+        '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes)
+           VALUES(?, 'No Storage', 'epub', '/n.epub', ?, 11)''',
+        [bookId, hash],
+      );
+      final libFile = File(p.join(storage.libraryDir.path, '$hash.epub'));
+      await libFile.writeAsBytes([1]);
+
+      // repo is the default (no fileStorage).
+      await repo.delete(bookId);
+
+      expect(await repo.getById(bookId), isNull);
+      expect(libFile.existsSync(), isTrue,
+          reason: 'without fileStorage wired, library file must remain');
+    });
+
+    test(
+      'delete() still succeeds when library file is ReadOnly',
+      () async {
+        // Composite regression: combines v1.11.2 cascade fix with v1.11.3
+        // file-delete + ReadOnly retry. The user's actual reported scenario
+        // was a ReadOnly .epub left over from earlier versions; delete must
+        // clean it without surfacing an error.
+        if (!Platform.isWindows) return;
+        const hash = 'h_ro_del';
+        const bookId = 'b_ro_del';
+        await db.customStatement(
+          '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes)
+             VALUES(?, 'RO Del', 'epub', '/r.epub', ?, 11)''',
+          [bookId, hash],
+        );
+        final libFile = File(p.join(storage.libraryDir.path, '$hash.epub'));
+        await libFile.writeAsBytes([7]);
+        final setResult =
+            await Process.run('attrib', ['+R', libFile.path]);
+        expect(setResult.exitCode, 0);
+
+        final repoWithStorage =
+            LocalBookRepository(db, fileStorage: storage);
+        await repoWithStorage.delete(bookId);
+
+        expect(await repoWithStorage.getById(bookId), isNull);
+        expect(libFile.existsSync(), isFalse);
+      },
+      testOn: 'windows',
+    );
   });
 }
