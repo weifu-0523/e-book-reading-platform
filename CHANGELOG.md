@@ -7,7 +7,44 @@
 
 ## [Unreleased]
 
-v1.11.1-alpha 之后的新变更将记在此处。
+v1.11.2-alpha 之后的新变更将记在此处。
+
+## [1.11.2-alpha] - 2026-07-13
+
+删书静默失败 hotfix：用户报告「弹了确认框，点确认后书没被删除」。
+
+### 修复
+
+- **Bug：删书静默失败**。根因：9 个子表（`book_notes` / `annotations` /
+  `reading_progress_table` / `book_typography_overrides` / `ai_summaries` /
+  `bookmarks` / `chat_sessions` / `chat_messages` / `freeform_notes`）的
+  FK to `books(id)` 都缺 `ON DELETE CASCADE`（drift 的
+  `.references(Books, #id)` 默认 NO ACTION；只有 `book_tags` 用
+  `customConstraint` 显式 CASCADE）。在 `PRAGMA foreign_keys = ON`
+  下，`DELETE FROM books` 当存在任一关联行时抛
+  `SqliteException(787): FOREIGN KEY constraint failed`，异常从
+  `BookDetailPage._confirmDelete`（FAB onPressed，无 try/catch）冒到
+  Flutter framework 被静默吞掉。修复：
+  - `BooksDao.deleteBookCascade` / `deleteBooksCascade` 在事务里按依赖
+    顺序（annotations→book_notes、chat_messages→chat_sessions、其余
+    6 个直接子表）DELETE，最后用 drift DSL 删 books（保证 books 表
+    stream 触发，Library 卡片 reactive 消失）。
+  - `LocalBookRepository.delete` / `deleteBooks` 切到 cascade 版本。
+  - `BookDetailPage._confirmDelete` 加 try/catch + SnackBar，未来任何
+    删除失败用户能看到，不再静默。
+
+### 测试
+
+- 新增 2 个回归测试（`local_book_repository_test.dart`）：覆盖 9 个
+  子表全 cascade 路径 + 批量删除 cascade。
+- 总测试数 1425 → 1427（+2 新增）。10 baseline fail 不变
+  （router/reader_page 老 baseline）。
+
+### 文档
+
+- 修 `freeform_notes.dart` / `bookmarks.dart` 文档谎言：原文档声称
+  `ON DELETE CASCADE`，实际生成的是 NO ACTION（drift `.references()`
+  默认）。
 
 ## [1.11.1-alpha] - 2026-07-12
 

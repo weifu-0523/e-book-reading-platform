@@ -223,7 +223,8 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
         ],
       ),
     );
-    if (confirmed == true) {
+    if (confirmed != true) return;
+    try {
       await ref.read(libraryControllerProvider.notifier).deleteBook(book.id);
       // Best-effort navigation back to home. In some host environments (tests)
       // there is no GoRouter ancestor; tolerate that.
@@ -234,6 +235,16 @@ class _BookDetailPageState extends ConsumerState<BookDetailPage> {
           unawaited(Navigator.of(context).maybePop());
         }
       }
+    } catch (e, st) {
+      // 2026-07-13: prior versions silently swallowed FK-constraint failures
+      // here (onPressed Future errors go to Flutter's onError handler with
+      // no UI feedback). Surface the failure so the user knows the delete
+      // didn't happen and can file a bug.
+      debugPrint('[delete] failed to delete book ${book.id}: $e\n$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('删除失败：$e')),
+      );
     }
   }
 }

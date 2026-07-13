@@ -19,10 +19,12 @@ import 'package:drift/drift.dart';
 import 'books.dart';
 
 /// M2.5/T10：阅读器内书签持久化。每条书签绑定到一本书 + Locator，
-/// 用于在 Drawer / 书签页快速跳回阅读位置。FK ON DELETE CASCADE 由
-/// `PRAGMA foreign_keys = ON`（database.dart#beforeOpen）+ SQLite 默认
-/// `NO ACTION` 之外，借由 drift `references(Books, #id)` 生成的
-/// `REFERENCES books(id) ON DELETE NO ACTION` 走应用层删除路径。
+/// 用于在 Drawer / 书签页快速跳回阅读位置。
+///
+/// FK `REFERENCES books(id) ON DELETE NO ACTION` —— drift 的
+/// `.references(Books, #id)` 不带 `customConstraint` 默认就是 NO ACTION。
+/// 删书时由 BooksDao._deleteBookCascadeUnchecked 显式 DELETE 本书所有书签
+/// （2026-07-13 bug 修复：此前依赖不存在的 CASCADE，删书静默失败）。
 @DataClassName('BookmarkEntry')
 class Bookmarks extends Table {
   TextColumn get id => text()();

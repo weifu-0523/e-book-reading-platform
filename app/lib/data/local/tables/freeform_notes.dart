@@ -23,8 +23,11 @@ import 'books.dart';
 ///
 /// `bookId` 可空：null = 全局笔记（只在"读书笔记库"页可见）；非空 = 某本书
 /// 专属笔记（在该书 reader drawer / NotesPage + 读书笔记库都可见）。
-/// FK `ON DELETE CASCADE`：删书时连带删除 per-book 笔记（与 bookmarks/
-/// annotations 一致）。
+///
+/// FK `REFERENCES books(id)` 默认 NO ACTION —— 删书时由 BooksDao
+/// ._deleteBookCascadeUnchecked 显式 DELETE per-book 笔记。drift 的
+/// `.references(Books, #id)` 不带 `customConstraint` 时生成的就是 NO ACTION，
+/// 不是 CASCADE（2026-07-13 bug: 文档曾谎称 CASCADE，实际从未生效）。
 @DataClassName('FreeformNote')
 class FreeformNotes extends Table {
   TextColumn get id => text()();

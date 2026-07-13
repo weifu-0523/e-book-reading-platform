@@ -105,6 +105,85 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
     return (delete(books)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Cascade delete: removes the book row plus every row in the 9 child
+  /// tables whose FK lacks ON DELETE CASCADE.
+  ///
+  /// Why: drift's plain `.references(Books, #id)` generates
+  /// `REFERENCES books(id)` with the SQLite default `NO ACTION`. With
+  /// `PRAGMA foreign_keys = ON` (database.dart beforeOpen), deleting a
+  /// book that has any related row throws `SqliteException(787): FOREIGN
+  /// KEY constraint failed`. Only `book_tags` uses an explicit CASCADE
+  /// (see tables/book_tags.dart line 21) — every other child table needs
+  /// app-layer cleanup.
+  ///
+  /// Affected children (deepest first to satisfy FK within the transaction):
+  ///   annotations → book_notes → books
+  ///   chat_messages → chat_sessions → books
+  ///   reading_progress_table, book_typography_overrides, ai_summaries,
+  ///   bookmarks, freeform_notes → books
+  ///
+  /// All wrapped in a single transaction so partial failures don't leave
+  /// the DB in an inconsistent state (orphaned child rows).
+  ///
+  /// 2026-07-13: regression test in local_book_repository_test.dart
+  /// covers every child table.
+  Future<void> deleteBookCascade(String id) {
+    return transaction(() => _deleteBookCascadeUnchecked(id));
+  }
+
+  /// Inner per-book cleanup without its own transaction — used by both
+  /// [deleteBookCascade] (single) and [deleteBooksCascade] (batched in
+  /// one outer transaction).
+  Future<void> _deleteBookCascadeUnchecked(String id) async {
+    // Two-level chains first. Raw SQL is fine here — no drift stream watches
+    // these child tables across books (NotesPage / AiChatPage are per-book
+    // and the user navigates away after delete).
+    await customStatement(
+      'DELETE FROM annotations WHERE book_note_id IN '
+      '(SELECT id FROM book_notes WHERE book_id = ?)',
+      [id],
+    );
+    await customStatement(
+      'DELETE FROM book_notes WHERE book_id = ?',
+      [id],
+    );
+    await customStatement(
+      'DELETE FROM chat_messages WHERE session_id IN '
+      '(SELECT id FROM chat_sessions WHERE book_id = ?)',
+      [id],
+    );
+    await customStatement(
+      'DELETE FROM chat_sessions WHERE book_id = ?',
+      [id],
+    );
+    // Direct children of books.
+    await customStatement(
+      'DELETE FROM reading_progress_table WHERE book_id = ?',
+      [id],
+    );
+    await customStatement(
+      'DELETE FROM book_typography_overrides WHERE book_id = ?',
+      [id],
+    );
+    await customStatement(
+      'DELETE FROM ai_summaries WHERE book_id = ?',
+      [id],
+    );
+    await customStatement(
+      'DELETE FROM bookmarks WHERE book_id = ?',
+      [id],
+    );
+    await customStatement(
+      'DELETE FROM freeform_notes WHERE book_id = ?',
+      [id],
+    );
+    // book_tags has ON DELETE CASCADE — handled by SQLite automatically.
+    // Finally the book row itself. MUST use drift DSL (not customStatement)
+    // so the books-table stream fires — Library watches this stream to
+    // remove the deleted book card reactively.
+    await (delete(books)..where((t) => t.id.equals(id))).go();
+  }
+
   /// 设置单本书的手动排序顺序。M3.1 书架拖拽排序使用。
   Future<int> setSortOrder({required String id, required int sortOrder}) {
     return (update(books)..where((t) => t.id.equals(id)))
@@ -115,5 +194,15 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
   /// 单条 SQL `DELETE ... WHERE id IN (...)` 自然原子，无需显式事务。
   Future<int> deleteBooks(Set<String> ids) {
     return (delete(books)..where((t) => t.id.isIn(ids.toList()))).go();
+  }
+
+  /// Batch cascade delete — see [deleteBookCascade] for the per-book logic.
+  /// One outer transaction so the whole batch commits atomically.
+  Future<void> deleteBooksCascade(Set<String> ids) {
+    return transaction(() async {
+      for (final id in ids) {
+        await _deleteBookCascadeUnchecked(id);
+      }
+    });
   }
 }

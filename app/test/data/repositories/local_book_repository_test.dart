@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart' show Variable;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/daos/book_tags_dao.dart';
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
@@ -156,6 +157,165 @@ void main() {
     expect(await repo.getById('b1'), isNull);
     final pending = await outbox.getPending();
     expect(pending, isEmpty); // no recorder → no outbox row
+  });
+
+  // Regression test for 2026-07-13 user-reported bug:
+  //   "弹了确认框，点确认后书没被删除"
+  //   (confirmation dialog appeared, clicked confirm, book wasn't deleted).
+  //
+  // Root cause: 7 child tables have FK to books(id) WITHOUT ON DELETE CASCADE
+  // (drift's plain `.references(Books, #id)` defaults to NO ACTION). With
+  // PRAGMA foreign_keys = ON, deleting a book that has any related row throws
+  // SqliteException which propagated uncaught through _confirmDelete and was
+  // silently swallowed by the Flutter framework. The user clicked confirm,
+  // saw nothing happen, and the book stayed on the shelf.
+  //
+  // Affected tables: book_notes, annotations (FK→book_notes), reading_progress,
+  // book_typography_overrides, ai_summaries, bookmarks, chat_sessions,
+  // chat_messages (FK→chat_sessions), freeform_notes. (book_tags is the only
+  // one with customConstraint CASCADE — see tables/book_tags.dart.)
+  //
+  // Fix: BooksDao.deleteBookCascade / deleteBooksCascade wraps all child
+  // DELETEs + the final books DELETE in a transaction.
+  test('Regression 2026-07-13: delete cascades through all child tables',
+      () async {
+    // Insert a book + one row in every child table that lacks CASCADE.
+    // Use a fresh book id to keep this test self-contained.
+    const bookId = 'b_cascade_test';
+    await db.customStatement(
+      '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes)
+         VALUES(?, 'Cascade Test', 'epub', '/c.epub', 'hc', 11)''',
+      [bookId],
+    );
+    // book_notes (parent of annotations)
+    await db.customStatement(
+      '''INSERT INTO book_notes(id, book_id, title)
+         VALUES('bn1', ?, 'Note One')''',
+      [bookId],
+    );
+    // annotations (child of book_notes — exercises two-level cascade)
+    await db.customStatement(
+      '''INSERT INTO annotations(id, book_note_id, locator, quote, color)
+         VALUES('an1', 'bn1', '{}', 'quoted text', 'yellow')''',
+    );
+    // reading_progress_table (PK = book_id)
+    await db.customStatement(
+      '''INSERT INTO reading_progress_table(book_id, locator, percent)
+         VALUES(?, '{}', 0.5)''',
+      [bookId],
+    );
+    // book_typography_overrides (PK = book_id)
+    await db.customStatement(
+      '''INSERT INTO book_typography_overrides(book_id)
+         VALUES(?)''',
+      [bookId],
+    );
+    // ai_summaries
+    await db.customStatement(
+      '''INSERT INTO ai_summaries(book_id, mode, source_hash, summary_text,
+                                    model_name, base_url, prompt_version)
+         VALUES(?, 'full', 'h', 'summary', 'm', 'u', 1)''',
+      [bookId],
+    );
+    // bookmarks
+    await db.customStatement(
+      '''INSERT INTO bookmarks(id, book_id, locator_json, label,
+                                created_at, updated_at)
+         VALUES('bm1', ?, '{}', 'Label', 0, 0)''',
+      [bookId],
+    );
+    // chat_sessions (parent of chat_messages)
+    await db.customStatement(
+      '''INSERT INTO chat_sessions(id, book_id, title, created_at, updated_at)
+         VALUES('cs1', ?, 'Session One', 0, 0)''',
+      [bookId],
+    );
+    // chat_messages (child of chat_sessions — two-level cascade)
+    await db.customStatement(
+      '''INSERT INTO chat_messages(id, session_id, role, content,
+                                    created_at, updated_at)
+         VALUES('cm1', 'cs1', 'user', 'hello', 0, 0)''',
+    );
+    // freeform_notes (book_id non-null branch)
+    await db.customStatement(
+      '''INSERT INTO freeform_notes(id, book_id, title, content,
+                                     created_at, updated_at)
+         VALUES('fn1', ?, 'Free', 'body', 0, 0)''',
+      [bookId],
+    );
+
+    // Sanity: rows exist before delete.
+    final beforeCount = (await db.customSelect(
+      'SELECT COUNT(*) AS c FROM book_notes WHERE book_id = ?',
+      variables: [Variable.withString(bookId)],
+    ).getSingle()).read<int>('c');
+    expect(beforeCount, 1);
+
+    // Pre-fix: this call threw SqliteException 'FOREIGN KEY constraint failed'
+    // because annotations/chat_messages still referenced the parent rows.
+    await repo.delete(bookId);
+
+    // Book gone.
+    expect(await repo.getById(bookId), isNull);
+    // All child rows gone.
+    Future<int> countOf(String sql) async => (await db.customSelect(
+      sql,
+      variables: [Variable.withString(bookId)],
+    ).getSingle()).read<int>('c');
+
+    expect(await countOf('SELECT COUNT(*) AS c FROM book_notes WHERE book_id = ?'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM annotations WHERE book_note_id IN '
+        '(SELECT id FROM book_notes WHERE book_id = ?)'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM reading_progress_table WHERE book_id = ?'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM book_typography_overrides WHERE book_id = ?'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM ai_summaries WHERE book_id = ?'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM bookmarks WHERE book_id = ?'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM chat_sessions WHERE book_id = ?'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM chat_messages WHERE session_id IN '
+        '(SELECT id FROM chat_sessions WHERE book_id = ?)'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM freeform_notes WHERE book_id = ?'), 0);
+  });
+
+  // Mirror of the above for the batch path (deleteBooks).
+  test('Regression 2026-07-13: deleteBooks batch cascades through child tables',
+      () async {
+    const bookId = 'b_batch_cascade';
+    await db.customStatement(
+      '''INSERT INTO books(id, title, format, file_path, file_hash, file_size_bytes)
+         VALUES(?, 'Batch Cascade', 'epub', '/b.epub', 'hb', 11)''',
+      [bookId],
+    );
+    await db.customStatement(
+      'INSERT INTO book_notes(id, book_id, title) VALUES(?, ?, ?)',
+      ['bn_batch', bookId, 'Note'],
+    );
+    await db.customStatement(
+      '''INSERT INTO annotations(id, book_note_id, locator, quote, color)
+         VALUES('an_batch', 'bn_batch', '{}', 'q', 'blue')''',
+    );
+    await db.customStatement(
+      'INSERT INTO chat_sessions(id, book_id, title, created_at, updated_at) '
+      'VALUES(?, ?, ?, 0, 0)',
+      ['cs_batch', bookId, 'S'],
+    );
+    await db.customStatement(
+      'INSERT INTO chat_messages(id, session_id, role, content, created_at, updated_at) '
+      'VALUES(?, ?, ?, ?, 0, 0)',
+      ['cm_batch', 'cs_batch', 'user', 'hi'],
+    );
+
+    await repo.deleteBooks({bookId});
+
+    expect(await repo.getById(bookId), isNull);
+    Future<int> countOf(String sql) async => (await db.customSelect(
+      sql,
+      variables: [Variable.withString(bookId)],
+    ).getSingle()).read<int>('c');
+
+    expect(await countOf('SELECT COUNT(*) AS c FROM annotations WHERE book_note_id IN '
+        '(SELECT id FROM book_notes WHERE book_id = ?)'), 0);
+    expect(await countOf('SELECT COUNT(*) AS c FROM chat_messages WHERE session_id IN '
+        '(SELECT id FROM chat_sessions WHERE book_id = ?)'), 0);
   });
 
   // M2.8 T10: when wired, delete() invokes the remote-file deleter hook

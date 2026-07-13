@@ -143,7 +143,7 @@ class LocalBookRepository implements BookRepository {
         // best-effort — tombstone above still propagates deletion to peers
       }
     }
-    await _dao.deleteBook(id);
+    await _dao.deleteBookCascade(id);
   }
 
   @override
@@ -175,7 +175,7 @@ class LocalBookRepository implements BookRepository {
         }
       }
     }
-    await _dao.deleteBooks(ids);
+    await _dao.deleteBooksCascade(ids);
   }
 
   @override
