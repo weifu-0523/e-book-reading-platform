@@ -82,4 +82,109 @@ void main() {
       false,
     );
   });
+
+  // B5 (2026-07-14)：baseUrl HTTPS 校验。
+  // 默认 safe（HTTPS 或 localhost）直接保存；非 safe 弹 AlertDialog 二次确认。
+
+  testWidgets('HTTPS baseUrl saves without confirmation dialog',
+      (tester) async {
+    final store = _MemStore(null);
+    await tester.pumpWidget(_wrap(ApiKeySettingsPage(store: store)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'sk-test');
+    await tester.enterText(find.byType(TextField).at(1), 'https://api.openai.com');
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(store.c, isNotNull);
+    expect(store.c!.baseUrl, 'https://api.openai.com');
+    expect(find.byType(AlertDialog), findsNothing,
+        reason: 'HTTPS safe URL must not trigger confirmation dialog');
+  });
+
+  testWidgets('HTTP localhost saves without confirmation dialog',
+      (tester) async {
+    final store = _MemStore(null);
+    await tester.pumpWidget(_wrap(ApiKeySettingsPage(store: store)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'sk-test');
+    await tester.enterText(find.byType(TextField).at(1), 'http://localhost:8080');
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(store.c, isNotNull);
+    expect(store.c!.baseUrl, 'http://localhost:8080');
+    expect(find.byType(AlertDialog), findsNothing,
+        reason: 'localhost is safe for local dev');
+  });
+
+  testWidgets('HTTP public domain triggers confirmation; cancel does not save',
+      (tester) async {
+    final store = _MemStore(null);
+    await tester.pumpWidget(_wrap(ApiKeySettingsPage(store: store)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'sk-test');
+    await tester.enterText(
+        find.byType(TextField).at(1), 'http://api.deepseek.com');
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget,
+        reason: 'unsafe HTTP public domain must trigger confirmation');
+    // Cancel
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(store.c, isNull, reason: 'cancel must not save');
+  });
+
+  testWidgets(
+      'HTTP public domain confirmation; confirm proceeds with save',
+      (tester) async {
+    final store = _MemStore(null);
+    await tester.pumpWidget(_wrap(ApiKeySettingsPage(store: store)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'sk-test');
+    await tester.enterText(
+        find.byType(TextField).at(1), 'http://api.deepseek.com');
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('确认继续'));
+    await tester.pumpAndSettle();
+    expect(store.c, isNotNull, reason: 'confirm must proceed with save');
+    expect(store.c!.baseUrl, 'http://api.deepseek.com');
+  });
+
+  testWidgets('invalid scheme (ftp) triggers confirmation; cancel blocks save',
+      (tester) async {
+    final store = _MemStore(null);
+    await tester.pumpWidget(_wrap(ApiKeySettingsPage(store: store)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'sk-test');
+    await tester.enterText(find.byType(TextField).at(1), 'ftp://example.com');
+    await tester.pump();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(store.c, isNull);
+  });
+
+  testWidgets('empty baseUrl falls back to default (HTTPS, safe)',
+      (tester) async {
+    final store = _MemStore(null);
+    await tester.pumpWidget(_wrap(ApiKeySettingsPage(store: store)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'sk-test');
+    await tester.pump();
+    // Leave baseUrl empty
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(store.c, isNotNull);
+    expect(store.c!.baseUrl, ApiCredentialsDefaults.baseUrl);
+    expect(find.byType(AlertDialog), findsNothing,
+        reason: 'default baseUrl is HTTPS, must not trigger confirmation');
+  });
 }

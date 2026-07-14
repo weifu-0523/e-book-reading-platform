@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/ai/api_key_store.dart';
+import '../../../services/ai/base_url_validator.dart';
 
 /// AI API Key 设置页。
 ///
@@ -69,11 +70,22 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
   bool get _canSave => _apiKeyCtrl.text.trim().isNotEmpty;
 
   Future<void> _save() async {
+    final baseUrl = _baseUrlCtrl.text.trim().isEmpty
+        ? ApiCredentialsDefaults.baseUrl
+        : _baseUrlCtrl.text.trim();
+
+    // B5 (2026-07-14)：baseUrl HTTPS 校验。非 safe 等级弹窗警告 + 二次确认。
+    // safe 包括：HTTPS 任意域名，或 HTTP localhost/loopback/RFC1918 私网
+    // （本地开发部署）。非 safe 包括：HTTP 公网（MITM 风险）/非 http scheme
+    // /URL 格式无效。
+    final safety = BaseUrlValidator.classify(baseUrl);
+    if (safety != BaseUrlSafety.safe && !await _confirmUnsafeBaseUrl(safety)) {
+      return;
+    }
+
     await widget.store.save(AiCredentials(
       apiKey: _apiKeyCtrl.text.trim(),
-      baseUrl: _baseUrlCtrl.text.trim().isEmpty
-          ? ApiCredentialsDefaults.baseUrl
-          : _baseUrlCtrl.text.trim(),
+      baseUrl: baseUrl,
       model: _modelCtrl.text.trim().isEmpty
           ? ApiCredentialsDefaults.model
           : _modelCtrl.text.trim(),
@@ -83,6 +95,29 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(l10n.aiSettingsSave)),
     );
+  }
+
+  /// 弹窗确认非 safe baseUrl。返回 true 表示用户确认继续保存。
+  Future<bool> _confirmUnsafeBaseUrl(BaseUrlSafety safety) async {
+    final warning = BaseUrlValidator.warningMessage(safety);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Base URL 安全校验'),
+        content: Text(warning ?? '未知错误'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('确认继续'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   Future<void> _clear() async {
