@@ -44,6 +44,26 @@ RELEASES = [
 ]
 
 
+def list_existing_releases(token):
+    """GET /releases 返回所有已存在的 release（分页 100 一次取完）。
+
+    用于幂等检查：re-run 脚本时若 release 已存在则跳过创建，避免 409 Conflict
+    噪音。
+    """
+    req = urllib.request.Request(
+        f"{API}/releases?access_token={token}&page=1&per_page=100",
+        headers={"Content-Type": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return {item["tag_name"]: item["id"] for item in data}
+    except Exception as e:
+        print(f"WARNING: list_existing_releases failed: {e}")
+        return {}
+
+
 def create_release(token, tag, name, body):
     payload = {
         "access_token": token,
@@ -114,10 +134,20 @@ def main():
 
     results = []
     release_ids = {}
+    # C9 (2026-07-14)：幂等检查。re-run 时已存在的 release 跳过创建，
+    # 避免 409 Conflict 噪音。仍收集 release_id 供后续附件上传使用。
+    existing = list_existing_releases(token)
+    if existing:
+        print(f"Found {len(existing)} existing releases on Gitee; "
+              f"will skip creating those.")
     for tag, name, fname in RELEASES:
         notes_path = DOCS / fname
         if not notes_path.exists():
             results.append((tag, "MISSING_NOTES", str(notes_path)))
+            continue
+        if tag in existing:
+            release_ids[tag] = existing[tag]
+            results.append((tag, f"SKIP exists id={existing[tag]}", "already created"))
             continue
         body = notes_path.read_text(encoding="utf-8")
         resp = create_release(token, tag, name, body)
