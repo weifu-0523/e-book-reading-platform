@@ -140,6 +140,14 @@ class ReaderUiController extends StateNotifier<ReaderUiState> {
   /// 而非 toggle 翻转。当已是 false 时为幂等 no-op（copyWith 不抛错）。
   void hideChrome() => state = state.copyWith(chromeVisible: false);
 
+  /// 无条件将 chromeVisible 置为 true。
+  ///
+  /// 与 [toggleChrome] 的区别：toggle 会翻转当前状态（若默认为 true 则翻为
+  /// false）；本方法用于测试或交互中「确保 chrome 可见」的语义，幂等。
+  /// 桌面端 [ReaderUiState.defaultsForPlatform] 默认 chromeVisible=true，
+  /// 测试调用 toggleChrome 反而隐藏 chrome，故需要本方法显式置为 true。
+  void showChrome() => state = state.copyWith(chromeVisible: true);
+
   void openTocDrawer() => state = state.copyWith(tocDrawerOpen: true);
   void closeTocDrawer() => state = state.copyWith(tocDrawerOpen: false);
   void openTypographyPanel() => state = state.copyWith(typographyPanelOpen: true);

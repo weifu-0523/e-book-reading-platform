@@ -108,6 +108,33 @@ void main() {
       controller.toggleChrome();
       expect(controller.state.chromeVisible, equals(initial));
     });
+
+    test('showChrome idempotently sets chromeVisible=true', () {
+      // Desktop default: chromeVisible=true. toggleChrome would flip to false.
+      // showChrome must keep it true regardless of starting state.
+      final desktop = ReaderUiController(
+        fullscreenController: const NoopFullscreenController(),
+        initialState: ReaderUiState.defaultsForPlatform(),
+      );
+      expect(desktop.state.chromeVisible, isTrue,
+          reason: 'desktop default should be visible');
+
+      desktop.showChrome();
+      expect(desktop.state.chromeVisible, isTrue,
+          reason: 'showChrome on visible state must remain visible');
+
+      // After hideChrome, showChrome must restore to true.
+      desktop.hideChrome();
+      expect(desktop.state.chromeVisible, isFalse);
+
+      desktop.showChrome();
+      expect(desktop.state.chromeVisible, isTrue,
+          reason: 'showChrome on hidden state must restore to visible');
+
+      // Idempotent: calling twice doesn't flip.
+      desktop.showChrome();
+      expect(desktop.state.chromeVisible, isTrue);
+    });
   });
 
   group('ReaderUiState equality + hashCode contract (I1)', () {
