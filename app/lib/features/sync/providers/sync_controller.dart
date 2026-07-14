@@ -17,6 +17,7 @@
 // ignore_for_file: avoid_renaming_method_parameters
 // The didChangeAppLifecycleState parameter is renamed from `state` to
 // `lifecycle` to avoid shadowing the StateNotifier.state getter.
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/widgets.dart';
@@ -95,10 +96,16 @@ class SyncController extends StateNotifier<SyncState>
     // piggybacked on book binary upload / delete. Null = covers sync disabled
     // (cover_path stays as received — placeholder shown).
     this.coversDir,
+    // v1.11.8-alpha Layer A: debounce window for the outbox-triggered push.
+    // Default 3s — short enough that user-visible change goes out within a
+    // few seconds of the write, long enough that rapid writes (multi-select
+    // highlights, batch note edits) collapse into one sync.
+    Duration pushDebounce = const Duration(seconds: 3),
   })  : _httpClient = httpClient,
         _connectivity = connectivity ?? ConnectivityPlusService(),
         _intervalPref = intervalPref ?? SyncIntervalPref(),
         _clock = clock ?? DateTime.now,
+        _pushDebounceWindow = pushDebounce,
         super(const SyncState()) {
     _scheduler = BackgroundSyncScheduler(
       onTick: _backgroundTick,
@@ -106,6 +113,7 @@ class SyncController extends StateNotifier<SyncState>
       initialInterval: Duration.zero,
     );
     WidgetsBinding.instance.addObserver(this);
+    _initOutboxWatch();
     _initInterval();
   }
 
@@ -122,6 +130,9 @@ class SyncController extends StateNotifier<SyncState>
     required DateTime Function() clock,
     this.localFilesDir,
     this.coversDir,
+    // Layer A debounce window — tests pass a short value (e.g. 100ms) so
+    // the test does not block for the full 3s.
+    Duration pushDebounce = const Duration(seconds: 3),
   })  : _httpClient = httpClient,
         _connectivity = connectivity,
         // Tests pass the Like-interface; wrap so production field keeps
@@ -130,7 +141,24 @@ class SyncController extends StateNotifier<SyncState>
         _clock = clock,
         _engine = engine,
         _scheduler = scheduler,
-        super(const SyncState());
+        _pushDebounceWindow = pushDebounce,
+        super(const SyncState()) {
+    WidgetsBinding.instance.addObserver(this);
+    _initOutboxWatch();
+    // Note: forTesting does NOT call _initInterval (which would trigger
+    // Layer C cold-start sync) — tests construct with a scheduler + engine
+    // already wired, and many existing tests assert exact call counts that
+    // an unsolicited cold-start sync would disrupt. Tests that want to
+    // verify Layer C behavior can call `await controller.coldStartSync()`
+    // explicitly. Production constructor goes through _initInterval which
+    // ends with `await _scheduler.resume()`.
+  }
+
+  /// v1.11.8-alpha Layer C: explicit cold-start sync hook for tests.
+  /// Production code calls this from `_initInterval()`; tests can call it
+  /// when they want to verify cold-start behavior.
+  @visibleForTesting
+  Future<void> coldStartSync() => _scheduler.resume();
 
   final AppDatabase database;
   final SyncCredentialsLike credentials;
@@ -150,12 +178,64 @@ class SyncController extends StateNotifier<SyncState>
   // M2.8 T11: lazily-built binary file syncer. Mirrors _engine's lifecycle
   // (cleared on credential clear). Built once per session.
   BookFileSyncService? _bookFileSync;
+
+  /// v1.11.8-alpha Layer A reentry guard replacement. Was `_isSyncing` bool;
+  /// now a Future so concurrent callers (Layer A debounce, Layer C cold start,
+  /// manual syncNow, Layer B flushForExit) can await the in-flight sync
+  /// instead of returning void. The reentry semantics are unchanged: only
+  /// one engine.sync() runs at a time.
+  ///
+  /// Note: existing reentry test (`syncNow is reentrant`) relies on the
+  /// second concurrent `syncNow()` returning a Future that completes
+  /// IMMEDIATELY (not awaiting the in-flight sync). So we keep `_isSyncing`
+  /// bool for the reentry short-circuit, and separately expose
+  /// `_lastSyncFuture` so Layer B's flushForExit can await the in-flight
+  /// sync. Two fields, two responsibilities.
+  Future<void>? _lastSyncFuture;
+
+  /// v1.11.8-alpha Layer A: outbox watch subscription. Emits on any outbox
+  /// write; listener schedules a debounced push via [_pushDebounce].
+  StreamSubscription<List<SyncOutboxData>>? _outboxWatchSub;
+
+  /// v1.11.8-alpha Layer A: pending debounce Timer. Cancelled + restarted
+  /// on each outbox write so rapid writes (multi-select highlights, batch
+  /// note edits) collapse into one sync.
+  Timer? _pushDebounce;
+
+  /// v1.11.8-alpha Layer A: configured debounce window (default 3s in prod,
+  /// shorter in tests). Stored at construction so tests can pass 100ms.
+  final Duration _pushDebounceWindow;
+
+  /// v1.11.8-alpha: bool reentry guard (preserved for existing reentry
+  /// test's short-circuit semantics). `_lastSyncFuture` exposes the
+  /// in-flight Future to Layer B's flushForExit (which needs to await it).
   bool _isSyncing = false;
 
   Future<void> _initInterval() async {
     final interval = await _intervalPref.load();
     state = state.copyWith(currentInterval: interval);
     _scheduler.updateInterval(interval);
+    // v1.11.8-alpha Layer C: cold-start immediate sync. Catches cross-device
+    // changes made while this device was closed. Safe no-op if credentials
+    // missing or connectivity offline — _syncNowInner short-circuits in
+    // those cases.
+    await _scheduler.resume();
+  }
+
+  /// v1.11.8-alpha Layer A: subscribe to outbox writes. On any non-empty
+  /// pending snapshot, schedule a debounced [_backgroundTick] so user-visible
+  /// changes (bookmark / note / highlight / progress) go out within a few
+  /// seconds of the write — without waiting for the 5-minute Timer.
+  ///
+  /// Multiple writes within the debounce window collapse into one sync.
+  /// Empty snapshots (e.g., after markPushedMany completes a sync) do NOT
+  /// schedule a new sync.
+  void _initOutboxWatch() {
+    _outboxWatchSub = database.syncOutboxDao.watchPending().listen((pending) {
+      if (pending.isEmpty) return;
+      _pushDebounce?.cancel();
+      _pushDebounce = Timer(_pushDebounceWindow, _backgroundTick);
+    });
   }
 
   Future<SyncEngine?> _buildEngine() async {
@@ -304,12 +384,66 @@ class SyncController extends StateNotifier<SyncState>
     // concurrently, racing on outbox push and causing last-write-wins data
     // loss. Scheduler's own _isRunning only guards its internal tick, not
     // external callers of syncNow.
+    //
+    // v1.11.8-alpha: keep `_isSyncing` short-circuit (preserves existing
+    // reentry test semantics — second concurrent call returns immediately,
+    // does NOT await the first). Separately track `_lastSyncFuture` so
+    // Layer B's flushForExit can await the in-flight sync.
     if (_isSyncing) return;
     _isSyncing = true;
+    final future = _syncNowInner();
+    _lastSyncFuture = future;
     try {
-      await _syncNowInner();
+      await future;
     } finally {
       _isSyncing = false;
+      if (identical(_lastSyncFuture, future)) {
+        _lastSyncFuture = null;
+      }
+    }
+  }
+
+  /// v1.11.8-alpha Layer B: best-effort sync flush before app exit.
+  ///
+  /// Called from `_WindowCloseHandler.onWindowClose` BEFORE `exit(0)`.
+  /// Three cases:
+  /// - **Sync in-flight**: await it (capped at [timeout]). Subsequent
+  ///   `exit(0)` cleanly terminates after the sync completes.
+  /// - **No sync running + outbox has pending records**: kick off a fresh
+  ///   sync via [syncNow] and await (capped at [timeout]).
+  /// - **No sync running + outbox empty**: return immediately — no work.
+  ///
+  /// Errors are swallowed (best-effort). [exit] terminates the isolate
+  /// after this returns, so partial state is acceptable; the local DB +
+  /// outbox have already captured the writes durably (drift WAL).
+  ///
+  /// Memory constraint honored: this is NOT dispose-time fire-and-forget.
+  /// We explicitly `await` before exit, which is allowed (the constraint
+  /// forbids unsaved futures on isolated exit, not awaited ones).
+  Future<void> flushForExit({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    final inFlight = _lastSyncFuture;
+    if (inFlight != null) {
+      try {
+        await inFlight.timeout(timeout);
+      } on TimeoutException {
+        developer.log('flushForExit: in-flight sync timed out after $timeout',
+            name: 'sync');
+      } catch (e) {
+        developer.log('flushForExit: in-flight sync failed: $e', name: 'sync');
+      }
+      return;
+    }
+    final pending = await database.syncOutboxDao.getPending();
+    if (pending.isEmpty) return;
+    try {
+      await syncNow().timeout(timeout);
+    } on TimeoutException {
+      developer.log('flushForExit: kicked sync timed out after $timeout',
+          name: 'sync');
+    } catch (e) {
+      developer.log('flushForExit: kicked sync failed: $e', name: 'sync');
     }
   }
 
@@ -377,6 +511,8 @@ class SyncController extends StateNotifier<SyncState>
 
   @override
   void dispose() {
+    _outboxWatchSub?.cancel();
+    _pushDebounce?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _scheduler.pause();
     super.dispose();

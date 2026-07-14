@@ -275,6 +275,246 @@ void main() {
     await first;
     expect(gated.calls, 1);
   });
+
+  group('v1.11.8-alpha Layer A: outbox-triggered debounced push', () {
+    test('outbox write triggers debounced sync', () async {
+      final engine = _FakeEngine(
+          const SyncResult.success(pushedCount: 0, pulledCount: 0));
+      final httpClient = http.Client();
+      addTearDown(httpClient.close);
+      final controller = SyncController.forTesting(
+        database: db,
+        credentials: _StubCredentials(),
+        httpClient: httpClient,
+        engine: engine,
+        connectivity: _AlwaysOnline(),
+        intervalPref: _MemIntervalPref(),
+        scheduler: BackgroundSyncScheduler(
+          onTick: () async {},
+          clock: DateTime.now,
+          initialInterval: Duration.zero,
+        ),
+        clock: DateTime.now,
+        pushDebounce: const Duration(milliseconds: 100),
+      );
+      addTearDown(controller.dispose);
+
+      // Let any async setup settle (outbox watch stream subscription etc.).
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final baseline = engine.calls;
+
+      // Simulate user adding a bookmark → repository writes to outbox.
+      await db.syncOutboxDao.enqueue(
+        recordId: 'a1',
+        recordType: 'annotation',
+        payloadJson: '{}',
+      );
+
+      // Wait for debounce (100ms) + buffer.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(engine.calls, baseline + 1,
+          reason: 'Outbox write must trigger a debounced sync');
+    });
+
+    test('multiple outbox writes within window collapse into one sync',
+        () async {
+      final engine = _FakeEngine(
+          const SyncResult.success(pushedCount: 0, pulledCount: 0));
+      final httpClient = http.Client();
+      addTearDown(httpClient.close);
+      final controller = SyncController.forTesting(
+        database: db,
+        credentials: _StubCredentials(),
+        httpClient: httpClient,
+        engine: engine,
+        connectivity: _AlwaysOnline(),
+        intervalPref: _MemIntervalPref(),
+        scheduler: BackgroundSyncScheduler(
+          onTick: () async {},
+          clock: DateTime.now,
+          initialInterval: Duration.zero,
+        ),
+        clock: DateTime.now,
+        pushDebounce: const Duration(milliseconds: 150),
+      );
+      addTearDown(controller.dispose);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final baseline = engine.calls;
+
+      // 3 rapid writes — each resets the debounce timer.
+      for (var i = 0; i < 3; i++) {
+        await db.syncOutboxDao.enqueue(
+          recordId: 'rapid$i',
+          recordType: 'annotation',
+          payloadJson: '{}',
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      }
+
+      // Total elapsed: ~90ms < 150ms debounce → still pending.
+      expect(engine.calls, baseline,
+          reason: 'No sync yet — debounce still pending');
+
+      // Wait for debounce to fire.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(engine.calls, baseline + 1,
+          reason: '3 rapid writes must collapse into exactly 1 sync');
+    });
+  });
+
+  group('v1.11.8-alpha Layer B: flushForExit (best-effort sync before exit(0))',
+      () {
+    test('returns immediately when outbox is empty and no sync in-flight',
+        () async {
+      final engine = _FakeEngine(
+          const SyncResult.success(pushedCount: 0, pulledCount: 0));
+      final httpClient = http.Client();
+      addTearDown(httpClient.close);
+      final controller = SyncController.forTesting(
+        database: db,
+        credentials: _StubCredentials(),
+        httpClient: httpClient,
+        engine: engine,
+        connectivity: _AlwaysOnline(),
+        intervalPref: _MemIntervalPref(),
+        scheduler: BackgroundSyncScheduler(
+          onTick: () async {},
+          clock: DateTime.now,
+          initialInterval: Duration.zero,
+        ),
+        clock: DateTime.now,
+      );
+      addTearDown(controller.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final baseline = engine.calls;
+
+      final sw = Stopwatch()..start();
+      await controller.flushForExit(
+          timeout: const Duration(seconds: 3));
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(500),
+          reason: 'No work to do → return fast, do not wait for timeout');
+      expect(engine.calls, baseline,
+          reason: 'No sync should be triggered when outbox empty');
+    });
+
+    test('kicks off sync when outbox has pending records', () async {
+      final engine = _FakeEngine(
+          const SyncResult.success(pushedCount: 1, pulledCount: 0));
+      final httpClient = http.Client();
+      addTearDown(httpClient.close);
+      final controller = SyncController.forTesting(
+        database: db,
+        credentials: _StubCredentials(),
+        httpClient: httpClient,
+        engine: engine,
+        connectivity: _AlwaysOnline(),
+        intervalPref: _MemIntervalPref(),
+        scheduler: BackgroundSyncScheduler(
+          onTick: () async {},
+          clock: DateTime.now,
+          initialInterval: Duration.zero,
+        ),
+        clock: DateTime.now,
+        // Long Layer A debounce so it doesn't fire during this test.
+        pushDebounce: const Duration(seconds: 30),
+      );
+      addTearDown(controller.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Pending record exists (no Layer A debounce firing for 30s).
+      await db.syncOutboxDao.enqueue(
+        recordId: 'b1',
+        recordType: 'annotation',
+        payloadJson: '{}',
+      );
+      // Wait briefly so the watchPending emit + debounce setup completes
+      // without firing (debounce = 30s).
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final baseline = engine.calls;
+      await controller.flushForExit(
+          timeout: const Duration(seconds: 3));
+      expect(engine.calls, baseline + 1,
+          reason: 'flushForExit must start a sync when outbox has records');
+    });
+
+    test('awaits in-flight sync when one is already running', () async {
+      final gated = _GatedFakeEngine();
+      final httpClient = http.Client();
+      addTearDown(httpClient.close);
+      final controller = SyncController.forTesting(
+        database: db,
+        credentials: _StubCredentials(),
+        httpClient: httpClient,
+        engine: gated,
+        connectivity: _AlwaysOnline(),
+        intervalPref: _MemIntervalPref(),
+        scheduler: BackgroundSyncScheduler(
+          onTick: () async {},
+          clock: DateTime.now,
+          initialInterval: Duration.zero,
+        ),
+        clock: DateTime.now,
+        pushDebounce: const Duration(seconds: 30),
+      );
+      addTearDown(controller.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // Start a sync manually — it blocks inside gated.sync().
+      final manualSync = controller.syncNow();
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.calls, 1);
+
+      // flushForExit must await the in-flight sync, not start another.
+      final flushFuture = controller.flushForExit(
+          timeout: const Duration(seconds: 3));
+      // Yield once to let flushForExit observe _inFlightSync != null.
+      await Future<void>.delayed(Duration.zero);
+      expect(gated.calls, 1,
+          reason: 'flushForExit must NOT trigger a second concurrent sync');
+
+      // Release the in-flight sync.
+      gated.complete(const SyncResult.success(pushedCount: 0, pulledCount: 0));
+      await manualSync;
+      await flushFuture;
+      expect(gated.calls, 1);
+    });
+  });
+
+  group('v1.11.8-alpha Layer C: cold-start immediate sync', () {
+    test('coldStartSync triggers one immediate scheduler tick', () async {
+      var ticks = 0;
+      final scheduler = BackgroundSyncScheduler(
+        onTick: () async {
+          ticks++;
+        },
+        clock: DateTime.now,
+        initialInterval: Duration.zero,
+      );
+      final httpClient = http.Client();
+      addTearDown(httpClient.close);
+      final controller = SyncController.forTesting(
+        database: db,
+        credentials: _StubCredentials(),
+        httpClient: httpClient,
+        engine: _FakeEngine(
+            const SyncResult.success(pushedCount: 0, pulledCount: 0)),
+        connectivity: _AlwaysOnline(),
+        intervalPref: _MemIntervalPref(),
+        scheduler: scheduler,
+        clock: DateTime.now,
+        pushDebounce: const Duration(seconds: 30),
+      );
+      addTearDown(controller.dispose);
+      expect(ticks, 0, reason: 'No tick before coldStartSync');
+      await controller.coldStartSync();
+      expect(ticks, greaterThanOrEqualTo(1),
+          reason: 'coldStartSync (called from production _initInterval) '
+              'must trigger one immediate sync tick');
+    });
+  });
 }
 
 /// Engine that blocks `sync()` until [complete] is called, allowing tests
