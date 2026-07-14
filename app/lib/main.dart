@@ -31,6 +31,7 @@ import 'core/providers.dart';
 import 'core/router.dart';
 import 'core/scaffold_messenger_key.dart';
 import 'data/local/file_storage.dart';
+import 'features/sync/providers/sync_controller.dart';
 import 'services/ai/api_key_store.dart';
 import 'services/book_open_bridge.dart';
 
@@ -72,7 +73,9 @@ void main(List<String> args) async {
     // [WindowListener.onWindowClose] 内调 [exit] 直接终止 Dart isolate，
     // OS 清理所有 native 资源（包括 pdfium 死锁的 FPDF_CloseDocument 线程）。
     await windowManager.setPreventClose(true);
-    _WindowCloseHandler();
+    // v1.11.8-alpha Layer B: _WindowCloseHandler 的实际构造挪到
+    // runZonedGuarded 内（需要 ProviderContainer 才能 read
+    // syncControllerProvider 触发 flushForExit）。这里只做平台层初始化。
   }
 
   unawaited(pdfrxFlutterInitialize()); // M4: pdfrx 引擎初始化
@@ -101,6 +104,12 @@ void main(List<String> args) async {
   // 返回值 Future 永远不 complete（app 持续运行），用 unawaited 标记。
   unawaited(runZonedGuarded<Future<void>>(() async {
     final container = ProviderContainer(overrides: providers);
+
+    // v1.11.8-alpha Layer B: 注册窗口关闭拦截器（在 zone 内，可访问 container）。
+    // 桌面平台才注册——移动端走 AppLifecycleState（SyncController 内已观察）。
+    if (PlatformInfo.isDesktop) {
+      _WindowCloseHandler(container: container);
+    }
 
     // M7+M8：启动后处理文件 deep-link（Windows argv + Android MethodChannel）。
     // M8：注入 onError → SnackBar 反馈。
@@ -155,16 +164,38 @@ void main(List<String> args) async {
 /// 直接调 [exit] (dart:io) 强制终止 Dart isolate。OS 立即回收所有资源
 /// （包括死锁的 pdfium 线程），不等待 native cleanup。
 ///
+/// v1.11.8-alpha Layer B: 关闭前 best-effort 触发 [SyncController.flushForExit]，
+/// 把 outbox 内尚未推送的写操作（书签 / 笔记 / 高亮 / 进度）送出去。这样
+/// 用户"看书累了，加书签，关电脑休息"的常见场景不会丢失同步窗口——之前
+/// 5 分钟 Timer 不会在关窗前 fire，写操作只能等下次打开这台设备才同步出去。
+///
 /// 注：[exit] 是同步强制终止，会跳过 [dispose] / [StatefulWidget.dispose]
 /// 等正常清理。但桌面 app 关闭时正常清理本来就不可靠（用户可能直接 kill），
 /// 数据持久化已由 SQLite/outbox 在每次写操作时立即落盘，关窗时无未保存状态。
+/// flushForExit 是 best-effort——失败 / 超时（3s）都不阻塞 exit(0)。
 class _WindowCloseHandler with WindowListener {
-  _WindowCloseHandler() {
+  _WindowCloseHandler({required this.container}) {
     windowManager.addListener(this);
   }
 
+  final ProviderContainer container;
+
   @override
   void onWindowClose() async {
+    // v1.11.8-alpha Layer B: best-effort flush outbox before exit.
+    // flushForExit 自带 3s timeout + swallow 错误，所以这里不需要额外 try/catch。
+    // 即使 flush 失败，本地 DB + outbox 已落盘（drift WAL），下次打开本机
+    // Layer A 会立即重新触发同步。允许 `await` 在 exit 前——memory 规则只
+    // 禁 dispose-time fire-and-forget，不禁 await-then-exit。
+    try {
+      await container
+          .read(syncControllerProvider.notifier)
+          .flushForExit();
+    } catch (e) {
+      // Swallow — flushForExit 内部已 swallow，但 read 本身可能抛
+      // （例如 provider 被 dispose）。绝不让异常阻塞 exit(0)。
+      debugPrint('onWindowClose flushForExit swallowed: $e');
+    }
     // 强制 exit(0)：不等待 PdfRenderer.dispose（可能卡死）。
     // exit 是同步操作，调用后 Dart isolate 立即终止。
     exit(0);
