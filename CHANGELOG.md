@@ -7,7 +7,93 @@
 
 ## [Unreleased]
 
-v1.11.7-alpha 之后的新变更将记在此处。
+v1.11.8-alpha 之后的新变更将记在此处。
+
+## [1.11.8-alpha] - 2026-07-14
+
+两个用户报告的 bug 修复：(1) EPUB 目录跳转位置错位（《道德经》第 13
+章跳到第八章）；(2) 同步规则不友好（用户加书签后 5 分钟内关机 → 写操作
+永远丢失同步窗口，要等下次打开这台设备）。
+
+### 修复
+
+- **Bug 1：EPUB 目录跳转位置偏移**。根因：scroll-mode `gotoLocator`
+  和 `_emitCurrentLocation` 用 `html.length`（HTML 字节数）作为章节
+  总长度，但 `charOffset` 是 plain-text 字符偏移（来自 PlainTextUtils
+  锚点解析）。两个坐标系混用导致 ratio 压缩——`道德经` 的 HTML 长度
+  105568 / plain 长度 60986 ≈ 1.73×，所以点击偏移 18381 的「第十三章」
+  实际滚到 10619 的位置，落在「第八章」（10393-12650）的区间。修复：
+  `_plainTextLengthForChapter(index)` 用 PlainTextUtils.htmlToPlainWithOffsets
+  缓存每章 plain 长度，`gotoLocator` 和 `_emitCurrentLocation` 都用它
+  替代 html.length。结果：`第十三章` 偏移 18381 / plain 总长 60986 ≈
+  30.1%，正确滚到第十三章区间。3 个新测试覆盖（HTML 长度 ≠ plain 长度 /
+  scroll ratio 坐标系一致 / cache 随 `_plainTextCache.clear()` 同步清空）。
+
+- **Bug 2：同步规则三层完善**。
+  - **Layer A — outbox 触发 3s debounce 推送**。新增
+    `SyncOutboxDao.watchPending()` 用 drift `.watch()` 监听表变更；
+    `SyncController._initOutboxWatch()` 订阅，每次非空 snapshot 启
+    `Timer` 3 秒后调 `_backgroundTick`。rapid writes（多选高亮 / 批量
+    笔记编辑）合并为一次同步。
+  - **Layer B — 关闭前 best-effort flush**。新增 `flushForExit(timeout: 3s)`
+  public method：若 sync in-flight → await；若 outbox pending → kick
+    syncNow + await；否则立即返回。`_WindowCloseHandler.onWindowClose`
+    在 `exit(0)` 前调它。Handler 构造挪进 `runZonedGuarded` 内（要访问
+    ProviderContainer）。Honors memory rule "no dispose-time fire-and-
+    forget" — 显式 `await` 后 exit 是允许的，rule 只禁 unsaved futures。
+  - **Layer C — 冷启动即时同步**。Production constructor 的
+    `_initInterval()` 末尾加 `await _scheduler.resume()`，开 app 立即
+    pull 跨设备变更（手机加的书签打开桌面就看到）。forTesting 不调
+    `_initInterval`，保护现有 call-count 断言。
+
+  Reentry 设计（非显然）：原 `syncNow` 用 `bool _isSyncing` 短路——
+  第二个并发 caller 立即返回不 await 第一个。改用 in-flight Future
+  替代会破坏现有 reentry 测试。Resolution：保留 `_isSyncing` 短路 +
+  新增独立 `_lastSyncFuture` 字段供 Layer B await。两字段两职责。
+
+  **覆盖所有 9 种 record type**（用户反馈 2026-07-14「不当当是书签同步
+  问题，书籍上架，AI对话记录，笔记。都需要根据用户可能都操作习惯进行
+  优化」）。Layer A 监听 `watchPending()` 不区分 recordType，所以以下
+  所有写操作都走同一条 3s debounce → push 路径，Layer B/C 同样不区分：
+  - `annotation`（高亮、章节笔记 annotation）
+  - `bookNote`（章节学习回顾）
+  - `readingProgress`（阅读进度）
+  - `book`（**书籍上架**——含 binary 文件上传，sync 时 `uploadPendingFiles`
+    自动覆盖）
+  - `bookmark`（**书签**——用户原 bug 报告的例子）
+  - `freeformNote`（**自由笔记**——library drawer / NotesPage FAB 入口）
+  - `chatSession`（**AI 对话会话**——抽屉新建/重命名/删除）
+  - `chatMessage`（**AI 对话消息**——流式 SSE 完成后批量记录）
+  - `bookTag`（书籍标签 add/remove）
+
+  12 个新测试（Layer A 3 含 type-agnostic 不变量 + Layer B 3 + Layer C 1
+  + DAO 3 + Bug 1 3），全部通过。Layer A 第 3 个测试明确验证 book /
+  chatMessage / freeformNote 三种类型都触发 sync，guard 未来重构不破坏
+  type-agnostic 不变量。
+
+### 变更
+
+- `reader_engine_epub_view/lib/epubx_renderer.dart`：新增
+  `_plainTextLengthCache` + `_plainTextLengthForChapter(index)` +
+  `debugPlainTextLengthForTesting` / `debugComputeScrollRatioForTesting`
+  helpers。4 处 `_plainTextCache.clear()` 旁同步加 `_plainTextLengthCache.clear()`。
+- `app/lib/data/local/daos/sync_outbox_dao.dart`：新增 `watchPending()`
+  stream（drift select.watch，与 getPending 同 query shape）。
+- `app/lib/features/sync/providers/sync_controller.dart`：+78 行（Layer
+  A/B/C + dual-field reentry），-2 行（旧 syncNow 内联 bool 改 method）。
+- `app/lib/main.dart`：`_WindowCloseHandler` 构造挪入 zone + 接收
+  container；onWindowClose await flushForExit。
+
+### 已知限制
+
+- Layer B 仅桌面（window_manager）。移动端走 `AppLifecycleState`
+  （SyncController 已观察），但 paused 时只 pause scheduler 不主动
+  flush——移动进程被 OS 随时 kill，flush 不可靠，依赖 Layer A 的 3s
+  debounce 把绝大多数写操作及时送出。Mobile flush 留 follow-up。
+- Layer C cold-start 同步在没网 / 没凭据时 `_syncNowInner` 短路，不
+  影响启动。
+- flushForExit 3s timeout：网络极慢时可能超时，但本地 DB + outbox 已
+  落盘（drift WAL），下次打开本机 Layer A 立即重试。
 
 ## [1.11.7-alpha] - 2026-07-14
 
