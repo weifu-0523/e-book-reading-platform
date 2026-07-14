@@ -122,4 +122,72 @@ void main() {
       await r.dispose();
     });
   });
+
+  /// v1.11.7-alpha+1 hotfix: scroll-mode `gotoLocator` was using `html.length`
+  /// as `totalChars`, but `decoded.charOffset` from TOC anchors is in
+  /// PlainTextUtils plain-text coords. HTML length includes tags/attributes,
+  /// so it's much larger than plain length → ratio = plain/html was too small
+  /// → scroll landed at an earlier chapter than the TOC entry pointed to.
+  /// 道德经 第十三章 plain offset=18381, html.length=105568, plain.length=60986
+  /// → buggy ratio = 0.174 → lands at 第八章. Fix: use plain length everywhere.
+  group('scroll ratio coordinate system (v1.11.7-alpha+1 hotfix)', () {
+    /// Synthetic EPUB whose HTML length differs noticeably from plain length.
+    /// HTML: '<p id="a">A</p><p id="b">B</p><p id="c">C</p>'
+    ///   html.length = 39 (with tags)
+    ///   plain text = "ABC"
+    ///   plain.length = 3
+    EpubBook _bookWithHtmlHeavyTags() {
+      const html = '<p id="a">A</p><p id="b">B</p><p id="c">C</p>';
+      return EpubBook()
+        ..Title = 'TagHeavy'
+        ..Chapters = [
+          EpubChapter()
+            ..Title = 'one'
+            ..ContentFileName = 'a.html'
+            ..Anchor = null
+            ..HtmlContent = html,
+          EpubChapter()
+            ..Title = 'two'
+            ..ContentFileName = 'a.html'
+            ..Anchor = 'b'
+            ..HtmlContent = html,
+          EpubChapter()
+            ..Title = 'three'
+            ..ContentFileName = 'a.html'
+            ..Anchor = 'c'
+            ..HtmlContent = html,
+        ];
+    }
+
+    test('plain text length helper returns plain length, not HTML length',
+        () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithHtmlHeavyTags();
+      // HTML length is 45 (tags + content); plain text length is 3 ("ABC").
+      expect(r.flatChapterHtmlAt(0).length, 45);
+      expect(r.debugPlainTextLengthForChapter(0), 3,
+          reason: 'Plain length must exclude tags — was html.length=45 before fix');
+      await r.dispose();
+    });
+
+    test('scroll-mode ratio for anchor at offset 2 (out of 3) lands near 67%',
+        () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithHtmlHeavyTags();
+      // Anchor "c" plain offset = 2 (after "AB").
+      // totalChars: html.length=45 (buggy), plain.length=3 (fixed).
+      // Buggy ratio: 2/45 = 0.0444
+      // Fixed ratio: 2/3  = 0.6667
+      final ratio = r.debugComputeScrollRatioForTesting(
+        chapterIndex: 0,
+        charOffset: 2,
+      );
+      expect(ratio, closeTo(2.0 / 3.0, 0.001),
+          reason: 'Scroll ratio must be charOffset / plain.length, '
+              'not charOffset / html.length');
+      expect(ratio, isNot(closeTo(2.0 / 45.0, 0.001)),
+          reason: 'Old behavior (HTML length) would compress the ratio');
+      await r.dispose();
+    });
+  });
 }

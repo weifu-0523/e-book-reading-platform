@@ -175,6 +175,20 @@ class EpubxRenderer implements EpubRenderer {
   /// the previous book shadow the new one at the same index.
   final Map<int, String> _plainTextCache = {};
 
+  /// v1.11.7-alpha+1 hotfix: per-chapter plain text length cache (PlainTextUtils
+  /// coordinate system). Used by [_emitCurrentLocation] / [gotoLocator] scroll
+  /// mode to compute the scroll-position ratio. Must match the coordinate
+  /// system of [PlainTextUtils.anchorToPlainOffset] used by [_locatorForChapter]
+  /// — otherwise TOC clicks would land at wrong scroll positions.
+  ///
+  /// Why a SEPARATE cache from [_plainTextCache]: that one stores the
+  /// `HtmlToInlineSpanConverter` plain text (FFFC image placeholders + EM SPACE
+  /// indent prefixes), which is a DIFFERENT coordinate system. PlainTextUtils
+  /// does simple tag-strip + entity decode — different output, different length.
+  /// See epubx_renderer.dart:472-483 for the converter vs DOM-text divergence
+  /// history.
+  final Map<int, int> _plainTextLengthCache = {};
+
   /// Cached page breaks for the current chapter in paged mode.
   /// Reset to null on chapter change / book switch / pagination mode change.
   List<PageBreak>? _cachedBreaks;
@@ -469,6 +483,52 @@ class EpubxRenderer implements EpubRenderer {
     return _chapters[index].title;
   }
 
+  /// v1.11.7-alpha+1 hotfix: 第 [index] 章的 plain text 长度（PlainTextUtils
+  /// 坐标系，与 [_locatorForChapter] 用的 anchor 解析同源）。
+  ///
+  /// **Bug 背景**：旧实现 `_emitCurrentLocation` 与 `gotoLocator` 都把
+  /// `totalChars = html.length` 当作 plain text 长度，但 anchor 解析返回的
+  /// `charOffset` 是 plain-text 偏移——HTML 含标签/属性，长度远大于 plain。
+  /// 道德经：html.length=105568 / plain.length=60986（1.73x 差距），导致
+  /// ratio = charOffset / html.length 被压缩 1.73x → 滚动到比预期早 1.73x
+  /// 的位置（用户报告"目录13章跳到正文第八章"）。
+  ///
+  /// 返回值最小为 1（避免除零）。空章节 / 越界返回 1。
+  /// 缓存：键为章节 index（章节切换 / 重打开时清空，见 [_plainTextLengthCache]
+  /// 上方声明 + `openFile` / `openChapters` / `setChapter` / `bookForTesting`
+  /// 中的 `_plainTextLengthCache.clear()`）。
+  int _plainTextLengthForChapter(int index) {
+    if (index < 0 || index >= _chapters.length) return 1;
+    final cached = _plainTextLengthCache[index];
+    if (cached != null) return cached;
+    final html = flatChapterHtmlAt(index);
+    if (html.isEmpty) {
+      _plainTextLengthCache[index] = 1;
+      return 1;
+    }
+    final (plain, _) = PlainTextUtils.htmlToPlainWithOffsets(html);
+    final len = plain.isEmpty ? 1 : plain.length;
+    _plainTextLengthCache[index] = len;
+    return len;
+  }
+
+  /// 测试钩子：暴露 plain-text 长度（与 [_locatorForChapter] 同坐标系），
+  /// 供回归测试断言 scroll-mode ratio 的分母是 plain 长度，不是 HTML 长度。
+  @visibleForTesting
+  int debugPlainTextLengthForChapter(int index) =>
+      _plainTextLengthForChapter(index);
+
+  /// 测试钩子：用与 [gotoLocator] scroll 模式相同的公式计算 ratio。
+  /// 验证 charOffset / totalChars 用 plain 长度而非 HTML 长度。
+  @visibleForTesting
+  double debugComputeScrollRatioForTesting({
+    required int chapterIndex,
+    required int charOffset,
+  }) {
+    final totalChars = _plainTextLengthForChapter(chapterIndex);
+    return (charOffset / totalChars).clamp(0.0, 1.0);
+  }
+
   /// Plain text of the current chapter, in **converter 坐标**（与渲染层
   /// `_buildScroll`/`_buildPaged` 使用的 `HtmlToInlineSpanConverter.convert().plainText`
   /// 完全一致）。Cached per `chapterIndex` for the renderer's lifetime.
@@ -531,6 +591,7 @@ class EpubxRenderer implements EpubRenderer {
   @visibleForTesting
   set bookForTesting(EpubBook? book) {
     _plainTextCache.clear();
+    _plainTextLengthCache.clear();
     _cachedBreaks = null;
     _pendingJumpToLastPage = false;
     _book = book;
@@ -553,6 +614,7 @@ class EpubxRenderer implements EpubRenderer {
   @visibleForTesting
   set chaptersForTesting(List<HtmlChapterSource> chapters) {
     _plainTextCache.clear();
+    _plainTextLengthCache.clear();
     _cachedBreaks = null;
     _pendingJumpToLastPage = false;
     _book = null;
@@ -626,6 +688,7 @@ class EpubxRenderer implements EpubRenderer {
       final bytes = await File(filePath).readAsBytes().timeout(timeout);
       final book = await EpubReader.readBook(bytes).timeout(timeout);
       _plainTextCache.clear();
+      _plainTextLengthCache.clear();
       _cachedBreaks = null;
       _pendingJumpToLastPage = false;
       _book = book;
@@ -676,6 +739,7 @@ class EpubxRenderer implements EpubRenderer {
             '${title.isEmpty ? '' : ' (book: $title)'}');
       }
       _plainTextCache.clear();
+      _plainTextLengthCache.clear();
       _cachedBreaks = null;
       _pendingJumpToLastPage = false;
       _book = null; // MD/TXT 路径无 epubx book；toc getter 据此走扁平分支
@@ -739,8 +803,7 @@ class EpubxRenderer implements EpubRenderer {
   void _emitCurrentLocation() {
     if (_chapters.isEmpty) return;
     if (_currentChapterIndex >= _chapters.length) return;
-    final html = flatChapterHtmlAt(_currentChapterIndex);
-    final totalChars = html.length;
+    final totalChars = _plainTextLengthForChapter(_currentChapterIndex);
     // M2.11/问题1：paged 模式下 _scrollController 没有 client（用 PageView），
     // 旧代码用 scroll ratio 算 charOffset → 恒为 0 → 书签只记章节、跳转只回
     // 首页。修复：paged 模式用当前页/页面对应 break 的 startOffset 作为
@@ -935,7 +998,13 @@ class EpubxRenderer implements EpubRenderer {
       // → 书签跳转永远落在 jumpToPage(0) 的首页。现在 _emitCurrentLocation
       // 编码了页位置（break.startOffset），此处反查落到正确页。
       final html = flatChapterHtmlAt(decoded.chapterIndex);
-      final totalChars = html.isEmpty ? 1 : html.length;
+      // v1.11.7-alpha+1 hotfix: totalChars 必须用 plain text 长度
+      // （PlainTextUtils 坐标系），与 TOC anchor 解析返回的 charOffset 同源。
+      // 旧实现用 html.length（含标签），导致 ratio = plain/html 被压缩 →
+      // 滚动到比预期早的位置（道德经"目录13章跳到正文第八章"）。
+      final totalChars = html.isEmpty
+          ? 1
+          : _plainTextLengthForChapter(decoded.chapterIndex);
       final isPaged = _paginationMode == PaginationMode.paged;
       // M2.8/B4 (Bug #1): post-frame callback 跑在调用方（_onBookmarkJump）
       // 的 try-catch 之外，任何抛出都会变成未捕获异常 → Flutter 红屏。
