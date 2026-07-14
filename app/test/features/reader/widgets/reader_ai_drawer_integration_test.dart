@@ -40,9 +40,12 @@ void main() {
       // 在此处补充真实 widget test。
       expect(true, isTrue);
     },
-    skip: 'M2.7 T26 harness 未落地此 placeholder (需 fake readerEngineForBookProvider + '
-        'stub ConcreteEpubReaderEngine Ready + override providers, ~半天工时); '
-        'deferred to next sweep. 2026-07-10 深度清理确认仍 skip.',
+    // M2.7 T26 harness 未落地此 placeholder (需 fake readerEngineForBookProvider +
+    // stub ConcreteEpubReaderEngine Ready + override providers, ~半天工时);
+    // deferred to next sweep. 2026-07-10 深度清理确认仍 skip.
+    // 2026-07-14 baseline sweep: skip 参数类型修正（testWidgets 只接受 bool，
+    // 不接受 String reason；reason 移到本注释）。
+    skip: true,
     // TODO(T26): construct ReaderBody with fake engine + providers;
     // verify endDrawer + wide panel + toggle + bookId-switch close.
   );
