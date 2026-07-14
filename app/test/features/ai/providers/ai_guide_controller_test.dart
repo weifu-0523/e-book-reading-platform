@@ -169,4 +169,78 @@ void main() {
     // have arrived depending on scheduling.
     expect(controller.state.accumulatedText, anyOf('hello', 'hello world'));
   });
+
+  // C5 (2026-07-14)：in-flight 去重。相同 (book, mode, chapterIndex,
+  // selection) 的请求在 loading/streaming 状态时，新调用必须被忽略，避免
+  // 重复扣费（用户连点 AI 按钮 / 网络重试叠加）。
+  test('duplicate rapid startFullBook fires only one LLM call', () async {
+    var callCount = 0;
+    final slow = MockClient.streaming((req, bs) async {
+      callCount += 1;
+      final stream = () async* {
+        // 模拟 LLM 慢响应：先延迟，再吐 chunk
+        await Future.delayed(const Duration(milliseconds: 30));
+        yield Uint8List.fromList(utf8.encode(
+            'data: ${jsonEncode({'choices': [{'delta': {'content': 'a'}}]})}\n\n'));
+        yield Uint8List.fromList(utf8.encode('data: [DONE]\n\n'));
+      }();
+      return http.StreamedResponse(stream, 200);
+    });
+    final controller = AiGuideController(guide0(slow));
+
+    // 同时发起两次相同请求（不 await 第一个，让它进入 loading）
+    final f1 = controller.startFullBook(book);
+    // 让出 microtask 让第一个进入 loading 状态
+    await Future.delayed(const Duration(milliseconds: 1));
+    // 第二次调用：在第一个仍在 loading 时，应被忽略
+    await controller.startFullBook(book);
+    await f1;
+
+    expect(callCount, 1,
+        reason: 'duplicate rapid call must not fire second LLM request');
+    expect(controller.state.status, AiGuideStatus.done);
+    expect(controller.state.accumulatedText, 'a');
+  });
+
+  test('different chapter startChapter is NOT deduped (legit new request)',
+      () async {
+    var callCount = 0;
+    final slow = MockClient.streaming((req, bs) async {
+      callCount += 1;
+      return http.StreamedResponse(
+          Stream.value(Uint8List.fromList(utf8.encode(
+              'data: ${jsonEncode({'choices': [{'delta': {'content': 'c'}}]})}\n\ndata: [DONE]\n\n'))),
+          200);
+    });
+    final controller = AiGuideController(guide0(slow));
+
+    // 用 selection 模式区分两个不同请求（chapter 1 stub 缺失会走 emptySource）
+    await controller.startSelection(book, 'first question');
+    await controller.startSelection(book, 'second question');
+
+    expect(callCount, 2,
+        reason: 'different selection is a different request, not deduped');
+  });
+
+  test('after done, same request fires again (cache miss bypasses dedup)',
+      () async {
+    var callCount = 0;
+    final slow = MockClient.streaming((req, bs) async {
+      callCount += 1;
+      return http.StreamedResponse(
+          Stream.value(Uint8List.fromList(utf8.encode(
+              'data: ${jsonEncode({'choices': [{'delta': {'content': 'c'}}]})}\n\ndata: [DONE]\n\n'))),
+          200);
+    });
+    final controller = AiGuideController(guide0(slow));
+
+    await controller.startFullBook(book);
+    expect(callCount, 1);
+    expect(controller.state.status, AiGuideStatus.done);
+
+    // 第二次：cache 命中（不触发 dedup，因为 status=done 不是 in-flight）
+    await controller.startFullBook(book);
+    expect(callCount, 1, reason: 'second call hits cache, no new LLM call');
+    expect(controller.state.fromCache, isTrue);
+  });
 }

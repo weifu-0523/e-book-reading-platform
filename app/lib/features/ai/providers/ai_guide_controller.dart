@@ -89,6 +89,11 @@ class AiGuideController extends StateNotifier<AiStreamState> {
   final AiGuide _guide;
   StreamSubscription<AiGuideEvent>? _sub;
 
+  /// C5 (2026-07-14)：当前 in-flight 请求的 run key。null 表示无 in-flight
+  /// 请求（idle/done/error）。用于去重——用户连点 AI 按钮时，相同请求
+  /// 在 loading/streaming 期间被忽略，避免重复扣费。
+  String? _inFlightRunKey;
+
   /// Full-book summary run.
   Future<void> startFullBook(Book book) =>
       _run(book: book, mode: AiGuideMode.full);
@@ -138,6 +143,7 @@ class AiGuideController extends StateNotifier<AiStreamState> {
   void clearAndCancel() {
     _sub?.cancel();
     _sub = null;
+    _inFlightRunKey = null;
     state = const AiStreamState();
   }
 
@@ -148,8 +154,18 @@ class AiGuideController extends StateNotifier<AiStreamState> {
     String? selection,
     String? chapterTitle,
   }) async {
+    // C5 (2026-07-14)：in-flight 去重。相同请求在 loading/streaming 期间
+    // 忽略，避免重复扣费。done/error 状态不拦截（cache 命中或重试是合法的）。
+    final runKey = _computeRunKey(book.id, mode, chapterIndex, selection);
+    final s = state.status;
+    if (_inFlightRunKey == runKey &&
+        (s == AiGuideStatus.loading || s == AiGuideStatus.streaming)) {
+      return;
+    }
+
     await _sub?.cancel();
     _sub = null;
+    _inFlightRunKey = runKey;
     state = AiStreamState(
       status: AiGuideStatus.loading,
       mode: mode,
@@ -187,14 +203,27 @@ class AiGuideController extends StateNotifier<AiStreamState> {
             }
           },
           onDone: () {
+            _inFlightRunKey = null;
             if (!completer.isCompleted) completer.complete();
           },
           onError: (Object e) {
+            _inFlightRunKey = null;
             if (!completer.isCompleted) completer.completeError(e);
           },
           cancelOnError: true,
         );
     await completer.future;
+  }
+
+  /// 计算 in-flight 去重 key。相同 key 的请求在 loading/streaming 期间
+  /// 被忽略。chapterIndex 区分章节；selection 区分选中文本。
+  static String _computeRunKey(
+    String bookId,
+    AiGuideMode mode,
+    int? chapterIndex,
+    String? selection,
+  ) {
+    return '$bookId::${mode.name}::${chapterIndex ?? -1}::${selection ?? ''}';
   }
 
   @override
