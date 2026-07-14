@@ -88,4 +88,55 @@ void main() {
     final removed = await dao.purgePushedBefore(DateTime.utc(2026, 6, 10));
     expect(removed, 1);
   });
+
+  group('watchPending (v1.11.8-alpha Layer A trigger source)', () {
+    test('emits initial empty list when no rows', () async {
+      final emitted = <List<String>>[];
+      final sub = dao.watchPending().listen((rows) {
+        emitted.add(rows.map((r) => r.recordId).toList());
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await sub.cancel();
+      expect(emitted, [
+        [],
+      ], reason: 'Initial emit must reflect current state (empty)');
+    });
+
+    test('emits new pending row after enqueue', () async {
+      final emitted = <List<String>>[];
+      final sub = dao.watchPending().listen((rows) {
+        emitted.add(rows.map((r) => r.recordId).toList());
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await dao.enqueue(
+        recordId: 'b1',
+        recordType: 'annotation',
+        payloadJson: '{}',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await sub.cancel();
+      expect(emitted, [
+        [],
+        ['b1'],
+      ], reason: 'watchPending must emit [initial-empty, after-enqueue]');
+    });
+
+    test('emits shrinking list after markPushed', () async {
+      final id = await dao.enqueue(
+        recordId: 'c1',
+        recordType: 'annotation',
+        payloadJson: '{}',
+      );
+      final emitted = <int>[];
+      final sub = dao.watchPending().listen((rows) {
+        emitted.add(rows.length);
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await dao.markPushed(id, DateTime.utc(2026, 7, 14));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await sub.cancel();
+      expect(emitted, [1, 0],
+          reason: 'watchPending must emit [initial-1, after-markPushed-0]');
+    });
+  });
 }

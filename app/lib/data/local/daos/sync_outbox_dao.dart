@@ -51,6 +51,24 @@ class SyncOutboxDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  /// v1.11.8-alpha Layer A: stream that emits the current pending list
+  /// whenever the underlying table changes (insert / update / delete).
+  ///
+  /// Used by [SyncController] to trigger a debounced push after critical
+  /// user writes (bookmark / note / highlight / progress) — without this,
+  /// changes only push on the 5-minute Timer or manual syncNow, so a user
+  /// who closes the app within 5 minutes of a write loses the sync window.
+  ///
+  /// Emits the initial snapshot immediately on listen, then re-emits on
+  /// any change. Same query shape as [getPending] so the stream's output
+  /// matches the one-shot read.
+  Stream<List<SyncOutboxData>> watchPending() {
+    return (select(syncOutbox)
+          ..where((t) => t.pushedAt.isNull())
+          ..orderBy([(t) => OrderingTerm.asc(t.queuedAt)]))
+        .watch();
+  }
+
   Future<void> markPushed(int id, DateTime ts) {
     return (update(syncOutbox)..where((t) => t.id.equals(id)))
         .write(SyncOutboxCompanion(pushedAt: Value(ts)));
