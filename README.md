@@ -126,7 +126,7 @@
 
 ## 测试与质量
 
-- **测试**：~1293 通过 + 3 skipped + 10 pre-existing baseline 失败（v1.10.0-alpha；细分见 [release-notes](docs/releases/release-notes-v1.10.0-alpha.md)）
+- **测试**：1457 通过 + 25 skipped + 0 失败（v1.11.7-alpha；细分见 [release-notes](docs/releases/release-notes-v1.11.7-alpha.md)）
 - **静态分析**：0 errors / 0 warnings / 0 info（M2.4/T4 已清零；既有 cascade/const 风格 lint 已通过 dart fix --apply + 手工处理）
 - **文档**：836 行 maintainer's runbook + 16 milestone spec + 17 plan + 项目级 review
 - **CI**：手动（每 milestone 完成跑全量回归 + analyze）

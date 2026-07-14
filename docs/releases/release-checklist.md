@@ -2,6 +2,24 @@
 
 本文档跟踪 release 相关任务的完成状态。每次发版前对照检查。
 
+## 发版前硬性检查（每次必做）
+
+> **E6 (2026-07-14)**：多次发现 README/CHANGELOG 测试数漂移（M2.4 漏 bump 242、
+> M2.5 数字滞后）。发版前必须用以下命令核对实测数与文档一致：
+
+```bash
+# 1. 跑全量测试，记录实际 pass/skip/fail 数
+cmd.exe //c "cd /d C:\zhiyue_build_s3\app && C:\flutter\bin\flutter.bat test 2>&1 | tail -3"
+
+# 2. grep README + CHANGELOG 当前声称的数字
+grep -nE "通过|passed|skipped|失败|fail" README.md CHANGELOG.md | head -20
+
+# 3. 不一致就改文档再发版
+```
+
+文档数字格式统一为：`<pass> 通过 + <skip> skipped + <fail> 失败（v<version>；细分见 release-notes）`。
+baseline 失败数若为 0，写 `0 失败`；若有 pre-existing，写明 `N pre-existing baseline 失败`。
+
 ### v1.5.1-alpha release 准备（M2.6 Emergency Bug Fix Sweep）
 
 代码 + 文档部分（2026-07-03 完成）：
