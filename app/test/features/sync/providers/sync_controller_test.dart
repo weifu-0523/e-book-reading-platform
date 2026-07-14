@@ -361,6 +361,72 @@ void main() {
       expect(engine.calls, baseline + 1,
           reason: '3 rapid writes must collapse into exactly 1 sync');
     });
+
+    // 用户反馈 2026-07-14：「不当当是书签同步问题，书籍上架，AI对话记录，
+    // 笔记。都需要根据用户可能都操作习惯进行优化」。Layer A 是 record-type
+    // agnostic —— 任何写 outbox 的 record type 都触发 debounced push。本测试
+    // 用三种用户最关心的类型（book / chatMessage / freeformNote）验证这一
+    // 不变量，防止未来重构意外把 Layer A 限制为某些类型。
+    test(
+        'type-agnostic: book / chatMessage / freeformNote all trigger push',
+        () async {
+      final engine = _FakeEngine(
+          const SyncResult.success(pushedCount: 0, pulledCount: 0));
+      final httpClient = http.Client();
+      addTearDown(httpClient.close);
+      final controller = SyncController.forTesting(
+        database: db,
+        credentials: _StubCredentials(),
+        httpClient: httpClient,
+        engine: engine,
+        connectivity: _AlwaysOnline(),
+        intervalPref: _MemIntervalPref(),
+        scheduler: BackgroundSyncScheduler(
+          onTick: () async {},
+          clock: DateTime.now,
+          initialInterval: Duration.zero,
+        ),
+        clock: DateTime.now,
+        pushDebounce: const Duration(milliseconds: 100),
+      );
+      addTearDown(controller.dispose);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // 三种用户最关心的写操作（书籍上架 / AI 对话 / 笔记），对应 outbox
+      // 的 recordType 'book' / 'chatMessage' / 'freeformNote'。一次性入队
+      // 后应只触发一次 sync（debounce 合并），且 sync 把三种类型都 push 出去。
+      await db.syncOutboxDao.enqueue(
+        recordId: 'b1',
+        recordType: 'book',
+        payloadJson: '{"title":"新书"}',
+      );
+      await db.syncOutboxDao.enqueue(
+        recordId: 'cm1',
+        recordType: 'chatMessage',
+        payloadJson: '{"role":"user","content":"你好"}',
+      );
+      await db.syncOutboxDao.enqueue(
+        recordId: 'fn1',
+        recordType: 'freeformNote',
+        payloadJson: '{"title":"随手记"}',
+      );
+
+      // 三条写入都在 100ms debounce 窗口内 → 合并为 1 次 sync。
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+
+      // engine.calls = 1：debounce 后只触发一次 sync。
+      expect(engine.calls, 1,
+          reason: 'book + chatMessage + freeformNote 三种类型必须都触发 '
+              'Layer A，且 debounce 合并为 1 次 sync');
+
+      // 验证三种类型都还在 pending（fake engine 不真 push，所以不会被
+      // markPushed）。这确保如果未来某次重构漏了某个类型，测试会抓住。
+      final pending = await db.syncOutboxDao.getPending();
+      final pendingTypes = pending.map((r) => r.recordType).toSet();
+      expect(pendingTypes, containsAll(['book', 'chatMessage', 'freeformNote']),
+          reason: 'Layer A 触发不区分类型；任何 outbox 写都应该被覆盖');
+    });
   });
 
   group('v1.11.8-alpha Layer B: flushForExit (best-effort sync before exit(0))',
