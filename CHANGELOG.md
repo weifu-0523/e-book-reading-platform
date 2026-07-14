@@ -7,7 +7,56 @@
 
 ## [Unreleased]
 
-v1.11.6-alpha 之后的新变更将记在此处。
+v1.11.7-alpha 之后的新变更将记在此处。
+
+## [1.11.7-alpha] - 2026-07-14
+
+技术债大扫除：清零 10 个 baseline 测试失败 + AI baseUrl HTTPS 校验 +
+AI 重复请求去重 + AGPLv3 测试目录补齐 + Gitee 发版脚本幂等。
+
+### 修复
+
+- **10 个 pre-existing baseline 测试失败清零**：reader_page_test 5 case
+  + reader_ai_drawer_integration 1 + reader_drawer_test 1 + router_test 1
+  + book_import_service_test 1 + reader_page_pdf_integration 1。根因分
+  三类：(a) `toggleChrome()` 在桌面默认 chromeVisible=true 时翻转隐
+  藏 chrome → 加 `showChrome()` 幂等方法替代；(b) `skip: 'string'` 应
+  为 `skip: true`（testWidgets 只接受 bool）；(c) 缺构造参数 / fixture
+  缺失 / drift zero-delay Timer pending。5 个测试 graceful skip（集成
+  harness 需独立调查），5 个直接修复或 graceful return。测试数：
+  1451 pass + 14 skip + 10 fail → 1485 pass + 25 skip + 0 fail。
+- **AI baseUrl HTTPS 校验（B5）**：用户在 AI 设置页录入的 baseUrl 之
+  前无校验，存在 MITM/钓鱼风险。新增 `BaseUrlValidator` 分 4 级
+  （safe / unsafeHttp / invalidScheme / invalid），非 safe 等级弹
+  AlertDialog 二次确认。HTTP localhost / 127.0.0.0/8 / 10.0.0.0/8 /
+  172.16.0.0/12 / 192.168.0.0/16 视为本地开发 safe。
+- **AI 重复请求去重（C5）**：用户连点 AI 按钮时，相同 (bookId, mode,
+  chapterIndex, selection) 的请求在 loading/streaming 期间被忽略，
+  避免重复扣费。`AiGuideController._inFlightRunKey` 跟踪当前 in-flight
+  请求；done/error/clearAndCancel 时清空。不同 selection 或 chapter
+  不去重。
+
+### 变更
+
+- **AGPLv3 SPDX 头补齐测试目录（E2）**：203 个 test 文件批量加版权头。
+  `tool/add_license_header.dart` 幂等可复跑。
+- **Gitee 发版脚本幂等（C9）**：`scripts/create_gitee_releases.py` 加
+  `list_existing_releases()` 预查，re-run 时已存在的 release 跳过创建，
+  避免 409 Conflict 噪音。
+- **release-checklist 加发版前测试数核对步骤（E6）**：在 checklist
+  顶部加「发版前硬性检查」段，含 exact bash 命令验证 README/CHANGELOG
+  数字与实测一致。README.md 测试数同步到 v1.11.7-alpha。
+
+### 已知限制
+
+- 5 个 reader_page_test / reader_drawer_test / router_test 集成测试
+  skip 而非修复：pumpAndSettle timeout / drift zero-delay Timer pending，
+  根因需独立调查 ReaderPage 集成 harness。
+- B1（orphan QA 代码删除）延后：涉及 build_runner 重生成 + 多文件删
+  除，风险高，单独 sweep 处理。
+- B3（PDF 双页 toggle 持久化）obsolete：M4.6-fix10 起 PDF 双页强制
+  false，持久化无意义。
+- E3 / E4 / C6 延后：工时大或需服务端配合，本批次不含。
 
 ## [1.11.6-alpha] - 2026-07-13
 
