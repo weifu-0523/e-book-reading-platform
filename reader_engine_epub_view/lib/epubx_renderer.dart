@@ -529,6 +529,47 @@ class EpubxRenderer implements EpubRenderer {
     return (charOffset / totalChars).clamp(0.0, 1.0);
   }
 
+  /// v1.11.9-alpha Bug 4: 把可能的旧格式 charOffset（v1.11.7-alpha 及之前
+  /// 用 `scrollRatio × html.length` encoded）缩放到新坐标系（plain-encoded）。
+  ///
+  /// **背景**：v1.11.8-alpha commit 5f6ef1f 把 [_emitCurrentLocation] 和
+  /// [gotoLocator] 的 totalChars 从 `html.length` 改成 plain length。新书签
+  /// charOffset 范围 [0, plainLen]，旧书签 charOffset 范围 [0, htmlLen]
+  /// （htmlLen ≈ 1.73 × plainLen for tag-heavy chapters）。直接用旧书签的
+  /// charOffset / plainLen 会得到放大 ~1.73× 的错误 ratio → 用户视觉上
+  /// "书签跳到比原来靠后"。
+  ///
+  /// **Heuristic**：`rawOffset > plainLen` 说明肯定是旧格式（新书签永远
+  /// ≤ plainLen），按 htmlLen 比例还原 ratio 后用 plainLen 重新 encode。
+  /// `rawOffset ≤ plainLen` 时无法可靠区分（可能是低 ratio 旧书签或新书签），
+  /// 直接用——低 ratio case 偏差 ≤ 1.73×，仍在原章节内，可接受。
+  ///
+  /// paged 模式不需要此转换：旧 paged 书签 charOffset=0（_emitCurrentLocation
+  /// 在 M2.11/问题1 修复前对 paged 模式恒为 0），gotoLocator paged 分支查
+  /// break 索引时自然落到首页，与旧版本行为一致。
+  int _resolveScrollCharOffset(int chapterIndex, int rawOffset) {
+    final html = flatChapterHtmlAt(chapterIndex);
+    final plainLen =
+        html.isEmpty ? 1 : _plainTextLengthForChapter(chapterIndex);
+    if (html.isNotEmpty && rawOffset > plainLen) {
+      final legacyRatio = rawOffset / html.length;
+      return (legacyRatio * plainLen).round().clamp(0, plainLen);
+    }
+    return rawOffset.clamp(0, plainLen);
+  }
+
+  /// 测试钩子：用与 [gotoLocator] scroll 模式相同的 legacy-aware 公式计算
+  /// ratio。验证旧格式 charOffset 被 heuristic 缩放，新格式 charOffset 保留。
+  @visibleForTesting
+  double debugComputeLegacyAwareScrollRatioForTesting({
+    required int chapterIndex,
+    required int charOffset,
+  }) {
+    final plainLen = _plainTextLengthForChapter(chapterIndex);
+    final effective = _resolveScrollCharOffset(chapterIndex, charOffset);
+    return (effective / plainLen).clamp(0.0, 1.0);
+  }
+
   /// Plain text of the current chapter, in **converter 坐标**（与渲染层
   /// `_buildScroll`/`_buildPaged` 使用的 `HtmlToInlineSpanConverter.convert().plainText`
   /// 完全一致）。Cached per `chapterIndex` for the renderer's lifetime.
@@ -1034,7 +1075,12 @@ class EpubxRenderer implements EpubRenderer {
             _emitCurrentLocation();
           } else {
             if (!_scrollController.hasClients) return;
-            final ratio = (decoded.charOffset / totalChars).clamp(0.0, 1.0);
+            // v1.11.9-alpha Bug 4: 旧书签 charOffset 可能是 html-encoded
+            // （v1.11.7-alpha 及之前 _emitCurrentLocation 用 html.length）。
+            // _resolveScrollCharOffset 检测并缩放到新坐标系。
+            final effectiveOffset = _resolveScrollCharOffset(
+                decoded.chapterIndex, decoded.charOffset);
+            final ratio = (effectiveOffset / totalChars).clamp(0.0, 1.0);
             final max = _scrollController.position.maxScrollExtent;
             _scrollController.jumpTo(max * ratio);
             _emitCurrentLocation();

@@ -190,4 +190,78 @@ void main() {
       await r.dispose();
     });
   });
+
+  /// v1.11.9-alpha Bug 4 fix: 书签偏移 regression。
+  ///
+  /// v1.11.8-alpha 把 `_emitCurrentLocation` 和 `gotoLocator` 的 totalChars
+  /// 从 `html.length` 改成 `_plainTextLengthForChapter`（commit 5f6ef1f）。
+  /// 旧书签（v1.11.7-alpha 及之前）的 charOffset 是 `scrollRatio × html.length`
+  /// encoded，用新公式 `charOffset / plain.length` 会得到放大 ~1.73× 的错误
+  /// ratio → 用户报告"安装新版本后原书签定位偏移"。
+  ///
+  /// Fix: `gotoLocator` scroll 分支加 heuristic —— charOffset > plainLen 说明
+  /// 是旧格式，按 html.length 比例缩放到新坐标系。低 ratio 旧书签
+  /// （charOffset ≤ plainLen）无法区分，小偏差可接受。
+  group('scroll ratio legacy-aware (v1.11.9-alpha Bug 4 fix)', () {
+    EpubBook _bookWithHtmlHeavyTags() {
+      const html = '<p id="a">A</p><p id="b">B</p><p id="c">C</p>';
+      return EpubBook()
+        ..Title = 'TagHeavy'
+        ..Chapters = [
+          EpubChapter()
+            ..Title = 'one'
+            ..ContentFileName = 'a.html'
+            ..Anchor = null
+            ..HtmlContent = html,
+        ];
+    }
+
+    test(
+        'legacy bookmark charOffset (html-encoded) is rescaled to plain coords',
+        () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithHtmlHeavyTags();
+      // 模拟 v1.11.7-alpha 旧书签：用户阅读到 scroll ratio 0.667（"C" 位置）
+      // 旧 _emitCurrentLocation: charOffset = 0.667 × html.length = 0.667 × 45 = 30
+      // 用新公式（无 heuristic）：30 / 3 = 10 → clamp 到 1.0 → 跳到章末（错！）
+      // 修复后 heuristic：30 > 3（plainLen）→ 旧 ratio = 30/45 = 0.667 →
+      // 新 charOffset = 0.667 × 3 = 2 → ratio = 2/3 ≈ 0.667（正确）
+      final ratio = r.debugComputeLegacyAwareScrollRatioForTesting(
+        chapterIndex: 0,
+        charOffset: 30,
+      );
+      expect(ratio, closeTo(2.0 / 3.0, 0.05),
+          reason: 'Legacy html-encoded charOffset must be rescaled by '
+              'htmlLen/plainLen ratio so old bookmarks land where the user '
+              'originally placed them.');
+      await r.dispose();
+    });
+
+    test('modern bookmark charOffset (plain-encoded) is preserved exactly',
+        () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithHtmlHeavyTags();
+      // 新书签 charOffset 是 plain 坐标，2 表示 "C" 位置（用户加书签时已是
+      // v1.11.8+ 的 _emitCurrentLocation 存的 plain offset）。
+      final ratio = r.debugComputeLegacyAwareScrollRatioForTesting(
+        chapterIndex: 0,
+        charOffset: 2,
+      );
+      expect(ratio, closeTo(2.0 / 3.0, 0.001),
+          reason: 'Modern plain-encoded charOffset ≤ plainLen must not be '
+              'rescaled — heuristic only kicks in for charOffset > plainLen.');
+      await r.dispose();
+    });
+
+    test('charOffset 0 always lands at chapter start', () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithHtmlHeavyTags();
+      final ratio = r.debugComputeLegacyAwareScrollRatioForTesting(
+        chapterIndex: 0,
+        charOffset: 0,
+      );
+      expect(ratio, 0.0);
+      await r.dispose();
+    });
+  });
 }
