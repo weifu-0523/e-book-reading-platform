@@ -1319,27 +1319,16 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
 
   /// 根据 locator 类型推导默认书签 label。
   ///
-  /// M2.11/问题1：EPUB paged 模式加页码（「第 N 章 · 第 M 页」），让书签像
-  /// Kindle 一样精确定位到页，而非只到章。页号来自 engine 的 currentSpreadIndex
-  /// （1-based 显示）。scroll 模式无分页，只显示章。
+  /// v1.11.9-alpha Bug 3：旧版本用 `第 ${chapterIndex+1} 章`，chapterIndex
+  /// 包含译者序/引言等前置内容，与 reader 实际显示的章节名不一致。修复：
+  /// 委托给 [computeDefaultBookmarkLabel]，优先用 `_chapterTitlesCache` 里
+  /// reader 显示的章节名（如「译者序」「第一章 众妙之门」）。
   String _defaultBookmarkLabel(Locator locator) {
-    if (locator is EpubCfiLocator) {
-      final idx = locator.chapterIndex + 1;
-      final pagePart = _epubPagedLabel();
-      return pagePart == null ? '第 $idx 章' : '第 $idx 章 · $pagePart';
-    }
-    if (locator is EpubRangeLocator) {
-      final idx = locator.chapterIndex + 1;
-      final pagePart = _epubPagedLabel();
-      return pagePart == null ? '第 $idx 章' : '第 $idx 章 · $pagePart';
-    }
-    if (locator is PdfPageLocator) {
-      return '第 ${locator.page} 页';
-    }
-    if (locator is PdfRangeLocator) {
-      return '第 ${locator.page} 页';
-    }
-    return '当前位置';
+    return computeDefaultBookmarkLabel(
+      locator,
+      chapterTitles: _chapterTitlesCache,
+      epubPageLabel: _epubPagedLabel(),
+    );
   }
 
   /// M2.11/问题1：EPUB paged 模式的页号片段（如「第 3 页」），供书签 label 拼接。
@@ -1434,4 +1423,53 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       height: t.lineHeight,
     );
   }
+}
+
+/// v1.11.9-alpha Bug 3: 根据 locator + 当前章节标题缓存推导默认书签 label。
+///
+/// 旧实现用 `第 ${chapterIndex+1} 章`，chapterIndex 包含译者序/引言等前置
+/// 内容（即 _chapters 数组的原始索引），与 reader 顶部实际显示的章节名
+/// 不一致。用户报告：「添加书签目前显示的目前多少章和标题不一致，目前
+/// 添加书签应该是计算的所有章节，把译者序，引言等都计算在内」。
+///
+/// 修复：优先用 [chapterTitles] 里 reader 显示的章节名（来自
+/// `TocTitleResolver.resolve(toc)` 缓存），找不到才回退到「第 N 章」。
+/// 这样书签 label 与 reader 顶部显示的章节名完全一致。
+@visibleForTesting
+String computeDefaultBookmarkLabel(
+  Locator locator, {
+  required Map<int, String> chapterTitles,
+  String? epubPageLabel,
+}) {
+  if (locator is EpubCfiLocator) {
+    return _epubChapterLabel(
+      locator.chapterIndex,
+      chapterTitles,
+      epubPageLabel,
+    );
+  }
+  if (locator is EpubRangeLocator) {
+    return _epubChapterLabel(
+      locator.chapterIndex,
+      chapterTitles,
+      epubPageLabel,
+    );
+  }
+  if (locator is PdfPageLocator) {
+    return '第 ${locator.page} 页';
+  }
+  if (locator is PdfRangeLocator) {
+    return '第 ${locator.page} 页';
+  }
+  return '当前位置';
+}
+
+String _epubChapterLabel(
+  int chapterIndex,
+  Map<int, String> chapterTitles,
+  String? epubPageLabel,
+) {
+  final chapterTitle = chapterTitles[chapterIndex];
+  final chapterPart = chapterTitle ?? '第 ${chapterIndex + 1} 章';
+  return epubPageLabel == null ? chapterPart : '$chapterPart · $epubPageLabel';
 }
