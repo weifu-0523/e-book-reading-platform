@@ -7,7 +7,68 @@
 
 ## [Unreleased]
 
-v1.11.8-alpha 之后的新变更将记在此处。
+v1.11.9-alpha 之后的新变更将记在此处。
+
+## [1.11.9-alpha] - 2026-07-15
+
+4 个用户报告的 bug + UX 增强：(1) v1.11.8-alpha 引入的书签偏移
+regression；(2) 移动端 chrome 透明度看不清；(3) 添加书签章节计数包含
+译者序/引言；(4) library AppBar 缺立即同步按钮。
+
+### 修复
+
+- **Bug 1：v1.11.8-alpha 书签偏移 regression**。v1.11.8-alpha commit
+  `5f6ef1f` 把 `_emitCurrentLocation` 和 `gotoLocator` 的 totalChars
+  从 `html.length` 改成 `_plainTextLengthForChapter`，旧书签（v1.11.7
+  及之前）的 charOffset 是 `scrollRatio × html.length` encoded → 用新
+  公式 `charOffset / plain.length` 得到放大 ~1.73× 的错误 ratio → 用户
+  视觉上"书签跳到比原来靠后"。修复：gotoLocator scroll 分支加 heuristic
+  `_resolveScrollCharOffset`——charOffset > plainLen 说明肯定是旧格式
+  （新书签永远 ≤ plainLen），按 `htmlLen` 比例还原 ratio 后用 plainLen
+  重新 encode。低 ratio 旧书签（charOffset ≤ plainLen）无法区分，小偏差
+  可接受。Paged 模式不受影响（旧 paged 书签 charOffset=0，自然落到首页）。
+  3 个新测试（legacy rescaled / modern preserved / charOffset 0）。
+
+- **Bug 2：移动端 chrome 透明度看不清**。`_buildChrome` 用
+  `Material(color: Colors.black54)` 硬编码黑色 54% 透明背景，浅色方案下
+  IconTheme 是深色（黑/灰）→ 黑底+深色图标对比度极低，用户报告"看不清，
+  与背景文字重叠显示"。修复：背景色改用 `Theme.of(context).colorScheme.surface`
+  自适应——浅色方案给浅底（白/浅灰），深色方案给深底（深灰），AppBar
+  IconTheme 默认 onSurface 色保证对比度。3 个新测试（light bg / dark bg /
+  icons not white）。
+
+- **Bug 3：添加书签章节计数包含译者序/引言**。`_defaultBookmarkLabel`
+  用 `第 ${chapterIndex+1} 章`，chapterIndex 是 `_chapters` 数组的原始
+  索引（包含译者序/引言/前言等前置内容），与 reader 顶部实际显示的章节名
+  （来自 `_chapterTitlesCache[idx]`，如"译者序"、"第一章 众妙之门"）不一致
+  → 用户报告"显示的目前多少章和标题不一致"。修复：提取
+  `computeDefaultBookmarkLabel` 为 `@visibleForTesting` top-level helper，
+  优先用 `chapterTitles[idx]`（与 reader 显示同源），找不到才回退到
+  `第 N 章`。7 个新测试（normal / front matter / null fallback / page
+  label / EpubRange / PdfPage / PdfRange）。
+
+- **Bug 4：library AppBar 缺立即同步按钮**。新增 `LibraryAppBar.syncStatus`
+  + `onSyncTap` 可选参数。compact + expanded 模式都渲染 `_SyncIconButton`：
+  idle/success 启用，pushing/pulling 旋转 + 禁用，offline 禁用，error 显示
+  retry。`library_page` 通过 `ref.watch(syncControllerProvider).status`
+  接入（try/catch 容错——测试未 override 时按钮不渲染）。6 个新测试
+  （renders / hides when null / tap callback / disabled pushing / disabled
+  offline / compact mode）。
+
+### 测试
+
+- v1.11.8-alpha 后总数：1504 pass + 14 skip + 1 pre-existing flake
+- v1.11.9-alpha 新增：19 个测试（3 Bug1 + 3 Bug2 chrome + 7 Bug3 label
+  + 6 Bug2 sync button）
+- 预期总数：~1523 pass + 14 skip + 1 pre-existing flake
+
+### 已知限制
+
+- Bug 1 heuristic 对低 ratio 旧书签（charOffset ≤ plainLen）无法区分新旧
+  格式，小偏差（≤ 1.73×）仍在原章节内。用户可手动重新添加书签。
+- Bug 4 library_page 的 try/catch 是 riverpod 容错——production
+  syncControllerProvider 总是注册（全局），try/catch 实际是 no-op。
+  测试未 override 时按钮隐藏，UI 仍可正常使用。
 
 ## [1.11.8-alpha] - 2026-07-14
 
