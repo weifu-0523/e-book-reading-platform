@@ -26,6 +26,7 @@ import '../../../core/providers.dart';
 import '../../../data/models/book.dart';
 import '../../../data/models/book_note.dart';
 import '../../../features/ai/providers/book_preprocess_controller.dart';
+import '../../../features/sync/models/sync_status.dart';
 import '../../../features/sync/providers/sync_controller.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/sync/book_file_sync_service.dart';
@@ -124,6 +125,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(libraryControllerProvider);
     final controller = ref.read(libraryControllerProvider.notifier);
+    // v1.11.9-alpha Bug 2: read sync status for AppBar sync button.
+    // Tests that do not override syncControllerProvider get null (button hidden).
+    SyncStatus? syncStatus;
+    try {
+      syncStatus = ref.watch(syncControllerProvider).status;
+    } catch (_) {
+      syncStatus = null;
+    }
 
     return Scaffold(
       drawer: const _LibraryNavigationDrawer(),
@@ -142,6 +151,8 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         onEnterSearch: _enterSearch,
         onExitSearch: _exitSearch,
         onBatchExport: _startBatchExport,
+        syncStatus: syncStatus,
+        onSyncTap: () => ref.read(syncControllerProvider.notifier).syncNow(),
       ),
       body: _buildBody(context, state),
       bottomNavigationBar: state.mode == LibraryMode.selecting

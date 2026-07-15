@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/responsive_layout_builder.dart';
 import '../../../gen_l10n/app_localizations.dart';
+import '../../sync/models/sync_status.dart';
 import '../models/sort_by.dart';
 import '../models/view_mode.dart';
 
@@ -41,6 +42,15 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool searching;
   final TextEditingController? searchController;
 
+  /// v1.11.9-alpha Bug 2: 当前同步状态。null 时不渲染同步按钮（调用方未
+  /// 配置同步，如未登录）。提供时渲染 _SyncIconButton，状态自适应图标 +
+  /// pushing/pulling 时旋转动画。
+  final SyncStatus? syncStatus;
+
+  /// v1.11.9-alpha Bug 2: 点击同步按钮的回调（通常调
+  /// `syncControllerProvider.notifier.syncNow()`）。
+  final VoidCallback? onSyncTap;
+
   const LibraryAppBar({
     super.key,
     required this.viewMode,
@@ -57,6 +67,8 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onBatchExport,
     this.searching = false,
     this.searchController,
+    this.syncStatus,
+    this.onSyncTap,
   });
 
   @override
@@ -100,6 +112,8 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       title: const Text('智阅'),
       actions: [
+        if (syncStatus != null)
+          _SyncIconButton(status: syncStatus!, onPressed: onSyncTap),
         IconButton(
           icon: const Icon(Icons.add),
           onPressed: onImportTap,
@@ -162,6 +176,8 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
             )
           : const Text('智阅'),
       actions: [
+        if (syncStatus != null)
+          _SyncIconButton(status: syncStatus!, onPressed: onSyncTap),
         if (!searching)
           IconButton(
             icon: const Icon(Icons.search),
@@ -277,3 +293,90 @@ class LibraryAppBar extends StatelessWidget implements PreferredSizeWidget {
 }
 
 enum _CompactAction { search, tags, sort, toggleView, batchExport, aiSettings, settings }
+
+/// v1.11.9-alpha Bug 2: library AppBar 同步按钮。
+///
+/// 复用 SyncButton 的状态→图标 + 旋转动画逻辑，但渲染为 AppBar-friendly 的
+/// IconButton（而非 FilledButton）。pushing/pulling 时旋转；offline/error
+/// 禁用；success 显示 check；idle 显示 sync icon。
+class _SyncIconButton extends StatefulWidget {
+  const _SyncIconButton({required this.status, required this.onPressed});
+
+  final SyncStatus status;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_SyncIconButton> createState() => _SyncIconButtonState();
+}
+
+class _SyncIconButtonState extends State<_SyncIconButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+    _updateAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SyncIconButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.status != widget.status) _updateAnimation();
+  }
+
+  void _updateAnimation() {
+    final isRunning = widget.status == SyncStatus.pushing ||
+        widget.status == SyncStatus.pulling;
+    if (isRunning) {
+      _controller.repeat();
+    } else {
+      _controller.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isRunning = widget.status == SyncStatus.pushing ||
+        widget.status == SyncStatus.pulling;
+    final isDisabled = isRunning || widget.status == SyncStatus.offline;
+
+    final icon = _iconForStatus(widget.status);
+    return IconButton(
+      tooltip: '立即同步',
+      onPressed: isDisabled ? null : widget.onPressed,
+      icon: isRunning
+          ? RotationTransition(
+              turns: Tween(begin: 0.0, end: 1.0).animate(_controller),
+              child: Icon(icon),
+            )
+          : Icon(icon),
+    );
+  }
+
+  IconData _iconForStatus(SyncStatus status) {
+    switch (status) {
+      case SyncStatus.pushing:
+      case SyncStatus.pulling:
+        return Icons.sync;
+      case SyncStatus.error:
+        return Icons.error_outline;
+      case SyncStatus.offline:
+        return Icons.cloud_off;
+      case SyncStatus.success:
+        return Icons.check;
+      case SyncStatus.idle:
+        return Icons.sync;
+    }
+  }
+}

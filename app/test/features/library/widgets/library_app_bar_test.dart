@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/features/library/models/sort_by.dart';
 import 'package:zhiyue/features/library/models/view_mode.dart';
 import 'package:zhiyue/features/library/widgets/library_app_bar.dart';
+import 'package:zhiyue/features/sync/models/sync_status.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 void main() {
@@ -36,6 +37,8 @@ void main() {
     VoidCallback? onEnterSearch,
     VoidCallback? onExitSearch,
     VoidCallback? onBatchExport,
+    SyncStatus? syncStatus,
+    VoidCallback? onSyncTap,
   }) {
     return LibraryAppBar(
       viewMode: viewMode,
@@ -51,6 +54,8 @@ void main() {
       onEnterSearch: onEnterSearch ?? () {},
       onExitSearch: onExitSearch ?? () {},
       onBatchExport: onBatchExport ?? () {},
+      syncStatus: syncStatus,
+      onSyncTap: onSyncTap,
     );
   }
 
@@ -155,5 +160,85 @@ void main() {
     expect(find.byIcon(Icons.folder_zip_outlined), findsOneWidget);
     await tester.tap(find.byIcon(Icons.folder_zip_outlined));
     expect(tapped, isTrue);
+  });
+
+  // v1.11.9-alpha Bug 2: library AppBar 增加立即同步按钮。
+  //
+  // 用户报告：「在书架级的导航条上，增加一个立即同步的按钮」。原来 library
+  // AppBar 没有 sync 入口，用户必须去 settings/sync 才能触发同步。
+  group('v1.11.9-alpha Bug 2: sync button', () {
+    testWidgets('renders sync icon button when syncStatus provided',
+        (tester) async {
+      await tester.pumpWidget(wrapAppBar(buildAppBar(
+        syncStatus: SyncStatus.idle,
+        onSyncTap: () {},
+      )));
+      expect(find.byTooltip('立即同步'), findsOneWidget);
+    });
+
+    testWidgets('does NOT render sync button when syncStatus is null',
+        (tester) async {
+      // 调用方未配置同步（如未登录）时不渲染按钮，避免无用 UI。
+      await tester.pumpWidget(wrapAppBar(buildAppBar()));
+      expect(find.byTooltip('立即同步'), findsNothing);
+    });
+
+    testWidgets('tapping sync button fires callback', (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(wrapAppBar(buildAppBar(
+        syncStatus: SyncStatus.idle,
+        onSyncTap: () => tapped = true,
+      )));
+      await tester.tap(find.byTooltip('立即同步'));
+      expect(tapped, isTrue);
+    });
+
+    testWidgets('sync button is disabled when status is pushing',
+        (tester) async {
+      await tester.pumpWidget(wrapAppBar(buildAppBar(
+        syncStatus: SyncStatus.pushing,
+        onSyncTap: () {},
+      )));
+      final btn = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byTooltip('立即同步'),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(btn.onPressed, isNull,
+          reason: '正在同步中应禁用按钮，防止重入');
+    });
+
+    testWidgets('sync button is disabled when status is offline',
+        (tester) async {
+      await tester.pumpWidget(wrapAppBar(buildAppBar(
+        syncStatus: SyncStatus.offline,
+        onSyncTap: () {},
+      )));
+      final btn = tester.widget<IconButton>(
+        find.ancestor(
+          of: find.byTooltip('立即同步'),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(btn.onPressed, isNull,
+          reason: '离线状态应禁用按钮');
+    });
+
+    testWidgets('sync button rendered in compact mode too', (tester) async {
+      // compact 视口（< 600dp）下 AppBar 走 _buildCompactBar 分支，仍要渲染
+      // 同步按钮（用户报告特指「书架级导航条」，含手机端）。
+      tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(wrapAppBar(buildAppBar(
+        syncStatus: SyncStatus.idle,
+        onSyncTap: () {},
+      )));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('立即同步'), findsOneWidget);
+    });
   });
 }
