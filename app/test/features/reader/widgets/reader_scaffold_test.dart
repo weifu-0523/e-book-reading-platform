@@ -347,6 +347,104 @@ void main() {
     // 时钟仍在 title。
     expect(find.byType(ReaderClock), findsOneWidget);
   });
+
+  // v1.11.9-alpha Bug 1：compact chrome 透明度问题。
+  //
+  // 用户报告：「导航条改为可左右滑动后，目前设置为了透明状态，但没有透明度
+  // 的设置，导致浅色方案下，移动端导航条看不清，和背景文字重叠显示」。
+  //
+  // 根因：`_buildChrome` 用 `Material(color: Colors.black54)` 硬编码黑色 54%
+  // 透明背景。浅色方案下 IconTheme 是深色（黑/灰），叠在黑底上对比度极低
+  // → 用户视觉上「透明」+ 看不清。修复：背景色用 `Theme.colorScheme.surface`
+  // 自适应主题（浅色方案给浅底，深色方案给深底）+ iconTheme 强制 onSurface 色。
+  group('v1.11.9-alpha Bug 1: chrome background theme-adaptive', () {
+    Finder _chromeMaterial() => find.byKey(const Key('reader_app_bar'));
+
+    testWidgets('light theme: chrome bg is NOT fixed Colors.black54',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: ThemeData.light(useMaterial3: true),
+            home: ReaderScaffold(
+              content: const Center(child: Text('book')),
+              title: 't',
+              paginationMode: PaginationMode.paged,
+              marginPx: 48,
+              onTapPrev: () {},
+              onTapNext: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_chromeMaterial(), findsOneWidget);
+      final material = tester.widget<Material>(_chromeMaterial());
+      expect(material.color, isNot(equals(Colors.black54)),
+          reason: '浅色主题下 chrome 用 Colors.black54 会导致黑底+深色图标'
+              '对比度极低，用户报告「看不清，与背景文字重叠」。应使用 theme '
+              'surface 色自适应。');
+    });
+
+    testWidgets('dark theme: chrome bg also uses theme surface (not black54)',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: ThemeData.dark(useMaterial3: true),
+            home: ReaderScaffold(
+              content: const Center(child: Text('book')),
+              title: 't',
+              paginationMode: PaginationMode.paged,
+              marginPx: 48,
+              onTapPrev: () {},
+              onTapNext: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_chromeMaterial(), findsOneWidget);
+      final material = tester.widget<Material>(_chromeMaterial());
+      expect(material.color, isNot(equals(Colors.black54)),
+          reason: '深色主题也应通过 theme surface 自适应（深灰），而非硬编码 '
+              'Colors.black54。');
+    });
+
+    testWidgets('light theme: chrome icons use onSurface (visible on light bg)',
+        (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: ThemeData.light(useMaterial3: true),
+            home: ReaderScaffold(
+              content: const Center(child: Text('book')),
+              title: 't',
+              paginationMode: PaginationMode.paged,
+              marginPx: 48,
+              onTapPrev: () {},
+              onTapNext: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 找任意一个 chrome 内的 Icon，断言其颜色 != white（白色图标在浅底上看不清）。
+      final iconFinder = find.descendant(
+        of: find.byKey(const Key('reader_app_bar')),
+        matching: find.byType(Icon),
+      );
+      expect(iconFinder, findsWidgets);
+      final icon = tester.widget<Icon>(iconFinder.first);
+      final iconColor = icon.color ?? IconTheme.of(tester.element(iconFinder.first)).color;
+      expect(iconColor, isNot(equals(Colors.white)),
+          reason: '浅色主题下图标不应是白色（白底白字看不清）。应继承 theme '
+              'onSurface（深色）。');
+    });
+  });
 }
 
 void nil() {}

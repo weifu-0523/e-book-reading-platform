@@ -487,13 +487,19 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold>
   Widget _buildChrome(BuildContext context) {
     final ui = ref.watch(readerUiControllerProvider);
     final isCompact = windowSizeClassOf(context) == WindowSizeClass.compact;
+    // v1.11.9-alpha Bug 1: 背景色用 theme.colorScheme.surface 自适应。
+    // 旧实现硬编码 Colors.black54，浅色方案下 IconTheme 是深色 → 黑底+
+    // 深色图标对比度极低，用户报告「看不清，与背景文字重叠显示」。改用
+    // theme surface 后：浅色方案给浅底（白/浅灰），深色方案给深底（深灰），
+    // 配合 IconTheme 默认 onSurface 色保证对比度。
+    final chromeColor = Theme.of(context).colorScheme.surface;
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
       child: Material(
         key: const Key('reader_app_bar'),
-        color: Colors.black54,
+        color: chromeColor,
         child: SafeArea(
           // v1.11.6-alpha：手机竖屏（width < 600，WindowSizeClass.compact）
           // 下 AppBar 的 leadingWidth=192 + 8-9 个 action IconButton（每个 48px）
