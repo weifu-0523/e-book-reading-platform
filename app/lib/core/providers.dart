@@ -41,6 +41,7 @@ import '../features/library/providers/library_controller.dart';
 import '../features/settings/services/font_import_service.dart';
 import '../services/book_import_service.dart';
 import '../services/sync/sync_recorder.dart';
+import '../services/tts/tts_service.dart';
 
 /// 全局单例 AppDatabase。M1 阶段无同步包装。
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -82,6 +83,14 @@ final coversDirProvider = Provider<String>((ref) {
 /// Null in widget tests or when path_provider is unavailable — repository
 /// treats null as "skip local file delete" (best-effort).
 FileStorage? globalFileStorage;
+
+/// TTS feature (2026-07-16 v1.12.0-alpha T4): global override for the
+/// [TtsService] used by [ttsServiceProvider]. Production leaves this null
+/// (the provider falls back to [FlutterTtsServiceImpl]); widget/integration
+/// tests inject a FakeTtsService here so they don't have to thread an
+/// override through every ProviderContainer. Set before [ProviderContainer]
+/// is constructed.
+TtsService? globalTtsServiceOverride;
 
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
