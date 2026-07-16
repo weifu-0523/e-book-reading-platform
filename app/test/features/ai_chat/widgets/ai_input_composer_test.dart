@@ -22,6 +22,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/features/ai_chat/providers/chat_session_controller.dart';
 import 'package:zhiyue/features/ai_chat/widgets/ai_input_composer.dart';
+import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
+import 'package:zhiyue/services/tts/tts_service.dart';
 
 /// Fake [ChatSessionController] that records sendMessage calls.
 ///
@@ -79,10 +81,16 @@ void main() {
   setUp(() {
     // Build a provider container with an overridden controller so the test
     // can observe sendMessage calls without wiring the LLM/repo chain.
+    // T7 (2026-07-16): AiInputComposer now embeds TtsMiniControls, which
+    // watches ttsPlaybackControllerProvider → ttsServiceProvider. Without
+    // an override, ProviderContainer.dispose would invoke
+    // FlutterTtsServiceImpl.dispose → flutter_tts platform channel →
+    // MissingPluginException (no plugin in widget test env). Stub it.
     fakeController = _FakeController(_NullRef(), 'b1');
     container = ProviderContainer(overrides: [
       chatSessionControllerProvider('b1')
           .overrideWith((ref) => fakeController),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
   });
@@ -264,4 +272,43 @@ class _NullRef implements Ref {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnimplementedError('_NullRef.${invocation.memberName}');
+}
+
+/// Concrete [TtsService] stub (no platform channel). T7 (2026-07-16):
+/// AiInputComposer transitively watches `ttsServiceProvider` via
+/// TtsMiniControls; disposing the container would otherwise call
+/// FlutterTtsServiceImpl.dispose and trip MissingPluginException.
+class _StubTtsService implements TtsService {
+  final StreamController<TtsState> _stateCtl =
+      StreamController<TtsState>.broadcast();
+  @override
+  Stream<TtsState> get state => _stateCtl.stream;
+  @override
+  Stream<TtsProgress> get progress => const Stream<TtsProgress>.empty();
+  @override
+  Stream<String> get error => const Stream<String>.empty();
+  @override
+  bool get isInitialized => false;
+  @override
+  Future<void> init() async {}
+  @override
+  Future<void> speakSentence(Sentence sentence) async {}
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> pause() async {}
+  @override
+  void setCurrentSentenceIndex(int idx) {}
+  @override
+  Future<void> setSpeechRate(double rate) async {}
+  @override
+  Future<void> setPitch(double pitch) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<bool> isLanguageAvailable(String locale) async => true;
+  @override
+  Future<bool> isLanguageInstalled(String locale) async => true;
+  @override
+  Future<void> dispose() async => _stateCtl.close();
 }

@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers.dart' show appDatabaseProvider;
 import '../../../data/local/database.dart';
 import '../../../services/ai/attachment_note_resolver.dart';
+import '../../tts/widgets/tts_mini_controls.dart';
 import '../providers/chat_providers.dart'
     show chatRepositoryProvider, sessionLifecycleUseCaseProvider;
 import '../providers/chat_session_controller.dart';
@@ -403,6 +404,10 @@ class _AiInputComposerState extends ConsumerState<AiInputComposer> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // T7 (2026-07-16): compact TTS playback bar floats above the input
+        // composer. Renders SizedBox.shrink when TTS phase=idle, so visually
+        // no-op when no playback is queued.
+        const TtsMiniControls(),
         if (_pendingAttachment != null)
           Container(
             margin: const EdgeInsets.fromLTRB(8, 4, 8, 0),

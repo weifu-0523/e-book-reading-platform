@@ -7,6 +7,8 @@
 // minimal fake that supports createSession / getSession / listSessionsForBook
 // / watchMessages. All other members throw via noSuchMethod.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +20,8 @@ import 'package:zhiyue/features/ai_chat/widgets/ai_input_composer.dart';
 import 'package:zhiyue/features/ai_chat/widgets/ai_message_list.dart';
 import 'package:zhiyue/features/ai_chat/widgets/ai_preset_card_row.dart';
 import 'package:zhiyue/features/ai_chat/widgets/ai_session_dropdown.dart';
+import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
+import 'package:zhiyue/services/tts/tts_service.dart';
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -77,6 +81,46 @@ class _FakeRepo implements ChatRepository {
       );
 }
 
+/// Concrete [TtsService] stub (no platform channel). T7 (2026-07-16):
+/// AiDrawerWidget renders AiInputComposer, which embeds TtsMiniControls →
+/// ttsServiceProvider. Without this override, ProviderContainer.dispose
+/// would call FlutterTtsServiceImpl.dispose → flutter_tts platform channel
+/// → MissingPluginException in the widget test env.
+class _StubTtsService implements TtsService {
+  final StreamController<TtsState> _stateCtl =
+      StreamController<TtsState>.broadcast();
+  @override
+  Stream<TtsState> get state => _stateCtl.stream;
+  @override
+  Stream<TtsProgress> get progress => const Stream<TtsProgress>.empty();
+  @override
+  Stream<String> get error => const Stream<String>.empty();
+  @override
+  bool get isInitialized => false;
+  @override
+  Future<void> init() async {}
+  @override
+  Future<void> speakSentence(Sentence sentence) async {}
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> pause() async {}
+  @override
+  void setCurrentSentenceIndex(int idx) {}
+  @override
+  Future<void> setSpeechRate(double rate) async {}
+  @override
+  Future<void> setPitch(double pitch) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<bool> isLanguageAvailable(String locale) async => true;
+  @override
+  Future<bool> isLanguageInstalled(String locale) async => true;
+  @override
+  Future<void> dispose() async => _stateCtl.close();
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -88,6 +132,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
 
@@ -114,6 +159,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
 
@@ -138,6 +184,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
 
@@ -166,6 +213,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
 
@@ -195,6 +243,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
 
@@ -225,6 +274,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
 
@@ -257,6 +307,7 @@ void main() {
     final repo = _FakeRepo();
     final container = ProviderContainer(overrides: [
       chatRepositoryProvider.overrideWithValue(repo),
+      ttsServiceProvider.overrideWithValue(_StubTtsService()),
     ]);
     addTearDown(container.dispose);
 
