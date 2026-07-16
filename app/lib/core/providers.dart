@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine_epub_view/reader_engine_epub_view.dart';
 
@@ -91,6 +93,14 @@ FileStorage? globalFileStorage;
 /// override through every ProviderContainer. Set before [ProviderContainer]
 /// is constructed.
 TtsService? globalTtsServiceOverride;
+
+/// TTS feature (2026-07-16 v1.12.0-alpha T5): global override for the
+/// directory that backs [ttsSettingsDirProvider]. main.dart boot injects
+/// [FileStorage.rootDir] (the app documents directory) so [TtsSettingsNotifier]
+/// can persist `tts_settings.json` next to library/covers/fonts. Null in
+/// widget tests until they explicitly set it; tests use
+/// [Directory.systemTemp] via setUp.
+Directory? globalTtsSettingsDirOverride;
 
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);

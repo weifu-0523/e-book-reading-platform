@@ -93,6 +93,11 @@ void main(List<String> args) async {
     // T4 (2026-07-13): publish covers dir so SyncController can wire it
     // into BookFileSyncService for cross-device cover binary sync.
     globalCoversDirOverride = storage.coversDir.path;
+    // T5 (2026-07-16): publish app documents dir so TtsSettingsNotifier can
+    // persist tts_settings.json. Reusing rootDir avoids adding a new getter
+    // to FileStorage; the JSON file sits at the same level as library/,
+    // covers/, fonts/ subdirs.
+    globalTtsSettingsDirOverride = storage.rootDir;
   } catch (e) {
     // path_provider not available (e.g. widget test env) — leave as '' so
     // binary sync is disabled. App still works for the metadata-only path.
