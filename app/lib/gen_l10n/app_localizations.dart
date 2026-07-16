@@ -140,6 +140,60 @@ abstract class AppLocalizations {
   /// **'关于'**
   String get settingsSectionAbout;
 
+  /// No description provided for @settingsSectionTts.
+  ///
+  /// In zh, this message translates to:
+  /// **'朗读'**
+  String get settingsSectionTts;
+
+  /// No description provided for @ttsRateLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'语速'**
+  String get ttsRateLabel;
+
+  /// No description provided for @ttsPitchLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'音调'**
+  String get ttsPitchLabel;
+
+  /// No description provided for @ttsVolumeLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'音量'**
+  String get ttsVolumeLabel;
+
+  /// No description provided for @ttsChapterBoundaryLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'章末行为'**
+  String get ttsChapterBoundaryLabel;
+
+  /// No description provided for @ttsChapterBoundaryContinuous.
+  ///
+  /// In zh, this message translates to:
+  /// **'连续'**
+  String get ttsChapterBoundaryContinuous;
+
+  /// No description provided for @ttsChapterBoundaryAskAtEnd.
+  ///
+  /// In zh, this message translates to:
+  /// **'章末询问'**
+  String get ttsChapterBoundaryAskAtEnd;
+
+  /// No description provided for @ttsTestSpeak.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试朗读'**
+  String get ttsTestSpeak;
+
+  /// No description provided for @ttsTestSpeechText.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是一段测试朗读文本。This is a TTS test.'**
+  String get ttsTestSpeechText;
+
   /// No description provided for @settingsTypographyProfiles.
   ///
   /// In zh, this message translates to:

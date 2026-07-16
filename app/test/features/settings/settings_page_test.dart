@@ -14,13 +14,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/features/settings/pages/settings_page.dart';
 import 'package:zhiyue/features/settings/pages/typography_profiles_page.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
+
+import '../../helpers/stub_tts_service.dart';
 
 Widget _wrapped(Widget child) {
   return ProviderScope(
@@ -33,9 +38,36 @@ Widget _wrapped(Widget child) {
 }
 
 void main() {
-  // M1.5a/T14: SettingsPage gained a 6th section header (AI Settings).
-  // Use a tall surface so the lazy ListView materializes all sections.
-  testWidgets('renders all 6 section headers', (tester) async {
+  // T8 (2026-07-16): SettingsPage now embeds TtsSettingsSection, which
+  // transitively watches ttsSettingsProvider → ttsSettingsDirProvider →
+  // globalTtsSettingsDirOverride. Set a temp dir so the provider doesn't
+  // blow up on null deref. Also stub globalTtsServiceOverride to avoid
+  // MissingPluginException on container dispose.
+  late Directory tempDir;
+
+  setUp(() {
+    tempDir = Directory.systemTemp.createTempSync('settings_page_test_');
+    globalTtsSettingsDirOverride = tempDir;
+    globalTtsServiceOverride = StubTtsService();
+  });
+
+  tearDown(() {
+    // Best-effort: TtsSettingsNotifier._persist is async; on Windows the
+    // File handle may still be open at teardown → errno 32. Swallow.
+    try {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    } catch (_) {}
+    globalTtsSettingsDirOverride = null;
+    globalTtsServiceOverride = null;
+  });
+
+  // M1.5a/T14 + T8 (2026-07-16): SettingsPage now has 7 section headers
+  // (Reading / Fonts / Data Sync / AI Settings / Read Aloud / Appearance /
+  // Language / About). Use a tall surface so the lazy ListView materializes
+  // all sections.
+  testWidgets('renders all section headers', (tester) async {
     tester.view.physicalSize = const Size(800, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -43,7 +75,7 @@ void main() {
     await tester.pumpAndSettle();
     // English locale is fallback; section header keys are
     // settingsSectionReading/Fonts + syncSectionData + aiSettingsTitle +
-    // settingsSectionAppearance/Language/About.
+    // settingsSectionTts + settingsSectionAppearance/Language/About.
     // Note: en.arb has both settingsSectionLanguage = "Language" (section header)
     // and settingsLanguage = "Language" (LanguageSection ListTile title).
     // So "Language" appears twice; all other section headers appear once.
@@ -53,6 +85,8 @@ void main() {
     expect(find.text('Language'), findsNWidgets(2));
     expect(find.text('About'), findsOneWidget);
     expect(find.text('AI Settings'), findsNWidgets(2));
+    expect(find.text('Read Aloud'), findsOneWidget,
+        reason: 'T8: settingsSectionTts header must render');
   });
 
   testWidgets('tap typography entry pushes /settings/typography', (tester) async {

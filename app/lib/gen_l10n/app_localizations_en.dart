@@ -30,6 +30,33 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSectionAbout => 'About';
 
   @override
+  String get settingsSectionTts => 'Read Aloud';
+
+  @override
+  String get ttsRateLabel => 'Speech Rate';
+
+  @override
+  String get ttsPitchLabel => 'Pitch';
+
+  @override
+  String get ttsVolumeLabel => 'Volume';
+
+  @override
+  String get ttsChapterBoundaryLabel => 'At chapter end';
+
+  @override
+  String get ttsChapterBoundaryContinuous => 'Continuous';
+
+  @override
+  String get ttsChapterBoundaryAskAtEnd => 'Ask';
+
+  @override
+  String get ttsTestSpeak => 'Test Speak';
+
+  @override
+  String get ttsTestSpeechText => 'This is a TTS test sentence. 这是一段测试朗读文本。';
+
+  @override
   String get settingsTypographyProfiles => 'Typography Profiles';
 
   @override

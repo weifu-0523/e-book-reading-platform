@@ -14,11 +14,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zhiyue/core/providers.dart';
 import 'package:zhiyue/features/settings/pages/settings_page.dart';
 import 'package:zhiyue/gen_l10n/app_localizations.dart';
+
+import '../../../helpers/stub_tts_service.dart';
 
 Widget _harness() {
   return const ProviderScope(
@@ -32,6 +37,27 @@ Widget _harness() {
 }
 
 void main() {
+  // T8 (2026-07-16): SettingsPage embeds TtsSettingsSection, which needs
+  // globalTtsSettingsDirOverride to be non-null (the section's provider
+  // graph dereferences it for tts_settings.json persistence).
+  late Directory tempDir;
+
+  setUp(() {
+    tempDir = Directory.systemTemp.createTempSync('settings_responsive_test_');
+    globalTtsSettingsDirOverride = tempDir;
+    globalTtsServiceOverride = StubTtsService();
+  });
+
+  tearDown(() {
+    try {
+      if (tempDir.existsSync()) {
+        tempDir.deleteSync(recursive: true);
+      }
+    } catch (_) {}
+    globalTtsSettingsDirOverride = null;
+    globalTtsServiceOverride = null;
+  });
+
   testWidgets('compact viewport renders settings page without exception',
       (tester) async {
     tester.view.physicalSize = const Size(390, 844);

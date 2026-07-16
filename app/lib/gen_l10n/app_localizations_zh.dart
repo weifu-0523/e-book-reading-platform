@@ -30,6 +30,33 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsSectionAbout => '关于';
 
   @override
+  String get settingsSectionTts => '朗读';
+
+  @override
+  String get ttsRateLabel => '语速';
+
+  @override
+  String get ttsPitchLabel => '音调';
+
+  @override
+  String get ttsVolumeLabel => '音量';
+
+  @override
+  String get ttsChapterBoundaryLabel => '章末行为';
+
+  @override
+  String get ttsChapterBoundaryContinuous => '连续';
+
+  @override
+  String get ttsChapterBoundaryAskAtEnd => '章末询问';
+
+  @override
+  String get ttsTestSpeak => '测试朗读';
+
+  @override
+  String get ttsTestSpeechText => '这是一段测试朗读文本。This is a TTS test.';
+
+  @override
   String get settingsTypographyProfiles => '排版预设';
 
   @override

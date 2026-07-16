@@ -23,6 +23,7 @@ import '../../../gen_l10n/app_localizations.dart';
 import '../../reader/providers/chapter_end_prompt_enabled_provider.dart';
 import '../widgets/language_section.dart';
 import '../widgets/theme_section.dart';
+import 'tts_settings_section.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -67,6 +68,8 @@ class SettingsPage extends ConsumerWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/settings/ai'),
               ),
+              _SectionHeader(label: l10n.settingsSectionTts),
+              const TtsSettingsSection(),
               _SectionHeader(label: l10n.settingsSectionAppearance),
               const ThemeSection(),
               _SectionHeader(label: l10n.settingsSectionLanguage),
