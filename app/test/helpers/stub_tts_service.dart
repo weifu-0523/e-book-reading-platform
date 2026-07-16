@@ -94,6 +94,9 @@ class StubTtsService implements TtsService {
   Future<bool> isLanguageInstalled(String l) async => true;
 
   @override
+  Future<String?> getDefaultEngine() async => null;
+
+  @override
   Future<void> dispose() async {
     await _state.close();
     await _progress.close();

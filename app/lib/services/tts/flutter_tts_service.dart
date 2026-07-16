@@ -114,6 +114,12 @@ class FlutterTtsServiceImpl implements TtsService {
   }
 
   @override
+  Future<String?> getDefaultEngine() async {
+    final result = await _tts.getDefaultEngine;
+    return result is String ? result : null;
+  }
+
+  @override
   Future<void> dispose() async {
     await _tts.stop();
     await _stateController.close();

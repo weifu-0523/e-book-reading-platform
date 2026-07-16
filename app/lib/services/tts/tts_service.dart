@@ -73,5 +73,13 @@ abstract class TtsService {
   Future<bool> isLanguageAvailable(String locale);
   Future<bool> isLanguageInstalled(String locale);
 
+  /// Returns the platform-default TTS engine package name (e.g.
+  /// `com.google.android.tts`, `com.samsung.SMT`), or null on iOS / when
+  /// the platform doesn't expose it.
+  ///
+  /// Used by [checkTtsAvailability] (T26) to detect Samsung's restricted
+  /// SMT engine which silently fails on Chinese.
+  Future<String?> getDefaultEngine();
+
   Future<void> dispose();
 }

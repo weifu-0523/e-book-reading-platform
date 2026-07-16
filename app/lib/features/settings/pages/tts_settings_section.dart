@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/tts/sentence_segmenter.dart';
+import '../../../services/tts/tts_availability.dart';
 import '../../tts/providers/tts_playback_controller.dart';
 import '../../tts/providers/tts_settings_provider.dart';
 
@@ -131,7 +132,72 @@ class TtsSettingsSection extends ConsumerWidget {
             },
           ),
         ),
+        // T26 (2026-07-17): Check TTS engine availability + guide user when
+        // Samsung SMT engine detected or voice data missing. Pending l10n
+        // batch update, button + dialog copy are hardcoded zh-CN.
+        // TODO(l10n): extract these strings into AppLocalizations.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.search),
+            label: const Text('检查 TTS 引擎'),
+            onPressed: () => _checkTtsEngine(ref, context),
+          ),
+        ),
       ],
     );
+  }
+
+  Future<void> _checkTtsEngine(WidgetRef ref, BuildContext context) async {
+    final service = ref.read(ttsServiceProvider);
+    final availability = await checkTtsAvailability(service);
+    if (!context.mounted) return;
+
+    final guidance = _availabilityGuidance(availability);
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(guidance.title),
+        content: Text(guidance.body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Returns (title, body) copy for a given [TtsAvailability] state.
+  ///
+  /// Extracted as a static method so widget tests can assert on the copy
+  /// without driving the real `checkTtsAvailability` future.
+  // TODO(l10n): localized strings pending batch update.
+  static ({String title, String body}) _availabilityGuidance(
+      TtsAvailability availability) {
+    switch (availability) {
+      case TtsAvailability.ready:
+        return (
+          title: 'TTS 引擎就绪',
+          body: 'TTS 引擎就绪，可以正常朗读。',
+        );
+      case TtsAvailability.engineMissing:
+        return (
+          title: '未检测到 TTS 引擎',
+          body: '未检测到支持中文/英文的 TTS 引擎。请在应用商店安装 Google TTS（或同等引擎）后重试。',
+        );
+      case TtsAvailability.voiceDownloadRequired:
+        return (
+          title: '缺少语音数据',
+          body: 'TTS 引擎已安装但缺少语音数据。请到 系统设置 → 语言和输入 → 文字转语音输出 下载对应语言的语音包。',
+        );
+      case TtsAvailability.samsungRestricted:
+        return (
+          title: '检测到 Samsung TTS 引擎',
+          body: '检测到 Samsung 默认 TTS 引擎（com.samsung.SMT），该引擎对中文支持不佳。建议在 系统设置 → 文字转语音输出 切换到 Google TTS 引擎，或在 Samsung Voice Assistant 设置中下载中文语音数据。',
+        );
+    }
   }
 }
