@@ -17,8 +17,11 @@
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:reader_engine/engine/reader_engine.dart';
+import 'package:reader_engine/rendering/highlight_range.dart';
 import 'package:reader_engine_epub_view/reader_engine_epub_view.dart';
 
+import 'app_providers.dart' show chapterTextProviderFor;
 import '../data/local/daos/book_tags_dao.dart';
 import '../data/local/database.dart' hide Book;
 import '../data/local/file_storage.dart';
@@ -231,3 +234,59 @@ final fontImportServiceFutureProvider =
     storage.fontsDir,
   );
 });
+
+// ── TTS feature providers (T14/T15, 2026-07-16 v1.12.0-alpha) ────────────
+//
+// TtsReaderController (T15) needs three pieces of context from the reader
+// page (engine ref + current chapter index + current bookId) plus a
+// single StateProvider for the "currently speaking" HighlightRange so
+// reader_body.dart's existing notes→injectHighlights listener can merge
+// it (see plan §3.4.2). Keeping these as plain StateProviders means
+// reader_body.dart sets them in didChangeDependencies / location listener,
+// and TtsReaderController reads/writes them via [Ref].
+//
+// [ttsChapterTextResolverProvider] is the DI seam: production defaults to
+// reading the chapter text via the AI guide's [chapterTextProviderFor];
+// widget tests override it to inject a stub future.
+
+/// HighlightRange currently being spoken (null when idle). reader_body.dart
+/// merges this with user highlights before calling engine.injectHighlights.
+final ttsCurrentRangeProvider = StateProvider<HighlightRange?>((ref) => null);
+
+/// ReaderEngine reference set by reader_body.dart; null outside the reader.
+/// TtsReaderController reads this for page-flip + chapter text access.
+final ttsReaderEngineRefProvider = StateProvider<ReaderEngine?>((ref) => null);
+
+/// Current chapter index (mirror of engine state, set by reader_body's
+/// currentLocation$ listener). Defaults to 0; reader_body updates this
+/// every time the locator emits.
+final ttsCurrentChapterIdxProvider = StateProvider<int>((ref) => 0);
+
+/// Current bookId (set by reader_body.dart via widget.bookId).
+final ttsCurrentBookIdProvider = StateProvider<String?>((ref) => null);
+
+/// Resolves a (bookId, chapterIdx) tuple to the chapter plain text used
+/// for CFI extraction + sentence segmentation. Production default wires
+/// through [chapterTextProviderFor] (AI guide's chapter text path); tests
+/// override this provider with a stub returning a fixed string.
+///
+/// The provider receives the resolved [Book] (caller must look it up
+/// before invoking) and the chapter index. Returns the plain text, or
+/// empty string on miss (TtsReaderController early-returns on empty).
+typedef TtsChapterTextResolver =
+    Future<String> Function(Book book, int chapterIdx);
+
+/// Default resolver delegates to [chapterTextProviderFor] (defined in
+/// `app_providers.dart`). Tests override this provider with a closure
+/// returning a fixed string so the controller doesn't touch the disk.
+///
+/// The cross-library import (`providers.dart` → `app_providers.dart`) is
+/// mutual — `app_providers.dart` also imports `providers.dart` for
+/// `bookRepositoryProvider` etc. Dart handles library cycles fine.
+final ttsChapterTextResolverProvider = Provider<TtsChapterTextResolver>(
+  (ref) => (book, chapterIdx) async {
+    final provider = chapterTextProviderFor(book);
+    final text = await provider.get(book.filePath, chapterIdx);
+    return text ?? '';
+  },
+);

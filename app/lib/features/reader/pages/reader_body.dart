@@ -42,6 +42,7 @@ import '../../notes/widgets/annotation_context_sheet.dart';
 import '../../../data/models/book.dart';
 import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
+import '../../../features/tts/providers/tts_reader_controller.dart';
 // M2.7/T21: AI drawer widget (chat panel) wired into narrow Scaffold.endDrawer
 // + wide Row conditional panel.
 // M2.7/T25: ChatSessionController.setPendingInput used by _onAskAi to push
@@ -209,11 +210,34 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
   void initState() {
     super.initState();
     _engineState = engine.state;
+    // T15 (2026-07-16): publish engine ref + bookId for TtsReaderController
+    // access (page-flip via currentChapterPageBreaks + chapter text path).
+    // Chapter index is updated from the location listener below.
+    //
+    // Riverpod forbids modifying providers from widget lifecycle methods
+    // (initState / build / didChangeDependencies). Defer to post-frame so
+    // the widget tree finishes mounting before we mutate provider state.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(ttsReaderEngineRefProvider.notifier).state = engine;
+      ref.read(ttsCurrentBookIdProvider.notifier).state = widget.bookId;
+    });
     _stateSub = engine.state$.listen((s) {
       if (mounted) setState(() => _engineState = s);
     });
     _locationSub = engine.currentLocation$.listen((loc) {
-      if (mounted) _currentLocation = loc;
+      if (mounted) {
+        _currentLocation = loc;
+        // T15: mirror current chapter index for TtsReaderController.
+        // Same lifecycle constraint as above: only fire after first frame.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (loc is EpubCfiLocator) {
+            ref.read(ttsCurrentChapterIdxProvider.notifier).state =
+                loc.chapterIndex;
+          }
+        });
+      }
     });
     // PDF 选区订阅：pdfrx 内部 buildContextMenu 的「高亮」按钮点击后，
     // 通过 PdfRenderer.emitSelection → PdfReaderEngine.selection$ 流推送
@@ -414,14 +438,17 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     // (renderer._allHighlights stays empty). PDF engines have no
     // `injectHighlights` (pdfrx renders highlights natively), so the
     // type-check `engine is ConcreteEpubReaderEngine` skips them.
-    ref.listen<AsyncValue<NotesState>>(
-      notesControllerProvider,
-      (_, async) {
-        final s = async.valueOrNull;
-        if (s == null) return;
-        final e = engine;
-        if (e is! ConcreteEpubReaderEngine) return;
-        final ranges = <HighlightRange>[];
+    //
+    // T15 (2026-07-16): refactored to a local helper so the TTS highlight
+    // listener below can re-inject with the merged set (user highlights
+    // + ttsCurrentRangeProvider) when TTS advances to a new sentence.
+    void injectHighlightsWithTts() {
+      final async = ref.read(notesControllerProvider);
+      final s = async.valueOrNull;
+      final e = engine;
+      if (e is! ConcreteEpubReaderEngine) return;
+      final ranges = <HighlightRange>[];
+      if (s != null) {
         for (final a in s.annotations) {
           final loc = a.locator;
           if (loc is! EpubRangeLocator) continue; // skip PdfRangeLocator etc.
@@ -435,8 +462,27 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             chapterIndex: loc.chapterIndex,
           ));
         }
-        e.injectHighlights(ranges);
-      },
+      }
+      // T15: merge TTS current sentence range (null when idle).
+      final ttsRange = ref.read(ttsCurrentRangeProvider);
+      if (ttsRange != null) ranges.add(ttsRange);
+      e.injectHighlights(ranges);
+    }
+
+    ref.listen<AsyncValue<NotesState>>(
+      notesControllerProvider,
+      (_, __) => injectHighlightsWithTts(),
+    );
+
+    // T15: re-inject when TTS advances (ttsCurrentRangeProvider transitions).
+    // Same inject path as notes so user highlights + TTS overlay always
+    // render together as a single coherent set.
+    // (ref.listen returns void, so cascade_invocations lint doesn't apply
+    // — the duplication is the only way to register two listeners.)
+    // ignore: cascade_invocations
+    ref.listen<HighlightRange?>(
+      ttsCurrentRangeProvider,
+      (_, __) => injectHighlightsWithTts(),
     );
 
     if (_engineState is ReaderEngineError) {
@@ -797,6 +843,14 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               // M2.7/T22: 单一 AI 抽屉 toggle（替代原 AI 导读 + 问答 入口）。
               onToggleAiDrawer: () => _toggleAiDrawer(innerContext),
               onOpenReview: engine is PdfReaderEngine ? null : _onOpenReview,
+              // T14 (2026-07-16): 「朗读本章」按钮。PDF 引擎不接入此入口
+              // （走 T19 selection-toolbar 「朗读选中」分支），EPUB / MD /
+              // TXT 传非空回调到 TtsReaderController.start。
+              onReadAloud: engine is PdfReaderEngine
+                  ? null
+                  : () => ref
+                      .read(ttsReaderControllerProvider.notifier)
+                      .start(),
               onAddBookmark: _onAddBookmark,
               // M3c/任务 6b：弹出书架对话框选书切换。
               onOpenBookshelf: () => showBookshelfDialog(
