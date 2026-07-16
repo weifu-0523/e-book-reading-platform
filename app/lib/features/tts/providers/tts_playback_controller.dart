@@ -18,6 +18,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/platform_info.dart';
 import '../../../core/providers.dart' as core;
 import '../../../services/tts/flutter_tts_service.dart';
 import '../../../services/tts/tts_service.dart';
@@ -125,7 +126,124 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     _stateSub = _service.state.listen(_onServiceState);
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Public API — in-app entry points.
+  //
+  // T22 (2026-07-17): split into public route + internal drive to avoid
+  // infinite recursion through [ZhiYueAudioHandler].
+  //
+  // Recursion hazard: on mobile, public method → `globalAudioHandler.x()`
+  // → handler callback (e.g. `onResume`) → must NOT call public method
+  // again (would loop). Handler callbacks therefore call the private
+  // `drive*` methods below, which directly drive [TtsService] without
+  // re-routing.
+  //
+  // Routing rules:
+  //  * [pause] / [resume] / [stop]: route via handler on mobile so the
+  //    OS notification / lock-screen state stays in sync. The handler's
+  //    `play()` / `pause()` / `stop()` overrides both update OS state AND
+  //    invoke the matching callback, which in turn calls `drivePause` /
+  //    `driveResume` / `driveStop`.
+  //  * [play] / [playAt]: NOT routed through `handler.play()` because
+  //    the handler's `play()` overload takes no queue/scope arguments.
+  //    Instead these drive the engine directly and rely on
+  //    [ZhiYueAudioHandler.publishMediaItem] (called by
+  //    `TtsReaderController` per-sentence) plus the next routed call
+  //    (pause/resume) to keep OS state synced. The foreground service
+  //    is activated lazily when the user first interacts with the
+  //    notification OR when `pause()` → `resume()` cycles happen.
+  //  * [skipNext] / [skipPrevious]: NOT routed. Skip is overwhelmingly
+  //    in-app UI (next/prev sentence button), and routing through the
+  //    handler's `skipToNext`/`skipToPrevious` would only re-trigger
+  //    these methods via `onSkipNext`/`onSkipPrevious` callbacks (no OS
+  //    state benefit since each sentence is its own media item via
+  //    `publishMediaItem`). OS-initiated skips (e.g. Bluetooth headset
+  //    long-press) still work — they go through the handler callbacks,
+  //    which call `driveSkipNext` / `driveSkipPrevious` directly.
+  // ─────────────────────────────────────────────────────────────────────
+
+  /// Starts a fresh playback queue. Programmatic entry — does NOT route
+  /// through [ZhiYueAudioHandler] (see routing rules above).
   Future<void> play({
+    required TtsScope scope,
+    required List<Sentence> sentences,
+  }) async {
+    await drivePlay(scope: scope, sentences: sentences);
+  }
+
+  /// T18: like [play] but starts at [startIndex] instead of 0. Used by
+  /// TtsReaderController.resumeFromLast when the user picks up a previous
+  /// session mid-chapter. Out-of-range index is clamped to [0, len-1].
+  Future<void> playAt({
+    required TtsScope scope,
+    required List<Sentence> sentences,
+    required int startIndex,
+  }) async {
+    await drivePlayAt(
+        scope: scope, sentences: sentences, startIndex: startIndex);
+  }
+
+  /// Pauses playback. On mobile + handler set, routes via
+  /// [ZhiYueAudioHandler.pause] so OS state syncs; the handler's
+  /// `onPause` callback then calls [drivePause].
+  Future<void> pause() async {
+    if (_shouldRouteToHandler) {
+      await core.globalAudioHandler!.pause();
+    } else {
+      await drivePause();
+    }
+  }
+
+  /// Resumes playback after [pause]. On mobile + handler set, routes via
+  /// [ZhiYueAudioHandler.play] (the OS "play" button maps to resume in
+  /// audio_service convention); the handler's `onResume` callback then
+  /// calls [driveResume] (guarded — see [driveResume] for why).
+  Future<void> resume() async {
+    if (_shouldRouteToHandler) {
+      await core.globalAudioHandler!.play();
+    } else {
+      await driveResume();
+    }
+  }
+
+  /// Stops playback and clears the queue. On mobile + handler set, routes
+  /// via [ZhiYueAudioHandler.stop] so the OS notification dismisses;
+  /// handler's `onStop` callback then calls [driveStop].
+  Future<void> stop() async {
+    if (_shouldRouteToHandler) {
+      await core.globalAudioHandler!.stop();
+    } else {
+      await driveStop();
+    }
+  }
+
+  /// Skips to the next sentence in the queue. NOT routed through the
+  /// handler — see routing rules above.
+  Future<void> skipNext() async => driveSkipNext();
+
+  /// Skips to the previous sentence in the queue. NOT routed.
+  Future<void> skipPrevious() async => driveSkipPrevious();
+
+  /// True when public methods should delegate to [core.globalAudioHandler].
+  /// Static-ish getter (reads globals + [PlatformInfo]); kept as instance
+  /// method so tests can exercise the controller without globals.
+  bool get _shouldRouteToHandler =>
+      PlatformInfo.isMobile && core.globalAudioHandler != null;
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Internal drive methods — directly drive [TtsService], NO handler
+  // routing. Called from:
+  //  * public methods above (desktop path / unrouted methods)
+  //  * [ZhiYueAudioHandler] callbacks (mobile path, via main.dart wiring)
+  //
+  // These are public (no underscore) so main.dart's callback closures can
+  // reach them via `container.read(ttsPlaybackControllerProvider.notifier)`.
+  // Treat them as internal — do NOT call from UI code; use the
+  // corresponding public method instead.
+  // ─────────────────────────────────────────────────────────────────────
+
+  /// Internal: drives [TtsService] for fresh playback. No handler routing.
+  Future<void> drivePlay({
     required TtsScope scope,
     required List<Sentence> sentences,
   }) async {
@@ -141,10 +259,8 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     await _speakCurrent();
   }
 
-  /// T18: like [play] but starts at [startIndex] instead of 0. Used by
-  /// TtsReaderController.resumeFromLast when the user picks up a previous
-  /// session mid-chapter. Out-of-range index is clamped to [0, len-1].
-  Future<void> playAt({
+  /// Internal: drives [TtsService] for fresh playback at [startIndex].
+  Future<void> drivePlayAt({
     required TtsScope scope,
     required List<Sentence> sentences,
     required int startIndex,
@@ -162,33 +278,46 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     await _speakCurrent();
   }
 
-  Future<void> pause() async {
+  /// Internal: engine-level pause. No handler routing.
+  Future<void> drivePause() async {
     await _service.pause();
     state = state.copyWith(phase: TtsPhase.paused);
   }
 
-  Future<void> resume() async {
+  /// Internal: engine-level resume after pause. No handler routing.
+  ///
+  /// Guarded: if state is `idle` or `loading`/`speaking` (i.e. not paused),
+  /// this is a no-op. Why: on mobile, [ZhiYueAudioHandler.play] is called
+  /// both for OS-initiated resume (state=paused → resume) AND potentially
+  /// for foreground-service activation on fresh playback. Without the
+  /// guard, the latter would re-invoke `_speakCurrent` and double-trigger
+  /// the engine. The guard makes the callback safe to fire any time.
+  Future<void> driveResume() async {
+    if (state.phase != TtsPhase.paused) return;
     state = state.copyWith(phase: TtsPhase.loading);
     await _speakCurrent();
   }
 
-  Future<void> stop() async {
+  /// Internal: engine-level stop. No handler routing.
+  Future<void> driveStop() async {
     await _service.stop();
     _queue = const [];
     state = const TtsPlaybackState();
   }
 
-  Future<void> skipNext() async {
+  /// Internal: skip to next sentence. No handler routing.
+  Future<void> driveSkipNext() async {
     if (state.currentIndex + 1 < _queue.length) {
       state = state.copyWith(currentIndex: state.currentIndex + 1);
       await _service.stop();
       await _speakCurrent();
     } else {
-      await stop();
+      await driveStop();
     }
   }
 
-  Future<void> skipPrevious() async {
+  /// Internal: skip to previous sentence. No handler routing.
+  Future<void> driveSkipPrevious() async {
     if (state.currentIndex > 0) {
       state = state.copyWith(currentIndex: state.currentIndex - 1);
       await _service.stop();

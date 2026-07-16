@@ -47,6 +47,7 @@ import '../features/settings/services/font_import_service.dart';
 import '../services/book_import_service.dart';
 import '../services/sync/sync_recorder.dart';
 import '../services/tts/tts_service.dart';
+import '../services/tts/zhiyue_audio_handler.dart';
 
 /// 全局单例 AppDatabase。M1 阶段无同步包装。
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -104,6 +105,22 @@ TtsService? globalTtsServiceOverride;
 /// widget tests until they explicitly set it; tests use
 /// [Directory.systemTemp] via setUp.
 Directory? globalTtsSettingsDirOverride;
+
+/// TTS feature (2026-07-17 v1.12.0-alpha T22): global singleton
+/// audio handler registered via `AudioService.init` in main.dart on mobile
+/// platforms. [TtsPlaybackController]'s public `pause` / `resume` / `stop`
+/// methods route through this handler when set + on mobile, so the OS
+/// notification / lock-screen state stays in sync.
+///
+/// Typed as [ZhiYueAudioHandler]? (concrete). Importing the type doesn't
+/// load audio_service's platform code; the plugin only activates when
+/// `AudioService.init` is called from main.dart on mobile.
+///
+/// Null on desktop (never set) and in unit tests. Tests that exercise
+/// mobile routing set this to a stub with matching method signatures
+/// (`play`, `pause`, `stop`, `skipToNext`, `skipToPrevious`) — typically
+/// via casting a plain test double.
+ZhiYueAudioHandler? globalAudioHandler;
 
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);

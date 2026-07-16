@@ -17,6 +17,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,8 +33,10 @@ import 'core/router.dart';
 import 'core/scaffold_messenger_key.dart';
 import 'data/local/file_storage.dart';
 import 'features/sync/providers/sync_controller.dart';
+import 'features/tts/providers/tts_playback_controller.dart';
 import 'services/ai/api_key_store.dart';
 import 'services/book_open_bridge.dart';
+import 'services/tts/zhiyue_audio_handler.dart';
 
 void main(List<String> args) async {
   // M4.6-fix10/R6: 全局错误兜底——widget build 抛异常不再红屏。
@@ -114,6 +117,57 @@ void main(List<String> args) async {
     // 桌面平台才注册——移动端走 AppLifecycleState（SyncController 内已观察）。
     if (PlatformInfo.isDesktop) {
       _WindowCloseHandler(container: container);
+    }
+
+    // T22 (2026-07-17): register [ZhiYueAudioHandler] on mobile only.
+    // The handler bridges OS media controls (lock screen, notification,
+    // Bluetooth) to [TtsPlaybackController] via 5 callbacks. Callbacks
+    // call `drive*` methods (not public `pause`/`resume`/`stop`) to avoid
+    // infinite recursion: public method → handler.x() → callback → public
+    // method would loop forever.
+    //
+    // `driveResume` is internally guarded — it no-ops if state is not
+    // `paused`. This makes the `onResume` callback safe to fire even when
+    // the OS sends a spurious "play" event during fresh playback.
+    //
+    // Desktop never enters this branch, so [globalAudioHandler] stays null
+    // and the controller's `_shouldRouteToHandler` evaluates false — desktop
+    // public methods call `drive*` directly with no handler involvement.
+    if (PlatformInfo.isMobile) {
+      try {
+        globalAudioHandler = await AudioService.init(
+          builder: () => ZhiYueAudioHandler(
+            onResume: () async => container
+                .read(ttsPlaybackControllerProvider.notifier)
+                .driveResume(),
+            onPause: () async => container
+                .read(ttsPlaybackControllerProvider.notifier)
+                .drivePause(),
+            onStop: () async => container
+                .read(ttsPlaybackControllerProvider.notifier)
+                .driveStop(),
+            onSkipNext: () async => container
+                .read(ttsPlaybackControllerProvider.notifier)
+                .driveSkipNext(),
+            onSkipPrevious: () async => container
+                .read(ttsPlaybackControllerProvider.notifier)
+                .driveSkipPrevious(),
+          ),
+          config: const AudioServiceConfig(
+            androidNotificationChannelId: 'zhiyue_tts_channel',
+            androidNotificationChannelName: '智阅朗读',
+            androidNotificationOngoing: true,
+            androidStopForegroundOnPause: true,
+          ),
+        );
+      } catch (e) {
+        // AudioService.init can fail on platforms without a media framework
+        // (e.g. desktop in test mode, or Android with broken media service).
+        // We swallow + leave [globalAudioHandler] null so TTS still works
+        // in-app — only OS-level integrations (notification, lock screen)
+        // are degraded.
+        debugPrint('AudioService.init failed (TTS will work in-app only): $e');
+      }
     }
 
     // M7+M8：启动后处理文件 deep-link（Windows argv + Android MethodChannel）。
