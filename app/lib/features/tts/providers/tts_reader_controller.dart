@@ -17,7 +17,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:reader_engine/core/page_break.dart';
+import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 
 import '../../../core/providers.dart';
@@ -44,7 +44,8 @@ import 'tts_playback_controller.dart';
 ///      for cross-device resume (T17 will read this on next launch).
 ///   5. **Auto-flip pages** in paged mode by binary-searching
 ///      `engine.currentChapterPageBreaks` for the page whose char range
-///      contains the sentence's start offset.
+///      contains the sentence's start offset. In scroll mode, scrolls via
+///      `engine.gotoLocator(EpubRangeLocator)` instead (T16).
 ///
 /// Plan-bug fixes documented in commit message:
 ///   - `engine.locatorToPage()` does NOT exist → inline binary search on
@@ -196,29 +197,34 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     }
 
     // 3. Auto-flip page in paged mode (best-effort).
-    _autoFlipPage(sentence);
+    _autoNavigate(sentence);
   }
 
-  /// Binary-searches `engine.currentChapterPageBreaks` for the page whose
-  /// char range contains [sentence]'s start offset, then jumps the
-  /// PageController if the target differs from the current page.
+  /// Navigates the reader engine so [sentence] is visible.
   ///
-  /// Plan-bug note: there is NO `engine.locatorToPage()` method. We
-  /// inline the lookup using [PageBreak.startOffset] (the actual field
-  /// name in `reader_engine/lib/core/page_break.dart`). CFI format is
-  /// `<chapterIndex>:<charOffset>`; the second segment is the offset.
+  /// Branches on [ReaderEngine.paginationMode]:
+  /// * **paged** — binary-search `engine.currentChapterPageBreaks` for the
+  ///   page whose char range contains the sentence's start offset, then
+  ///   jump the [PageController]. Same T15 logic; just renamed.
+  /// * **scroll** — call `engine.gotoLocator(EpubRangeLocator(...))` so the
+  ///   renderer scrolls the sentence into view. We use [EpubRangeLocator]
+  ///   (not [EpubCfiLocator]) because the sentence's startCfi is a synthetic
+  ///   `<chapterIndex>:<charOffset>` tag, not a real CFI; the engine's
+  ///   scroll-mode gotoLocator path accepts [EpubRangeLocator] (same code
+  ///   path as `_maybeHandleInitialLocator` / `_onAnnotationTap` in
+  ///   reader_body.dart). When `gotoLocator` throws (chapter out of range,
+  ///   engine not ready), the exception is swallowed — playback must not
+  ///   wedge on a transient navigation failure.
   ///
   /// Safe no-op when:
   ///   - engine is null (still outside reader)
-  ///   - engine is in scroll mode (no PageController)
   ///   - sentence has no startCfi
   ///   - CFI is malformed
-  ///   - page breaks are empty (chapter not yet laid out)
-  ///   - PageController is not attached or current page == target
-  void _autoFlipPage(Sentence sentence) {
+  ///   - paged mode + page breaks are empty (chapter not yet laid out)
+  ///   - paged mode + PageController not attached or current page == target
+  void _autoNavigate(Sentence sentence) {
     final engine = _ref.read(ttsReaderEngineRefProvider);
     if (engine == null) return;
-    if (engine.paginationMode != PaginationMode.paged) return;
     final cfi = sentence.startCfi;
     if (cfi == null) return;
 
@@ -228,6 +234,27 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     final charOffset = int.tryParse(cfi.substring(colon + 1));
     if (charOffset == null) return;
 
+    if (engine.paginationMode == PaginationMode.scroll) {
+      // Scroll mode: hand the engine an EpubRangeLocator pointing at the
+      // sentence's character offset. The renderer's scroll-mode gotoLocator
+      // path will scroll so the range is visible (same path reader_body's
+      // _maybeHandleInitialLocator / _onAnnotationTap use).
+      final locator = EpubRangeLocator(
+        chapterIndex: _currentChapterIdx,
+        startOffset: charOffset,
+        endOffset: charOffset + 1,
+        quote: sentence.text,
+      );
+      // Best-effort: never let navigation throw break playback.
+      try {
+        unawaited(engine.gotoLocator(locator));
+      } catch (_) {
+        // gotoLocator may throw on transient engine state — swallow.
+      }
+      return;
+    }
+
+    // Paged mode: jumpToPage via binary search over page breaks (T15 logic).
     final breaks = engine.currentChapterPageBreaks;
     if (breaks.isEmpty) return;
 

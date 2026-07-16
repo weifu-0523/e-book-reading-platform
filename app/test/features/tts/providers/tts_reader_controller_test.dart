@@ -20,6 +20,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:reader_engine/core/locator.dart' as re_locator;
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
@@ -56,6 +57,28 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
 
   @override
   PageController? get pageController => null;
+}
+
+/// Scroll-mode variant of [_FakeReaderEngine]. Records `gotoLocator` calls
+/// so T16's scroll-branch test can assert the engine is navigated rather
+/// than the paged-mode [PageController] being jumped.
+class _FakeScrollReaderEngine extends Mock implements ReaderEngine {
+  final List<re_locator.Locator> gotoLocatorCalls =
+      <re_locator.Locator>[];
+
+  @override
+  PaginationMode get paginationMode => PaginationMode.scroll;
+
+  @override
+  List<PageBreak> get currentChapterPageBreaks => const [];
+
+  @override
+  PageController? get pageController => null;
+
+  @override
+  Future<void> gotoLocator(re_locator.Locator locator) async {
+    gotoLocatorCalls.add(locator);
+  }
 }
 
 model.Book _epubBook(String id) => model.Book(
@@ -276,6 +299,39 @@ void main() {
       expect(container.read(ttsReaderControllerProvider).isActive, isFalse);
       expect(
           container.read(ttsPlaybackControllerProvider).phase, TtsPhase.idle);
+    });
+  });
+
+  group('TtsReaderController._autoNavigate (T16 scroll mode)', () {
+    test('scroll mode: _onPlaybackChange triggers engine.gotoLocator', () async {
+      final engine = _FakeScrollReaderEngine();
+      final container = buildContainer(
+        chapterText: 'First sentence. Second sentence.',
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      // Two microtasks: speakSentence emits speaking → playback transitions
+      // loading→speaking → _onPlaybackChange fires → _autoNavigate called.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      // gotoLocator should have been called at least once with an
+      // EpubRangeLocator pointing at the first sentence's charOffset.
+      expect(engine.gotoLocatorCalls, isNotEmpty,
+          reason: 'Scroll mode should call engine.gotoLocator.');
+      final firstCall = engine.gotoLocatorCalls.first;
+      expect(firstCall, isA<re_locator.EpubRangeLocator>(),
+          reason: 'Scroll mode should navigate via EpubRangeLocator.');
+      expect(
+          (firstCall as re_locator.EpubRangeLocator).chapterIndex, 0);
+      // First sentence starts at charOffset 0 (CFI '0:0').
+      expect(firstCall.startOffset, greaterThanOrEqualTo(0));
     });
   });
 }
