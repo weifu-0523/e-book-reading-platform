@@ -7,9 +7,11 @@
 // `BookFileSyncService.needsDownloadSentinel` (not the legacy 'synced'
 // placeholder). The reader-open flow (T11) keys off this sentinel to
 // trigger `BookFileSyncService.downloadBookFile` before opening.
-import 'package:drift/drift.dart' hide isNull;
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/data/local/daos/books_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/models/last_tts_position.dart';
 import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 import 'package:zhiyue/services/sync/conflict_sink.dart';
 import 'package:zhiyue/services/sync/remote_record_applier.dart';
@@ -355,6 +357,130 @@ void main() {
       );
       await applier.apply(remote);
       expect(await coverPathOf('b-legacy-null'), isNull);
+    });
+  });
+
+  // T11 (2026-07-16): cross-device TTS resume cursor sync.
+  // Payload carries `lastTtsPosition` as a nested Map (the model's
+  // toJson shape). Receiver writes JSON-encoded model into
+  // books.last_tts_position column so BooksDao.getLastTtsPosition can
+  // round-trip it. Missing or malformed values degrade gracefully to
+  // NULL — never throw, so a corrupted sync payload doesn't break the
+  // book-insert flow.
+  group('tts position (T11)', () {
+    Future<String?> lastTtsPositionRawOf(String bookId) async {
+      final row = await db.customSelect(
+        'SELECT last_tts_position FROM books WHERE id = ?',
+        variables: [Variable.withString(bookId)],
+      ).getSingle();
+      return row.readNullable<String>('last_tts_position');
+    }
+
+    test('valid lastTtsPosition payload → column = JSON-encoded model',
+        () async {
+      final remote = SyncRecord(
+        id: 'b-tts-valid',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 16, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-tts-valid',
+          'title': 'TTS Synced Book',
+          'author': null,
+          'format': 'epub',
+          'fileHash': 'h-tts-valid',
+          'fileSizeBytes': 1024,
+          'hasCover': false,
+          'lastTtsPosition': {
+            'chapterIdx': 5,
+            'sentenceIdx': 42,
+            'updatedAt': 1737000000000,
+          },
+        },
+      );
+      final applied = await applier.apply(remote);
+      expect(applied, true);
+
+      final raw = await lastTtsPositionRawOf('b-tts-valid');
+      expect(raw, isNotNull);
+      // BooksDao.getLastTtsPosition must be able to parse it back to the
+      // identical model — proves the column holds valid JSON.
+      final dao = BooksDao(db);
+      final restored = await dao.getLastTtsPosition('b-tts-valid');
+      expect(
+          restored,
+          const LastTtsPosition(
+              chapterIdx: 5, sentenceIdx: 42, updatedAt: 1737000000000));
+    });
+
+    test('missing lastTtsPosition (legacy payload) → column stays NULL',
+        () async {
+      final remote = SyncRecord(
+        id: 'b-tts-missing',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 16, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-tts-missing',
+          'title': 'Legacy No TTS Field',
+          'author': null,
+          'format': 'epub',
+          'fileHash': 'h-tts-missing',
+          'fileSizeBytes': 1024,
+          'hasCover': false,
+          // lastTtsPosition intentionally absent — pre-T11 client snapshot
+        },
+      );
+      final applied = await applier.apply(remote);
+      expect(applied, true);
+      expect(await lastTtsPositionRawOf('b-tts-missing'), isNull);
+    });
+
+    test('corrupted lastTtsPosition payload → column stays NULL, no throw',
+        () async {
+      final remote = SyncRecord(
+        id: 'b-tts-corrupt',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 16, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-tts-corrupt',
+          'title': 'Corrupt TTS Payload',
+          'author': null,
+          'format': 'epub',
+          'fileHash': 'h-tts-corrupt',
+          'fileSizeBytes': 1024,
+          'hasCover': false,
+          // Wrong shape — non-Map. _applyBook must NOT crash; column stays NULL.
+          'lastTtsPosition': 'not valid json',
+        },
+      );
+      // Must not throw.
+      final applied = await applier.apply(remote);
+      expect(applied, true);
+      expect(await lastTtsPositionRawOf('b-tts-corrupt'), isNull);
+    });
+
+    test('explicit null lastTtsPosition → column stays NULL', () async {
+      final remote = SyncRecord(
+        id: 'b-tts-null',
+        type: SyncRecordType.book,
+        mtime: DateTime.utc(2026, 7, 16, 10),
+        deleted: false,
+        payload: const {
+          'id': 'b-tts-null',
+          'title': 'Explicit Null TTS',
+          'author': null,
+          'format': 'epub',
+          'fileHash': 'h-tts-null',
+          'fileSizeBytes': 1024,
+          'hasCover': false,
+          'lastTtsPosition': null,
+        },
+      );
+      final applied = await applier.apply(remote);
+      expect(applied, true);
+      expect(await lastTtsPositionRawOf('b-tts-null'), isNull);
     });
   });
 }

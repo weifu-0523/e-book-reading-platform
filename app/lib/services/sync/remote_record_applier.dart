@@ -14,8 +14,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/models/last_tts_position.dart';
 import 'package:zhiyue/services/sync/book_file_sync_service.dart';
 import 'package:zhiyue/services/sync/conflict_sink.dart';
 import 'package:zhiyue/services/sync/sync_record.dart';
@@ -413,6 +416,13 @@ class RemoteRecordApplier {
     final coverPathToWrite = hasCover
         ? BookFileSyncService.needsCoverDownloadSentinel
         : null;
+    // T11 (2026-07-16): cross-device TTS resume cursor. Only accept Map
+    // payloads; round-trip through the model to validate before writing
+    // JSON to the column. Missing / null / wrong shape → leave column NULL.
+    // BooksDao.getLastTtsPosition additionally wraps jsonDecode in a
+    // try/catch, so a partially-malformed payload (e.g. one bad int field)
+    // degrades to "never read aloud" rather than throwing on resume.
+    final lastTtsPosJson = _sanitizeLastTtsPosition(p['lastTtsPosition']);
     await (_db.into(_db.books).insert(
           BooksCompanion.insert(
             id: record.id,
@@ -423,10 +433,36 @@ class RemoteRecordApplier {
             fileHash: p['fileHash'] as String,
             fileSizeBytes: p['fileSizeBytes'] as int,
             coverPath: Value<String?>(coverPathToWrite),
+            lastTtsPosition: Value<String?>(lastTtsPosJson),
           ),
           mode: InsertMode.insertOrIgnore,
         ));
     return true;
+  }
+
+  /// T11 (2026-07-16): validate the `lastTtsPosition` payload (from
+  /// [SyncRecorder.recordBook]) before writing JSON to the
+  /// `books.last_tts_position` column.
+  ///
+  /// Returns the canonical JSON string when [raw] is a Map whose fields
+  /// survive a [LastTtsPosition.fromJson] round-trip, otherwise `null`.
+  /// Tolerates:
+  ///   - field absent (pre-T11 client snapshot)
+  ///   - explicit null (TTS position cleared on sender)
+  ///   - wrong shape (non-Map, e.g. truncated/poisoned sync payload)
+  /// All three map to "leave column NULL" — never throw, so a single bad
+  /// line doesn't abort the whole sync batch (applyRecords would route
+  /// the throw to conflict-sink, but book-insert is too central to risk).
+  String? _sanitizeLastTtsPosition(Object? raw) {
+    if (raw is! Map) return null;
+    try {
+      final pos = LastTtsPosition.fromJson(
+          Map<String, dynamic>.from(raw));
+      return jsonEncode(pos.toJson());
+    } catch (_) {
+      // Malformed payload — degrade to NULL.
+      return null;
+    }
   }
 
   /// T3 (2026-07-13): tolerate legacy snapshot records that carry the

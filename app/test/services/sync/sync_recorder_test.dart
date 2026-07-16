@@ -19,6 +19,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/models/last_tts_position.dart';
 import 'package:zhiyue/services/sync/sync_recorder.dart';
 
 import '../../helpers/drift_test_helper.dart';
@@ -108,6 +109,61 @@ void main() {
     expect(pending.first.recordType, 'book');
     expect(pending.first.payloadJson, contains('"title":"Title"'));
     expect(pending.first.payloadJson, contains('"hasCover":true'));
+  });
+
+  // T11 (2026-07-16): cross-device TTS resume cursor sync. The payload
+  // carries the model's JSON shape; receiver validates via fromJson
+  // round-trip before writing. Absent or corrupted values are tolerated
+  // gracefully by remote_record_applier (column stays NULL).
+  test('recordBook includes lastTtsPosition map in payload when set',
+      () async {
+    final pos = LastTtsPosition(
+      chapterIdx: 3,
+      sentenceIdx: 12,
+      updatedAt: 1737000000000,
+    );
+    await recorder.recordBook(
+      id: 'b1',
+      title: 'With TTS',
+      author: null,
+      format: 'epub',
+      fileHash: 'h',
+      fileSizeBytes: 0,
+      hasCover: false,
+      lastTtsPosition: pos,
+      mtime: DateTime.utc(2026, 7, 16, 10),
+    );
+    final pending = await outbox.getPending();
+    expect(pending, hasLength(1));
+    final envelope =
+        jsonDecode(pending.first.payloadJson) as Map<String, dynamic>;
+    final payload = envelope['payload'] as Map<String, dynamic>;
+    final posRaw = payload['lastTtsPosition'];
+    expect(posRaw, isA<Map>());
+    expect((posRaw as Map)['chapterIdx'], 3);
+    expect(posRaw['sentenceIdx'], 12);
+    expect(posRaw['updatedAt'], 1737000000000);
+  });
+
+  test('recordBook payload omits lastTtsPosition when null (default)', () async {
+    await recorder.recordBook(
+      id: 'b2',
+      title: 'No TTS',
+      author: null,
+      format: 'epub',
+      fileHash: 'h',
+      fileSizeBytes: 0,
+      hasCover: false,
+      // lastTtsPosition intentionally omitted
+      mtime: DateTime.utc(2026, 7, 16, 10),
+    );
+    final pending = await outbox.getPending();
+    final envelope =
+        jsonDecode(pending.first.payloadJson) as Map<String, dynamic>;
+    final payload = envelope['payload'] as Map<String, dynamic>;
+    // Explicit null — distinguishable from absent on receiver side, but both
+    // map to "leave column NULL" in _applyBook.
+    expect(payload['lastTtsPosition'], isNull);
   });
 
   // M2.8 (2026-07-12): chat + tags sync scope expansion.

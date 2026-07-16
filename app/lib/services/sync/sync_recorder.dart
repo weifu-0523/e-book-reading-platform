@@ -17,6 +17,7 @@
 import 'dart:convert';
 
 import 'package:zhiyue/data/local/daos/sync_outbox_dao.dart';
+import 'package:zhiyue/data/models/last_tts_position.dart';
 import 'package:zhiyue/services/sync/sync_record.dart';
 
 /// Bridge between domain repositories and the sync outbox.
@@ -130,6 +131,16 @@ class SyncRecorder {
     required bool hasCover,
     required DateTime mtime,
     bool deleted = false,
+    // T11 (2026-07-16): cross-device TTS resume cursor. Optional and
+    // omitted from the payload shape when null — receiver treats both
+    // absent and explicit null as "leave column NULL". Caller is typically
+    // BooksDao.setLastTtsPosition via the TTS reader controller (T15+),
+    // NOT LocalBookRepository.save (which doesn't carry TTS state).
+    // We chose a separate param rather than threading lastTtsPosition
+    // through the `Book` domain model to (a) match the existing
+    // `hasCover` precedent (T3) and (b) avoid bloating the read path's
+    // _toModel mapping when ~no read site needs the cursor.
+    LastTtsPosition? lastTtsPosition,
   }) {
     // T3 (2026-07-13): wire format carries `hasCover` (bool) instead of
     // the legacy absolute `coverPath` string. The PC absolute path is
@@ -146,6 +157,10 @@ class SyncRecorder {
       'fileHash': fileHash,
       'fileSizeBytes': fileSizeBytes,
       'hasCover': hasCover,
+      // Always written — distinguishes "explicitly cleared" (null) from
+      // "field absent" (older client) at the protocol level. Receiver
+      // maps both to NULL on the books.last_tts_position column.
+      'lastTtsPosition': lastTtsPosition?.toJson(),
     };
     return _enqueue(SyncRecord(
       id: id,
