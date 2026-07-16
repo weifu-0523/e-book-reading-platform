@@ -18,6 +18,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,6 +37,7 @@ import 'features/sync/providers/sync_controller.dart';
 import 'features/tts/providers/tts_playback_controller.dart';
 import 'services/ai/api_key_store.dart';
 import 'services/book_open_bridge.dart';
+import 'services/tts/audio_session_initializer.dart';
 import 'services/tts/zhiyue_audio_handler.dart';
 
 void main(List<String> args) async {
@@ -167,6 +169,53 @@ void main(List<String> args) async {
         // in-app — only OS-level integrations (notification, lock screen)
         // are degraded.
         debugPrint('AudioService.init failed (TTS will work in-app only): $e');
+      }
+
+      // T25 (2026-07-17): configure the OS audio session for spoken-audio
+      // playback and wire two system event streams to pause TTS:
+      //  * interruptionEventStream — phone call, alarm, another media app
+      //    stealing focus.
+      //  * becomingNoisyEventStream — headphone unplugged / Bluetooth
+      //    audio device disconnected.
+      //
+      // **Why pause bypasses the audio handler:** [TtsPlaybackController.pause]
+      // (public) routes via [globalAudioHandler] on mobile, which calls
+      // `onPause` callback → `controller.drivePause()`. But during an audio
+      // interruption the OS has already paused our session — calling
+      // `handler.pause()` would re-engage the foreground service we're
+      // trying to wind down. So [onPause] calls `drivePause()` directly.
+      //
+      // **Plan bug note:** the plan (line 2189) specified
+      // `AVAudioSessionCategory.speech` which doesn't exist in
+      // audio_session 0.1.25. We use `playback` (matches the package's
+      // own `AudioSessionConfiguration.speech()` recipe) so background
+      // audio persists when the screen locks.
+      //
+      // Subscriptions live for app lifetime — the OS reclaims them on
+      // process exit. No explicit cancel needed (memory rule only forbids
+      // dispose-time fire-and-forget; this is startup-time setup).
+      try {
+        final session = await AudioSession.instance;
+        await AudioSessionInitializer.init(
+          configure: () => session.configure(
+            const AudioSessionConfiguration(
+              avAudioSessionCategory: AVAudioSessionCategory.playback,
+              avAudioSessionMode: AVAudioSessionMode.spokenAudio,
+              androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+            ),
+          ),
+          interruptionStream: session.interruptionEventStream,
+          becomingNoisyStream: session.becomingNoisyEventStream,
+          onPause: () async => container
+              .read(ttsPlaybackControllerProvider.notifier)
+              .drivePause(),
+        );
+      } catch (e) {
+        // AudioSession init can fail on platforms without audio hardware
+        // (e.g. CI / test env, or rare Android state where the audio
+        // service is unresponsive). Non-fatal: in-app TTS still works,
+        // only OS-level interruption routing is degraded.
+        debugPrint('AudioSession init failed (non-fatal): $e');
       }
     }
 
