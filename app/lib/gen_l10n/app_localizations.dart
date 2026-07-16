@@ -1459,6 +1459,54 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'下载失败：{title}'**
   String m28DownloadFailed(String title);
+
+  /// No description provided for @ttsChapterEndAskMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'本章朗读完，是否继续下一章？'**
+  String get ttsChapterEndAskMessage;
+
+  /// No description provided for @ttsChapterEndAskContinue.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续'**
+  String get ttsChapterEndAskContinue;
+
+  /// No description provided for @ttsChapterEndAskStop.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止'**
+  String get ttsChapterEndAskStop;
+
+  /// No description provided for @ttsChapterEndLastChapterMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'已是最后一章'**
+  String get ttsChapterEndLastChapterMessage;
+
+  /// No description provided for @ttsResumePromptTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次朗读到'**
+  String get ttsResumePromptTitle;
+
+  /// No description provided for @ttsResumePromptChapterSuffix.
+  ///
+  /// In zh, this message translates to:
+  /// **'章'**
+  String get ttsResumePromptChapterSuffix;
+
+  /// No description provided for @ttsResumePromptResume.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续朗读'**
+  String get ttsResumePromptResume;
+
+  /// No description provided for @ttsResumePromptDismiss.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get ttsResumePromptDismiss;
 }
 
 class _AppLocalizationsDelegate

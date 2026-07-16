@@ -762,4 +762,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String m28DownloadFailed(String title) {
     return 'Download failed: $title';
   }
+
+  @override
+  String get ttsChapterEndAskMessage =>
+      'Chapter finished. Continue to the next chapter?';
+
+  @override
+  String get ttsChapterEndAskContinue => 'Continue';
+
+  @override
+  String get ttsChapterEndAskStop => 'Stop';
+
+  @override
+  String get ttsChapterEndLastChapterMessage => 'Already the last chapter';
+
+  @override
+  String get ttsResumePromptTitle => 'Last read aloud: chapter';
+
+  @override
+  String get ttsResumePromptChapterSuffix => '';
+
+  @override
+  String get ttsResumePromptResume => 'Resume';
+
+  @override
+  String get ttsResumePromptDismiss => 'Dismiss';
 }

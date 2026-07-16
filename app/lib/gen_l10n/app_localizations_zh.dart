@@ -748,4 +748,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String m28DownloadFailed(String title) {
     return '下载失败：$title';
   }
+
+  @override
+  String get ttsChapterEndAskMessage => '本章朗读完，是否继续下一章？';
+
+  @override
+  String get ttsChapterEndAskContinue => '继续';
+
+  @override
+  String get ttsChapterEndAskStop => '停止';
+
+  @override
+  String get ttsChapterEndLastChapterMessage => '已是最后一章';
+
+  @override
+  String get ttsResumePromptTitle => '上次朗读到';
+
+  @override
+  String get ttsResumePromptChapterSuffix => '章';
+
+  @override
+  String get ttsResumePromptResume => '继续朗读';
+
+  @override
+  String get ttsResumePromptDismiss => '关闭';
 }

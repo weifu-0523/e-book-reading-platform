@@ -555,5 +555,21 @@
     "placeholders": {
       "title": { "type": "String" }
     }
-  }
+  },
+  "ttsChapterEndAskMessage": "本章朗读完，是否继续下一章？",
+  "@ttsChapterEndAskMessage": {},
+  "ttsChapterEndAskContinue": "继续",
+  "@ttsChapterEndAskContinue": {},
+  "ttsChapterEndAskStop": "停止",
+  "@ttsChapterEndAskStop": {},
+  "ttsChapterEndLastChapterMessage": "已是最后一章",
+  "@ttsChapterEndLastChapterMessage": {},
+  "ttsResumePromptTitle": "上次朗读到",
+  "@ttsResumePromptTitle": {},
+  "ttsResumePromptChapterSuffix": "章",
+  "@ttsResumePromptChapterSuffix": {},
+  "ttsResumePromptResume": "继续朗读",
+  "@ttsResumePromptResume": {},
+  "ttsResumePromptDismiss": "关闭",
+  "@ttsResumePromptDismiss": {}
 }

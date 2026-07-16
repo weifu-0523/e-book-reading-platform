@@ -20,14 +20,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 
+import '../../../core/app_providers.dart' show chapterTextProviderFor;
 import '../../../core/providers.dart';
 import '../../../data/local/daos/books_dao.dart';
+import '../../../data/models/book.dart';
 import '../../../data/models/last_tts_position.dart';
 import '../../../services/tts/cfi_boundary_extractor.dart';
 import '../../../services/tts/sentence_segmenter.dart';
 import '../../../services/tts/tts_service.dart';
 import '../widgets/tts_highlight_overlay.dart';
 import 'tts_playback_controller.dart';
+import 'tts_settings_provider.dart';
 
 /// Top-level orchestrator for the 「朗读本章」 flow (T15).
 ///
@@ -73,6 +76,13 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   /// time so listeners don't drift if the user changes chapter mid-play).
   int _currentChapterIdx = 0;
   String? _currentBookId;
+
+  /// T17: latch flipped true the first time we observe phase=speaking
+  /// during the current playback session. Reset to false in [stop] and
+  /// when phase=idle is reached. Used to distinguish "queue exhausted
+  /// after speaking" (chapter-boundary logic should fire) from "user
+  /// manually stopped before any speech" (no prompt).
+  bool _wasSpeaking = false;
 
   /// Triggered by the reader chrome 「朗读本章」 button (T14).
   ///
@@ -136,27 +146,51 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   ///
   /// Safe to call multiple times — no-op when already idle.
   Future<void> stop() async {
+    _wasSpeaking = false;
     await _playbackSub?.cancel();
     _playbackSub = null;
     await _ref.read(ttsPlaybackControllerProvider.notifier).stop();
     _ref.read(ttsCurrentRangeProvider.notifier).state = null;
+    _ref.read(ttsChapterEndRequestProvider.notifier).state = null;
     state = const TtsReaderState();
   }
+
+  /// Public entry for the T17 askAtEnd 「继续」 SnackBar action.
+  ///
+  /// Same as the internal [_loadNextChapterAndContinue] but exposed so the
+  /// TtsChapterEndPromptListener's 继续按钮 can drive the advance. The
+  /// internal version is private because callers like `_onChapterBoundaryReached`
+  /// are inside the controller; the public version is for widget-side users.
+  Future<void> continueToNextChapter() => _loadNextChapterAndContinue();
 
   /// Reactive callback for [TtsPlaybackController] state changes.
   ///
   /// Three responsibilities:
   ///   1. On idle (queue exhausted or stop) → clear highlight + state.
+  ///      When the queue exhausted after speaking (not a manual stop),
+  ///      consult [TtsSettings.chapterBoundary]: continuous → advance to
+  ///      next chapter via [_loadNextChapterAndContinue]; askAtEnd →
+  ///      signal reader_body via [ttsChapterEndRequestProvider] so it
+  ///      shows the 继续听下一章？ SnackBar (T17).
   ///   2. On speaking / loading → update ttsCurrentRangeProvider to the
-  ///      current sentence's HighlightRange.
+  ///      current sentence's HighlightRange, set state.wasSpeaking.
   ///   3. Persist last_tts_position (during active playback, NOT at
   ///      dispose — complies with the no-dispose-fire-and-forget rule).
-  ///   4. Auto-flip page in paged mode (best-effort; throws caught
-  ///      internally so a transient engine state never wedges TTS).
+  ///   4. Auto-navigate page/scroll in [PaginationMode.paged] /
+  ///      [PaginationMode.scroll] (best-effort; throws caught internally
+  ///      so a transient engine state never wedges TTS).
   void _onPlaybackChange(TtsPlaybackState playback) {
     if (playback.phase == TtsPhase.idle) {
+      final wasSpeaking = _wasSpeaking;
+      _wasSpeaking = false;
       _ref.read(ttsCurrentRangeProvider.notifier).state = null;
       state = const TtsReaderState();
+      // T17: chapter-boundary handling. Only fire when we were actually
+      // speaking (manual stop / queue exhausted from error keeps
+      // wasSpeaking=false, so no spurious 「下一章」 prompt).
+      if (wasSpeaking) {
+        _onChapterBoundaryReached();
+      }
       return;
     }
     if (playback.phase != TtsPhase.speaking && playback.phase != TtsPhase.loading) {
@@ -196,8 +230,131 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
       }
     }
 
-    // 3. Auto-flip page in paged mode (best-effort).
+    // 3. Auto-navigate (paged jumpToPage or scroll gotoLocator).
     _autoNavigate(sentence);
+
+    // 4. Latch wasSpeaking so the next phase→idle transition knows to
+    // invoke chapter-boundary logic (T17).
+    if (!_wasSpeaking && playback.phase == TtsPhase.speaking) {
+      _wasSpeaking = true;
+    }
+  }
+
+  /// Invoked when [TtsPlaybackController] phase transitions to idle after
+  /// having reached speaking (i.e., the queue actually exhausted rather
+  /// than being manually stopped). Branches on the user's
+  /// [TtsSettings.chapterBoundary] preference (T17):
+  ///   - [TtsChapterBoundary.continuous] → advance to next chapter and
+  ///     keep reading via [_loadNextChapterAndContinue].
+  ///   - [TtsChapterBoundary.askAtEnd] → flip [ttsChapterEndRequestProvider]
+  ///     so reader_body's TtsChapterEndPromptListener shows the
+  ///     「继续听下一章？」 SnackBar. User taps 继续 → advance; 停止 → stop().
+  void _onChapterBoundaryReached() {
+    final settings = _ref.read(ttsSettingsProvider);
+    if (settings.chapterBoundary == TtsChapterBoundary.continuous) {
+      unawaited(_loadNextChapterAndContinue());
+    } else {
+      _ref.read(ttsChapterEndRequestProvider.notifier).state =
+          TtsChapterEndRequest.askContinue;
+    }
+  }
+
+  /// Advances to the next chapter and re-enters playback at sentence 0.
+  ///
+  /// Steps:
+  ///   1. Resolve chapter count via [chapterTextProviderFor] (DI seam:
+  ///      [ttsChapterCountResolverProvider]); if already last chapter,
+  ///      set [ttsChapterEndRequestProvider] with [TtsChapterEndRequest]
+  ///      kind [TtsChapterEndKind.lastChapter] so reader_body shows the
+  ///      「已是最后一章」 SnackBar. No exception.
+  ///   2. Increment [ttsCurrentChapterIdxProvider]; engine's location
+  ///      listener will pick up the change.
+  ///   3. Call [engine.nextSpine] to actually advance the chapter (engine
+  ///      owns the canonical chapter index; the StateProvider is only a
+  ///      mirror). Await [engine.chapterSwitchSettled] so page breaks /
+  ///      plain text are valid for the new chapter before re-segmenting.
+  ///   4. Re-resolve chapter text, re-segment, dispatch play with the new
+  ///      scope. Updates `_currentChapterIdx` + `_sentences`.
+  ///
+  /// Best-effort: any failure (chapter resolution, segmentation, engine
+  /// error) is caught and the controller returns to idle without throwing
+  /// (matches the rest of TtsReaderController's resilience model).
+  Future<void> _loadNextChapterAndContinue() async {
+    final bookId = _currentBookId;
+    if (bookId == null) return;
+    final engine = _ref.read(ttsReaderEngineRefProvider);
+    if (engine == null) return;
+
+    final book = await _ref.read(bookRepositoryProvider).getById(bookId);
+    if (book == null) return;
+
+    final nextIdx = _currentChapterIdx + 1;
+    try {
+      final countResolver = _ref.read(ttsChapterCountResolverProvider);
+      final count = await countResolver(book);
+      if (nextIdx >= count) {
+        // Already last chapter — graceful SnackBar, no advance.
+        _ref.read(ttsChapterEndRequestProvider.notifier).state =
+            TtsChapterEndRequest.lastChapter;
+        return;
+      }
+    } catch (_) {
+      // Resolver failure (file unreadable etc.) — bail without advance.
+      return;
+    }
+
+    // Mirror the new chapter index into the StateProvider so any UI that
+    // watches it (e.g., future TtsResumePrompt) sees the update.
+    _ref.read(ttsCurrentChapterIdxProvider.notifier).state = nextIdx;
+    _currentChapterIdx = nextIdx;
+
+    // Advance the engine chapter. nextSpine unconditionally switches to
+    // the next spine item; matches 「next chapter」 semantics. The engine's
+    // own location stream will eventually emit, but we need the new text
+    // synchronously so we await chapterSwitchSettled.
+    try {
+      await engine.nextSpine();
+      await engine.chapterSwitchSettled;
+    } catch (_) {
+      // Engine transient failure — return without restarting playback.
+      return;
+    }
+
+    // Re-resolve chapter text via the same resolver used in [start].
+    final resolver = _ref.read(ttsChapterTextResolverProvider);
+    final String text;
+    try {
+      text = await resolver(book, nextIdx);
+    } catch (_) {
+      return;
+    }
+    if (text.isEmpty) return;
+
+    // Extract CFI + re-segment.
+    final boundary = CFIBoundaryExtractor.extract(
+      chapterPlainText: text,
+      chapterIndex: nextIdx,
+    );
+    _sentences = SentenceSegmenter.split(
+      text,
+      paragraphCfiRanges: boundary.cfiRanges,
+      paragraphCharSpans: boundary.charSpans,
+    );
+    if (_sentences.isEmpty) return;
+
+    // Re-subscribe to playback state (idempotent — cancels prior sub).
+    await _playbackSub?.cancel();
+    _playbackSub = _playbackControllerStream().listen(_onPlaybackChange);
+
+    await _ref.read(ttsPlaybackControllerProvider.notifier).play(
+          scope: TtsScopeChapter(bookId: bookId, chapterIdx: nextIdx),
+          sentences: _sentences,
+        );
+
+    state = TtsReaderState(
+      isActive: true,
+      sentenceCount: _sentences.length,
+    );
   }
 
   /// Navigates the reader engine so [sentence] is visible.
@@ -319,4 +476,62 @@ class TtsReaderState {
 final ttsReaderControllerProvider =
     StateNotifierProvider<TtsReaderController, TtsReaderState>(
   (ref) => TtsReaderController(ref),
+);
+
+// ── T17: chapter-boundary prompt channel ──────────────────────────────────
+//
+// TtsReaderController has no BuildContext, so it can't directly call
+// ScaffoldMessenger. Instead, it emits a [TtsChapterEndRequest] through
+// [ttsChapterEndRequestProvider]; a small listener widget in reader_body
+// (TtsChapterEndPromptListener) watches this provider and surfaces the
+// SnackBar. The controller clears the state to null when playback
+// restarts or stops (idempotent — listener treats null as "no prompt").
+
+/// Kind of chapter-end request the controller wants the UI to surface.
+enum TtsChapterEndKind {
+  /// Chapter queue exhausted, user picked askAtEnd → show 继续听下一章？
+  /// with 继续/停止 actions.
+  askContinue,
+
+  /// Controller tried continuous advance but there's no next chapter.
+  /// Show 「已是最后一章」 (single dismiss button).
+  lastChapter,
+}
+
+/// Request emitted by [TtsReaderController] when the chapter-boundary
+/// branch fires. Listened to by TtsChapterEndPromptListener.
+class TtsChapterEndRequest {
+  final TtsChapterEndKind kind;
+  const TtsChapterEndRequest({required this.kind});
+
+  static const askContinue =
+      TtsChapterEndRequest(kind: TtsChapterEndKind.askContinue);
+  static const lastChapter =
+      TtsChapterEndRequest(kind: TtsChapterEndKind.lastChapter);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TtsChapterEndRequest && kind == other.kind;
+
+  @override
+  int get hashCode => kind.hashCode;
+}
+
+/// null = no prompt. Non-null = listener shows the corresponding SnackBar.
+final ttsChapterEndRequestProvider =
+    StateProvider<TtsChapterEndRequest?>((ref) => null);
+
+/// Resolves a [Book] to its chapter count. Default wires through
+/// [chapterTextProviderFor] (defined in `app_providers.dart`) via the
+/// provider's `.count(filePath)` method. Tests override this to inject
+/// a stub returning a fixed int (so T17's "last chapter" branch is
+/// reachable without touching the disk).
+typedef TtsChapterCountResolver = Future<int> Function(Book book);
+
+final ttsChapterCountResolverProvider = Provider<TtsChapterCountResolver>(
+  (ref) => (book) async {
+    final provider = chapterTextProviderFor(book);
+    return provider.count(book.filePath);
+  },
 );

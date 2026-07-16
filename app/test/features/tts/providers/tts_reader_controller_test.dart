@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,6 +32,7 @@ import 'package:zhiyue/data/models/book.dart' as model;
 import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
 import 'package:zhiyue/features/tts/providers/tts_reader_controller.dart';
+import 'package:zhiyue/features/tts/providers/tts_settings_provider.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
 
 // ── Fakes / Mocks ─────────────────────────────────────────────────────────
@@ -57,6 +59,12 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
 
   @override
   PageController? get pageController => null;
+
+  @override
+  Future<void> get chapterSwitchSettled => Future<void>.value();
+
+  @override
+  Future<void> nextSpine() async {}
 }
 
 /// Scroll-mode variant of [_FakeReaderEngine]. Records `gotoLocator` calls
@@ -103,6 +111,7 @@ void main() {
   late StreamController<TtsState> stateController;
   late AppDatabase db;
   late _MockBookRepository bookRepo;
+  Directory? ttsSettingsTempDir;
 
   setUp(() async {
     svc = _MockTtsService();
@@ -133,11 +142,20 @@ void main() {
     bookRepo = _MockBookRepository();
     when(() => bookRepo.getById('b1'))
         .thenAnswer((_) async => _epubBook('b1'));
+
+    // T17: use a fresh temp dir per test so TtsSettings starts from defaults
+    // (continuous). Tests that need askAtEnd call container's notifier.
+    ttsSettingsTempDir = Directory.systemTemp.createTempSync('tts_reader_');
+    globalTtsSettingsDirOverride = ttsSettingsTempDir;
   });
 
   tearDown(() async {
     await stateController.close();
     await db.close();
+    if (ttsSettingsTempDir != null && ttsSettingsTempDir!.existsSync()) {
+      ttsSettingsTempDir!.deleteSync(recursive: true);
+    }
+    globalTtsSettingsDirOverride = null;
   });
 
   /// Build a ProviderContainer wired with the global TtsService stub and
@@ -148,15 +166,30 @@ void main() {
     ReaderEngine? engine,
     String? bookId,
     int chapterIdx = 0,
+    int? chapterCount,
+    String? nextChapterText,
   }) {
-    final container = ProviderContainer(overrides: [
+    final overrides = <Override>[
       ttsServiceProvider.overrideWithValue(svc),
       bookRepositoryProvider.overrideWithValue(bookRepo),
-      ttsChapterTextResolverProvider
-          .overrideWithValue((_, __) async => chapterText),
+      ttsChapterTextResolverProvider.overrideWith((_) {
+        return (book, idx) async {
+          // For T17 continuous-advance tests: return nextChapterText when
+          // idx > chapterIdx (next chapter). Default: same chapterText.
+          if (nextChapterText != null && idx > chapterIdx) {
+            return nextChapterText;
+          }
+          return chapterText;
+        };
+      }),
       // Inject the in-memory test database so persistence tests work.
       appDatabaseProvider.overrideWithValue(db),
-    ]);
+    ];
+    if (chapterCount != null) {
+      overrides.add(ttsChapterCountResolverProvider
+          .overrideWithValue((_) async => chapterCount));
+    }
+    final container = ProviderContainer(overrides: overrides);
     if (engine != null) {
       container.read(ttsReaderEngineRefProvider.notifier).state = engine;
     }
@@ -332,6 +365,113 @@ void main() {
           (firstCall as re_locator.EpubRangeLocator).chapterIndex, 0);
       // First sentence starts at charOffset 0 (CFI '0:0').
       expect(firstCall.startOffset, greaterThanOrEqualTo(0));
+    });
+  });
+
+  group('TtsReaderController chapter boundary (T17)', () {
+    test(
+        'continuous mode: queue exhausted loads next chapter and replays',
+        () async {
+      // Chapter 0 = 1 sentence, chapter 1 = also has text.
+      // chapterCount=2 so nextIdx=1 is valid.
+      final engine = _FakeReaderEngine();
+      final container = buildContainer(
+        chapterText: 'Only sentence.',
+        nextChapterText: 'Chapter two sentence.',
+        chapterCount: 2,
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      // Let speaking propagate, then simulate queue exhaustion by emitting
+      // TtsState.idle (engine finishes the sentence).
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      stateController.add(TtsState.idle);
+      // Multiple pumps: idle listener fires _onPlaybackChange(idle) →
+      // _onChapterBoundaryReached → _loadNextChapterAndContinue (async)
+      // → nextSpine + chapterSwitchSettled + re-segment + play.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ttsCurrentChapterIdxProvider), 1,
+          reason: 'continuous mode should advance chapter index.');
+      expect(container.read(ttsReaderControllerProvider).isActive, isTrue,
+          reason: 'continuous mode should keep playback active.');
+      // Not the lastChapter prompt.
+      expect(
+          container.read(ttsChapterEndRequestProvider), isNull,
+          reason: 'continuous mode should not surface the prompt.');
+    });
+
+    test(
+        'askAtEnd mode: queue exhausted surfaces prompt and does NOT advance',
+        () async {
+      final engine = _FakeReaderEngine();
+      final container = buildContainer(
+        chapterText: 'Only sentence.',
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container
+        ..listen(ttsPlaybackControllerProvider, (_, __) {})
+        ..listen(ttsChapterEndRequestProvider, (_, __) {});
+
+      // Flip settings to askAtEnd before starting.
+      await container
+          .read(ttsSettingsProvider.notifier)
+          .setChapterBoundary(TtsChapterBoundary.askAtEnd);
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      stateController.add(TtsState.idle);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ttsCurrentChapterIdxProvider), 0,
+          reason: 'askAtEnd mode should NOT auto-advance chapter index.');
+      final req = container.read(ttsChapterEndRequestProvider);
+      expect(req, isNotNull);
+      expect(req!.kind, TtsChapterEndKind.askContinue);
+    });
+
+    test('loadNextChapter at last chapter: surfaces lastChapter prompt',
+        () async {
+      final engine = _FakeReaderEngine();
+      final container = buildContainer(
+        chapterText: 'Only sentence.',
+        chapterCount: 1, // already last chapter
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container
+        ..listen(ttsPlaybackControllerProvider, (_, __) {})
+        ..listen(ttsChapterEndRequestProvider, (_, __) {});
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      stateController.add(TtsState.idle);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ttsCurrentChapterIdxProvider), 0,
+          reason: 'last-chapter branch should not advance.');
+      final req = container.read(ttsChapterEndRequestProvider);
+      expect(req, isNotNull);
+      expect(req!.kind, TtsChapterEndKind.lastChapter);
     });
   });
 }

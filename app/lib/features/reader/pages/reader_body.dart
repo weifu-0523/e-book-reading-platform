@@ -49,6 +49,7 @@ import '../../../features/tts/providers/tts_reader_controller.dart';
 // selected text into the AI input composer (no LLM call).
 import '../../../features/ai_chat/providers/chat_session_controller.dart';
 import '../../../features/ai_chat/widgets/ai_drawer_widget.dart';
+import '../../../features/tts/widgets/tts_chapter_end_prompt_listener.dart';
 import '../controllers/bookmark_controller.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
@@ -879,6 +880,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               // 2026-07-08 FEAT 3：章末卡片「上一章」回调。
               onPrev: engine.previousSpine,
             ),
+          // T17 (2026-07-16): invisible listener that surfaces the TTS
+          // chapter-end SnackBar (askAtEnd branch + last-chapter notice)
+          // via the inherited ScaffoldMessenger.
+          const TtsChapterEndPromptListener(),
           ReaderSelectionToolbar(
             selection: _selection,
             selectionRect: _selectionRect,

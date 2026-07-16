@@ -424,5 +424,21 @@
     "placeholders": {
       "title": { "type": "String" }
     }
-  }
+  },
+  "ttsChapterEndAskMessage": "Chapter finished. Continue to the next chapter?",
+  "@ttsChapterEndAskMessage": {},
+  "ttsChapterEndAskContinue": "Continue",
+  "@ttsChapterEndAskContinue": {},
+  "ttsChapterEndAskStop": "Stop",
+  "@ttsChapterEndAskStop": {},
+  "ttsChapterEndLastChapterMessage": "Already the last chapter",
+  "@ttsChapterEndLastChapterMessage": {},
+  "ttsResumePromptTitle": "Last read aloud: chapter",
+  "@ttsResumePromptTitle": {},
+  "ttsResumePromptChapterSuffix": "",
+  "@ttsResumePromptChapterSuffix": {},
+  "ttsResumePromptResume": "Resume",
+  "@ttsResumePromptResume": {},
+  "ttsResumePromptDismiss": "Dismiss",
+  "@ttsResumePromptDismiss": {}
 }
