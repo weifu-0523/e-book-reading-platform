@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fafaf7">
+<meta name="description" content="智阅 v1.11.9-alpha 使用说明书 — 安装、阅读、高亮笔记、AI 导读、跨设备同步完整指南">
+<title>智阅使用说明书 · v1.11.9-alpha</title>
+<style>
+/* ========== 主题变量 ========== */
+:root {
+  --bg: #fafaf7;
+  --bg-card: #ffffff;
+  --bg-soft: #f3f2ed;
+  --bg-code: #f5f3ec;
+  --text: #1a1a1a;
+  --text-soft: #4a4a4a;
+  --text-muted: #767676;
+  --border: #e5e3da;
+  --border-soft: #eeede5;
+  --accent: #2c7a3f;
+  --accent-soft: #e8f3ec;
+  --accent-hover: #225f31;
+  --warn: #b8860b;
+  --warn-soft: #fff8e1;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+  --info: #1e6091;
+  --info-soft: #e0f2fe;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.06);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.08);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Source Han Sans CN", "Noto Sans CJK SC", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, "Source Code Pro", Menlo, monospace;
+  --max-content: 820px;
+}
+
+[data-theme="dark"] {
+  --bg: #15161a;
+  --bg-card: #1d1f25;
+  --bg-soft: #232530;
+  --bg-code: #1a1c22;
+  --text: #e7e7e3;
+  --text-soft: #b8b8b3;
+  --text-muted: #888884;
+  --border: #2c2e36;
+  --border-soft: #25272e;
+  --accent: #4ade80;
+  --accent-soft: #1e3a2a;
+  --accent-hover: #6ee7a0;
+  --warn: #fbbf24;
+  --warn-soft: #3a2e1a;
+  --danger: #f87171;
+  --danger-soft: #3a1e1e;
+  --info: #60a5fa;
+  --info-soft: #1e2e3a;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.4);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.5);
+}
+
+/* ========== Reset ========== */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color .25s ease, color .25s ease;
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text);
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.6em 0 .6em;
+  letter-spacing: -.01em;
+}
+h1 { font-size: 2em; margin-top: 0; }
+h2 {
+  font-size: 1.55em;
+  padding-bottom: .3em;
+  border-bottom: 2px solid var(--border);
+  position: relative;
+}
+h2::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 60px;
+  height: 2px;
+  background: var(--accent);
+}
+h3 { font-size: 1.22em; }
+h4 { font-size: 1.05em; color: var(--text-soft); }
+p { margin: .8em 0; }
+a { color: var(--accent); text-decoration: none; transition: color .15s; }
+a:hover { color: var(--accent-hover); text-decoration: underline; }
+strong { color: var(--text); font-weight: 600; }
+em { color: var(--text-soft); }
+code {
+  font-family: var(--font-mono);
+  font-size: .88em;
+  background: var(--bg-code);
+  color: var(--accent);
+  padding: .15em .4em;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+}
+pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1em 1.2em;
+  overflow-x: auto;
+  font-size: .88em;
+  line-height: 1.6;
+}
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text);
+}
+blockquote {
+  margin: 1.2em 0;
+  padding: .8em 1.2em;
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--text-soft);
+}
+blockquote p { margin: .4em 0; }
+ul, ol { padding-left: 1.6em; margin: .8em 0; }
+li { margin: .35em 0; }
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.4em 0;
+}
+
+/* ========== 表格 ========== */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 1.2em 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: .95em;
+  box-shadow: var(--shadow-sm);
+}
+thead {
+  background: var(--bg-soft);
+}
+th {
+  padding: .75em 1em;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 2px solid var(--border);
+}
+td {
+  padding: .7em 1em;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--bg-soft); }
+
+/* ========== 顶栏 ========== */
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 60px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  z-index: 100;
+  box-shadow: var(--shadow-sm);
+}
+.topbar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 1.05em;
+  color: var(--text);
+}
+.topbar-logo .icon {
+  font-size: 1.4em;
+}
+.topbar-version {
+  font-size: .75em;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg-soft);
+  border-radius: 10px;
+  font-weight: 500;
+}
+.topbar-spacer { flex: 1; }
+.topbar-btn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 1.1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+}
+.topbar-btn:hover {
+  background: var(--bg-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.menu-toggle { display: none; }
+
+/* ========== 侧栏目录 ========== */
+.sidebar {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 24px 16px;
+  z-index: 50;
+}
+.sidebar-title {
+  font-size: .75em;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0 12px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 12px;
+}
+.toc { list-style: none; padding: 0; margin: 0; }
+.toc-item { margin: 2px 0; }
+.toc-link {
+  display: block;
+  padding: 7px 12px;
+  color: var(--text-soft);
+  font-size: .9em;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+  transition: all .15s;
+  line-height: 1.4;
+}
+.toc-link:hover {
+  background: var(--bg-soft);
+  color: var(--accent);
+  text-decoration: none;
+}
+.toc-link.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+.toc-sub {
+  list-style: none;
+  padding-left: 14px;
+  margin: 2px 0 4px;
+}
+.toc-sub .toc-link {
+  font-size: .82em;
+  padding: 5px 10px;
+}
+
+/* ========== 主内容 ========== */
+.main {
+  margin-left: 280px;
+  margin-top: 60px;
+  padding: 40px 32px 80px;
+  min-height: calc(100vh - 60px);
+}
+.content {
+  max-width: var(--max-content);
+  margin: 0 auto;
+}
+
+/* ========== Hero ========== */
+.hero {
+  background: linear-gradient(135deg, var(--accent-soft) 0%, var(--bg-card) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-md);
+}
+[data-theme="dark"] .hero {
+  background: linear-gradient(135deg, var(--accent-soft) 0%, var(--bg-card) 100%);
+}
+.hero h1 {
+  margin: 0 0 .4em;
+  font-size: 2.2em;
+  border: none;
+  padding: 0;
+}
+.hero h1::before { display: none; }
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: .8em;
+  font-weight: 500;
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+}
+.badge-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.badge-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.hero-tagline {
+  font-size: 1.05em;
+  color: var(--text-soft);
+  margin: 0;
+  line-height: 1.7;
+}
+
+/* ========== Section ========== */
+.section { margin-bottom: 48px; scroll-margin-top: 80px; }
+
+/* ========== Callout ========== */
+.callout {
+  margin: 1.4em 0;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border-left: 4px solid;
+  font-size: .96em;
+}
+.callout-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.callout-info {
+  background: var(--info-soft);
+  border-color: var(--info);
+  color: var(--text);
+}
+.callout-info .callout-title { color: var(--info); }
+.callout-warn {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--text);
+}
+.callout-warn .callout-title { color: var(--warn); }
+.callout-danger {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--text);
+}
+.callout-danger .callout-title { color: var(--danger); }
+.callout-tip {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.callout-tip .callout-title { color: var(--accent); }
+
+/* ========== Feature Card ========== */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 1.4em 0;
+}
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  transition: all .2s;
+}
+.feature-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.feature-card-icon {
+  font-size: 1.8em;
+  margin-bottom: 8px;
+}
+.feature-card-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.feature-card-desc {
+  font-size: .9em;
+  color: var(--text-soft);
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* ========== Steps ========== */
+.steps {
+  counter-reset: step;
+  list-style: none;
+  padding: 0;
+  margin: 1.4em 0;
+}
+.steps > li {
+  counter-increment: step;
+  position: relative;
+  padding: 12px 16px 12px 56px;
+  margin-bottom: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: all .15s;
+}
+.steps > li:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  background: var(--accent);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: .9em;
+}
+
+/* ========== Keyboard ========== */
+kbd {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: .85em;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ========== 回到顶部 ========== */
+.back-to-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: all .25s;
+  box-shadow: var(--shadow-lg);
+  z-index: 90;
+}
+.back-to-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.back-to-top:hover {
+  background: var(--accent-hover);
+  transform: translateY(-3px);
+}
+
+/* ========== 遮罩 ========== */
+.overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 49;
+  backdrop-filter: blur(2px);
+}
+.overlay.visible { display: block; }
+
+/* ========== 响应式 ========== */
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .menu-toggle { display: inline-flex; }
+  .main { margin-left: 0; padding: 28px 20px 60px; }
+  .hero { padding: 28px 22px; }
+  .hero h1 { font-size: 1.7em; }
+}
+
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  .topbar { padding: 0 14px; }
+  .topbar-logo { font-size: .95em; }
+  .topbar-version { display: none; }
+  .main { padding: 20px 16px 50px; }
+  .hero { padding: 22px 18px; border-radius: var(--radius-md); }
+  .hero h1 { font-size: 1.5em; }
+  h2 { font-size: 1.3em; }
+  h3 { font-size: 1.1em; }
+  .feature-grid { grid-template-columns: 1fr; }
+  table { font-size: .88em; }
+  th, td { padding: .55em .7em; }
+  .back-to-top { right: 16px; bottom: 16px; }
+}
+
+/* ========== 打印 ========== */
+@media print {
+  .topbar, .sidebar, .back-to-top, .overlay { display: none !important; }
+  .main { margin: 0; padding: 0; }
+  body { background: white; color: black; font-size: 11pt; }
+  .hero { background: none; border: 1px solid #ccc; }
+  .section { page-break-inside: avoid; }
+  a { color: black; text-decoration: underline; }
+}
+
+/* ========== 选中样式 ========== */
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+/* ========== 滚动条 ========== */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ========== Footer ========== */
+.footer {
+  margin-top: 80px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: .9em;
+}
+.footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- ========== 顶栏 ========== -->
+<header class="topbar">
+  <button class="topbar-btn menu-toggle" id="menuToggle" aria-label="目录">☰</button>
+  <div class="topbar-logo">
+    <span class="icon">📚</span>
+    <span>智阅使用说明书</span>
+    <span class="topbar-version">v1.11.9-alpha</span>
+  </div>
+  <div class="topbar-spacer"></div>
+  <button class="topbar-btn" id="themeToggle" aria-label="切换主题" title="切换主题">🌙</button>
+  <button class="topbar-btn" id="printBtn" aria-label="打印" title="打印 / 导出 PDF">🖨️</button>
+</header>
+
+<!-- ========== 遮罩 ========== -->
+<div class="overlay" id="overlay"></div>
+
+<!-- ========== 侧栏目录 ========== -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-title">目录</div>
+  <nav>
+    <ul class="toc" id="toc"></ul>
+  </nav>
+</aside>
+
+<!-- ========== 主内容 ========== -->
+<main class="main">
+<div class="content">
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-meta">
+    <span class="badge badge-accent">v1.11.9-alpha</span>
+    <span class="badge">Windows · Android</span>
+    <span class="badge">AGPLv3 开源</span>
+    <span class="badge badge-warn">Alpha 测试版</span>
+  </div>
+  <h1>智阅（ZhiYue）使用说明书</h1>
+  <p class="hero-tagline">
+    面向深度阅读和学习的<strong>本地优先</strong>电子书阅读器。<br>
+    所有数据存储在您的设备本地，完全离线可用；可选地启用 AI 陪伴式导读和跨设备同步。
+  </p>
+</section>
+
+<!-- ========== 1. 功能概览 ========== -->
+<section class="section" id="sec-overview">
+<h2>1. 功能概览</h2>
+
+<div class="feature-grid">
+  <div class="feature-card">
+    <div class="feature-card-icon">💾</div>
+    <div class="feature-card-title">本地优先</div>
+    <p class="feature-card-desc">全部数据存储在本机 SQLite，完全离线可用，隐私可控。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">📖</div>
+    <div class="feature-card-title">多格式支持</div>
+    <p class="feature-card-desc">EPUB 完整功能 + PDF（文本版 + 扫描版阅读）。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">🎨</div>
+    <div class="feature-card-title">沉浸阅读</div>
+    <p class="feature-card-desc">4 套主题、5 款中文字体、字号/行距/边距自定义、桌面双页对开。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">🖍️</div>
+    <div class="feature-card-title">笔记系统</div>
+    <p class="feature-card-desc">5 色高亮 + 笔记 + 标签 + 全文搜索（FTS5）。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">🔖</div>
+    <div class="feature-card-title">智能书签</div>
+    <p class="feature-card-desc">章节级书签，标签自动取自章节名（含译者序/引言）。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">📝</div>
+    <div class="feature-card-title">自由笔记</div>
+    <p class="feature-card-desc">不绑定书页的独立 Markdown 笔记，可 @-mention 书中内容。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">🤖</div>
+    <div class="feature-card-title">AI 陪伴导读</div>
+    <p class="feature-card-desc">全书摘要 / 章节导读 / 高亮点评 / 同书问答 / 苏格拉底追问。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">☁️</div>
+    <div class="feature-card-title">跨设备同步</div>
+    <p class="feature-card-desc">坚果云 / 任意 WebDAV。高亮、笔记、AI 对话、书籍文件、封面全覆盖。</p>
+  </div>
+  <div class="feature-card">
+    <div class="feature-card-icon">📤</div>
+    <div class="feature-card-title">Markdown 导出</div>
+    <p class="feature-card-desc">Obsidian vault 兼容，YAML frontmatter + wiki-links + 标签云。</p>
+  </div>
+</div>
+</section>
+
+<!-- ========== 2. 系统要求 ========== -->
+<section class="section" id="sec-requirements">
+<h2>2. 系统要求</h2>
+
+<h3>Windows</h3>
+<ul>
+  <li>Windows 10 64 位 或 更高版本（推荐 Windows 11）</li>
+  <li>至少 500 MB 可用磁盘空间</li>
+  <li>1024 × 768 或更高分辨率</li>
+</ul>
+
+<h3>Android</h3>
+<ul>
+  <li>Android 8.0（API 26）或更高版本</li>
+  <li>至少 200 MB 可用磁盘空间</li>
+  <li>启用「允许安装未知来源应用」权限</li>
+</ul>
+</section>
+
+<!-- ========== 3. 安装 ========== -->
+<section class="section" id="sec-install">
+<h2>3. 安装</h2>
+
+<h3 id="sec-install-windows">3.1 Windows</h3>
+
+<p>智阅提供两种 Windows 分发方式，按需选择其一。</p>
+
+<h4>方式 A：安装版（推荐）</h4>
+<p>文件名：<code>zhiyue-setup-1.11.9-alpha.exe</code></p>
+
+<div class="callout callout-tip">
+  <div class="callout-title">✨ 特点</div>
+  <ul style="margin:.4em 0;">
+    <li>自动注册 <code>.epub</code> / <code>.pdf</code> 文件关联</li>
+    <li>添加开始菜单快捷方式</li>
+    <li>包含卸载向导</li>
+    <li>双击电子书文件自动用智阅打开（已运行时在原窗口打开）</li>
+  </ul>
+</div>
+
+<ol class="steps">
+  <li>双击 <code>zhiyue-setup-1.11.9-alpha.exe</code></li>
+  <li>按安装向导提示选择安装目录（默认 <code>%LOCALAPPDATA%\Programs\zhiyue</code>）</li>
+  <li>完成后从开始菜单「智阅」启动，或双击任意 <code>.epub</code> / <code>.pdf</code></li>
+</ol>
+
+<h4>方式 B：便携版</h4>
+<p>文件名：<code>zhiyue-portable-1.11.9-alpha.zip</code></p>
+<p>解压即用，免安装，可放在 U 盘里随身携带。</p>
+
+<ol class="steps">
+  <li>解压 ZIP 到任意目录（例如 <code>D:\Tools\zhiyue</code>）</li>
+  <li>双击 <code>zhiyue.exe</code> 启动</li>
+</ol>
+
+<div class="callout callout-warn">
+  <div class="callout-title">⚠️ 注意</div>
+  便携版不自动注册文件关联。若希望双击 <code>.epub</code> 用智阅打开，请用安装版。
+</div>
+
+<h3 id="sec-install-android">3.2 Android</h3>
+<p>文件名：<code>zhiyue-1.11.9-alpha.apk</code></p>
+
+<ol class="steps">
+  <li>
+    <strong>允许未知来源</strong>（首次安装需要）<br>
+    <span style="color:var(--text-muted);font-size:.92em;">系统设置 → 应用 → 特殊访问权限 → 安装未知应用 → 选浏览器/文件管理器开启</span>
+  </li>
+  <li>
+    <strong>传输 APK 到手机</strong><br>
+    <span style="color:var(--text-muted);font-size:.92em;">浏览器直接下载 / 数据线 / 蓝牙 / 微信 / 网盘</span>
+  </li>
+  <li>
+    <strong>点击安装</strong><br>
+    <span style="color:var(--text-muted);font-size:.92em;">文件管理器点击 APK → 安装 → 打开</span>
+  </li>
+</ol>
+
+<p>启动后能看到智阅书架页面即成功（首次为空，提示导入第一本书）。</p>
+</section>
+
+<!-- ========== 4. 首次启动 ========== -->
+<section class="section" id="sec-first-launch">
+<h2>4. 首次启动</h2>
+
+<h3>4.1 主界面布局</h3>
+
+<p>智阅启动后进入<strong>书架页面</strong>（Library）。</p>
+
+<h4>桌面版（Windows）</h4>
+<pre><code>┌────────────────────────────────────────────────────────┐
+│ 智阅            [搜索]    [同步]   [导入]  [溢出菜单]  │
+├────────────────────────────────────────────────────────┤
+│   [书] [书] [书] [书] [书]                              │
+│   [书] [书] [书] [书] [书]                              │
+└────────────────────────────────────────────────────────┘</code></pre>
+
+<h4>移动版（Android）</h4>
+<pre><code>┌──────────────────────┐
+│ ☰  智阅    [同步][+] │
+├──────────────────────┤
+│  [书] [书] [书]       │
+│  [书] [书] [书]       │
+└──────────────────────┘</code></pre>
+
+<div class="callout callout-info">
+  <div class="callout-title">💡 提示</div>
+  左上角 <code>☰</code>（汉堡菜单）打开抽屉，含设置、笔记、自由笔记等入口。
+</div>
+
+<h3>4.2 推荐首次配置顺序</h3>
+
+<ol class="steps">
+  <li><strong>设置 → 外观</strong> → 选择主题（亮 / 暗 / 护眼 / 电子墨水）</li>
+  <li><strong>设置 → 排版预设</strong> → 创建偏好的字号、行距、边距预设</li>
+  <li><strong>设置 → 字体管理</strong> → 可选：导入第三方中文字体（<code>.ttf</code> / <code>.otf</code>）</li>
+  <li><strong>设置 → AI 导读</strong> → 可选：填入 API key 启用 AI 功能（详见 <a href="#sec-ai">第 11 节</a>）</li>
+  <li><strong>设置 → 数据同步</strong> → 可选：配置 WebDAV 启用跨设备同步（详见 <a href="#sec-sync">第 12 节</a>）</li>
+  <li><strong>导入书籍</strong>（详见 <a href="#sec-import">第 5 节</a>）</li>
+</ol>
+</section>
+
+<!-- ========== 5. 导入电子书 ========== -->
+<section class="section" id="sec-import">
+<h2>5. 导入电子书</h2>
+
+<h3>5.1 通过书架 + 按钮</h3>
+<ol class="steps">
+  <li>书架页面右上角点击 <code>+</code> 按钮</li>
+  <li>选择 <code>.epub</code> 或 <code>.pdf</code> 文件</li>
+  <li>等待导入（大书可能需要几秒，AI 索引在后台进行）</li>
+</ol>
+
+<h3>5.2 通过文件关联（仅 Windows 安装版）</h3>
+<p>直接在文件管理器中双击 <code>.epub</code> / <code>.pdf</code> → 智阅自动启动并导入。若智阅已在运行，新书会在原窗口打开，不会启动第二个进程。</p>
+
+<h3>5.3 通过 Android 文件管理器</h3>
+<p>在 Android 文件管理器中点击 <code>.epub</code> / <code>.pdf</code> → 选择「智阅」打开。</p>
+
+<h3>5.4 支持的格式</h3>
+<table>
+<thead>
+<tr><th>格式</th><th>阅读</th><th>高亮</th><th>笔记</th><th>章节切分</th></tr>
+</thead>
+<tbody>
+<tr><td>EPUB</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>PDF（文本版）</td><td>✅</td><td>✅</td><td>✅</td><td>✅（按页）</td></tr>
+<tr><td>PDF（扫描版）</td><td>✅</td><td>❌</td><td>❌</td><td>✅（按页）</td></tr>
+</tbody>
+</table>
+
+<h3>5.5 重复导入</h3>
+<ul>
+  <li>同一文件（基于内容 hash）重复导入会自动识别，不会重复上架</li>
+  <li>若删除后再导入提示 <code>errno=5</code>，通常是 Windows 文件 ReadOnly 属性，重新导入会自动清 ReadOnly 重试</li>
+</ul>
+</section>
+
+<!-- ========== 6. 阅读基础 ========== -->
+<section class="section" id="sec-reading">
+<h2>6. 阅读基础</h2>
+
+<p>点击书架任意书籍封面进入阅读器。</p>
+
+<h3>6.1 翻页（多种输入方式）</h3>
+<table>
+<thead><tr><th>输入方式</th><th>操作</th></tr></thead>
+<tbody>
+<tr><td>键盘</td><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd></td></tr>
+<tr><td>鼠标滚轮</td><td>滚动</td></tr>
+<tr><td>触摸拖拽</td><td>左右滑动</td></tr>
+<tr><td>Tap zone（触摸）</td><td>屏幕左侧 1/3 = 上一页，右侧 1/3 = 下一页</td></tr>
+<tr><td>翻页按钮</td><td>EPUB paged 模式专用底部按钮</td></tr>
+</tbody>
+</table>
+
+<h3>6.2 章节导航</h3>
+<p>点击顶部<strong>目录图标</strong>（☰ 或 list）打开目录抽屉：</p>
+<ul>
+  <li><strong>目录（TOC）</strong>：列出所有章节，点击跳转</li>
+  <li><strong>书签</strong>：当前书的全部书签</li>
+  <li><strong>笔记</strong>：当前书的全部高亮 + 笔记</li>
+</ul>
+
+<div class="callout callout-info">
+  <div class="callout-title">💡 宽屏侧栏</div>
+  宽屏（≥ 1100px）下目录抽屉会自动升级为<strong>永久侧栏</strong>，可折叠至 40px。
+</div>
+
+<h3>6.3 显示 / 隐藏 chrome（顶栏 + 底栏）</h3>
+<p>阅读时点击屏幕中部（双击）可切换显示状态：</p>
+<ul>
+  <li><strong>桌面</strong>：顶栏（书名 / 章节 / 操作按钮）+ 底栏（进度条）</li>
+  <li><strong>移动</strong>：3 秒后自动隐藏，任意触摸操作唤回</li>
+</ul>
+
+<h3>6.4 全屏模式</h3>
+<table>
+<thead><tr><th>平台</th><th>快捷键</th></tr></thead>
+<tbody>
+<tr><td>Windows</td><td><kbd>F11</kbd> 或 <kbd>Esc</kbd></td></tr>
+<tr><td>Android</td><td>顶栏 overflow 菜单 → 全屏</td></tr>
+</tbody>
+</table>
+<p>全屏态下双击屏幕中部可临时显示 chrome。</p>
+
+<h3>6.5 进度条</h3>
+<p>底部进度条显示<strong>当前章节</strong>内的位置百分比。拖动 = 章节内快速定位；跨章节请用目录抽屉。</p>
+
+<h3>6.6 双页对开</h3>
+<ul>
+  <li><strong>桌面</strong>：屏幕宽度 ≥ 1100px 自动启用双页布局（左偶右奇）</li>
+  <li><strong>PDF</strong>：宽度 ≥ 1200px 自动启用双页（扫描件自动降级为单页）</li>
+  <li><strong>EPUB</strong>：双页渲染层为 v1.6 引入，可在阅读器顶栏手动开关</li>
+</ul>
+
+<h3>6.7 章节结束提示（EPUB）</h3>
+<p>翻到一章末页时弹出非阻塞 SnackBar，提供：</p>
+<ul>
+  <li><strong>回顾本章</strong>：触发 AI 章节回顾（需配置 AI）</li>
+  <li><strong>下一章</strong>：跳转</li>
+  <li><strong>关闭</strong>：忽略</li>
+</ul>
+<p>设置 → 阅读 → 可全局开关。PDF 不弹（pdfrx Page-as-Chapter 模式过于频繁）。</p>
+</section>
+
+<!-- ========== 7. 排版设置 ========== -->
+<section class="section" id="sec-typography">
+<h2>7. 排版设置</h2>
+
+<h3>7.1 即时调整</h3>
+<p>阅读器顶栏点击<strong>字号图标</strong>（Aa）打开排版面板：</p>
+<table>
+<thead><tr><th>项</th><th>范围</th><th>默认</th></tr></thead>
+<tbody>
+<tr><td>字号</td><td>12 - 32 px</td><td>18 px</td></tr>
+<tr><td>行距</td><td>1.2 - 2.4</td><td>1.6</td></tr>
+<tr><td>段距</td><td>0 - 24 px</td><td>12 px</td></tr>
+<tr><td>左右边距</td><td>Compact(8) / Normal(24) / Wide(40)</td><td>Normal（移动端 Compact）</td></tr>
+<tr><td>首行缩进</td><td>0 / 2 em</td><td>2 em（中文）</td></tr>
+<tr><td>对齐</td><td>左 / 两端</td><td>两端</td></tr>
+</tbody>
+</table>
+<div class="callout callout-tip">
+  <div class="callout-title">✨ 即时生效</div>
+  改动即时生效并自动保存。
+</div>
+
+<h3>7.2 排版预设</h3>
+<p>每本书的排版可以<strong>独立保存</strong>，也可以保存为<strong>预设</strong>共享给其他书。</p>
+<p><strong>设置 → 排版预设</strong>：</p>
+<ul>
+  <li>创建多个预设（例如「白天看书」「睡前大字」「墨水屏」）</li>
+  <li>每本书的排版面板顶部可一键切换预设</li>
+  <li>切换预设不影响该书的高亮、笔记、进度</li>
+</ul>
+
+<h3>7.3 字体</h3>
+<p><strong>设置 → 字体管理</strong>：</p>
+<ul>
+  <li>查看内置字体（黑体 / 宋体 / 楷体 / 普惠体 / 新晰黑）</li>
+  <li>导入第三方字体：支持 <code>.ttf</code> / <code>.otf</code> / <code>.ttc</code></li>
+  <li>字体仅在 EPUB 生效（PDF 字体由原文件决定）</li>
+</ul>
+</section>
+
+<!-- ========== 8. 高亮与笔记 ========== -->
+<section class="section" id="sec-highlights">
+<h2>8. 高亮与笔记</h2>
+
+<h3>8.1 创建高亮</h3>
+<ol class="steps">
+  <li>在阅读页面<strong>长按或鼠标拖选</strong>一段文字</li>
+  <li>选中后弹出<strong>摘录工具条</strong>：
+    <ul>
+      <li><strong>5 种颜色</strong>：黄 / 绿 / 蓝 / 粉 / 紫</li>
+      <li><strong>笔记输入</strong>：点击「笔记」按钮，弹出输入框</li>
+      <li><strong>标签</strong>：可在笔记对话框中添加</li>
+    </ul>
+  </li>
+  <li>点击颜色或确认 → 高亮写入数据库</li>
+</ol>
+
+<h3>8.2 编辑 / 删除高亮</h3>
+<p><strong>再次点击已高亮的文字</strong> → 弹出编辑菜单：修改颜色 / 添加笔记 / 添加标签 / 删除。</p>
+
+<h3>8.3 查看全部笔记</h3>
+<p>阅读器抽屉 → <strong>笔记 tab</strong>：列出当前书所有高亮 + 笔记。点击任意一条 → 跳转到对应位置。</p>
+
+<h3>8.4 全局笔记库</h3>
+<p>桌面抽屉 / 移动 hamburger 菜单 → <strong>笔记</strong>：跨所有书的笔记总览，支持按标签筛选、按颜色筛选、全文搜索（FTS5）。</p>
+
+<h3>8.5 全文搜索</h3>
+<p>笔记库页面顶部搜索框：</p>
+<ul>
+  <li>支持 <strong>quote（原文）/ note（笔记内容）/ tags（标签）</strong>三字段子串匹配</li>
+  <li>CJK 友好：可搜「活着」命中「人是为了活着本身而活着」</li>
+  <li>v1.11.10 起：用户输入的 <code>%</code> 和 <code>_</code> 当字面量匹配，不被当作通配符</li>
+</ul>
+</section>
+
+<!-- ========== 9. 书签 ========== -->
+<section class="section" id="sec-bookmarks">
+<h2>9. 书签</h2>
+
+<h3>9.1 添加书签</h3>
+<p>阅读器顶栏点击<strong>书签图标</strong>（旗帜或 bookmark_border）：</p>
+<ul>
+  <li>弹出书签对话框，可编辑标签</li>
+  <li>默认标签自动取自当前章节名（例如「译者序」「第一章 众妙之门」），不再显示「第 N 章」</li>
+  <li>点击「保存」</li>
+</ul>
+
+<h3>9.2 查看书签</h3>
+<p>阅读器抽屉 → <strong>书签 tab</strong>：列出当前书所有书签。点击任意一条 → 跳转到原位置。</p>
+
+<h3>9.3 删除书签</h3>
+<ul>
+  <li>抽屉书签 tab → 滑动删除（移动）/ 右键菜单（桌面）</li>
+  <li>或在书签对应位置顶栏再次点击书签图标 → 移除</li>
+</ul>
+
+<h3>9.4 跨设备同步</h3>
+<p>书签会通过 WebDAV 自动同步到其他设备（详见 <a href="#sec-sync">第 12 节</a>）。</p>
+</section>
+
+<!-- ========== 10. 自由笔记 ========== -->
+<section class="section" id="sec-freeform">
+<h2>10. 自由笔记</h2>
+
+<p>自由笔记是<strong>不绑定书页</strong>的独立 Markdown 笔记，可用于：</p>
+<ul>
+  <li>读书心得整理</li>
+  <li>跨书主题笔记</li>
+  <li>临时灵感记录</li>
+</ul>
+
+<h3>10.1 创建自由笔记</h3>
+<p>入口：</p>
+<ul>
+  <li>桌面抽屉 / 移动 hamburger 菜单 → <strong>自由笔记</strong> → 右下角 FAB <code>+</code></li>
+  <li>阅读器 AI 抽屉 → 顶部 <code>note_add</code> 图标</li>
+</ul>
+
+<h3>10.2 编辑</h3>
+<ul>
+  <li>Markdown 实时预览（编辑/预览双 tab）</li>
+  <li>自动保存（500ms debounce write-through）</li>
+  <li>可 @-mention 书中高亮：<code>@note-xxx</code> 会插入引用</li>
+</ul>
+
+<h3>10.3 跨设备同步</h3>
+<p>自由笔记会通过 WebDAV 自动同步。</p>
+</section>
+
+<!-- ========== 11. AI 陪伴导读 ========== -->
+<section class="section" id="sec-ai">
+<h2>11. AI 陪伴导读</h2>
+
+<h3>11.1 配置（BYOK 模式）</h3>
+<p>智阅使用 <strong>Bring Your Own Key</strong> 模式，您需要自带 LLM API key。</p>
+
+<ol class="steps">
+  <li>
+    <strong>获取 API key</strong><br>
+    <span style="color:var(--text-muted);font-size:.92em;">默认推荐 DeepSeek（<a href="https://platform.deepseek.com" target="_blank">https://platform.deepseek.com</a>）。注册后在「API Keys」页面创建 key（形如 <code>sk-xxxxxxxx</code>）。充值按 token 计费，DeepSeek 价格约为 ¥1 / 百万 token。</span>
+  </li>
+  <li>
+    <strong>填入智阅</strong>：设置 → AI 导读
+    <ul>
+      <li>Base URL：<code>https://api.deepseek.com/v1</code>（DeepSeek 默认）</li>
+      <li>API Key：粘贴您的 <code>sk-...</code></li>
+      <li>Model：<code>deepseek-chat</code>（默认）或 <code>deepseek-reasoner</code></li>
+      <li>点「测试连接」→ 提示成功即配置完成</li>
+    </ul>
+  </li>
+</ol>
+
+<div class="callout callout-info">
+  <div class="callout-title">💡 兼容性</div>
+  智阅兼容任何 OpenAI-compatible API（DeepSeek / 通义千问 / Kimi / 智谱 / OpenAI 官方等），改 Base URL 即可。<br>
+  Base URL 必须是 HTTPS（HTTP 公网地址会弹窗二次确认，localhost / 内网 IP 豁免）。
+</div>
+
+<h3>11.2 五种 AI 入口</h3>
+<p>智阅把 5 个分散的 AI 入口收敛为<strong>1 个统一抽屉</strong>（v1.7+）。阅读器顶栏点击 <code>smart_toy_outlined</code> 图标打开 AI 抽屉。</p>
+
+<h4>A. 全书摘要</h4>
+<p>「请给我这本书的全书摘要」 → AI 用书的元数据 + 章节大纲生成 ~500 字摘要。</p>
+
+<h4>B. 章节导读</h4>
+<p>阅读时打开 AI 抽屉 → 输入「本章导读」 → AI 用当前章节正文生成：本章核心论点、关键概念、推荐读法。</p>
+
+<h4>C. 高亮点评</h4>
+<p>选中文字 → 创建高亮 → AI 抽屉顶部出现「点评此高亮」按钮 → AI 对该段文字做延伸解读。</p>
+
+<h4>D. 同书问答（带 [ch=N] 跳转）</h4>
+<pre><code>您：作者在[ch=3]讲的「无为」是什么意思？
+AI：根据第三章正文，"无为"指的是……
+    [ch=3] ← 点击可跳转到第三章对应位置</code></pre>
+<ul>
+  <li><code>[ch=N]</code> 是章节引用语法，AI 输出和您的输入都支持</li>
+  <li>点击 <code>[ch=N]</code> 自动跳转到第 N 章</li>
+</ul>
+
+<h4>E. 苏格拉底式追问</h4>
+<p>输入 <code>/苏格拉底</code> 或 <code>/socratic</code> 开启苏格拉底模式：AI 不直接给答案，而是反问引导您思考。适合哲学 / 思辨类书籍。</p>
+
+<h3>11.3 Slash 命令</h3>
+<table>
+<thead><tr><th>命令</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>/new</code></td><td>新建一个会话</td></tr>
+<tr><td><code>/del</code></td><td>删除当前会话</td></tr>
+<tr><td><code>/switch</code></td><td>切换到其他会话</td></tr>
+<tr><td><code>/苏格拉底</code></td><td>开启苏格拉底模式</td></tr>
+</tbody>
+</table>
+
+<h3>11.4 多会话管理</h3>
+<p>每本书可以有<strong>多个 AI 会话</strong>：</p>
+<ul>
+  <li>抽屉顶部下拉切换会话</li>
+  <li>每个会话独立保留上下文</li>
+  <li>会话与书绑定，不会串扰其他书</li>
+</ul>
+
+<h3>11.5 @-note 提及</h3>
+<p>AI 抽屉输入框中输入 <code>@</code> 弹出笔记选择器：选择笔记 → AI 会读入笔记内容作为上下文。适合「让我之前对这段的笔记来回答这个问题」。</p>
+
+<h3>11.6 流式响应与取消</h3>
+<ul>
+  <li>AI 回复<strong>流式渲染</strong>（边生成边显示）</li>
+  <li>长回复可点击「取消」按钮中断</li>
+  <li>中断后已生成的部分保留</li>
+</ul>
+
+<h3>11.7 跨设备同步</h3>
+<p>AI 会话历史（<code>chat_sessions</code> / <code>chat_messages</code>）通过 WebDAV 自动同步。手机上问的问题，桌面打开能接着聊。</p>
+
+<h3>11.8 隐私说明</h3>
+<div class="callout callout-danger">
+  <div class="callout-title">🔒 隐私</div>
+  <ul style="margin:.4em 0;">
+    <li>您的 API key 加密存储在本机 <code>flutter_secure_storage</code>，<strong>不会</strong>上传到智阅服务器（项目无服务器）</li>
+    <li>书籍正文 + 您的高亮 / 笔记 / 提问<strong>会</strong>发送给您配置的 LLM 服务商（DeepSeek / 其他）</li>
+    <li>智阅本身<strong>不</strong>记录、<strong>不</strong>中转、<strong>不</strong>存储您的 AI 对话内容</li>
+    <li>如果不希望某些书的内容上传，请关闭 AI 功能或使用本地 LLM（如 Ollama，配置 Base URL <code>http://localhost:11434/v1</code>）</li>
+  </ul>
+</div>
+</section>
+
+<!-- ========== 12. 跨设备同步 ========== -->
+<section class="section" id="sec-sync">
+<h2>12. 跨设备同步</h2>
+
+<h3>12.1 同步原理</h3>
+<p>智阅采用<strong>分布式快照 + 最后写入胜</strong>（last-write-wins）模型：</p>
+<ul>
+  <li>每台设备在 WebDAV 上维护自己的快照 <code>/zhiyue/snapshots/&lt;deviceId&gt;.jsonl</code></li>
+  <li>设备 A 写入 → push 到自己的快照</li>
+  <li>设备 B 拉取 → 读所有设备的快照 → 按 <code>updatedAt</code> 时间戳决定哪个版本赢</li>
+  <li>冲突（同一条记录在多设备同时改）会在「冲突日志」中提示</li>
+</ul>
+
+<div class="callout callout-info">
+  <div class="callout-title">📦 同步内容</div>
+  书籍元数据、高亮、笔记、自由笔记、书签、阅读进度、AI 对话、标签、书籍文件（EPUB/PDF binary）、封面。
+</div>
+
+<h3>12.2 配置坚果云（推荐）</h3>
+<p>坚果云是国内访问稳定的 WebDAV 服务商，免费版限 600 次/30 分钟请求。</p>
+
+<h4>步骤 1：创建 zhiyue 文件夹</h4>
+<p>登录 <a href="https://www.jianguoyun.com" target="_blank">https://www.jianguoyun.com</a> → 进入「我的资料」根目录 → <strong>手动创建</strong>名为 <code>zhiyue</code> 的文件夹（全小写，无空格）。</p>
+<div class="callout callout-warn">
+  <div class="callout-title">⚠️ 必须</div>
+  若不创建，首次同步会报 <code>409 AncestorsNotFound</code>。
+</div>
+
+<h4>步骤 2：生成应用密码</h4>
+<p>账户信息 → 安全选项 → 第三方应用管理 → 「添加应用」→ 命名「智阅」→ 复制生成的<strong>应用密码</strong>（不是登录密码）。</p>
+
+<h4>步骤 3：填入智阅</h4>
+<p>设置 → 数据同步：</p>
+<table>
+<thead><tr><th>字段</th><th>值</th></tr></thead>
+<tbody>
+<tr><td>WebDAV baseUrl</td><td><code>https://dav.jianguoyun.com/dav/</code></td></tr>
+<tr><td>账号</td><td>坚果云邮箱全称（例：<code>user@example.com</code>）</td></tr>
+<tr><td>密码</td><td>步骤 2 生成的应用密码</td></tr>
+</tbody>
+</table>
+<p>点「立即同步」→ 首次同步成功后显示「同步成功」+ 时间戳。</p>
+
+<h3>12.3 同步状态图标</h3>
+<table>
+<thead><tr><th>状态</th><th>图标</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>idle</td><td>🔄 sync</td><td>空闲，点击触发同步</td></tr>
+<tr><td>pushing</td><td>🔄 sync（旋转）</td><td>上传中</td></tr>
+<tr><td>pulling</td><td>🔄 sync（旋转）</td><td>下载中</td></tr>
+<tr><td>success</td><td>✅ check</td><td>同步成功</td></tr>
+<tr><td>error</td><td>⚠️ error_outline</td><td>失败，点击重试</td></tr>
+<tr><td>offline</td><td>☁️ cloud_off</td><td>离线</td></tr>
+</tbody>
+</table>
+
+<h3>12.4 自动同步时机</h3>
+<p>智阅会在以下时机自动触发同步：</p>
+<ol>
+  <li><strong>任何写操作 3 秒后</strong>（debounce）—— 加书签、写笔记、改进度等</li>
+  <li><strong>关闭应用前</strong>（best-effort，最多等 3 秒）—— 解决「加书签 5 分钟内关机丢失窗口」</li>
+  <li><strong>冷启动</strong>—— 打开智阅立即拉取其他设备的最新状态</li>
+</ol>
+<div class="callout callout-info">
+  <div class="callout-title">💡 覆盖范围</div>
+  这三层对<strong>所有 9 种 record type</strong>（书籍 / 书签 / 笔记 / AI / 高亮 / 进度 / 标签 / 自由笔记 / 书籍文件）都生效。
+</div>
+
+<h3>12.5 手动同步</h3>
+<ul>
+  <li>书架顶栏点击同步按钮</li>
+  <li>设置 → 数据同步 → 「立即同步」</li>
+</ul>
+
+<h3>12.6 冲突处理</h3>
+<ol>
+  <li>自动采用 last-write-wins（最后修改的版本赢）</li>
+  <li>旧版本不删除，记录在「冲突日志」</li>
+  <li>设置 → 数据同步 → 冲突日志 → 查看冲突详情</li>
+  <li>您可以手动选择保留哪一版本</li>
+</ol>
+
+<h3>12.7 多设备使用示例</h3>
+<p><strong>电脑 + 手机协同</strong>：</p>
+<ol class="steps">
+  <li>电脑端导入《道德经》→ 看到第 3 章 → 加高亮 + 书签</li>
+  <li>通勤路上打开手机 → 启动智阅 → 自动 pull → 书架出现《道德经》（含封面）</li>
+  <li>点击 → 自动下载书籍文件 → 跳到第 3 章 → 高亮和书签都在</li>
+  <li>通勤路上继续读，加新笔记 → 自动 push</li>
+  <li>回家打开电脑 → 自动 pull → 看到通勤路上加的笔记</li>
+</ol>
+
+<h3>12.8 故障排查</h3>
+<table>
+<thead><tr><th>错误</th><th>原因</th><th>解决</th></tr></thead>
+<tbody>
+<tr><td><code>409 AncestorsNotFound at /zhiyue</code></td><td>坚果云未创建 zhiyue 文件夹</td><td>网页登录坚果云手动创建</td></tr>
+<tr><td><code>401 Unauthorized</code></td><td>应用密码错误 / 账号填错</td><td>重新生成应用密码，账号用邮箱全称</td></tr>
+<tr><td><code>404 Not Found</code></td><td>baseUrl 错误</td><td>baseUrl 是 <code>https://dav.jianguoyun.com/dav/</code>（末尾带 <code>/</code>）</td></tr>
+<tr><td>同步卡住、超时</td><td>坚果云限流（600 次/30 分钟）</td><td>等 30 分钟，避免大量导入触发</td></tr>
+<tr><td>中文书名乱码</td><td>旧版本 bug（v1.11.0 已修）</td><td>升级到 v1.11.1+</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ========== 13. 章节学习回顾 ========== -->
+<section class="section" id="sec-recap">
+<h2>13. 章节学习回顾</h2>
+
+<p>读完一章后想总结？让 AI 帮您。</p>
+
+<h3>13.1 触发方式</h3>
+<ul>
+  <li><strong>方式 A</strong>：翻到一章末页 → 自动弹出「章节结束提示」SnackBar → 点「回顾本章」</li>
+  <li><strong>方式 B</strong>：阅读器抽屉 → 目录 tab → 章节右侧「回顾」按钮</li>
+  <li><strong>方式 C</strong>：AI 抽屉输入「回顾本章」或 <code>/recap</code></li>
+</ul>
+
+<h3>13.2 AI 生成内容</h3>
+<p>AI 会用<strong>本章正文 + 您在本章的所有高亮</strong>生成：</p>
+<ul>
+  <li><strong>章节摘要</strong>（summary）：~200 字概括本章</li>
+  <li><strong>核心要点</strong>（keyTakeaways）：3-5 条 bullet</li>
+  <li><strong>关联您的高亮</strong>：列出您标记的内容并点评</li>
+</ul>
+
+<h3>13.3 保存位置</h3>
+<p>回顾结果保存为<strong>带特殊前缀的自由笔记</strong>：</p>
+<ul>
+  <li>自动写入当前书的笔记库</li>
+  <li>前缀 <code>recap-chN-</code>，便于筛选</li>
+  <li>同章重复触发会<strong>幂等更新</strong>（不重复堆叠）</li>
+</ul>
+
+<h3>13.4 启用 / 禁用</h3>
+<p>设置 → 阅读 → 「章节结束提示」开关。首次启动根据 API key 配置情况默认开/关（有 key 默认开）。</p>
+</section>
+
+<!-- ========== 14. Markdown 批量导出 ========== -->
+<section class="section" id="sec-export">
+<h2>14. Markdown 批量导出</h2>
+
+<p>智阅支持将您的全部读书笔记导出为 <strong>Obsidian vault 兼容</strong>的 Markdown 文件。</p>
+
+<h3>14.1 单本导出</h3>
+<ul>
+  <li>书架 → 长按书封 / 右键 → 「导出为 Markdown」</li>
+  <li>选择目标文件夹</li>
+  <li>生成 <code>&lt;book-title&gt;.md</code>（YAML frontmatter + 全部高亮 + 全部笔记）</li>
+</ul>
+
+<h3>14.2 批量导出（含范围筛选）</h3>
+<p><strong>书架顶栏 → 溢出菜单 → 「导出为 Markdown」</strong></p>
+<p>进入筛选页，可按以下维度组合筛选：</p>
+<table>
+<thead><tr><th>维度</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>标签（多选 OR）</td><td>选 <code>哲学</code> 或 <code>人生</code> → 命中任一标签的书</td></tr>
+<tr><td>导入时间</td><td>例如近 30 天</td></tr>
+<tr><td>最近阅读</td><td>例如近 7 天</td></tr>
+</tbody>
+</table>
+<p>筛选页底部显示：</p>
+<pre><code>匹配 12 本书 · 共 234 条高亮 · [导出 12 本]</code></pre>
+<p>点击「导出 N 本」→ 选择目标文件夹 → 生成：</p>
+<pre><code>&lt;target&gt;/
+├── index.md              # 总索引，含 YAML frontmatter + wiki-links + 标签云
+├── 老子道德经.md
+├── 与天为敌.md
+├── 华为智能世界2035.md
+└── ...</code></pre>
+
+<h3>14.3 文件格式</h3>
+<p>每本书的 <code>.md</code> 文件结构：</p>
+<pre><code>---
+title: 老子道德经
+author: 老子
+tags: [哲学, 古典]
+highlight_count: 15
+note_count: 8
+exported_at: 2026-07-15T10:30:00
+---
+
+# 老子道德经
+
+## 高亮
+
+### 第一章 众妙之门
+
+&gt; 道可道，非常道；名可名，非常名。
+
+**笔记**：这句话强调了语言的局限性。
+
+#哲学</code></pre>
+
+<h3>14.4 与 Obsidian 集成</h3>
+<ol class="steps">
+  <li>在 Obsidian 中打开 vault（指向导出目录）</li>
+  <li>自动识别 YAML frontmatter</li>
+  <li>wiki-links 让您可以在笔记间跳转</li>
+  <li>标签云让您按主题浏览</li>
+</ol>
+</section>
+
+<!-- ========== 15. 字体管理 ========== -->
+<section class="section" id="sec-fonts">
+<h2>15. 字体管理</h2>
+
+<h3>15.1 内置字体</h3>
+<p>v1.6.0 起内置 5 款中文字体：</p>
+<table>
+<thead><tr><th>字体</th><th>适用场景</th></tr></thead>
+<tbody>
+<tr><td>黑体（默认）</td><td>通用，屏幕阅读</td></tr>
+<tr><td>宋体</td><td>古典文学、长篇阅读</td></tr>
+<tr><td>楷体</td><td>古文、诗歌</td></tr>
+<tr><td>普惠体</td><td>现代设计感</td></tr>
+<tr><td>新晰黑</td><td>高分屏锐利显示</td></tr>
+</tbody>
+</table>
+
+<h3>15.2 导入第三方字体</h3>
+<p>设置 → 字体管理 → 「+ 添加字体」：</p>
+<ul>
+  <li>支持 <code>.ttf</code> / <code>.otf</code> / <code>.ttc</code></li>
+  <li>选择文件 → 自动复制到智阅字体目录</li>
+  <li>立即出现在排版面板字体下拉</li>
+</ul>
+<div class="callout callout-tip">
+  <div class="callout-title">💡 推荐</div>
+  建议使用思源黑体 / 思源宋体 / 霞鹜文楷等开源中文字体。
+</div>
+
+<h3>15.3 字体持久化</h3>
+<p>字体设置<strong>即时保存</strong>（v1.7.1 修复），退出重开不会丢失。</p>
+</section>
+
+<!-- ========== 16. 主题与外观 ========== -->
+<section class="section" id="sec-theme">
+<h2>16. 主题与外观</h2>
+
+<h3>16.1 四套主题</h3>
+<p>设置 → 外观：</p>
+<table>
+<thead><tr><th>主题</th><th>适用</th></tr></thead>
+<tbody>
+<tr><td>亮色</td><td>白天室内</td></tr>
+<tr><td>暗色</td><td>夜间、暗光环境</td></tr>
+<tr><td>护眼</td><td>米色背景，长时间阅读</td></tr>
+<tr><td>电子墨水</td><td>Kindle / Boox 等墨水屏</td></tr>
+</tbody>
+</table>
+
+<h3>16.2 跟随系统</h3>
+<p>打开「跟随系统」开关 → 智阅自动跟随操作系统的暗色模式。</p>
+
+<h3>16.3 移动端 chrome 自适应</h3>
+<p>v1.11.9-alpha 修复：移动端顶部导航条背景色跟随主题自适应（浅色方案给浅底，深色方案给深底），保证图标对比度。</p>
+</section>
+
+<!-- ========== 17. 设置总览 ========== -->
+<section class="section" id="sec-settings">
+<h2>17. 设置总览</h2>
+
+<p>设置入口：</p>
+<ul>
+  <li><strong>桌面</strong>：书架左上角齿轮图标，或 hamburger 菜单</li>
+  <li><strong>移动</strong>：hamburger 菜单（<code>☰</code>）→ 设置</li>
+</ul>
+
+<h3>17.1 分类</h3>
+<table>
+<thead><tr><th>分类</th><th>包含</th></tr></thead>
+<tbody>
+<tr><td><strong>阅读</strong></td><td>排版预设 / 章节结束提示开关</td></tr>
+<tr><td><strong>字体</strong></td><td>自定义字体管理</td></tr>
+<tr><td><strong>数据同步</strong></td><td>WebDAV 配置 / 立即同步 / 冲突日志</td></tr>
+<tr><td><strong>AI 导读</strong></td><td>Base URL / API Key / Model</td></tr>
+<tr><td><strong>外观</strong></td><td>主题切换</td></tr>
+<tr><td><strong>语言</strong></td><td>中文 / English</td></tr>
+<tr><td><strong>关于</strong></td><td>版本号 / 协议 / 开源致谢</td></tr>
+</tbody>
+</table>
+
+<h3>17.2 数据存储位置</h3>
+<ul>
+  <li><strong>Windows</strong>：<code>%APPDATA%\zhiyue\</code>（数据库 + 配置）</li>
+  <li><strong>Android</strong>：<code>/data/data/com.zhiyue.app/files/</code></li>
+</ul>
+<p>数据库 schema 当前为 v14（drift 管理，自动迁移）。</p>
+</section>
+
+<!-- ========== 18. FAQ ========== -->
+<section class="section" id="sec-faq">
+<h2>18. 常见问题（FAQ）</h2>
+
+<h3>Q1：为什么 AI 功能不能用？</h3>
+<p>AI 是 BYOK（自带 key）模式，需要您：</p>
+<ol>
+  <li>注册 DeepSeek（或其他兼容服务商）账号</li>
+  <li>充值获取 API key</li>
+  <li>在设置 → AI 导读中填入</li>
+</ol>
+<p>详见 <a href="#sec-ai">第 11.1 节</a>。</p>
+
+<h3>Q2：AI 会泄露我的读书内容吗？</h3>
+<p>智阅本身<strong>不</strong>存储 / 中转 / 记录您的对话，但您书中的正文片段 + 高亮 + 提问<strong>会</strong>发送给您配置的 LLM 服务商。如果您完全不希望内容外发，可：</p>
+<ul>
+  <li>关闭 AI 功能</li>
+  <li>或配置本地 LLM（如 Ollama，Base URL <code>http://localhost:11434/v1</code>）</li>
+</ul>
+
+<h3>Q3：跨设备同步需要付费吗？</h3>
+<p>智阅本身完全免费开源。WebDAV 服务商可能收费：</p>
+<ul>
+  <li>坚果云免费版：1 GB 上传 + 3 GB 下载流量 / 月，足够大量同步</li>
+  <li>自建 Nextcloud：完全免费</li>
+</ul>
+
+<h3>Q4：删书后还能恢复吗？</h3>
+<div class="callout callout-danger">
+  <div class="callout-title">⚠️ 不可恢复</div>
+  删除书时会<strong>联动删除</strong>：
+  <ul style="margin:.4em 0;">
+    <li>DB 中的书 + 9 个子表（高亮 / 笔记 / 进度 / 书签 / AI 会话 / 排版 / 标签 / 自由笔记 / 章节回顾）</li>
+    <li>本地内容寻址文件（<code>library/{hash}.{ext}</code>）</li>
+    <li>本地封面文件（<code>covers/{id}.png</code>）</li>
+    <li>WebDAV 上的书籍 binary 和封面（best-effort）</li>
+  </ul>
+  <strong>删除前请确认</strong>。同步过的设备会通过 WebDAV 收到删除指令（tombstone），其他设备也会删除。
+</div>
+
+<h3>Q5：书签跳转位置怎么偏了？</h3>
+<p>v1.11.8 引入新的坐标系（plain-text offset），v1.11.7 及之前加的旧书签 charOffset 是 HTML-encoded。v1.11.9 加了 heuristic 自动 rescale 高 ratio 旧书签；低 ratio 旧书签可能有 ≤ 1.73× 小偏差（仍在原章节内）。</p>
+<p><strong>解决方案</strong>：删除旧书签，重新添加。</p>
+
+<h3>Q6：手机端顶部图标堆叠看不清？</h3>
+<p>v1.11.6 已修复。手机竖屏（width &lt; 600dp）下顶栏改为<strong>横向滚动</strong>，可左右拖动查看全部按钮。</p>
+
+<h3>Q7：移动端导航条透明看不清？</h3>
+<p>v1.11.9 已修复。背景色改为<strong>主题自适应</strong>（浅色方案给浅底，深色方案给深底），不再用固定黑色 54% 透明。</p>
+
+<h3>Q8：双击没反应 / 全屏切换无响应？</h3>
+<ol>
+  <li>检查是否在 paged 模式（EPUB）—— 双击切换 chrome 仅在屏幕中部生效</li>
+  <li>全屏快捷键：Windows <kbd>F11</kbd> / <kbd>Esc</kbd></li>
+  <li>移动端：顶栏 overflow 菜单 → 全屏</li>
+</ol>
+
+<h3>Q9：搜索中文搜不到？</h3>
+<p>智阅的全文搜索用 LIKE 子串匹配（非 FTS5 MATCH），原因是 FTS5 默认 unicode61 分词器对 CJK 文本无词边界。</p>
+<ul>
+  <li>搜「活着」可以命中「人是为了活着本身而活着」</li>
+  <li>大小写敏感：搜「MongoDB」不会命中「mongodb」（暂未做大小写不敏感，后续优化）</li>
+</ul>
+
+<h3>Q10：导入大 PDF 很慢？</h3>
+<p>PDF 导入需要解析页面索引，大文件（&gt; 100 MB）首次打开可能需要 10-30 秒。后续打开走缓存，秒级。</p>
+
+<h3>Q11：坚果云流量用完了？</h3>
+<p>免费版限 600 次请求 / 30 分钟。大量导入书籍会触发。等 30 分钟自动恢复。建议分批导入。</p>
+
+<h3>Q12：怎么备份所有数据？</h3>
+<p>智阅是本地优先应用，最简单的备份：</p>
+<ul>
+  <li><strong>方法 A</strong>：复制整个数据目录
+    <ul>
+      <li>Windows：<code>%APPDATA%\zhiyue\</code></li>
+      <li>Android：<code>/data/data/com.zhiyue.app/files/</code>（需要 root）</li>
+    </ul>
+  </li>
+  <li><strong>方法 B</strong>：配置 WebDAV 同步，让云端作为天然备份</li>
+  <li><strong>方法 C</strong>：定期用 <a href="#sec-export">第 14 节</a>的 Markdown 批量导出，把笔记沉淀到 Obsidian</li>
+</ul>
+</section>
+
+<!-- ========== 19. 已知限制 ========== -->
+<section class="section" id="sec-limitations">
+<h2>19. 已知限制</h2>
+
+<h3>19.1 v1.11.9-alpha 的已知限制</h3>
+<ol>
+  <li><strong>Bug 1 heuristic 不完美</strong>：低 ratio 旧书签（charOffset ≤ plainLen）无法区分新旧格式，小偏差 ≤ 1.73× 仍在原章节内。用户可手动重新添加书签获得精确定位。</li>
+  <li><strong>PDF 扫描件不支持文本高亮</strong>：pdfrx 对扫描件（图像页）只能阅读，不能选文字。文本版 PDF 完整支持。</li>
+  <li><strong>EPUB 双页渲染</strong>：API 层已 wire，渲染层在 v1.6 引入但部分边界情况待打磨。</li>
+  <li><strong>TTS 集成</strong>：尚未上线（路线图 M2.9，预计 v1.12+）。</li>
+  <li><strong>iOS 端</strong>：暂未发布（scaffold 已就绪，待 binary 同步 + CI）。</li>
+  <li><strong>reader_flow_integration_test 10 分钟 timeout</strong>：内部测试基础设施的 pre-existing flake，与用户体验无关。</li>
+</ol>
+
+<h3>19.2 Alpha 状态提醒</h3>
+<div class="callout callout-warn">
+  <div class="callout-title">⚠️ Alpha 版本</div>
+  v1.11.9-alpha 仍是 alpha 版本，UI 文案、动效、错误恢复路径有待真实用户反馈打磨。<strong>强烈建议</strong>：
+  <ul style="margin:.4em 0;">
+    <li>定期备份重要笔记（方法见 <a href="#sec-faq">Q12</a>）</li>
+    <li>不要在唯一设备上保留唯一副本</li>
+    <li>反馈任何 bug / 不便之处（见 <a href="#sec-feedback">第 20 节</a>）</li>
+  </ul>
+</div>
+</section>
+
+<!-- ========== 20. 反馈渠道 ========== -->
+<section class="section" id="sec-feedback">
+<h2>20. 反馈渠道</h2>
+
+<h3>20.1 Bug 报告</h3>
+<p><a href="https://gitee.com/weifu0523/e-book-reading-platform/issues" target="_blank">Gitee Issues</a></p>
+<p>请包含：</p>
+<ol>
+  <li>智阅版本（设置 → 关于）</li>
+  <li>操作系统和版本</li>
+  <li>复现步骤</li>
+  <li>期望行为 vs 实际行为</li>
+  <li>截图（如有）</li>
+</ol>
+
+<h3>20.2 功能建议</h3>
+<p>同样在 Gitee Issues，标签选 <code>enhancement</code>。</p>
+
+<h3>20.3 测试用户专属反馈</h3>
+<p>如果您是本轮测试的受邀用户，请将反馈提交至：</p>
+<ul>
+  <li>测试群 / 邮件（如组织方指定）</li>
+  <li>或直接 Gitee Issues（公开）</li>
+</ul>
+
+<h3>20.4 不接受外部 PR</h3>
+<p>项目尚在开发初期，暂不接受外部代码贡献，但<strong>非常欢迎</strong> Issue 反馈。</p>
+</section>
+
+<!-- ========== 附录 ========== -->
+<section class="section" id="sec-appendix">
+<h2>附录</h2>
+
+<h3 id="sec-appendix-keyboard">A. 快捷键速查（Windows）</h3>
+<table>
+<thead><tr><th>快捷键</th><th>功能</th></tr></thead>
+<tbody>
+<tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>上一页 / 下一页</td></tr>
+<tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>上一页 / 下一页</td></tr>
+<tr><td><kbd>PgUp</kbd> / <kbd>PgDn</kbd></td><td>上一页 / 下一页</td></tr>
+<tr><td><kbd>F11</kbd></td><td>切换全屏</td></tr>
+<tr><td><kbd>Esc</kbd></td><td>退出全屏</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-appendix-gestures">B. 触摸手势速查（Android）</h3>
+<table>
+<thead><tr><th>手势</th><th>功能</th></tr></thead>
+<tbody>
+<tr><td>单击屏幕左 1/3</td><td>上一页</td></tr>
+<tr><td>单击屏幕右 1/3</td><td>下一页</td></tr>
+<tr><td>单击屏幕中部</td><td>切换 chrome 显隐</td></tr>
+<tr><td>双击屏幕中部</td><td>全屏态临时显示 chrome</td></tr>
+<tr><td>左右滑动</td><td>翻页</td></tr>
+<tr><td>长按拖选</td><td>高亮</td></tr>
+</tbody>
+</table>
+
+<h3 id="sec-appendix-versions">C. 版本历史</h3>
+<p>完整变更历史见 <a href="https://gitee.com/weifu0523/e-book-reading-platform/blob/master/CHANGELOG.md" target="_blank">CHANGELOG.md</a>。</p>
+<table>
+<thead><tr><th>版本</th><th>重点</th></tr></thead>
+<tbody>
+<tr><td>v1.11.9-alpha</td><td>4 bug 修复（旧书签偏移 / chrome 透明度 / 书签 label / 同步按钮）</td></tr>
+<tr><td>v1.11.8-alpha</td><td>EPUB 目录跳转 + 同步三层完善</td></tr>
+<tr><td>v1.11.7-alpha</td><td>技术债大扫除（10 baseline 清零 + AI HTTPS 校验 + 重复请求去重）</td></tr>
+<tr><td>v1.11.6-alpha</td><td>手机竖屏 chrome 横向滚动</td></tr>
+<tr><td>v1.11.5-alpha</td><td>EPUB 锚点目录跳转修复（Calibre 书）</td></tr>
+<tr><td>v1.11.4-alpha</td><td>跨设备封面同步 + drift stream 通知修复</td></tr>
+<tr><td>v1.11.3-alpha</td><td>重新导入失败修复（孤儿文件 + Windows ReadOnly）</td></tr>
+<tr><td>v1.11.2-alpha</td><td>删书静默失败修复（CASCADE FK）</td></tr>
+<tr><td>v1.11.1-alpha</td><td>上传路径创建 + 中文 mojibake 修复</td></tr>
+<tr><td>v1.11.0-alpha</td><td>AI 聊天 + 标签 + 书籍文件跨端同步</td></tr>
+</tbody>
+</table>
+</section>
+
+<div class="footer">
+  <p><strong>📚 智阅（ZhiYue）</strong> · v1.11.9-alpha · AGPLv3 开源</p>
+  <p>如有任何问题，欢迎反馈 · Happy reading! 📖</p>
+  <p><a href="#top">↑ 回到顶部</a></p>
+</div>
+
+</div>
+</main>
+
+<!-- 回到顶部 -->
+<button class="back-to-top" id="backToTop" aria-label="回到顶部" title="回到顶部">↑</button>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== 自动生成目录 ==========
+  const sections = document.querySelectorAll('.section, .hero');
+  const toc = document.getElementById('toc');
+
+  sections.forEach(function(sec) {
+    const h2 = sec.querySelector('h2');
+    const h3s = sec.querySelectorAll('h3');
+    if (!h2 && !sec.classList.contains('hero')) return;
+
+    if (sec.classList.contains('hero')) {
+      // Hero 作为 "开头"
+      const li = document.createElement('li');
+      li.className = 'toc-item';
+      const a = document.createElement('a');
+      a.href = '#top';
+      a.className = 'toc-link';
+      a.textContent = '📍 开头';
+      a.addEventListener('click', function(e) {
+        e.preventDefault();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        closeSidebar();
+      });
+      li.appendChild(a);
+      toc.appendChild(li);
+      return;
+    }
+
+    const id = sec.id;
+    if (!id) return;
+
+    const li = document.createElement('li');
+    li.className = 'toc-item';
+    const a = document.createElement('a');
+    a.href = '#' + id;
+    a.className = 'toc-link';
+    a.dataset.target = id;
+    a.textContent = h2.textContent;
+    a.addEventListener('click', function(e) {
+      closeSidebar();
+    });
+    li.appendChild(a);
+
+    // 二级 H3
+    if (h3s.length > 0 && h3s.length <= 8) {
+      const subUl = document.createElement('ul');
+      subUl.className = 'toc-sub';
+      h3s.forEach(function(h3) {
+        const h3id = h3.id || (id + '--sub-' + Math.random().toString(36).slice(2,7));
+        if (!h3.id) h3.id = h3id;
+        const subLi = document.createElement('li');
+        subLi.className = 'toc-item';
+        const subA = document.createElement('a');
+        subA.href = '#' + h3.id;
+        subA.className = 'toc-link';
+        subA.dataset.target = h3.id;
+        subA.textContent = h3.textContent;
+        subLi.appendChild(subA);
+        subUl.appendChild(subLi);
+      });
+      li.appendChild(subUl);
+    }
+
+    toc.appendChild(li);
+  });
+
+  // ========== 暗色模式 ==========
+  const themeToggle = document.getElementById('themeToggle');
+  const html = document.documentElement;
+
+  function getStoredTheme() {
+    try { return localStorage.getItem('zhiyue-guide-theme'); } catch (e) { return null; }
+  }
+  function storeTheme(t) {
+    try { localStorage.setItem('zhiyue-guide-theme', t); } catch (e) {}
+  }
+
+  function applyTheme(t) {
+    if (t === 'dark') {
+      html.setAttribute('data-theme', 'dark');
+      themeToggle.textContent = '☀️';
+    } else {
+      html.removeAttribute('data-theme');
+      themeToggle.textContent = '🌙';
+    }
+  }
+
+  const stored = getStoredTheme();
+  if (stored) {
+    applyTheme(stored);
+  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    applyTheme('dark');
+  }
+
+  themeToggle.addEventListener('click', function() {
+    const isDark = html.getAttribute('data-theme') === 'dark';
+    applyTheme(isDark ? 'light' : 'dark');
+    storeTheme(isDark ? 'light' : 'dark');
+  });
+
+  // ========== 移动端侧栏 ==========
+  const menuToggle = document.getElementById('menuToggle');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('overlay');
+
+  function openSidebar() {
+    sidebar.classList.add('open');
+    overlay.classList.add('visible');
+  }
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('visible');
+  }
+
+  menuToggle.addEventListener('click', openSidebar);
+  overlay.addEventListener('click', closeSidebar);
+
+  // ========== 回到顶部 ==========
+  const backToTop = document.getElementById('backToTop');
+
+  window.addEventListener('scroll', function() {
+    if (window.scrollY > 400) {
+      backToTop.classList.add('visible');
+    } else {
+      backToTop.classList.remove('visible');
+    }
+    updateActiveToc();
+  }, { passive: true });
+
+  backToTop.addEventListener('click', function() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // ========== 当前节高亮 ==========
+  const tocLinks = document.querySelectorAll('.toc-link[data-target]');
+  let activeId = null;
+
+  function updateActiveToc() {
+    const scrollPos = window.scrollY + 100;
+    let current = null;
+
+    document.querySelectorAll('.section').forEach(function(sec) {
+      const top = sec.offsetTop;
+      const bottom = top + sec.offsetHeight;
+      if (scrollPos >= top && scrollPos < bottom) {
+        current = sec.id;
+      }
+    });
+
+    if (current && current !== activeId) {
+      activeId = current;
+      tocLinks.forEach(function(link) {
+        if (link.dataset.target === current) {
+          link.classList.add('active');
+        } else {
+          link.classList.remove('active');
+        }
+      });
+    }
+  }
+
+  updateActiveToc();
+
+  // ========== 打印 ==========
+  document.getElementById('printBtn').addEventListener('click', function() {
+    window.print();
+  });
+
+  // ========== ESC 关闭侧栏 ==========
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      closeSidebar();
+    }
+  });
+
+})();
+</script>
+
+</body>
+</html>
