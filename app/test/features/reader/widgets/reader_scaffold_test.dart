@@ -299,6 +299,100 @@ void main() {
     expect(bookshelfOpened, isTrue);
   });
 
+  // T14 (2026-07-16): 「朗读本章」按钮条件渲染（onReadAloud 非 null 时显示）。
+  // reader_body.dart gate PDF engine → null，EPUB/MD/TXT 传非空回调。
+  group('T14: 朗读本章 button', () {
+    testWidgets(
+        'renders when onReadAloud is provided (EPUB/MD/TXT path)',
+        (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: ReaderScaffold(
+              content: const Center(child: Text('book')),
+              title: 't',
+              paginationMode: PaginationMode.paged,
+              onTapPrev: nil,
+              onTapNext: nil,
+              onReadAloud: () {},
+            ),
+          ),
+        ),
+      );
+      // UX-B: default chromeVisible=true; hide first, then toggle to reveal.
+      container.read(readerUiControllerProvider.notifier).hideChrome();
+      await tester.pumpAndSettle();
+      container.read(readerUiControllerProvider.notifier).toggleChrome();
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('朗读本章'), findsOneWidget);
+      expect(find.byKey(const Key('read_aloud_current_chapter')), findsOneWidget);
+      expect(find.byIcon(Icons.record_voice_over), findsOneWidget);
+    });
+
+    testWidgets('hidden when onReadAloud is null (PDF path)', (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: ReaderScaffold(
+              content: Center(child: Text('book')),
+              title: 't',
+              paginationMode: PaginationMode.paged,
+              onTapPrev: nil,
+              onTapNext: nil,
+              // onReadAloud omitted → null (PDF gated)
+            ),
+          ),
+        ),
+      );
+      // UX-B: default chromeVisible=true; hide first, then toggle to reveal.
+      container.read(readerUiControllerProvider.notifier).hideChrome();
+      await tester.pumpAndSettle();
+      container.read(readerUiControllerProvider.notifier).toggleChrome();
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('朗读本章'), findsNothing);
+      expect(find.byKey(const Key('read_aloud_current_chapter')), findsNothing);
+    });
+
+    testWidgets('tap invokes onReadAloud callback', (tester) async {
+      var readAloudInvoked = false;
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: ReaderScaffold(
+              content: const Center(child: Text('book')),
+              title: 't',
+              paginationMode: PaginationMode.paged,
+              onTapPrev: nil,
+              onTapNext: nil,
+              onReadAloud: () => readAloudInvoked = true,
+            ),
+          ),
+        ),
+      );
+      // UX-B: default chromeVisible=true; hide first, then toggle to reveal.
+      container.read(readerUiControllerProvider.notifier).hideChrome();
+      await tester.pumpAndSettle();
+      container.read(readerUiControllerProvider.notifier).toggleChrome();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('read_aloud_current_chapter')));
+      await tester.pumpAndSettle();
+
+      expect(readAloudInvoked, isTrue);
+    });
+  });
+
   testWidgets(
       'M3e/Q4: bookshelf + font± buttons are in the AppBar leading region '
       '(left of clock)', (tester) async {

@@ -82,6 +82,16 @@ class ReaderScaffold extends ConsumerStatefulWidget {
   /// 用户确认后由本回调把 BookmarkEntry 写入数据库。为 null 时不渲染图标。
   final VoidCallback? onAddBookmark;
 
+  /// T14 (2026-07-16): 点击「朗读本章」图标回调。弹出/启动
+  /// `TtsReaderController.startCurrentChapter`，对当前章节做 CFI 提取 →
+  /// 句子切分 → 派发到 `TtsPlaybackController.play`，朗读过程中 T15 负责
+  /// 自动翻页 + 临时高亮 + last_tts_position 持久化。
+  ///
+  /// 为 null 时不渲染图标。父组件（ReaderBody）对 PDF 书传入 null（PDF
+  /// 没有 EPUB 那种 plain-text ↔ CFI 一一对应，走 T19 selection-toolbar
+  /// 「朗读选中」分支），对 EPUB / MD / TXT 传入非空回调。
+  final VoidCallback? onReadAloud;
+
   /// M2.6/T9 (Bug #5a)：左右空白边的像素宽度，作为翻页 tap zone。
   ///
   /// 取自当前 `engine.typography.pageMargin.pixelValue`，由父组件
@@ -142,6 +152,7 @@ class ReaderScaffold extends ConsumerStatefulWidget {
     this.onToggleAiDrawer,
     this.onOpenReview,
     this.onAddBookmark,
+    this.onReadAloud,
     this.onToggleDualPage,
     this.isDualPageMode = false,
     this.onFontDecrease,
@@ -702,6 +713,18 @@ class _ReaderScaffoldState extends ConsumerState<ReaderScaffold>
           tooltip: widget.isDualPageMode ? '切到单页' : '切到双页',
           onPressed: () {
             widget.onToggleDualPage!();
+            _reclaimFocus();
+          },
+        ),
+      // T14 (2026-07-16): 朗读本章入口。仅 EPUB/MD/TXT 引擎时父组件
+      // 传入非空回调；PDF 引擎传 null 走 T19 selection-toolbar 路径。
+      if (widget.onReadAloud != null)
+        IconButton(
+          key: const Key('read_aloud_current_chapter'),
+          icon: const Icon(Icons.record_voice_over),
+          tooltip: '朗读本章',
+          onPressed: () {
+            widget.onReadAloud!();
             _reclaimFocus();
           },
         ),
