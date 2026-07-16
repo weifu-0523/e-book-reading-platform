@@ -16,8 +16,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/local/database.dart';
+import '../../../services/tts/sentence_segmenter.dart';
+import '../../tts/providers/tts_playback_controller.dart';
 
 /// Renders the chat message list. Stateful — auto-scrolls to bottom when new
 /// messages arrive or streaming content updates, while respecting user-pinned
@@ -171,7 +174,7 @@ class _MessageBubble extends StatelessWidget {
     final isUser = message.role == 'user';
     final presetLabel = _presetLabel(message.presetSource);
 
-    return Align(
+    final bubble = Align(
       alignment:
           isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -249,6 +252,53 @@ class _MessageBubble extends StatelessWidget {
         ),
       ),
     );
+
+    // T6 (2026-07-16): long-press assistant bubble → context menu with 朗读.
+    // User / system bubbles are intentionally NOT wrapped — reading them
+    // aloud doesn't make sense.
+    if (isUser) return bubble;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onLongPressStart: (details) =>
+          _showAssistantMenu(context, details.globalPosition),
+      child: bubble,
+    );
+  }
+
+  /// T6: 弹出助手消息长按菜单（Material [showMenu]，与
+  /// [showAnnotationContextMenu] 同模式）。目前仅 「朗读」一项；后续复制/
+  /// 引用等可在 `_AssistantMenuAction` 枚举里扩展。
+  Future<void> _showAssistantMenu(
+    BuildContext context,
+    Offset globalPosition,
+  ) async {
+    final action = await showMenu<_AssistantMenuAction>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+          globalPosition.dx, globalPosition.dy, 0, 0),
+      items: const [
+        PopupMenuItem(
+          value: _AssistantMenuAction.speak,
+          child: _MenuRow(icon: Icons.volume_up_outlined, label: '朗读'),
+        ),
+      ],
+    );
+    if (action == _AssistantMenuAction.speak && context.mounted) {
+      await _onSpeak(context);
+    }
+  }
+
+  /// T6: 切分消息 → TtsPlaybackController.play(scope: TtsScopeAiMessage)。
+  /// SentenceSegmenter 已处理空 content / 纯空白等情况（返回 const []），
+  /// 控制器内部也再次检查 `sentences.isEmpty` 才发起播放。
+  Future<void> _onSpeak(BuildContext context) async {
+    final container = ProviderScope.containerOf(context);
+    final sentences = SentenceSegmenter.split(message.content);
+    if (sentences.isEmpty) return;
+    await container.read(ttsPlaybackControllerProvider.notifier).play(
+          scope: TtsScopeAiMessage(messageId: message.id),
+          sentences: sentences,
+        );
   }
 
   String? _presetLabel(String? source) {
@@ -266,5 +316,29 @@ class _MessageBubble extends StatelessWidget {
       default:
         return source;
     }
+  }
+}
+
+/// T6: 长按助手消息菜单的项。目前仅 「朗读」；后续可在此枚举追加
+/// 复制 / 引用 / 导出 等。
+enum _AssistantMenuAction { speak }
+
+/// showMenu 的 PopupMenuItem 内部统一外观（图标 + 文本一行）。
+/// 与 [showAnnotationContextMenu] 的 _MenuRow 同形态，本项目惯例。
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 22),
+        const SizedBox(width: 12),
+        Text(label),
+      ],
+    );
   }
 }

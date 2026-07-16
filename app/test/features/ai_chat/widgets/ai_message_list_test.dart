@@ -14,11 +14,16 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/database.dart';
 import 'package:zhiyue/features/ai_chat/widgets/ai_message_list.dart';
+import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
+import 'package:zhiyue/services/tts/tts_service.dart';
 
 ChatMessage _msg({
   required String id,
@@ -423,4 +428,103 @@ void main() {
               'new messages into view');
     });
   });
+
+  // T6 (2026-07-16): long-press assistant message → context menu with 「朗读」.
+  // First user-facing TTS entry point. _MessageBubble wraps assistant bubbles
+  // with a GestureDetector that triggers showMenu with PopupMenuItem entries.
+  group('T6 long-press menu (朗读)', () {
+    testWidgets('long-press assistant message shows 朗读 option',
+        (tester) async {
+      final messages = [
+        _msg(id: 'm1', role: 'ai', content: 'Hello world'),
+      ];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ttsServiceProvider.overrideWithValue(_stubTtsService()),
+          ],
+          child: MaterialApp(
+            home: Scaffold(body: AiMessageList(messages: messages)),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Long-press on the assistant bubble triggers the context menu.
+      await tester.longPress(find.textContaining('Hello world'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('朗读'), findsOneWidget);
+    });
+
+    testWidgets('long-press user message does NOT show 朗读 option',
+        (tester) async {
+      // Reading user messages aloud is nonsensical — only assistant messages
+      // get the 朗读 menu item.
+      final messages = [
+        _msg(id: 'm1', role: 'user', content: 'question for the assistant'),
+      ];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ttsServiceProvider.overrideWithValue(_stubTtsService()),
+          ],
+          child: MaterialApp(
+            home: Scaffold(body: AiMessageList(messages: messages)),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.longPress(find.textContaining('question for the assistant'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('朗读'), findsNothing,
+          reason: 'T6: 朗读 must only appear on assistant messages, not user');
+    });
+  });
+}
+
+/// Builds a mock [TtsService] with no-op stubs for every method the
+/// [_onSpeak] handler may touch. Long-press → 朗读 only verifies the menu
+/// appears; we don't drive a full play() cycle here.
+_TtsServiceStubs _stubTtsService() {
+  return _TtsServiceStubs();
+}
+
+/// Concrete stub (not Mocktail) so we don't have to register fallback values
+/// for Sentence — long-press tests don't assert on play() side effects.
+class _TtsServiceStubs implements TtsService {
+  final StreamController<TtsState> _stateCtl =
+      StreamController<TtsState>.broadcast();
+  @override
+  Stream<TtsState> get state => _stateCtl.stream;
+  @override
+  Stream<TtsProgress> get progress => const Stream<TtsProgress>.empty();
+  @override
+  Stream<String> get error => const Stream<String>.empty();
+  @override
+  bool get isInitialized => false;
+  @override
+  Future<void> init() async {}
+  @override
+  Future<void> speakSentence(Sentence sentence) async {}
+  @override
+  Future<void> stop() async {}
+  @override
+  Future<void> pause() async {}
+  @override
+  void setCurrentSentenceIndex(int idx) {}
+  @override
+  Future<void> setSpeechRate(double rate) async {}
+  @override
+  Future<void> setPitch(double pitch) async {}
+  @override
+  Future<void> setVolume(double volume) async {}
+  @override
+  Future<bool> isLanguageAvailable(String locale) async => true;
+  @override
+  Future<bool> isLanguageInstalled(String locale) async => true;
+  @override
+  Future<void> dispose() async => _stateCtl.close();
 }
