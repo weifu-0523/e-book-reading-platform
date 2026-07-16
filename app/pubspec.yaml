@@ -75,6 +75,11 @@ dependencies:
 
   # TTS/T1: 朗读（P1 AI 消息 + EPUB 章节）
   flutter_tts: ^4.1.0
+  # TTS/T20 (P3): 移动端后台播放 / 锁屏控制 / 蓝牙按键。
+  # audio_service 提供 foreground service + MediaController；audio_session
+  # 处理 audio focus + interruption（电话打断、其他 app 抢占）。桌面端不用。
+  audio_service: ^0.18.15
+  audio_session: ^0.1.21
 
 dependency_overrides:
   # M4: epubx 4.0.0 pins image ^3.0.8 AND passes List<int> to
