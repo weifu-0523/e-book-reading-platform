@@ -50,14 +50,17 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
   /// unicode61 分词器，CJK 文本无词边界会被当作单个 token，导致「活着」这类
   /// 短中文查询无法命中「人是为了活着本身而活着」——对本应用以中文为主的高亮
   /// 文本，子串匹配才是用户预期。FTS5 表保留供未来按相关度排序/英文全文检索使用。
+  ///
+  /// v1.11.10-alpha (C1)：用户输入里的 `%` / `_` 通过 drift `.like(..., escapeChar:)`
+  /// 当字面量匹配，不再被 SQLite 当作通配符。
   Future<List<Annotation>> searchFts(String ftsQuery) async {
     if (ftsQuery.isEmpty) return const [];
-    final pattern = '%$ftsQuery%';
+    final pattern = '%${_escapeLikeWildcards(ftsQuery)}%';
     return (select(annotations)
           ..where((t) =>
-              t.quote.like(pattern) |
-              t.note.like(pattern) |
-              t.tags.like(pattern)))
+              t.quote.like(pattern, escapeChar: '\\') |
+              t.note.like(pattern, escapeChar: '\\') |
+              t.tags.like(pattern, escapeChar: '\\')))
         .get();
   }
 
@@ -125,4 +128,15 @@ class AnnotationsDao extends DatabaseAccessor<AppDatabase>
   Future<int> deleteAnnotation(String id) {
     return (delete(annotations)..where((t) => t.id.equals(id))).go();
   }
+}
+
+/// 转义 SQLite LIKE 通配符（`%`、`_`）和转义字符本身（`\`）。
+///
+/// 必须与 drift `.like(..., escapeChar: '\\')` 一起使用——见
+/// `AnnotationsDao.searchFts` 和 `BookPassagesDao.searchFts`。
+String _escapeLikeWildcards(String input) {
+  return input
+      .replaceAll(r'\', r'\\')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
 }

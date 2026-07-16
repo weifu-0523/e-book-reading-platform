@@ -232,4 +232,56 @@ void main() {
     // Empty query should return empty list (no MATCH syntax error)
     expect(await dao.searchFts(''), isEmpty);
   });
+
+  // v1.11.10-alpha hotfix: C1 LIKE wildcard escape.
+  // User-supplied % and _ must be matched literally, not as wildcards.
+  test('searchFts escapes % wildcard in user input', () async {
+    await dao.insertOne(
+      id: 'p1',
+      bookNoteId: 'bn1',
+      locatorJson: '{}',
+      quote: '折扣 50% off',
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+    );
+    await dao.insertOne(
+      id: 'p2',
+      bookNoteId: 'bn1',
+      locatorJson: '{}',
+      quote: '折扣 5000 off',
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+    );
+    final hits = await dao.searchFts('50%');
+    expect(hits.map((a) => a.id), contains('p1'));
+    expect(hits.any((a) => a.id == 'p2'), isFalse,
+        reason: '% must be literal, not "any chars" wildcard');
+  });
+
+  test('searchFts escapes _ wildcard in user input', () async {
+    await dao.insertOne(
+      id: 'u1',
+      bookNoteId: 'bn1',
+      locatorJson: '{}',
+      quote: 'foo_bar',
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+    );
+    await dao.insertOne(
+      id: 'u2',
+      bookNoteId: 'bn1',
+      locatorJson: '{}',
+      quote: 'fooxbar',
+      color: 'yellow',
+      tagsJson: '[]',
+      source: 'manual',
+    );
+    final hits = await dao.searchFts('foo_bar');
+    expect(hits.map((a) => a.id), contains('u1'));
+    expect(hits.any((a) => a.id == 'u2'), isFalse,
+        reason: '_ must be literal, not "any single char" wildcard');
+  });
 }

@@ -9,6 +9,16 @@
 
 v1.11.9-alpha 之后的新变更将记在此处。
 
+### 修复
+
+- **C1：LIKE 通配符 escape**。`AnnotationsDao.searchFts` 和
+  `BookPassagesDao.searchFts` 在 `quote` / `note` / `tags` / `content_text`
+  上做子串 LIKE 搜索时，用户输入的 `%` 和 `_` 被 SQLite 当作通配符——
+  搜 `50%` 会命中 `5000`、搜 `foo_bar` 会命中 `fooxbar`。修复：drift
+  `.like(pattern, escapeChar: '\\')` + `_escapeLikeWildcards` helper 转义
+  `%` / `_` / `\` 后再拼接 pattern。CJK 用户基本不触发，但属于搜索正确性
+  bug，必须修。4 个新测试（`%` / `_` 字面量匹配 × 2 DAO）。
+
 ## [1.11.9-alpha] - 2026-07-15
 
 4 个用户报告的 bug + UX 增强：(1) v1.11.8-alpha 引入的书签偏移

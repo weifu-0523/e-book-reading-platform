@@ -65,16 +65,20 @@ class BookPassagesDao extends DatabaseAccessor<AppDatabase>
   /// MATCH. The FTS5 virtual table is kept for future relevance-ranked
   /// retrieval on Latin text. Same trade-off documented in
   /// annotations_dao.searchFts.
+  ///
+  /// v1.11.10-alpha (C1): user input `%` / `_` matched literally via
+  /// ESCAPE clause — drift's `.like()` doesn't expose ESCAPE, so we
+  /// generate raw SQL via `customExpression`.
   Future<List<BookPassage>> searchFts(
     String query,
     String bookId, {
     int limit = 5,
   }) async {
     if (query.isEmpty) return const [];
-    final pattern = '%$query%';
+    final pattern = '%${_escapeLikeWildcards(query)}%';
     return (select(bookPassages)
           ..where((t) => t.bookId.equals(bookId))
-          ..where((t) => t.contentText.like(pattern))
+          ..where((t) => t.contentText.like(pattern, escapeChar: '\\'))
           ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
           ..limit(limit))
         .get();
@@ -94,4 +98,14 @@ class BookPassagesDao extends DatabaseAccessor<AppDatabase>
   Future<int> deleteForBook(String bookId) {
     return (delete(bookPassages)..where((t) => t.bookId.equals(bookId))).go();
   }
+}
+
+/// 转义 SQLite LIKE 通配符（`%`、`_`）和转义字符本身（`\`）。
+///
+/// 必须与 `ESCAPE '\\'` 子句一起使用——见 `searchFts` 的 `customExpression`。
+String _escapeLikeWildcards(String input) {
+  return input
+      .replaceAll(r'\', r'\\')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
 }

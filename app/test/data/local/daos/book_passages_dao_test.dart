@@ -168,4 +168,47 @@ void main() {
     ]);
     expect(await db.bookPassagesDao.searchFts('', 'b1'), isEmpty);
   });
+
+  // v1.11.10-alpha hotfix: C1 LIKE wildcard escape.
+  test('searchFts escapes % wildcard in user input', () async {
+    await seedBook('b1');
+    await db.bookPassagesDao.insertMany('b1', [
+      const PassageChunk(
+          chapterIndex: 0,
+          charOffset: 0,
+          charLength: 10,
+          contentText: '折扣 50% off',
+          tokenEstimate: 5),
+      const PassageChunk(
+          chapterIndex: 1,
+          charOffset: 0,
+          charLength: 11,
+          contentText: '折扣 5000 off',
+          tokenEstimate: 5),
+    ]);
+    final hits = await db.bookPassagesDao.searchFts('50%', 'b1');
+    expect(hits, hasLength(1));
+    expect(hits.first.contentText, contains('50%'));
+  });
+
+  test('searchFts escapes _ wildcard in user input', () async {
+    await seedBook('b1');
+    await db.bookPassagesDao.insertMany('b1', [
+      const PassageChunk(
+          chapterIndex: 0,
+          charOffset: 0,
+          charLength: 7,
+          contentText: 'foo_bar',
+          tokenEstimate: 3),
+      const PassageChunk(
+          chapterIndex: 1,
+          charOffset: 0,
+          charLength: 7,
+          contentText: 'fooxbar',
+          tokenEstimate: 3),
+    ]);
+    final hits = await db.bookPassagesDao.searchFts('foo_bar', 'b1');
+    expect(hits, hasLength(1));
+    expect(hits.first.contentText, 'foo_bar');
+  });
 }
