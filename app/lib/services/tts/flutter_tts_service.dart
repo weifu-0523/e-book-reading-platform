@@ -56,8 +56,10 @@ class FlutterTtsServiceImpl implements TtsService {
           charEnd: end,
         ));
       })
-      ..setErrorHandler((msg) {
-        _errorController.add(msg);
+      ..setErrorHandler((dynamic msg) {
+        // Plugin typedef is `void Function(dynamic message)`. String-interpolate
+        // to coerce safely — iOS sends Map, other platforms may send null.
+        _errorController.add('$msg');
         _stateController.add(TtsState.error);
       });
     // flutter_tts 4.x renamed this to `awaitSpeakCompletion`.
@@ -69,12 +71,19 @@ class FlutterTtsServiceImpl implements TtsService {
   @override
   Future<void> speakSentence(Sentence sentence) async {
     if (!_initialized) await init();
-    await _tts.setLanguage(sentence.locale);
-    await _tts.speak(sentence.text);
+    try {
+      await _tts.setLanguage(sentence.locale);
+      await _tts.speak(sentence.text);
+    } catch (e) {
+      _errorController.add('speakSentence failed: $e');
+      _stateController.add(TtsState.error);
+      rethrow;
+    }
   }
 
   /// Called by TtsPlaybackController to update the sentence index for
   /// progress reporting — keeps progress events in sync with the queue.
+  @override
   void setCurrentSentenceIndex(int idx) => _currentSentenceIdx = idx;
 
   @override

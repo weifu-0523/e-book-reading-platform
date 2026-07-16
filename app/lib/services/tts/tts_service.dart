@@ -62,6 +62,10 @@ abstract class TtsService {
   Future<void> stop();
   Future<void> pause();
 
+  /// Called by playback controller before speakSentence so progress events
+  /// carry the correct sentence index. Impl-specific routing detail.
+  void setCurrentSentenceIndex(int idx);
+
   Future<void> setSpeechRate(double rate); // -1.0 ~ 1.0
   Future<void> setPitch(double pitch); // 0.5 ~ 2.0
   Future<void> setVolume(double volume); // 0.0 ~ 1.0

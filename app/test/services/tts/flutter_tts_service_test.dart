@@ -44,6 +44,8 @@ void main() {
           case 'setErrorHandler':
             return null;
           case 'awaitSpeakCompletion':
+            expect(call.arguments, isTrue,
+                reason: 'init must await speak completion');
             return 1;
           case 'isLanguageAvailable':
             return 1;
@@ -60,7 +62,7 @@ void main() {
           default:
             return null;
         }
-      } as Future<Object?> Function(MethodCall);
+      };
 
       final svc = FlutterTtsServiceImpl();
       await svc.init();
@@ -78,7 +80,7 @@ void main() {
           default:
             return null;
         }
-      }) as Future<Object?> Function(MethodCall);
+      });
 
       final svc = FlutterTtsServiceImpl();
       final states = <TtsState>[];
@@ -92,7 +94,7 @@ void main() {
     });
 
     test('setSpeechRate / setPitch / setVolume return Future<void>', () async {
-      handler = ((call) async => 1) as Future<Object?> Function(MethodCall);
+      handler = ((call) async => 1);
 
       final svc = FlutterTtsServiceImpl();
       await svc.init();
@@ -104,7 +106,7 @@ void main() {
 
     test('progress / error streams are exposed and empty by default',
         () async {
-      handler = ((call) async => 1) as Future<Object?> Function(MethodCall);
+      handler = ((call) async => 1);
 
       final svc = FlutterTtsServiceImpl();
       final progressEvents = <TtsProgress>[];
