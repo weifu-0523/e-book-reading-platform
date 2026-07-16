@@ -14,8 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,60 +21,15 @@ import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
 import 'package:zhiyue/features/tts/widgets/tts_mini_controls.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
 
-/// Noop [TtsService] used to drive [TtsPlaybackController] into the
-/// `speaking` phase without depending on the platform TTS engine.
-///
-/// `speakSentence` synchronously emits [TtsState.speaking] so the playback
-/// controller's state-machine listener transitions `loading → speaking`
-/// inside the same pump cycle — the widget test then observes the buttons.
-class _NoopTtsService implements TtsService {
-  final _state = StreamController<TtsState>.broadcast();
-  final _progress = StreamController<TtsProgress>.broadcast();
-  final _error = StreamController<String>.broadcast();
+import '../../../helpers/stub_tts_service.dart';
 
-  @override
-  Stream<TtsState> get state => _state.stream;
-  @override
-  Stream<TtsProgress> get progress => _progress.stream;
-  @override
-  Stream<String> get error => _error.stream;
-  @override
-  bool get isInitialized => true;
-  @override
-  Future<void> init() async {}
-  @override
-  Future<void> speakSentence(Sentence s) async {
-    _state.add(TtsState.speaking);
-  }
-
-  @override
-  void setCurrentSentenceIndex(int idx) {}
-  @override
-  Future<void> stop() async {}
-  @override
-  Future<void> pause() async {}
-  @override
-  Future<void> setSpeechRate(double r) async {}
-  @override
-  Future<void> setPitch(double p) async {}
-  @override
-  Future<void> setVolume(double v) async {}
-  @override
-  Future<bool> isLanguageAvailable(String l) async => true;
-  @override
-  Future<bool> isLanguageInstalled(String l) async => true;
-  @override
-  Future<void> dispose() async {
-    await _state.close();
-    await _progress.close();
-    await _error.close();
-  }
-}
+// T8 (2026-07-16): The local _NoopTtsService class was extracted to the
+// shared test/helpers/stub_tts_service.dart helper (StubTtsService).
 
 void main() {
   group('TtsMiniControls', () {
     testWidgets('renders nothing visible when phase is idle', (tester) async {
-      final svc = _NoopTtsService();
+      final svc = StubTtsService();
       addTearDown(svc.dispose);
       final container = ProviderContainer(overrides: [
         ttsServiceProvider.overrideWithValue(svc),
@@ -102,7 +55,7 @@ void main() {
     testWidgets(
         'shows 上一句/暂停/下一句/停止/关闭 buttons + counter when speaking',
         (tester) async {
-      final svc = _NoopTtsService();
+      final svc = StubTtsService();
       addTearDown(svc.dispose);
       final container = ProviderContainer(overrides: [
         ttsServiceProvider.overrideWithValue(svc),
@@ -119,7 +72,7 @@ void main() {
       ));
       await tester.pump();
 
-      // Trigger play() with 3 sentences. _NoopTtsService emits speaking
+      // Trigger play() with 3 sentences. StubTtsService emits speaking
       // synchronously inside speakSentence, so the controller's state
       // listener should flip phase to speaking on the next pump.
       await container.read(ttsPlaybackControllerProvider.notifier).play(
@@ -149,7 +102,7 @@ void main() {
     // TODO(T?): test paused → 恢复 tooltip + play_arrow icon. Reaching
     // `paused` phase reliably in a unit test requires driving the engine
     // through `play()` then `pause()` while a sentence is active. The
-    // current _NoopTtsService doesn't simulate audio chunk timing, so the
+    // current StubTtsService doesn't simulate audio chunk timing, so the
     // state machine's pause-after-speaking transition is brittle to test
     // here. Defer to an integration test that uses a controllable fake
     // service (emit speaking → emit idle → expect queue advance; or pause
