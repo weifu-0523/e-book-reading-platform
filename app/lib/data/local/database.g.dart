@@ -133,6 +133,17 @@ class $BooksTable extends Books with TableInfo<$BooksTable, Book> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _lastTtsPositionMeta = const VerificationMeta(
+    'lastTtsPosition',
+  );
+  @override
+  late final GeneratedColumn<String> lastTtsPosition = GeneratedColumn<String>(
+    'last_tts_position',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -147,6 +158,7 @@ class $BooksTable extends Books with TableInfo<$BooksTable, Book> {
     lastReadAt,
     sortOrder,
     fileSyncedAt,
+    lastTtsPosition,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -250,6 +262,15 @@ class $BooksTable extends Books with TableInfo<$BooksTable, Book> {
         ),
       );
     }
+    if (data.containsKey('last_tts_position')) {
+      context.handle(
+        _lastTtsPositionMeta,
+        lastTtsPosition.isAcceptableOrUnknown(
+          data['last_tts_position']!,
+          _lastTtsPositionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -307,6 +328,10 @@ class $BooksTable extends Books with TableInfo<$BooksTable, Book> {
         DriftSqlType.int,
         data['${effectivePrefix}file_synced_at'],
       ),
+      lastTtsPosition: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_tts_position'],
+      ),
     );
   }
 
@@ -336,6 +361,10 @@ class Book extends DataClass implements Insertable<Book> {
   /// pending on receiver side). Receiver uses this + local file_path ==
   /// '__needs_download__' to decide whether to fetch the binary.
   final int? fileSyncedAt;
+
+  /// TTS resume cursor: JSON-encoded {chapterIdx, sentenceIdx, updatedAt}.
+  /// NULL = book never read aloud (or reset). See LastTtsPosition model (T10).
+  final String? lastTtsPosition;
   const Book({
     required this.id,
     required this.title,
@@ -349,6 +378,7 @@ class Book extends DataClass implements Insertable<Book> {
     this.lastReadAt,
     this.sortOrder,
     this.fileSyncedAt,
+    this.lastTtsPosition,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -374,6 +404,9 @@ class Book extends DataClass implements Insertable<Book> {
     }
     if (!nullToAbsent || fileSyncedAt != null) {
       map['file_synced_at'] = Variable<int>(fileSyncedAt);
+    }
+    if (!nullToAbsent || lastTtsPosition != null) {
+      map['last_tts_position'] = Variable<String>(lastTtsPosition);
     }
     return map;
   }
@@ -402,6 +435,9 @@ class Book extends DataClass implements Insertable<Book> {
       fileSyncedAt: fileSyncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(fileSyncedAt),
+      lastTtsPosition: lastTtsPosition == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastTtsPosition),
     );
   }
 
@@ -423,6 +459,7 @@ class Book extends DataClass implements Insertable<Book> {
       lastReadAt: serializer.fromJson<DateTime?>(json['lastReadAt']),
       sortOrder: serializer.fromJson<int?>(json['sortOrder']),
       fileSyncedAt: serializer.fromJson<int?>(json['fileSyncedAt']),
+      lastTtsPosition: serializer.fromJson<String?>(json['lastTtsPosition']),
     );
   }
   @override
@@ -441,6 +478,7 @@ class Book extends DataClass implements Insertable<Book> {
       'lastReadAt': serializer.toJson<DateTime?>(lastReadAt),
       'sortOrder': serializer.toJson<int?>(sortOrder),
       'fileSyncedAt': serializer.toJson<int?>(fileSyncedAt),
+      'lastTtsPosition': serializer.toJson<String?>(lastTtsPosition),
     };
   }
 
@@ -457,6 +495,7 @@ class Book extends DataClass implements Insertable<Book> {
     Value<DateTime?> lastReadAt = const Value.absent(),
     Value<int?> sortOrder = const Value.absent(),
     Value<int?> fileSyncedAt = const Value.absent(),
+    Value<String?> lastTtsPosition = const Value.absent(),
   }) => Book(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -470,6 +509,9 @@ class Book extends DataClass implements Insertable<Book> {
     lastReadAt: lastReadAt.present ? lastReadAt.value : this.lastReadAt,
     sortOrder: sortOrder.present ? sortOrder.value : this.sortOrder,
     fileSyncedAt: fileSyncedAt.present ? fileSyncedAt.value : this.fileSyncedAt,
+    lastTtsPosition: lastTtsPosition.present
+        ? lastTtsPosition.value
+        : this.lastTtsPosition,
   );
   Book copyWithCompanion(BooksCompanion data) {
     return Book(
@@ -491,6 +533,9 @@ class Book extends DataClass implements Insertable<Book> {
       fileSyncedAt: data.fileSyncedAt.present
           ? data.fileSyncedAt.value
           : this.fileSyncedAt,
+      lastTtsPosition: data.lastTtsPosition.present
+          ? data.lastTtsPosition.value
+          : this.lastTtsPosition,
     );
   }
 
@@ -508,7 +553,8 @@ class Book extends DataClass implements Insertable<Book> {
           ..write('addedAt: $addedAt, ')
           ..write('lastReadAt: $lastReadAt, ')
           ..write('sortOrder: $sortOrder, ')
-          ..write('fileSyncedAt: $fileSyncedAt')
+          ..write('fileSyncedAt: $fileSyncedAt, ')
+          ..write('lastTtsPosition: $lastTtsPosition')
           ..write(')'))
         .toString();
   }
@@ -527,6 +573,7 @@ class Book extends DataClass implements Insertable<Book> {
     lastReadAt,
     sortOrder,
     fileSyncedAt,
+    lastTtsPosition,
   );
   @override
   bool operator ==(Object other) =>
@@ -543,7 +590,8 @@ class Book extends DataClass implements Insertable<Book> {
           other.addedAt == this.addedAt &&
           other.lastReadAt == this.lastReadAt &&
           other.sortOrder == this.sortOrder &&
-          other.fileSyncedAt == this.fileSyncedAt);
+          other.fileSyncedAt == this.fileSyncedAt &&
+          other.lastTtsPosition == this.lastTtsPosition);
 }
 
 class BooksCompanion extends UpdateCompanion<Book> {
@@ -559,6 +607,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
   final Value<DateTime?> lastReadAt;
   final Value<int?> sortOrder;
   final Value<int?> fileSyncedAt;
+  final Value<String?> lastTtsPosition;
   final Value<int> rowid;
   const BooksCompanion({
     this.id = const Value.absent(),
@@ -573,6 +622,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
     this.lastReadAt = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.fileSyncedAt = const Value.absent(),
+    this.lastTtsPosition = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BooksCompanion.insert({
@@ -588,6 +638,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
     this.lastReadAt = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.fileSyncedAt = const Value.absent(),
+    this.lastTtsPosition = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -608,6 +659,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
     Expression<DateTime>? lastReadAt,
     Expression<int>? sortOrder,
     Expression<int>? fileSyncedAt,
+    Expression<String>? lastTtsPosition,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -623,6 +675,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
       if (lastReadAt != null) 'last_read_at': lastReadAt,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (fileSyncedAt != null) 'file_synced_at': fileSyncedAt,
+      if (lastTtsPosition != null) 'last_tts_position': lastTtsPosition,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -640,6 +693,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
     Value<DateTime?>? lastReadAt,
     Value<int?>? sortOrder,
     Value<int?>? fileSyncedAt,
+    Value<String?>? lastTtsPosition,
     Value<int>? rowid,
   }) {
     return BooksCompanion(
@@ -655,6 +709,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
       lastReadAt: lastReadAt ?? this.lastReadAt,
       sortOrder: sortOrder ?? this.sortOrder,
       fileSyncedAt: fileSyncedAt ?? this.fileSyncedAt,
+      lastTtsPosition: lastTtsPosition ?? this.lastTtsPosition,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -698,6 +753,9 @@ class BooksCompanion extends UpdateCompanion<Book> {
     if (fileSyncedAt.present) {
       map['file_synced_at'] = Variable<int>(fileSyncedAt.value);
     }
+    if (lastTtsPosition.present) {
+      map['last_tts_position'] = Variable<String>(lastTtsPosition.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -719,6 +777,7 @@ class BooksCompanion extends UpdateCompanion<Book> {
           ..write('lastReadAt: $lastReadAt, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('fileSyncedAt: $fileSyncedAt, ')
+          ..write('lastTtsPosition: $lastTtsPosition, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8154,6 +8213,7 @@ typedef $$BooksTableCreateCompanionBuilder =
       Value<DateTime?> lastReadAt,
       Value<int?> sortOrder,
       Value<int?> fileSyncedAt,
+      Value<String?> lastTtsPosition,
       Value<int> rowid,
     });
 typedef $$BooksTableUpdateCompanionBuilder =
@@ -8170,6 +8230,7 @@ typedef $$BooksTableUpdateCompanionBuilder =
       Value<DateTime?> lastReadAt,
       Value<int?> sortOrder,
       Value<int?> fileSyncedAt,
+      Value<String?> lastTtsPosition,
       Value<int> rowid,
     });
 
@@ -8389,6 +8450,11 @@ class $$BooksTableFilterComposer extends Composer<_$AppDatabase, $BooksTable> {
 
   ColumnFilters<int> get fileSyncedAt => $composableBuilder(
     column: $table.fileSyncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastTtsPosition => $composableBuilder(
+    column: $table.lastTtsPosition,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8637,6 +8703,11 @@ class $$BooksTableOrderingComposer
     column: $table.fileSyncedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get lastTtsPosition => $composableBuilder(
+    column: $table.lastTtsPosition,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BooksTableAnnotationComposer
@@ -8687,6 +8758,11 @@ class $$BooksTableAnnotationComposer
 
   GeneratedColumn<int> get fileSyncedAt => $composableBuilder(
     column: $table.fileSyncedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastTtsPosition => $composableBuilder(
+    column: $table.lastTtsPosition,
     builder: (column) => column,
   );
 
@@ -8917,6 +8993,7 @@ class $$BooksTableTableManager
                 Value<DateTime?> lastReadAt = const Value.absent(),
                 Value<int?> sortOrder = const Value.absent(),
                 Value<int?> fileSyncedAt = const Value.absent(),
+                Value<String?> lastTtsPosition = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BooksCompanion(
                 id: id,
@@ -8931,6 +9008,7 @@ class $$BooksTableTableManager
                 lastReadAt: lastReadAt,
                 sortOrder: sortOrder,
                 fileSyncedAt: fileSyncedAt,
+                lastTtsPosition: lastTtsPosition,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8947,6 +9025,7 @@ class $$BooksTableTableManager
                 Value<DateTime?> lastReadAt = const Value.absent(),
                 Value<int?> sortOrder = const Value.absent(),
                 Value<int?> fileSyncedAt = const Value.absent(),
+                Value<String?> lastTtsPosition = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BooksCompanion.insert(
                 id: id,
@@ -8961,6 +9040,7 @@ class $$BooksTableTableManager
                 lastReadAt: lastReadAt,
                 sortOrder: sortOrder,
                 fileSyncedAt: fileSyncedAt,
+                lastTtsPosition: lastTtsPosition,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

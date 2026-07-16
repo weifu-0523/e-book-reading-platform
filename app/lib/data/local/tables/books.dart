@@ -37,6 +37,10 @@ class Books extends Table {
   /// '__needs_download__' to decide whether to fetch the binary.
   IntColumn get fileSyncedAt => integer().nullable()();
 
+  /// TTS resume cursor: JSON-encoded {chapterIdx, sentenceIdx, updatedAt}.
+  /// NULL = book never read aloud (or reset). See LastTtsPosition model (T10).
+  TextColumn get lastTtsPosition => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

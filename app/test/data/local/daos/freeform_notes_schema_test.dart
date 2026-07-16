@@ -24,8 +24,8 @@ void main() {
   setUp(() => db = AppDatabase.forTesting());
   tearDown(() => db.close());
 
-  test('schemaVersion is 14', () {
-    expect(db.schemaVersion, 14);
+  test('schemaVersion is 15', () {
+    expect(db.schemaVersion, 15);
   });
 
   test('freeform_notes table exists with expected columns', () async {

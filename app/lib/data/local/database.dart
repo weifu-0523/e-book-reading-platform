@@ -104,7 +104,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forExecutor(super.e);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration {
@@ -296,6 +296,14 @@ class AppDatabase extends _$AppDatabase {
           // Nullable so existing rows survive ALTER TABLE ADD COLUMN.
           await m.database.customStatement(
             'ALTER TABLE books ADD COLUMN file_synced_at INTEGER',
+          );
+        }
+        if (from < 15) {
+          // v1.12.0-alpha TTS (T9): store {chapterIdx, sentenceIdx, updatedAt}
+          // JSON for cross-device TTS resume prompt. NULL = never read aloud.
+          // Nullable so existing rows survive ALTER TABLE ADD COLUMN.
+          await m.database.customStatement(
+            'ALTER TABLE books ADD COLUMN last_tts_position TEXT',
           );
         }
       },

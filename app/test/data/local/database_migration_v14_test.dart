@@ -31,8 +31,12 @@ void main() {
     setUp(() => db = AppDatabase.forTesting());
     tearDown(() => db.close());
 
-    test('schemaVersion is 14', () {
-      expect(db.schemaVersion, 14);
+    test('schemaVersion is 14 (historical, current is 15)', () {
+      // This test documents the v14 migration that shipped in M2.8 T7.
+      // The DB schemaVersion itself is now 15 (T9 / v1.12.0-alpha TTS) — see
+      // database_migration_v15_test.dart. Kept as historical record of the
+      // v13 -> v14 path; assert ≥14 to stay valid across future bumps.
+      expect(db.schemaVersion, greaterThanOrEqualTo(14));
     });
 
     test('fresh install creates books.file_synced_at column', () async {
@@ -166,10 +170,12 @@ void main() {
           .getSingle();
       expect(row.readNullable<int>('file_synced_at'), isNull);
 
-      // Verify schemaVersion was bumped to 14 in the file.
+      // Verify schemaVersion is now current (v15 after T9). v14 migration
+      // logic ran as part of onUpgrade, but the file lands at the latest
+      // schemaVersion since we open with current code.
       final versionRow =
           await db.customSelect('PRAGMA user_version').getSingle();
-      expect(versionRow.read<int>('user_version'), 14);
+      expect(versionRow.read<int>('user_version'), 15);
     });
   });
 }
