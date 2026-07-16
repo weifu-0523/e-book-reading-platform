@@ -73,6 +73,9 @@ dependencies:
   # M2.5/T9: 桌面端全屏模式（windows/macos/linux）
   window_manager: ^0.4.3
 
+  # TTS/T1: 朗读（P1 AI 消息 + EPUB 章节）
+  flutter_tts: ^4.1.0
+
 dependency_overrides:
   # M4: epubx 4.0.0 pins image ^3.0.8 AND passes List<int> to
   # decodeImage (incompatible with image 4.x). pdfrx_engine 0.4.3
