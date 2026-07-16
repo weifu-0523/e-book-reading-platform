@@ -4,7 +4,7 @@
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.11.9--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.11.9-alpha)
+[![Version](https://img.shields.io/badge/version-1.12.0--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.12.0-alpha)
 
 ## 项目状态
 
@@ -34,7 +34,8 @@
 - ✅ **v1.11.7-alpha**：技术债大扫除——清零 10 个累积的 pre-existing baseline 测试失败（reader_page_test 5 + reader_ai_drawer_integration 1 + reader_drawer_test 1 + router_test 1 + book_import_service_test 1 + reader_page_pdf_integration 1）；新增 `ReaderUiController.showChrome()` 幂等方法替代 `toggleChrome()` 的翻转陷阱；AI baseUrl 加 HTTPS 校验（B5，HTTP 公网地址弹窗二次确认，localhost/RFC1918 私网豁免）；AI 重复请求去重（C5，连点 AI 按钮不重复扣费）；AGPLv3 SPDX 头补齐 203 个 test 文件（E2）；Gitee 发版脚本幂等（C9，已存在 release 跳过避免 409 Conflict）；release-checklist 加发版前测试数核对硬步骤（E6，防止 README/CHANGELOG 数字漂移）。测试数 1451→1485 pass，10 fail → 0 fail。
 - ✅ **v1.11.8-alpha**：两个用户报告 bug 修复——(1) EPUB 目录跳转位置偏移（《道德经》第 13 章跳到第八章），根因 scroll-mode `gotoLocator` 用 HTML 字节数当章节总长度但 `charOffset` 是 plain-text 偏移，两坐标系混用致 ratio 压缩 1.73×；修复 `_plainTextLengthForChapter(index)` 用 PlainTextUtils 缓存每章 plain 长度。(2) 同步规则三层完善——Layer A outbox 触发 3s debounce push（任何写操作都触发）+ Layer B 关闭前 best-effort flush（解决"加书签 5 分钟内关机"丢失同步窗口）+ Layer C 冷启动即时 pull（手机加书签打开桌面立即可见）。**覆盖所有 9 种 record type**（书籍上架 / 书签 / 笔记 / AI 对话 / 高亮 / 进度 / 标签 等——Layer A/B/C 全 type-agnostic，用户反馈明确要求不止书签）。Reentry 设计保留 `_isSyncing` 短路 + 新增 `_lastSyncFuture` 字段供 Layer B await，两字段两职责。测试数 1485→1504 pass，14 skip，1 pre-existing flake（reader_flow integration 10 分钟 timeout，b831eca 之前也失败）。
 - ✅ **v1.11.9-alpha**：4 个用户报告 bug + UX 增强——(1) v1.11.8-alpha 书签偏移 regression（旧书签 charOffset 是 html-encoded，新公式 plain-length 除得放大 1.73× 偏后）→ gotoLocator 加 `_resolveScrollCharOffset` heuristic 检测并 rescale。(2) 移动端 chrome 透明度看不清（`Colors.black54` 固定黑底+深色图标对比度极低）→ 改用 `Theme.colorScheme.surface` 主题自适应。(3) 添加书签 label 包含译者序/引言（用 raw `chapterIndex+1` 而非 reader 实际显示的章节名）→ 提取 `computeDefaultBookmarkLabel` helper 优先用 `_chapterTitlesCache[idx]`。(4) library AppBar 缺立即同步按钮 → compact + expanded 都加 `_SyncIconButton`（状态自适应图标 + 旋转动画）。测试数 1504→1521 pass，14 skip，1 pre-existing flake。
-- 下一步：TTS 集成（M2.9，已在 S4 路线图）/ 跨书 AI 伴读（v1.12+）/ iOS 端 binary 同步 + CI。
+- ✅ **v1.12.0-alpha**：TTS 朗读完整交付（30 任务 3 阶段 P1+P2+P3）——AI 响应长按朗读 / EPUB/PDF/TXT/Markdown 章节「朗读本章」自动跟读（paged 翻页 + scroll 滚动 + 句级金黄高亮 + 章节边界连续/章末询问 + 手动翻页暂停 + 恢复提示）/ 选中文本「朗读选中」/ 跨设备朗读位置同步（drift schema v14→v15 `books.last_tts_position`）/ 移动端后台播放（audio_service + audio_session + Android foreground service + iOS UIBackgroundModes）/ Samsung TTS 引擎检测（4 态 + 引导 dialog）。新增 3 依赖（flutter_tts / audio_service / audio_session），测试数 1521→1648 pass。
+- 下一步：iOS 端 binary 同步 + CI / 跨书 AI 伴读 / TTS 真机冒烟（用户上报）。
 
 ## 下载安装
 

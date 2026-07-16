@@ -19,6 +19,46 @@ v1.11.9-alpha 之后的新变更将记在此处。
   `%` / `_` / `\` 后再拼接 pattern。CJK 用户基本不触发，但属于搜索正确性
   bug，必须修。4 个新测试（`%` / `_` 字面量匹配 × 2 DAO）。
 
+## [1.12.0-alpha] - 2026-07-17
+
+TTS 朗读功能完整交付（30 任务 / 3 阶段），覆盖 AI 响应朗读、EPUB/PDF/TXT/Markdown 章节自动跟读、移动端后台播放与跨设备位置同步。
+
+### Added
+
+- **TTS 朗读基础**：TtsService 抽象 + FlutterTtsServiceImpl 实现 + LocaleDetector（Unicode 启发式）+ SentenceSegmenter（中英标点 + 段落边界 + 200 字上限）+ TtsPlaybackController 状态机（idle / loading / speaking / paused / error）+ TtsSettings 持久化（rate / pitch / volume + chapter boundary）+ TtsMiniControls 浮窗。
+- **AI 响应朗读**：聊天消息长按菜单「朗读」项；TtsMiniControls 显示在底部，支持暂停/继续/上下句/停止。
+- **EPUB 章节自动跟读**：Reader chrome 「朗读本章」按钮 → TtsReaderController 自动驱动翻页（paged 模式）或滚动（scroll 模式）；句级金黄高亮（TtsHighlightOverlay）+ CFIBoundaryExtractor 把句子 charStart/End 映射到 EPUB CFI。
+- **章节边界配置**：Settings 提供「连续 / 章末询问」二选一；连续模式自动进入下一章，章末询问模式弹出 SnackBar「继续 / 停止」。
+- **手动翻页暂停 + 恢复提示**：用户翻页时自动暂停 TTS，TtsResumePrompt banner 显示「上次朗读到 第 N 章」+ 继续按钮（5 秒自动隐藏）。
+- **选中文本朗读**：任意格式（EPUB / PDF / TXT / Markdown）selection toolbar 加「朗读选中」按钮。
+- **跨设备朗读位置同步**：新增 `books.last_tts_position` 列（drift schema v14→v15），存 LastTtsPosition JSON（chapterIdx + sentenceIdx + updatedAt）；recordBook 走 outbox 跨端同步。
+- **移动端后台播放（仅 Android / iOS）**：audio_service + audio_session 双依赖；ZhiYueAudioHandler 回调式 BaseAudioHandler（onResume / onPause / onStop / onSkipNext / onSkipPrevious）+ PlatformInfo.isMobile gate；Android manifest FOREGROUND_SERVICE_MEDIA_PLAYBACK + WAKE_LOCK + MediaButtonReceiver；iOS Info.plist UIBackgroundModes audio；audio_session interruption（电话/闹钟）+ becomingNoisy（拔耳机）自动 pause。
+- **Samsung TTS 引擎检测**：4 态 checkTtsAvailability（ready / engineMissing / voiceDownloadRequired / samsungRestricted）+ Settings 「检查 TTS 引擎」按钮 + 弹窗引导（针对 com.samsung.SMT 中文支持问题）。
+
+### Changed
+
+- drift schema v14 → v15（books 表加 `last_tts_position TEXT` nullable 列）。
+- 新增依赖：`flutter_tts: ^4.1.0`、`audio_service: ^0.18.15`、`audio_session: ^0.1.21`。
+- TtsPlaybackController 公共/内部分层：公共 play/pause/resume/stop 在移动端通过 ZhiYueAudioHandler 路由（激活 foreground service），内部分 drive* 方法直接驱动 TtsService，避免回调环。
+- main.dart boot 在 PlatformInfo.isMobile 分支增加 AudioService.init + AudioSessionInitializer.init（皆 best-effort try/catch，失败不影响桌面行为）。
+- TtsService 抽象新增 `Future<String?> getDefaultEngine()`，FlutterTtsServiceImpl 实现。
+
+### Tested
+
+- 测试数 1521 → **1648 pass / 25 skip / 8 baseline fail**（+127 新测试）。
+- 8 个 baseline fail 均为 reader_body_*_test 的 MissingPluginException flutter_tts on dispose，T26 之前已存在，与本版本无关。
+
+### Plan bugs caught by subagents
+
+- T14+T15: 7 plan bugs（PageBreak.startOffset vs offset / locatorToPage 不存在 / temporaryHighlightProvider 不存在 / reader_scaffold book.format / booksDaoProvider / chapterTextProviderFor 是函数不是 provider / Riverpod 生命周期限制）
+- T16+T17+T18: 4 plan bugs（Locator namespace clash / TtsSettingsNotifier._load 私有 / _isAutoNavigating race / globalNavigatorKey 不存在）
+- T19: 3 plan bugs（Material wrapper / _currentSelection 命名 / SelectedContent 字段）
+- T22: 2 plan bugs（构造器签名错 / reentry guard 设计）
+- T25: 1 plan bug（AVAudioSessionCategory.speech 不存在，应为 .playback）
+- T26: 1 plan bug（checkTtsAvailability 直接 new FlutterTts 破坏可测性）
+
+---
+
 ## [1.11.9-alpha] - 2026-07-15
 
 4 个用户报告的 bug + UX 增强：(1) v1.11.8-alpha 引入的书签偏移

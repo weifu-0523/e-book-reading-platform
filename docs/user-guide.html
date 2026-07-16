@@ -915,6 +915,80 @@ kbd {
   <li><strong>关闭</strong>：忽略</li>
 </ul>
 <p>设置 → 阅读 → 可全局开关。PDF 不弹（pdfrx Page-as-Chapter 模式过于频繁）。</p>
+
+<h3>6.8 TTS 朗读（v1.12+）</h3>
+<p>智阅内置 TTS 朗读引擎，支持 AI 响应朗读与书籍章节自动跟读，移动端可后台播放。</p>
+
+<h4>6.8.1 AI 响应朗读</h4>
+<p>在 AI 聊天消息上<strong>长按</strong> → 弹出菜单 → 选「<strong>朗读</strong>」。</p>
+<ul>
+  <li>底部出现 <strong>TtsMiniControls</strong> 浮窗</li>
+  <li>支持：暂停 / 继续 / 上一句 / 下一句 / 停止</li>
+  <li>显示当前句子预览 + 进度条</li>
+</ul>
+
+<h4>6.8.2 章节自动跟读（EPUB / TXT / Markdown）</h4>
+<p>Reader 顶部 chrome 点 <strong>「朗读本章」</strong> 图标（<code>record_voice_over</code>）：</p>
+<ul>
+  <li>从本章开头自动朗读</li>
+  <li>paged 模式自动翻页；scroll 模式自动滚动</li>
+  <li>当前句子<strong>金黄高亮</strong>（区别于用户高亮，3 秒淡出，不写入数据库）</li>
+  <li>手动翻页会<strong>自动暂停</strong> TTS，顶部出现「上次朗读到 第 N 章 [继续]」横幅（5 秒后自动隐藏）</li>
+</ul>
+
+<h4>6.8.3 PDF 选中文本朗读</h4>
+<p>PDF 中选中一段文字 → 工具条点 <strong>「朗读选中」</strong>：</p>
+<ul>
+  <li>仅朗读该段，不进入章节模式</li>
+  <li>适用任意格式（EPUB / PDF / TXT / Markdown）</li>
+</ul>
+
+<h4>6.8.4 章节边界设置</h4>
+<p>设置 → 朗读 → 「章节结束行为」二选一：</p>
+<table>
+<thead><tr><th>模式</th><th>行为</th></tr></thead>
+<tbody>
+<tr><td>连续（默认）</td><td>当前章节结束自动进入下一章</td></tr>
+<tr><td>章末询问</td><td>弹出 SnackBar「继续 / 停止」</td></tr>
+</tbody>
+</table>
+
+<h4>6.8.5 移动端后台播放</h4>
+<p>Android / iOS 上朗读时：</p>
+<ul>
+  <li>锁屏可见<strong>媒体控件</strong>（播放 / 暂停 / 上一句 / 下一句 / 停止）</li>
+  <li>拔耳机或来电<strong>自动暂停</strong></li>
+  <li>Android foreground service 保活通知（Android 14+ 需 <code>FOREGROUND_SERVICE_MEDIA_PLAYBACK</code> 权限，已自动配置）</li>
+  <li>iOS <code>UIBackgroundModes: audio</code>（已配置）</li>
+</ul>
+<div class="callout callout-tip">
+  <div class="callout-title">💡 平台差异</div>
+  桌面（Windows）不启用 audio_service，仅前台朗读。
+</div>
+
+<h4>6.8.6 检查 TTS 引擎（建议首次使用前）</h4>
+<p>设置 → 朗读 → <strong>「检查 TTS 引擎」</strong> 按钮 → 弹窗显示 4 种状态：</p>
+<table>
+<thead><tr><th>状态</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>就绪</td><td>引擎装了 + 语音数据齐，可以开始朗读</td></tr>
+<tr><td>引擎缺失</td><td>完全没装 TTS 引擎，需装 Google TTS</td></tr>
+<tr><td>语音数据未下载</td><td>引擎在但缺语音数据，需到系统 TTS 设置下载对应语言</td></tr>
+<tr><td>Samsung 引擎受限</td><td>检测到 <code>com.samsung.SMT</code>，中文支持受限。建议切换到 Google TTS 或在 Samsung Voice Assistant 下载中文语音</td></tr>
+</tbody>
+</table>
+<div class="callout callout-warning">
+  <div class="callout-title">⚠️ Samsung 用户</div>
+  Samsung 设备首次使用前<strong>强烈建议</strong>跑一次此检查——SMT 引擎对中文支持差，会让朗读体验明显劣化。
+</div>
+
+<h4>6.8.7 跨设备位置同步</h4>
+<p>朗读时当前章节 + 句子序号自动记录到 <code>books.last_tts_position</code>，通过坚果云同步到其他设备。</p>
+<p>在新设备打开同一本书时，<strong>TtsResumePrompt</strong> 显示上次朗读位置（章节号 + [继续] 按钮）。</p>
+<div class="callout callout-tip">
+  <div class="callout-title">📝 同步粒度</div>
+  受 books 表无 <code>updated_at</code> 限制，位置走整 book payload 同步（与封面同步同限制）。多设备并发朗读同书时最后写入者获胜——可接受，朗读是单人活动。
+</div>
 </section>
 
 <!-- ========== 7. 排版设置 ========== -->
@@ -1517,6 +1591,22 @@ exported_at: 2026-07-15T10:30:00
   <li><strong>方法 B</strong>：配置 WebDAV 同步，让云端作为天然备份</li>
   <li><strong>方法 C</strong>：定期用 <a href="#sec-export">第 14 节</a>的 Markdown 批量导出，把笔记沉淀到 Obsidian</li>
 </ul>
+
+<h3>Q13：TTS 没声音？</h3>
+<ol>
+  <li>先到 Settings → 朗读 → 「检查 TTS 引擎」看具体状态</li>
+  <li>Android 用户检查系统 TTS 引擎是否装了 Google TTS（Settings → 系统 → 语言和输入 → 文字转语音输出）</li>
+  <li>Samsung 用户建议切换到 Google TTS 引擎（<code>com.samsung.SMT</code> 对中文支持差，发音怪异或无声音）</li>
+  <li>检查系统音量（媒体音量，不是铃声音量）</li>
+</ol>
+<p>详见第 6.8.6 节。</p>
+
+<h3>Q14：锁屏后 TTS 停了？</h3>
+<ul>
+  <li><strong>Android</strong>：确认系统设置允许智阅后台运行（设置 → 应用 → 智阅 → 电池 → 不限制后台）。Android 14+ 设备需授予 foreground service 权限（首次朗读时系统会弹窗询问）</li>
+  <li><strong>iOS</strong>：应自动续播（<code>UIBackgroundModes: audio</code> 已配置）。如仍停，请到 <a href="https://gitee.com/weifu0523/e-book-reading-platform/issues">Gitee Issues</a> 报告设备型号 + iOS 版本</li>
+  <li><strong>桌面（Windows）</strong>：不支持后台播放，仅前台朗读（最小化窗口仍可继续，关闭窗口会停止）</li>
+</ul>
 </section>
 
 <!-- ========== 19. 已知限制 ========== -->
@@ -1528,7 +1618,7 @@ exported_at: 2026-07-15T10:30:00
   <li><strong>Bug 1 heuristic 不完美</strong>：低 ratio 旧书签（charOffset ≤ plainLen）无法区分新旧格式，小偏差 ≤ 1.73× 仍在原章节内。用户可手动重新添加书签获得精确定位。</li>
   <li><strong>PDF 扫描件不支持文本高亮</strong>：pdfrx 对扫描件（图像页）只能阅读，不能选文字。文本版 PDF 完整支持。</li>
   <li><strong>EPUB 双页渲染</strong>：API 层已 wire，渲染层在 v1.6 引入但部分边界情况待打磨。</li>
-  <li><strong>TTS 集成</strong>：尚未上线（路线图 M2.9，预计 v1.12+）。</li>
+  <li><strong>TTS 后台播放</strong>：桌面（Windows）不支持 audio_service，仅前台朗读。iOS 端 UIBackgroundModes 已配置但未真机 build 验证。Android 真机冒烟测试待用户上报。详见第 6.8.5 节。</li>
   <li><strong>iOS 端</strong>：暂未发布（scaffold 已就绪，待 binary 同步 + CI）。</li>
   <li><strong>reader_flow_integration_test 10 分钟 timeout</strong>：内部测试基础设施的 pre-existing flake，与用户体验无关。</li>
 </ol>

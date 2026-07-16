@@ -268,6 +268,75 @@
 
 设置 → 阅读 → 可全局开关。PDF 不弹（pdfrx Page-as-Chapter 模式过于频繁）。
 
+### 6.8 TTS 朗读（v1.12+）
+
+智阅内置 TTS 朗读引擎，支持 AI 响应朗读与书籍章节自动跟读，移动端可后台播放。
+
+#### 6.8.1 AI 响应朗读
+
+在 AI 聊天消息上**长按** → 弹出菜单 → 选「**朗读**」。
+
+- 底部出现 **TtsMiniControls** 浮窗
+- 支持：暂停 / 继续 / 上一句 / 下一句 / 停止
+- 显示当前句子预览 + 进度条
+
+#### 6.8.2 章节自动跟读（EPUB / TXT / Markdown）
+
+Reader 顶部 chrome 点 **「朗读本章」** 图标（`record_voice_over`）：
+
+- 从本章开头自动朗读
+- paged 模式自动翻页；scroll 模式自动滚动
+- 当前句子**金黄高亮**（区别于用户高亮，3 秒淡出，不写入数据库）
+- 手动翻页会**自动暂停** TTS，顶部出现「上次朗读到 第 N 章 [继续]」横幅（5 秒后自动隐藏）
+
+#### 6.8.3 PDF 选中文本朗读
+
+PDF 中选中一段文字 → 工具条点 **「朗读选中」**：
+
+- 仅朗读该段，不进入章节模式
+- 适用任意格式（EPUB / PDF / TXT / Markdown）
+
+#### 6.8.4 章节边界设置
+
+设置 → 朗读 → 「章节结束行为」二选一：
+
+| 模式 | 行为 |
+|---|---|
+| 连续（默认） | 当前章节结束自动进入下一章 |
+| 章末询问 | 弹出 SnackBar「继续 / 停止」 |
+
+#### 6.8.5 移动端后台播放
+
+Android / iOS 上朗读时：
+
+- 锁屏可见**媒体控件**（播放 / 暂停 / 上一句 / 下一句 / 停止）
+- 拔耳机或来电**自动暂停**
+- Android foreground service 保活通知（Android 14+ 需 `FOREGROUND_SERVICE_MEDIA_PLAYBACK` 权限，已自动配置）
+- iOS `UIBackgroundModes: audio`（已配置）
+
+> 桌面（Windows）不启用 audio_service，仅前台朗读。
+
+#### 6.8.6 检查 TTS 引擎（建议首次使用前）
+
+设置 → 朗读 → **「检查 TTS 引擎」** 按钮 → 弹窗显示 4 种状态：
+
+| 状态 | 说明 |
+|---|---|
+| 就绪 | 引擎装了 + 语音数据齐，可以开始朗读 |
+| 引擎缺失 | 完全没装 TTS 引擎，需装 Google TTS |
+| 语音数据未下载 | 引擎在但缺语音数据，需到系统 TTS 设置下载对应语言 |
+| Samsung 引擎受限 | 检测到 `com.samsung.SMT`，中文支持受限。建议切换到 Google TTS 或在 Samsung Voice Assistant 下载中文语音 |
+
+> Samsung 设备首次使用前**强烈建议**跑一次此检查——SMT 引擎对中文支持差，会让朗读体验明显劣化。
+
+#### 6.8.7 跨设备位置同步
+
+朗读时当前章节 + 句子序号自动记录到 `books.last_tts_position`，通过坚果云同步到其他设备。
+
+在新设备打开同一本书时，**TtsResumePrompt** 显示上次朗读位置（章节号 + [继续] 按钮）。
+
+> 受 books 表无 `updated_at` 限制，位置走整 book payload 同步（与封面同步同限制）。多设备并发朗读同书时最后写入者获胜——可接受，朗读是单人活动。
+
 ---
 
 ## 7. 排版设置
@@ -890,6 +959,25 @@ A：智阅是本地优先应用，最简单的备份：
 
 3. **方法 C**：定期用第 14 节的 Markdown 批量导出，把笔记沉淀到 Obsidian
 
+### Q13：TTS 没声音？
+
+A：
+
+1. 先到 Settings → 朗读 → 「检查 TTS 引擎」看具体状态
+2. Android 用户检查系统 TTS 引擎是否装了 Google TTS（Settings → 系统 → 语言和输入 → 文字转语音输出）
+3. Samsung 用户建议切换到 Google TTS 引擎（`com.samsung.SMT` 对中文支持差，发音怪异或无声音）
+4. 检查系统音量（媒体音量，不是铃声音量）
+
+详见第 6.8.6 节。
+
+### Q14：锁屏后 TTS 停了？
+
+A：
+
+- **Android**：确认系统设置允许智阅后台运行（设置 → 应用 → 智阅 → 电池 → 不限制后台）。Android 14+ 设备需授予 foreground service 权限（首次朗读时系统会弹窗询问）
+- **iOS**：应自动续播（`UIBackgroundModes: audio` 已配置）。如仍停，请到 [Gitee Issues](https://gitee.com/weifu0523/e-book-reading-platform/issues) 报告设备型号 + iOS 版本
+- **桌面（Windows）**：不支持后台播放，仅前台朗读（最小化窗口仍可继续，关闭窗口会停止）
+
 ---
 
 ## 19. 已知限制
@@ -902,7 +990,7 @@ A：智阅是本地优先应用，最简单的备份：
 
 3. **EPUB 双页渲染**：API 层已 wire，渲染层在 v1.6 引入但部分边界情况待打磨。
 
-4. **TTS 集成**：尚未上线（路线图 M2.9，预计 v1.12+）。
+4. **TTS 后台播放**：桌面（Windows）不支持 audio_service，仅前台朗读。iOS 端 UIBackgroundModes 已配置但未真机 build 验证。Android 真机冒烟测试待用户上报。详见第 6.8.5 节。
 
 5. **iOS 端**：暂未发布（scaffold 已就绪，待 binary 同步 + CI）。
 
