@@ -278,5 +278,83 @@ void main() {
       expect(positioned.left, 16.0);
       expect(positioned.right, 16.0); // fallback 用 left+right 居中
     });
+
+    // T19 (2026-07-16)：选区 toolbar「朗读选中」按钮，spec §3.8 PDF 用户
+    // 无「朗读本章」入口，靠选中文本走 ephemeral AI message scope TTS。
+    // 全格式可见（EPUB/MD/TXT/PDF），caller 决定是否提供 onReadAloud。
+    testWidgets('T19: shows 朗读选中 button when onReadAloud provided',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 800,
+            height: 600,
+            child: Stack(
+              children: [
+                ReaderSelectionToolbar(
+                  selection: const SelectedContent(plainText: 'highlighted text'),
+                  onExcerpt: () {},
+                  onCopy: () {},
+                  onReadAloud: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(find.text('朗读选中'), findsOneWidget);
+    });
+
+    testWidgets('T19: hides 朗读选中 button when onReadAloud is null',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 800,
+            height: 600,
+            child: Stack(
+              children: [
+                ReaderSelectionToolbar(
+                  selection: const SelectedContent(plainText: 'highlighted text'),
+                  onExcerpt: () {},
+                  onCopy: () {},
+                  // onReadAloud omitted
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(find.text('朗读选中'), findsNothing);
+    });
+
+    testWidgets('T19: fires onReadAloud callback when tapped',
+        (tester) async {
+      var tapped = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 800,
+            height: 600,
+            child: Stack(
+              children: [
+                ReaderSelectionToolbar(
+                  selection: const SelectedContent(plainText: 'highlighted text'),
+                  onExcerpt: () {},
+                  onCopy: () {},
+                  onReadAloud: () => tapped = true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      await tester.tap(find.text('朗读选中'));
+      await tester.pump();
+      expect(tapped, isTrue);
+    });
   });
 }

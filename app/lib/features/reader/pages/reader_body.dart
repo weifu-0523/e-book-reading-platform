@@ -43,6 +43,10 @@ import '../../../data/models/book.dart';
 import '../../../features/ai/providers/review_controller.dart';
 import '../../../features/ai/widgets/review_preview_sheet.dart';
 import '../../../features/tts/providers/tts_reader_controller.dart';
+// T19 (2026-07-16)：选区 toolbar「朗读选中」走 ephemeral AI message scope，
+// 复用 TtsPlaybackController.play 接口（无 chapter persistence）。
+import '../../../features/tts/providers/tts_playback_controller.dart';
+import '../../../services/tts/sentence_segmenter.dart';
 // M2.7/T21: AI drawer widget (chat panel) wired into narrow Scaffold.endDrawer
 // + wide Row conditional panel.
 // M2.7/T25: ChatSessionController.setPendingInput used by _onAskAi to push
@@ -897,6 +901,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             stackSize: _stackSize(),
             onExcerpt: _openExcerptSheet,
             onCopy: _onCopySelection,
+            // T19：全格式可见。spec §3.8 强制 PDF 需要此入口（PDF 没有「朗读本章」），
+            // 但 EPUB/MD/TXT 同样实用（用户只想听选段而不整章）。Segmenter 不需要
+            // CFI ranges —— ephemeral playback，messageId 唯一即可，不持久化 last_tts_position。
+            onReadAloud: _onReadSelectionAloud,
             onAskAi: () => _onAskAi(innerContext),
           ),
           // 底栏始终可见，显示阅读进度。
@@ -1246,6 +1254,30 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     final sel = _selection;
     if (sel == null) return;
     Clipboard.setData(ClipboardData(text: sel.plainText));
+    if (mounted) setState(() => _selection = null);
+  }
+
+  /// T19 (2026-07-16)：选区 toolbar「朗读选中」。
+  ///
+  /// spec §3.8：PDF 没有「朗读本章」入口，用户靠选中文本走 ephemeral TTS。
+  /// 决策扩展到全格式（EPUB/MD/TXT）——只朗读选段而不整章，所有格式都实用。
+  ///
+  /// 实现：用 [SentenceSegmenter.split] 切句（无需 CFI ranges —— ephemeral
+  /// playback 不需要 offset 跟踪），直接调
+  /// [TtsPlaybackController.play] with [TtsScopeAiMessage]（messageId
+  /// 形如 `pdf-selection-<ms>`，唯一即可，**不**写入 last_tts_position，
+  /// 因为 TtsScopeChapter 才持久化）。
+  void _onReadSelectionAloud() {
+    final sel = _selection;
+    if (sel == null || sel.plainText.isEmpty) return;
+    final sentences = SentenceSegmenter.split(sel.plainText);
+    if (sentences.isEmpty) return;
+    ref.read(ttsPlaybackControllerProvider.notifier).play(
+      scope: TtsScopeAiMessage(
+        messageId: 'pdf-selection-${DateTime.now().millisecondsSinceEpoch}',
+      ),
+      sentences: sentences,
+    );
     if (mounted) setState(() => _selection = null);
   }
 

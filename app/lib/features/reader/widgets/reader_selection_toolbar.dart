@@ -42,6 +42,11 @@ class ReaderSelectionToolbar extends StatelessWidget {
   final VoidCallback onCopy;
   final VoidCallback? onAskAi;
 
+  /// T19 (2026-07-16)：选区「朗读选中」回调。仅当父组件提供时渲染按钮。
+  /// 适用于全格式（EPUB/MD/TXT/PDF）；spec §3.8 强制要求 PDF 提供（因 PDF
+  /// 没有「朗读本章」入口），caller 决定何时挂上。
+  final VoidCallback? onReadAloud;
+
   /// M3b/任务9：选区在父 [Stack] 局部坐标系内的 Rect。非空时工具条跟随
   /// 选区定位；为空时走 fallback 顶部居中。坐标由 reader_body 通过
   /// SelectionListenerNotifier（升级版 Flutter）或其它坐标源填充；
@@ -58,6 +63,7 @@ class ReaderSelectionToolbar extends StatelessWidget {
     required this.onExcerpt,
     required this.onCopy,
     this.onAskAi,
+    this.onReadAloud,
     this.selectionRect,
     this.stackSize,
   });
@@ -72,6 +78,7 @@ class ReaderSelectionToolbar extends StatelessWidget {
       onExcerpt: onExcerpt,
       onCopy: onCopy,
       onAskAi: onAskAi,
+      onReadAloud: onReadAloud,
     );
 
     final rect = selectionRect;
