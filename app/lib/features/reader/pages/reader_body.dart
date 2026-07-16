@@ -50,6 +50,7 @@ import '../../../features/tts/providers/tts_reader_controller.dart';
 import '../../../features/ai_chat/providers/chat_session_controller.dart';
 import '../../../features/ai_chat/widgets/ai_drawer_widget.dart';
 import '../../../features/tts/widgets/tts_chapter_end_prompt_listener.dart';
+import '../../../features/tts/widgets/tts_resume_prompt.dart';
 import '../controllers/bookmark_controller.dart';
 import '../controllers/reader_ui_controller.dart';
 import '../providers/notes_controller.dart';
@@ -740,6 +741,10 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
       builder: (innerContext) => Stack(
         key: _stackKey,
         children: [
+          // T18 (2026-07-16): TtsResumePrompt banner at top of reader.
+          // Hidden when no last_tts_position OR TTS is currently active.
+          // Auto-hides 5s after first appearance.
+          TtsResumePrompt(bookId: widget.bookId),
           // M2.11 回归修复：ReaderProgressBar 自 M2.11 起在 Stack 顶层
           // Positioned(bottom: 0) 始终可见，但 EPUB Paginator 用 Stack 完整
           // 高度切页 → 底部 ~32px 文字被 progress bar 不透明背景遮住。

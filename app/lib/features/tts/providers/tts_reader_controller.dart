@@ -17,7 +17,8 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:reader_engine/core/locator.dart';
+import 'package:reader_engine/core/locator.dart' as re_locator;
+import 'package:reader_engine/engine/reader_engine.dart';
 import 'package:reader_engine/rendering/pagination_model.dart';
 
 import '../../../core/app_providers.dart' show chapterTextProviderFor;
@@ -67,6 +68,18 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   /// on [stop] / [dispose] and replaced whenever [start] re-subscribes
   /// (idempotent — re-subscription just reattaches the listener).
   StreamSubscription<TtsPlaybackState>? _playbackSub;
+
+  /// T18: Subscription to the reader engine's `currentLocation$` stream.
+  /// Used to detect manual page flips while TTS is speaking → pause. Set
+  /// up in [start], cancelled in [stop] / [dispose].
+  StreamSubscription<re_locator.Locator>? _engineLocationSub;
+
+  /// T18: latch true while [_autoNavigate] is calling engine.gotoLocator /
+  /// PageController.jumpToPage. The engine emits a location change as a
+  /// side-effect of those calls; without this guard, _onEngineLocation
+  /// would treat our own navigation as a "manual flip" and pause TTS in
+  /// a self-defeating loop.
+  bool _isAutoNavigating = false;
 
   /// Snapshot of the sentences for the active chapter. Indexed by
   /// `TtsPlaybackState.currentIndex`. Replaced on every [start] call.
@@ -130,6 +143,10 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     await _playbackSub?.cancel();
     _playbackSub = _playbackControllerStream().listen(_onPlaybackChange);
 
+    // T18: subscribe to engine location stream so manual page flips during
+    // TTS playback trigger pause. Idempotent — prior subscription cancelled.
+    _subscribeToEngineLocation(engine);
+
     // Dispatch play.
     await _ref.read(ttsPlaybackControllerProvider.notifier).play(
       scope: TtsScopeChapter(bookId: bookId, chapterIdx: chapterIdx),
@@ -147,8 +164,11 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   /// Safe to call multiple times — no-op when already idle.
   Future<void> stop() async {
     _wasSpeaking = false;
+    _isAutoNavigating = false;
     await _playbackSub?.cancel();
     _playbackSub = null;
+    await _engineLocationSub?.cancel();
+    _engineLocationSub = null;
     await _ref.read(ttsPlaybackControllerProvider.notifier).stop();
     _ref.read(ttsCurrentRangeProvider.notifier).state = null;
     _ref.read(ttsChapterEndRequestProvider.notifier).state = null;
@@ -162,6 +182,65 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   /// internal version is private because callers like `_onChapterBoundaryReached`
   /// are inside the controller; the public version is for widget-side users.
   Future<void> continueToNextChapter() => _loadNextChapterAndContinue();
+
+  /// T18: resumes playback from a previously persisted position. Used by
+  /// TtsResumePrompt's 继续朗读 button when the user opens a book that
+  /// was last read aloud.
+  ///
+  /// Resolves the [chapterIdx]-th chapter via [ttsChapterTextResolverProvider],
+  /// segments it, then dispatches [TtsPlaybackController.playAt] starting
+  /// at [sentenceIdx]. The engine's chapter is *not* advanced here (the
+  /// caller — typically reader_body's TtsResumePrompt tap handler — is
+  /// responsible for ensuring the reader is already on `chapterIdx`, or
+  /// accepts that the highlight will lag until the user navigates there).
+  /// For MVP we mirror the index and let [_autoNavigate] bring the
+  /// sentence into view via engine.gotoLocator on the next speak event.
+  Future<void> resumeFromLast({
+    required String bookId,
+    required int chapterIdx,
+    required int sentenceIdx,
+  }) async {
+    final engine = _ref.read(ttsReaderEngineRefProvider);
+    if (engine == null) return;
+
+    _currentBookId = bookId;
+    _currentChapterIdx = chapterIdx;
+    _ref.read(ttsCurrentBookIdProvider.notifier).state = bookId;
+    _ref.read(ttsCurrentChapterIdxProvider.notifier).state = chapterIdx;
+
+    final book = await _ref.read(bookRepositoryProvider).getById(bookId);
+    if (book == null) return;
+
+    final resolver = _ref.read(ttsChapterTextResolverProvider);
+    final text = await resolver(book, chapterIdx);
+    if (text.isEmpty) return;
+
+    final boundary = CFIBoundaryExtractor.extract(
+      chapterPlainText: text,
+      chapterIndex: chapterIdx,
+    );
+    _sentences = SentenceSegmenter.split(
+      text,
+      paragraphCfiRanges: boundary.cfiRanges,
+      paragraphCharSpans: boundary.charSpans,
+    );
+    if (_sentences.isEmpty) return;
+
+    await _playbackSub?.cancel();
+    _playbackSub = _playbackControllerStream().listen(_onPlaybackChange);
+    _subscribeToEngineLocation(engine);
+
+    await _ref.read(ttsPlaybackControllerProvider.notifier).playAt(
+          scope: TtsScopeChapter(bookId: bookId, chapterIdx: chapterIdx),
+          sentences: _sentences,
+          startIndex: sentenceIdx,
+        );
+
+    state = TtsReaderState(
+      isActive: true,
+      sentenceCount: _sentences.length,
+    );
+  }
 
   /// Reactive callback for [TtsPlaybackController] state changes.
   ///
@@ -231,7 +310,9 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     }
 
     // 3. Auto-navigate (paged jumpToPage or scroll gotoLocator).
-    _autoNavigate(sentence);
+    // T18: async because scroll-mode awaits engine.gotoLocator so the
+    // _isAutoNavigating guard stays true through the location emission.
+    unawaited(_autoNavigate(sentence));
 
     // 4. Latch wasSpeaking so the next phase→idle transition knows to
     // invoke chapter-boundary logic (T17).
@@ -345,6 +426,9 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     // Re-subscribe to playback state (idempotent — cancels prior sub).
     await _playbackSub?.cancel();
     _playbackSub = _playbackControllerStream().listen(_onPlaybackChange);
+    // T18: keep the engine location subscription attached (engine ref
+    // unchanged). Idempotent resubscribe for safety.
+    _subscribeToEngineLocation(engine);
 
     await _ref.read(ttsPlaybackControllerProvider.notifier).play(
           scope: TtsScopeChapter(bookId: bookId, chapterIdx: nextIdx),
@@ -379,7 +463,7 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   ///   - CFI is malformed
   ///   - paged mode + page breaks are empty (chapter not yet laid out)
   ///   - paged mode + PageController not attached or current page == target
-  void _autoNavigate(Sentence sentence) {
+  Future<void> _autoNavigate(Sentence sentence) async {
     final engine = _ref.read(ttsReaderEngineRefProvider);
     if (engine == null) return;
     final cfi = sentence.startCfi;
@@ -391,54 +475,93 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     final charOffset = int.tryParse(cfi.substring(colon + 1));
     if (charOffset == null) return;
 
-    if (engine.paginationMode == PaginationMode.scroll) {
-      // Scroll mode: hand the engine an EpubRangeLocator pointing at the
-      // sentence's character offset. The renderer's scroll-mode gotoLocator
-      // path will scroll so the range is visible (same path reader_body's
-      // _maybeHandleInitialLocator / _onAnnotationTap use).
-      final locator = EpubRangeLocator(
-        chapterIndex: _currentChapterIdx,
-        startOffset: charOffset,
-        endOffset: charOffset + 1,
-        quote: sentence.text,
-      );
-      // Best-effort: never let navigation throw break playback.
-      try {
-        unawaited(engine.gotoLocator(locator));
-      } catch (_) {
-        // gotoLocator may throw on transient engine state — swallow.
-      }
-      return;
-    }
-
-    // Paged mode: jumpToPage via binary search over page breaks (T15 logic).
-    final breaks = engine.currentChapterPageBreaks;
-    if (breaks.isEmpty) return;
-
-    // Binary-search for the last break whose startOffset <= charOffset.
-    // breaks[i] = the page whose [startOffset, endOffset) range starts
-    // at startOffset. Find the largest i with breaks[i].startOffset <= charOffset.
-    int targetPage = 0;
-    for (int i = 0; i < breaks.length; i++) {
-      if (breaks[i].startOffset <= charOffset) {
-        targetPage = i;
-      } else {
-        break;
-      }
-    }
-
-    final pc = engine.pageController;
-    if (pc == null || !pc.hasClients) return;
-    final currentPage = pc.page?.round();
-    if (currentPage == null) return;
-    if (currentPage == targetPage) return;
-
-    // Best-effort jump; never let this throw to break playback.
+    // T18: set _isAutoNavigating around navigation calls so our
+    // _onEngineLocation listener treats these emissions as "ours" and
+    // doesn't trigger pause-on-manual-flip. try/finally guarantees the
+    // flag is cleared even if navigation throws.
+    _isAutoNavigating = true;
     try {
-      pc.jumpToPage(targetPage);
-    } catch (_) {
-      // PageController can throw if the widget tree is mid-build. Swallow.
+      if (engine.paginationMode == PaginationMode.scroll) {
+        // Scroll mode: hand the engine an EpubRangeLocator pointing at the
+        // sentence's character offset. The renderer's scroll-mode gotoLocator
+        // path will scroll so the range is visible (same path reader_body's
+        // _maybeHandleInitialLocator / _onAnnotationTap use).
+        final locator = re_locator.EpubRangeLocator(
+          chapterIndex: _currentChapterIdx,
+          startOffset: charOffset,
+          endOffset: charOffset + 1,
+          quote: sentence.text,
+        );
+        // Await gotoLocator so _isAutoNavigating stays true while the
+        // engine synchronously / microtask-emit s its location change
+        // (production engines emit via state$ which is async; awaiting
+        // the gotoLocator Future covers both sync and async emission
+        // paths since the location is emitted before gotoLocator resolves).
+        try {
+          await engine.gotoLocator(locator);
+        } catch (_) {
+          // gotoLocator may throw on transient engine state — swallow.
+        }
+        return;
+      }
+
+      // Paged mode: jumpToPage via binary search over page breaks (T15 logic).
+      final breaks = engine.currentChapterPageBreaks;
+      if (breaks.isEmpty) return;
+
+      // Binary-search for the last break whose startOffset <= charOffset.
+      // breaks[i] = the page whose [startOffset, endOffset) range starts
+      // at startOffset. Find the largest i with breaks[i].startOffset <= charOffset.
+      int targetPage = 0;
+      for (int i = 0; i < breaks.length; i++) {
+        if (breaks[i].startOffset <= charOffset) {
+          targetPage = i;
+        } else {
+          break;
+        }
+      }
+
+      final pc = engine.pageController;
+      if (pc == null || !pc.hasClients) return;
+      final currentPage = pc.page?.round();
+      if (currentPage == null) return;
+      if (currentPage == targetPage) return;
+
+      // Best-effort jump; never let this throw to break playback.
+      try {
+        pc.jumpToPage(targetPage);
+      } catch (_) {
+        // PageController can throw if the widget tree is mid-build. Swallow.
+      }
+    } finally {
+      _isAutoNavigating = false;
     }
+  }
+
+  /// T18: subscribes to the reader engine's location stream. Whenever the
+  /// location changes (user manually flipped a page or scrolled), if TTS
+  /// is currently speaking and we didn't initiate the navigation ourselves
+  /// (see [_isAutoNavigating]), call [TtsPlaybackController.pause].
+  ///
+  /// Setup is called from [start]; cancellation happens in [stop] /
+  /// [dispose]. Idempotent — if called twice, the prior subscription is
+  /// cancelled first.
+  void _subscribeToEngineLocation(ReaderEngine engine) {
+    _engineLocationSub?.cancel();
+    _engineLocationSub = engine.currentLocation$.listen(_onEngineLocation);
+  }
+
+  /// Reactive callback for the reader engine's location emissions.
+  /// Filters out auto-navigation emissions (T18 guard) and only fires
+  /// pause when the user navigated manually.
+  void _onEngineLocation(re_locator.Locator loc) {
+    if (_isAutoNavigating) return;
+    if (!state.isActive) return;
+    final phase = _ref.read(ttsPlaybackControllerProvider).phase;
+    if (phase != TtsPhase.speaking) return;
+    // User navigated manually while TTS was speaking → pause so they can
+    // re-orient. Best-effort; never throw.
+    unawaited(_ref.read(ttsPlaybackControllerProvider.notifier).pause());
   }
 
   /// Look up the BooksDao lazily. Wrapped so tests can override the
@@ -455,6 +578,7 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   @override
   void dispose() {
     _playbackSub?.cancel();
+    _engineLocationSub?.cancel();
     super.dispose();
   }
 }

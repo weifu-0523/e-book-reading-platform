@@ -141,6 +141,27 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     await _speakCurrent();
   }
 
+  /// T18: like [play] but starts at [startIndex] instead of 0. Used by
+  /// TtsReaderController.resumeFromLast when the user picks up a previous
+  /// session mid-chapter. Out-of-range index is clamped to [0, len-1].
+  Future<void> playAt({
+    required TtsScope scope,
+    required List<Sentence> sentences,
+    required int startIndex,
+  }) async {
+    if (sentences.isEmpty) return;
+    await _service.init();
+    _queue = List<Sentence>.unmodifiable(sentences);
+    final clamped = startIndex.clamp(0, sentences.length - 1);
+    state = TtsPlaybackState(
+      phase: TtsPhase.loading,
+      scope: scope,
+      currentIndex: clamped,
+      queueLength: _queue.length,
+    );
+    await _speakCurrent();
+  }
+
   Future<void> pause() async {
     await _service.pause();
     state = state.copyWith(phase: TtsPhase.paused);

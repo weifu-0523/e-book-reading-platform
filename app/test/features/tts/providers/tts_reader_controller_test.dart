@@ -49,6 +49,12 @@ class _MockBookRepository extends Mock implements BookRepository {}
 /// overridden to const defaults so callers don't have to `when(...)`
 /// them; everything else stays mocktail-default.
 class _FakeReaderEngine extends Mock implements ReaderEngine {
+  /// T18: location stream. Defaults to an empty stream so existing T15
+  /// tests don't need to wire one up. Tests that exercise the
+  /// pause-on-manual-flip behaviour use [_FakeLocationEngine] instead.
+  final StreamController<re_locator.Locator> locationController =
+      StreamController<re_locator.Locator>.broadcast();
+
   @override
   PaginationMode get paginationMode => PaginationMode.paged;
 
@@ -65,6 +71,10 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
 
   @override
   Future<void> nextSpine() async {}
+
+  @override
+  Stream<re_locator.Locator> get currentLocation$ =>
+      locationController.stream;
 }
 
 /// Scroll-mode variant of [_FakeReaderEngine]. Records `gotoLocator` calls
@@ -73,6 +83,9 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
 class _FakeScrollReaderEngine extends Mock implements ReaderEngine {
   final List<re_locator.Locator> gotoLocatorCalls =
       <re_locator.Locator>[];
+
+  final StreamController<re_locator.Locator> locationController =
+      StreamController<re_locator.Locator>.broadcast();
 
   @override
   PaginationMode get paginationMode => PaginationMode.scroll;
@@ -84,8 +97,87 @@ class _FakeScrollReaderEngine extends Mock implements ReaderEngine {
   PageController? get pageController => null;
 
   @override
+  Future<void> get chapterSwitchSettled => Future<void>.value();
+
+  @override
+  Future<void> nextSpine() async {}
+
+  @override
+  Stream<re_locator.Locator> get currentLocation$ =>
+      locationController.stream;
+
+  @override
   Future<void> gotoLocator(re_locator.Locator locator) async {
     gotoLocatorCalls.add(locator);
+  }
+}
+
+/// T18: reader engine with a controllable `currentLocation$` stream.
+/// Lets tests emit synthetic location changes to verify pause-on-manual-flip
+/// behaviour without dragging in a real EPUB engine.
+class _FakeLocationEngine extends Mock implements ReaderEngine {
+  final StreamController<re_locator.Locator> locationController =
+      StreamController<re_locator.Locator>.broadcast();
+
+  @override
+  PaginationMode get paginationMode => PaginationMode.paged;
+
+  @override
+  List<PageBreak> get currentChapterPageBreaks => const [
+        PageBreak(startOffset: 0, endOffset: 1000),
+      ];
+
+  @override
+  PageController? get pageController => null;
+
+  @override
+  Stream<re_locator.Locator> get currentLocation$ =>
+      locationController.stream;
+
+  @override
+  Future<void> get chapterSwitchSettled => Future<void>.value();
+
+  @override
+  Future<void> nextSpine() async {}
+
+  @override
+  Future<void> gotoLocator(re_locator.Locator locator) async {}
+}
+
+/// T18: scroll-mode engine that emits a synthetic location on every
+/// gotoLocator call. Used to verify the _isAutoNavigating guard: if the
+/// guard works, our own gotoLocator emission is ignored; without the
+/// guard it would trigger pause.
+class _FakeScrollLocationEmittingEngine extends Mock
+    implements ReaderEngine {
+  final StreamController<re_locator.Locator> locationController =
+      StreamController<re_locator.Locator>.broadcast();
+
+  @override
+  PaginationMode get paginationMode => PaginationMode.scroll;
+
+  @override
+  List<PageBreak> get currentChapterPageBreaks => const [];
+
+  @override
+  PageController? get pageController => null;
+
+  @override
+  Stream<re_locator.Locator> get currentLocation$ =>
+      locationController.stream;
+
+  @override
+  Future<void> get chapterSwitchSettled => Future<void>.value();
+
+  @override
+  Future<void> nextSpine() async {}
+
+  @override
+  Future<void> gotoLocator(re_locator.Locator locator) async {
+    // Emit the locator on the location stream — this mirrors what a real
+    // engine does after navigating. The _isAutoNavigating guard in
+    // _autoNavigate must suppress this emission so it doesn't trigger pause.
+    locationController.add(locator);
   }
 }
 
@@ -127,6 +219,7 @@ void main() {
     when(() => svc.stop()).thenAnswer((_) async {
       stateController.add(TtsState.idle);
     });
+    when(() => svc.pause()).thenAnswer((_) async {});
     when(() => svc.dispose()).thenAnswer((_) async {});
 
     db = AppDatabase.forTesting();
@@ -365,6 +458,77 @@ void main() {
           (firstCall as re_locator.EpubRangeLocator).chapterIndex, 0);
       // First sentence starts at charOffset 0 (CFI '0:0').
       expect(firstCall.startOffset, greaterThanOrEqualTo(0));
+    });
+  });
+
+  group('TtsReaderController manual flip pause (T18)', () {
+    test('manual location emission during speaking triggers pause',
+        () async {
+      final engine = _FakeLocationEngine();
+      addTearDown(engine.locationController.close);
+      final container = buildContainer(
+        chapterText: 'Sentence one. Sentence two.',
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      // Let speaking propagate.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+          container.read(ttsPlaybackControllerProvider).phase,
+          TtsPhase.speaking,
+          reason: 'precondition: TTS should be speaking');
+
+      // Simulate manual page flip (user swipes) — emit a location change
+      // OUTSIDE _autoNavigate's _isAutoNavigating window.
+      engine.locationController.add(const re_locator.EpubCfiLocator(
+        cfi: '0:50',
+        chapterIndex: 0,
+      ));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+          container.read(ttsPlaybackControllerProvider).phase,
+          TtsPhase.paused,
+          reason: 'manual page flip should pause TTS');
+    });
+
+    test(
+        'auto-navigation does NOT trigger pause '
+        '(_isAutoNavigating guards scroll-mode gotoLocator emission)',
+        () async {
+      // Use a scroll engine that emits a location synchronously when
+      // gotoLocator is called — this mirrors what real engines do. If the
+      // guard is missing, the location emission from our own gotoLocator
+      // would trigger pause.
+      final engine = _FakeScrollLocationEmittingEngine();
+      addTearDown(engine.locationController.close);
+      final container = buildContainer(
+        chapterText: 'Sentence one. Sentence two.',
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      // _autoNavigate (scroll branch) fires gotoLocator which itself
+      // emits a location. Without _isAutoNavigating, this would pause.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+          container.read(ttsPlaybackControllerProvider).phase,
+          TtsPhase.speaking,
+          reason: 'auto-navigation gotoLocator emission must NOT pause.');
     });
   });
 
