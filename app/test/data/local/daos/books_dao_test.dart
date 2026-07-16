@@ -17,6 +17,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/data/local/daos/books_dao.dart';
 import 'package:zhiyue/data/local/database.dart';
+import 'package:zhiyue/data/models/last_tts_position.dart';
 
 import '../../../helpers/drift_test_helper.dart';
 
@@ -155,5 +156,52 @@ void main() {
     await dao.deleteBooks({'b0', 'b1', 'b2'});
     final remaining = await dao.getAll();
     expect(remaining.map((b) => b.id).toSet(), {'b3', 'b4'});
+  });
+
+  test('getLastTtsPosition returns null when column is NULL', () async {
+    await dao.insertOne(
+      id: 'b1',
+      title: 't',
+      format: 'epub',
+      filePath: 'p',
+      fileHash: 'h',
+      fileSizeBytes: 0,
+    );
+    expect(await dao.getLastTtsPosition('b1'), isNull);
+  });
+
+  test('setLastTtsPosition persists and getLastTtsPosition round-trips',
+      () async {
+    await dao.insertOne(
+      id: 'b1',
+      title: 't',
+      format: 'epub',
+      filePath: 'p',
+      fileHash: 'h',
+      fileSizeBytes: 0,
+    );
+    final pos =
+        LastTtsPosition(chapterIdx: 7, sentenceIdx: 13, updatedAt: 1721234567890);
+    await dao.setLastTtsPosition('b1', pos);
+    final read = await dao.getLastTtsPosition('b1');
+    expect(read, pos);
+  });
+
+  test('getLastTtsPosition returns null on corrupted JSON', () async {
+    await dao.insertOne(
+      id: 'b1',
+      title: 't',
+      format: 'epub',
+      filePath: 'p',
+      fileHash: 'h',
+      fileSizeBytes: 0,
+    );
+    // Bypass model validation with raw SQL — emulate a corrupted payload
+    // arriving via sync (older client, truncation, etc.).
+    await db.customStatement(
+      "UPDATE books SET last_tts_position = '{not valid json' WHERE id = ?",
+      ['b1'],
+    );
+    expect(await dao.getLastTtsPosition('b1'), isNull);
   });
 }

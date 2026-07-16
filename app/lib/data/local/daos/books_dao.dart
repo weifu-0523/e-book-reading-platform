@@ -14,8 +14,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
+import '../../models/last_tts_position.dart';
 import '../database.dart';
 import '../tables/books.dart';
 
@@ -99,6 +102,41 @@ class BooksDao extends DatabaseAccessor<AppDatabase> with _$BooksDaoMixin {
   Future<int> updateLastReadAt(String id, DateTime ts) {
     return (update(books)..where((t) => t.id.equals(id)))
         .write(BooksCompanion(lastReadAt: Value(ts)));
+  }
+
+  /// Reads the persisted TTS cursor for [id]. Returns `null` when:
+  ///   - the book row does not exist, OR
+  ///   - the `last_tts_position` column is NULL (never read aloud), OR
+  ///   - the stored JSON is unparseable (treat as "never read aloud" so a
+  ///     corrupted payload arriving via sync never throws).
+  ///
+  /// Uses `customSelect` rather than drift DSL because we want the raw text
+  /// payload verbatim — `fromJson` does the structured parsing.
+  Future<LastTtsPosition?> getLastTtsPosition(String id) async {
+    final row = await (customSelect(
+      'SELECT last_tts_position FROM books WHERE id = ?',
+      variables: [Variable.withString(id)],
+    )).getSingleOrNull();
+    final raw = row?.read<String?>('last_tts_position');
+    if (raw == null) return null;
+    try {
+      return LastTtsPosition.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      // Corrupted JSON — degrade gracefully to "never read aloud".
+      return null;
+    }
+  }
+
+  /// Persists the TTS cursor for [id]. Uses drift DSL (not customStatement)
+  /// so the books-table stream fires — the reader UI may later watch this
+  /// to update a "resume from chapter N" hint without polling.
+  Future<int> setLastTtsPosition(String id, LastTtsPosition pos) {
+    return (update(books)..where((t) => t.id.equals(id))).write(
+      BooksCompanion(
+        lastTtsPosition: Value(jsonEncode(pos.toJson())),
+      ),
+    );
   }
 
   Future<int> deleteBook(String id) {
