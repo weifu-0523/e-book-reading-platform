@@ -40,6 +40,12 @@ class ZhiYueTtsService : Service() {
         get() = mediaSession
 
     private var audioFocusRequest: AudioFocusRequest? = null
+
+    /// Legacy (API < 26) path uses [AudioManager.OnAudioFocusChangeListener] instead
+    /// of [AudioFocusRequest]. Retained to avoid GC and to allow abandon on destroy.
+    @Suppress("DEPRECATION")
+    private var legacyAudioFocusListener: AudioManager.OnAudioFocusChangeListener? = null
+
     private var audioManager: AudioManager? = null
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyCallback: TelephonyCallback? = null
@@ -142,6 +148,11 @@ class ZhiYueTtsService : Service() {
         mediaSession = null
         audioFocusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
         audioFocusRequest = null
+        legacyAudioFocusListener?.let { listener ->
+            @Suppress("DEPRECATION")
+            audioManager?.abandonAudioFocus(listener)
+        }
+        legacyAudioFocusListener = null
         audioFocusRequestedForTest = false
 
         val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
@@ -198,16 +209,36 @@ class ZhiYueTtsService : Service() {
                     }
                 }
                 .build()
-            audioManager?.requestAudioFocus(audioFocusRequest!!)
+            val result = audioManager?.requestAudioFocus(audioFocusRequest!!)
+            if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                audioFocusRequestedForTest = true
+            } else {
+                Log.w(TAG, "AudioFocus request denied: $result")
+                audioFocusRequest = null
+            }
         } else {
+            val legacyListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+                when (focusChange) {
+                    AudioManager.AUDIOFOCUS_LOSS,
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> handlePause()
+                }
+            }
             @Suppress("DEPRECATION")
-            audioManager?.requestAudioFocus(
-                null,
+            val result = audioManager?.requestAudioFocus(
+                legacyListener,
                 AudioManager.STREAM_MUSIC,
                 AudioManager.AUDIOFOCUS_GAIN
             )
+            if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                audioFocusRequestedForTest = true
+                // OnAudioFocusChangeListener target needs to be retained; abandonAudioFocus
+                // in onDestroy requires the same listener reference.
+                @Suppress("DEPRECATION")
+                legacyAudioFocusListener = legacyListener
+            } else {
+                Log.w(TAG, "Legacy AudioFocus request denied: $result")
+            }
         }
-        audioFocusRequestedForTest = true
     }
 
     private fun setupPhoneStateListener() {
