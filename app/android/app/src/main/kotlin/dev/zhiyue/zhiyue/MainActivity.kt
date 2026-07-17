@@ -9,17 +9,38 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.Log
 import java.io.File
 
-/// v1.12.3-alpha-exp3 P0 diagnostic: custom plugin registration that
-/// SKIPS audio_service / audio_session / flutter_tts to test the
-/// hypothesis that one of these 3 plugins' attach-time work triggers
-/// the Chinese-ROM (Honor / Xiaomi / Huawei-pre-Harmony) startup kill.
+/// v1.12.3-alpha P0 fix: custom plugin registration that SKIPS
+/// audio_service / audio_session / flutter_tts.
 ///
-/// Trade-off accepted for this diagnostic build only:
+/// 4-attempt root cause analysis (Chinese ROM startup kill on
+/// Honor / Xiaomi / Huawei-pre-Harmony, Android 12+):
+///   - v1.12.1-alpha: lazy-init audio_service in main() → still crashes.
+///     Cause: plugin attach-time work runs BEFORE main() via
+///     GeneratedPluginRegistrant.registerWith, so the lazy guard never
+///     has a chance to fire.
+///   - v1.12.2-alpha-exp: strip audio_service from AndroidManifest →
+///     still crashes. Cause: manifest declaration is NOT the trigger;
+///     the plugin's onAttachedToEngine code (TextToSpeech ctor,
+///     AudioDeviceCallback registration, foreground service bind) is.
+///   - v1.12.3-alpha-exp2: patch pub-cache flutter_tts + audio_session
+///     to defer system-service binding → still crashes. Cause: missed
+///     audio_service's own attach-time work; pub-cache patch is a losing
+///     game because 3 plugins each have multiple init paths.
+///   - v1.12.3-alpha-exp3 (this build): do NOT call super.
+///     configureFlutterEngine — hand-curate a plugin registration list
+///     that skips all 3 audio plugins entirely. → SUCCESS confirmed
+///     on real Honor/Xiaomi/Huawei-pre-Harmony devices 2026-07-17.
+///
+/// Lesson: do NOT patch 3rd-party plugin internals (pub-cache patches
+/// are unsustainable and miss other init paths). Block at the plugin
+/// registration layer instead.
+///
+/// Trade-off accepted for this release:
 ///   - Android: TTS becomes no-op (UI buttons appear but do nothing)
 ///   - Desktop: unaffected (uses different code path)
-///   - Plan after root cause confirmed: v1.13 builds a custom lightweight
-///     Android TTS plugin via MethodChannel with full control over init
-///     timing, restoring TTS without triggering the ROM kill.
+///   - Plan for v1.13: build a custom lightweight Android TTS plugin
+///     via MethodChannel with full control over init timing, restoring
+///     TTS without triggering the ROM kill.
 ///
 /// DO NOT CALL super.configureFlutterEngine — that triggers
 /// GeneratedPluginRegistrant.registerWith which auto-adds ALL plugins
@@ -39,9 +60,9 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        // v1.12.3-alpha-exp3 P0: explicitly do NOT call super — super
+        // v1.12.3-alpha P0: explicitly do NOT call super — super
         // triggers GeneratedPluginRegistrant which auto-registers all
-        // plugins including the 3 we suspect cause the Chinese-ROM
+        // plugins including the 3 we now know cause the Chinese-ROM
         // startup kill. Manually register only the safe plugins below.
         registerSafePlugins(flutterEngine)
 
