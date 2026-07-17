@@ -108,4 +108,44 @@ class ZhiYueTtsServiceTest {
         )
         service.onDestroy()
     }
+
+    @Test
+    fun `PAUSE intent updates PlaybackState to STATE_PAUSED`() {
+        val service = createService()
+        service.onCreate()
+        // 先 SPEAK 让 state 变 PLAYING（更接近真实场景）
+        val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+            .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+            .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+            .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+        service.onStartCommand(speakIntent, 0, 1)
+        // 再 PAUSE
+        val pauseIntent = android.content.Intent(ZhiYueTtsService.ACTION_PAUSE)
+        service.onStartCommand(pauseIntent, 0, 2)
+        val state = service.mediaSessionForTest!!.controller.playbackState
+        org.junit.Assert.assertEquals(
+            android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED,
+            state.state
+        )
+        service.onDestroy()
+    }
+
+    @Test
+    fun `STOP intent updates PlaybackState to STATE_STOPPED and deactivates session`() {
+        val service = createService()
+        service.onCreate()
+        val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+            .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+            .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+            .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+        service.onStartCommand(speakIntent, 0, 1)
+        val stopIntent = android.content.Intent(ZhiYueTtsService.ACTION_STOP)
+        service.onStartCommand(stopIntent, 0, 2)
+        val state = service.mediaSessionForTest!!.controller.playbackState
+        org.junit.Assert.assertEquals(
+            android.support.v4.media.session.PlaybackStateCompat.STATE_STOPPED,
+            state.state
+        )
+        service.onDestroy()
+    }
 }

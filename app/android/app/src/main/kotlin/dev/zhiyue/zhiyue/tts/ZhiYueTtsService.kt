@@ -82,6 +82,10 @@ class ZhiYueTtsService : Service() {
 
     private fun handleSpeak(intent: Intent) {
         val text = intent.getStringExtra(EXTRA_TEXT) ?: return
+        // Guard: if TTS init failed or isn't ready yet, don't update MediaSession
+        // to STATE_PLAYING — that would mislead the lock screen into showing
+        // "playing" while no audio is actually being produced.
+        if (tts == null) return
         val locale = intent.getStringExtra(EXTRA_LOCALE) ?: "zh-CN"
         val idx = intent.getIntExtra(EXTRA_SENTENCE_INDEX, 0)
         val utteranceId = "sent_$idx"
