@@ -23,6 +23,7 @@ import '../../../core/platform_info.dart';
 import '../../../core/providers.dart' as core;
 import '../../../services/tts/flutter_tts_service.dart';
 import '../../../services/tts/tts_service.dart';
+import 'tts_settings_provider.dart';
 
 /// Top-level playback phase for [TtsPlaybackController].
 ///
@@ -120,10 +121,16 @@ final ttsServiceProvider = Provider<TtsService>((ref) {
 ///   flush queue if last.
 class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   final TtsService _service;
+  /// v1.12.2-alpha P1-b: pulls the current [TtsSettings] (rate/pitch/volume)
+  /// every time [_speakCurrent] runs. Injected as a getter rather than a
+  /// snapshot so changes in TTS settings page take effect on the next
+  /// sentence (no need to re-init the engine).
+  final TtsSettings Function() _settingsGetter;
   List<Sentence> _queue = const [];
   StreamSubscription<TtsState>? _stateSub;
 
-  TtsPlaybackController(this._service) : super(const TtsPlaybackState()) {
+  TtsPlaybackController(this._service, this._settingsGetter)
+      : super(const TtsPlaybackState()) {
     _stateSub = _service.state.listen(_onServiceState);
   }
 
@@ -362,6 +369,14 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     if (_queue.isEmpty) return;
     final sentence = _queue[state.currentIndex];
     try {
+      // v1.12.2-alpha P1-b: apply user's rate/pitch/volume before each
+      // sentence. flutter_tts setX methods are idempotent + cheap, so
+      // re-applying every sentence is fine and ensures settings page
+      // changes take effect immediately (no engine re-init needed).
+      final s = _settingsGetter();
+      await _service.setSpeechRate(s.rate);
+      await _service.setPitch(s.pitch);
+      await _service.setVolume(s.volume);
       _service.setCurrentSentenceIndex(state.currentIndex);
       await _service.speakSentence(sentence);
     } catch (e) {
@@ -396,5 +411,8 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
 
 final ttsPlaybackControllerProvider =
     StateNotifierProvider<TtsPlaybackController, TtsPlaybackState>(
-  (ref) => TtsPlaybackController(ref.watch(ttsServiceProvider)),
+  (ref) => TtsPlaybackController(
+    ref.watch(ttsServiceProvider),
+    () => ref.read(ttsSettingsProvider),
+  ),
 );
