@@ -88,6 +88,9 @@
             android:foregroundServiceType="mediaPlayback"
             android:exported="false" />
 
+        <!-- TODO(v1.14): ZhiYueTtsMediaButtonReceiver body is currently a no-op.
+             AndroidX MediaButtonReceiver auto-routes via MediaSession, but we need
+             to verify bluetooth headset play/pause actually reaches our service. -->
         <receiver
             android:name=".tts.ZhiYueTtsMediaButtonReceiver"
             android:exported="false">

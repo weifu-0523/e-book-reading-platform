@@ -116,6 +116,9 @@ class ZhiYueTtsService : Service() {
         // Wire event emitter to plugin (singleton pattern, set in onAttachedToEngine).
         // If plugin isn't attached yet (shouldn't happen — service starts after user
         // clicks 「朗读」), emit() is no-op until plugin attaches.
+        // v1.14 TODO: re-bind on hot restart. If plugin re-attaches after service onCreate,
+        // service holds stale emitter reference and events are lost. Currently safe because
+        // service is created on user click, long after plugin onAttachedToEngine.
         ZhiYueTtsPlugin.instance?.let { plugin ->
             eventEmitter = plugin::emitEvent
         }
