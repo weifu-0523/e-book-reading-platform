@@ -116,43 +116,29 @@ void main(List<String> args) async {
       _WindowCloseHandler(container: container);
     }
 
-    // T22 + v1.12.1-alpha + v1.12.2-alpha P0 hotfix:
+    // v1.13 T3 (2026-07-17): audio_service + audio_session removed.
     //
-    // v1.12.0-alpha ran AudioService.init + AudioSession.configure eagerly
-    // here. v1.12.1-alpha moved it to a closure assigned to
-    // [globalTtsInfraInitializer] (lazy on first playback). Both versions
-    // crashed immediately after launch on Chinese Android ROMs (Huawei /
-    // Xiaomi / OPPO / vivo, Android 12+) — see release-notes-v1.12.2-alpha.
+    // Background — the chain of failed attempts:
+    //   * v1.12.0-alpha ran AudioService.init + AudioSession.configure
+    //     eagerly here. Crashed on Chinese Android ROMs (Huawei / Xiaomi /
+    //     OPPO / vivo, Android 12+) — see release-notes-v1.12.2-alpha.
+    //   * v1.12.1-alpha moved it to a lazy `globalTtsInfraInitializer`
+    //     closure (deferred until first playback). Still crashed because
+    //     the ROM's manifest scan happens before Dart runs at all.
+    //   * v1.12.2-alpha stripped the manifest registration and made the
+    //     closure a no-op. TTS worked in-app but lost lock-screen /
+    //     notification / Bluetooth support.
     //
-    // Root cause (v1.12.2-alpha conclusion): the crash originates BEFORE
-    // main() — at the AndroidManifest scan / process startup phase. The
-    // ROM's permission scanner sees foregroundServiceType="mediaPlayback" +
-    // FOREGROUND_SERVICE_MEDIA_PLAYBACK + the MediaButtonReceiver in the
-    // manifest and kills the process before Flutter UI initializes. No
-    // Dart-side try/catch can recover from that.
+    // v1.13 ships a self-built Android TTS plugin (Kotlin) that owns its
+    // own MediaSession + foreground service (T6–T12), so there is no longer
+    // any reason to keep audio_service / audio_session / the lazy-init
+    // closure / `globalAudioHandler` around. T3 deleted:
+    //   * `core.globalAudioHandler` + `core.globalTtsInfraInitializer`
+    //   * `ZhiYueAudioHandler` + `AudioSessionInitializer` (+ tests)
+    //   * audio_service / audio_session pubspec deps
     //
-    // v1.12.2-alpha fix: strip the manifest registration entirely (see
-    // AndroidManifest.xml) AND don't assign the lazy-init closure here.
-    // Without manifest registration, AudioService.init() would throw at
-    // runtime (no service to bind), so we never even attempt it. Net
-    // effect on mobile:
-    //   * `globalTtsInfraInitializer` stays null → `_ensureMobileInfraReady`
-    //     in TtsPlaybackController is a no-op.
-    //   * `globalAudioHandler` stays null → `_shouldRouteToHandler` is
-    //     always false → public pause/resume/stop go straight to `drive*`.
-    //   * TTS works in-app (flutter_tts is independent of audio_service).
-    //   * Lost: lock-screen controls, notification, Bluetooth buttons,
-    //     auto-pause on phone call / headphone unplug.
-    //
-    // P3 (background playback) parked. See docs/releases/release-notes-
-    // v1.12.2-alpha.md for the decision write-up and follow-up options.
-    //
-    // The `if (PlatformInfo.isMobile)` branch is intentionally empty —
-    // kept as a marker so the comment block is co-located with where the
-    // mobile init used to live.
-    if (PlatformInfo.isMobile) {
-      // no-op — see comment above.
-    }
+    // `TtsPlaybackController` now drives `TtsService` directly; the plugin
+    // handles OS integration. No mobile init here.
 
     // M7+M8：启动后处理文件 deep-link（Windows argv + Android MethodChannel）。
     // M8：注入 onError → SnackBar 反馈。

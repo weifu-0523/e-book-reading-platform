@@ -12,7 +12,6 @@ import 'package:zhiyue/core/providers.dart' as core;
 import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
 import 'package:zhiyue/features/tts/providers/tts_settings_provider.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
-import 'package:zhiyue/services/tts/zhiyue_audio_handler.dart';
 
 
 /// v1.12.2-alpha P1-b: stub the three TtsService settings appliers so
@@ -28,62 +27,16 @@ class MockTtsService extends Mock implements TtsService {}
 
 class FakeSentence extends Fake implements Sentence {}
 
-/// Negative-assertion target: production code must NOT consult
-/// [core.globalAudioHandler] (v1.13 T2 removed routing). Subclassing
-/// [ZhiYueAudioHandler] here only to verify zero pause/stop/play calls
-/// reach the legacy handler.
-///
-/// Each public method still increments a counter and invokes its callback
-/// (used by the routing group's setUp wiring), but the assertions in those
-/// tests are negative — the counters must stay at 0. The handler subclass
-/// is retained only because [core.globalAudioHandler] is typed as
-/// [ZhiYueAudioHandler]? and a real instance is needed to prove the
-/// controller does not look it up.
-class _CountingAudioHandler extends ZhiYueAudioHandler {
-  int playCalls = 0;
-  int pauseCalls = 0;
-  int stopCalls = 0;
-  int skipNextCalls = 0;
-  int skipPrevCalls = 0;
-
-  _CountingAudioHandler({
-    required super.onResume,
-    required super.onPause,
-    required super.onStop,
-    required super.onSkipNext,
-    required super.onSkipPrevious,
-  });
-
-  @override
-  Future<void> play() async {
-    playCalls++;
-    await onResume();
-  }
-
-  @override
-  Future<void> pause() async {
-    pauseCalls++;
-    await onPause();
-  }
-
-  @override
-  Future<void> stop() async {
-    stopCalls++;
-    await onStop();
-  }
-
-  @override
-  Future<void> skipToNext() async {
-    skipNextCalls++;
-    await onSkipNext();
-  }
-
-  @override
-  Future<void> skipToPrevious() async {
-    skipPrevCalls++;
-    await onSkipPrevious();
-  }
-}
+// v1.13 T3 (2026-07-17): `_CountingAudioHandler` removed along with the
+// `core.globalAudioHandler` global. The negative-assertion groups below
+// (`direct service routing`, `routing on desktop`) used the counter to
+// prove that `globalAudioHandler` was never consulted. With the global
+// itself gone (T3 deleted `ZhiYueAudioHandler` + the global), the routing
+// short-circuit is structural — there is nothing to negative-assert. The
+// behavioral coverage that mattered (pause/stop/resume drive TtsService
+// directly) is preserved in the `routing on desktop` group's `verify(...)`
+// assertions below, which now stand on their own without the counter
+// scaffolding.
 
 void main() {
   setUpAll(() {
@@ -188,7 +141,7 @@ void main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // v1.13 T2 (2026-07-17): audio_handler routing removed.
+  // v1.13 T3 (2026-07-17): audio_handler routing removed; globals deleted.
   //
   // The public `pause`/`resume`/`stop` methods previously routed through
   // [core.globalAudioHandler] on mobile so the OS notification / lock-
@@ -202,11 +155,13 @@ void main() {
   //   controller.resume() → driveResume()       (no handler.play indirection)
   //   controller.stop() → service.stop()
   //
-  // The `_CountingAudioHandler` test double is retained only to assert
-  // that `core.globalAudioHandler` is NOT consulted even when set.
+  // T3 deleted `core.globalAudioHandler` + `_CountingAudioHandler` test
+  // double — the negative-assertion scaffolding is no longer needed. The
+  // behavioral coverage (pause/stop/resume drive TtsService directly) is
+  // preserved in the two groups below.
   // ─────────────────────────────────────────────────────────────────────
 
-  group('direct service routing (v1.13 T2 — no audio_handler)', () {
+  group('direct service routing on mobile (v1.13 T2 — no audio_handler)', () {
     TargetPlatform? previousPlatform;
 
     setUp(() {
@@ -216,12 +171,11 @@ void main() {
 
     tearDown(() {
       debugDefaultTargetPlatformOverride = previousPlatform;
-      core.globalAudioHandler = null;
     });
 
     test(
-        'pause calls ttsService.pause directly even when globalAudioHandler is set '
-        '(v1.13 T2 — no audio_handler routing)', () async {
+        'pause calls ttsService.pause directly (v1.13 T2/T3 — no audio_handler '
+        'routing)', () async {
       final mockSvc = MockTtsService();
       _stubSettingsAppliers(mockSvc);
       final stateController = StreamController<TtsState>.broadcast();
@@ -245,16 +199,6 @@ void main() {
       addTearDown(stateController.close);
 
       final notifier = container.read(ttsPlaybackControllerProvider.notifier);
-
-      // Even with a handler set, the controller must bypass it.
-      final handler = _CountingAudioHandler(
-        onResume: () async => notifier.driveResume(),
-        onPause: () async => notifier.drivePause(),
-        onStop: () async => notifier.driveStop(),
-        onSkipNext: () async => notifier.driveSkipNext(),
-        onSkipPrevious: () async => notifier.driveSkipPrevious(),
-      );
-      core.globalAudioHandler = handler;
 
       // v1.13 T2 review: drivePause now guards on phase == speaking, so
       // seed playback first to reach a pausable state.
@@ -269,14 +213,10 @@ void main() {
 
       await notifier.pause();
 
-      expect(handler.pauseCalls, 0,
-          reason: 'v1.13 T2: handler.pause() must NOT be invoked');
       verify(() => mockSvc.pause()).called(1);
     });
 
-    test(
-        'stop calls ttsService.stop directly even when globalAudioHandler is set',
-        () async {
+    test('stop calls ttsService.stop directly', () async {
       final mockSvc = MockTtsService();
       _stubSettingsAppliers(mockSvc);
       final stateController = StreamController<TtsState>.broadcast();
@@ -295,25 +235,12 @@ void main() {
 
       final notifier = container.read(ttsPlaybackControllerProvider.notifier);
 
-      final handler = _CountingAudioHandler(
-        onResume: () async => notifier.driveResume(),
-        onPause: () async => notifier.drivePause(),
-        onStop: () async => notifier.driveStop(),
-        onSkipNext: () async => notifier.driveSkipNext(),
-        onSkipPrevious: () async => notifier.driveSkipPrevious(),
-      );
-      core.globalAudioHandler = handler;
-
       await notifier.stop();
 
-      expect(handler.stopCalls, 0,
-          reason: 'v1.13 T2: handler.stop() must NOT be invoked');
       verify(() => mockSvc.stop()).called(1);
     });
 
-    test(
-        'resume calls ttsService.speakSentence directly even when handler is set',
-        () async {
+    test('resume calls ttsService.speakSentence directly', () async {
       final mockSvc = MockTtsService();
       _stubSettingsAppliers(mockSvc);
       final stateController = StreamController<TtsState>.broadcast();
@@ -339,15 +266,6 @@ void main() {
 
       final notifier = container.read(ttsPlaybackControllerProvider.notifier);
 
-      final handler = _CountingAudioHandler(
-        onResume: () async => notifier.driveResume(),
-        onPause: () async => notifier.drivePause(),
-        onStop: () async => notifier.driveStop(),
-        onSkipNext: () async => notifier.driveSkipNext(),
-        onSkipPrevious: () async => notifier.driveSkipPrevious(),
-      );
-      core.globalAudioHandler = handler;
-
       // Seed + pause so resume has the right precondition.
       await notifier.play(
         scope: const TtsScope.aiMessage(messageId: 'm1'),
@@ -361,25 +279,20 @@ void main() {
 
       await notifier.resume();
 
-      expect(handler.playCalls, 0,
-          reason: 'v1.13 T2: handler.play() must NOT be invoked for resume');
       verify(() => mockSvc.speakSentence(any())).called(1);
     });
   });
 
-  group('routing on desktop (handler null, TargetPlatform.windows)', () {
+  group('routing on desktop (TargetPlatform.windows)', () {
     TargetPlatform? previousPlatform;
 
     setUp(() {
       previousPlatform = debugDefaultTargetPlatformOverride;
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-      // Desktop never sets globalAudioHandler — assert null.
-      core.globalAudioHandler = null;
     });
 
     tearDown(() {
       debugDefaultTargetPlatformOverride = previousPlatform;
-      core.globalAudioHandler = null;
     });
 
     test('pause drives TtsService directly (no handler involvement)',
@@ -493,7 +406,7 @@ void main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // v1.13 T2 (2026-07-17): `_ensureServiceReady` no longer fires a
+  // v1.13 T2/T3 (2026-07-17): `_ensureServiceReady` no longer fires a
   // global `globalTtsInfraInitializer` closure. The audio_service lazy-init
   // path is gone — `TtsService.init()` itself is now idempotent and cheap
   // (the self-built plugin defers native TextToSpeech bind until first
@@ -504,24 +417,21 @@ void main() {
   // New contract:
   //   * _service.isInitialized == false → drivePlay calls _service.init()
   //   * _service.isInitialized == true  → drivePlay skips the init call
-  //   * globalTtsInfraInitializer       → never consulted (dead path)
+  //
+  // T3 deleted `core.globalTtsInfraInitializer` (and the dead-path test
+  // that asserted it was never called) — there's nothing to negative-assert
+  // once the global is gone.
   // ─────────────────────────────────────────────────────────────────────
 
-  group('service init gate (v1.13 T2 — direct _service.init)', () {
+  group('service init gate (v1.13 T2/T3 — direct _service.init)', () {
     TargetPlatform? previousPlatform;
-    Future<void> Function()? previousInitializer;
 
     setUp(() {
       previousPlatform = debugDefaultTargetPlatformOverride;
-      previousInitializer = core.globalTtsInfraInitializer;
-      core.globalAudioHandler = null;
-      core.globalTtsInfraInitializer = null;
     });
 
     tearDown(() {
       debugDefaultTargetPlatformOverride = previousPlatform;
-      core.globalTtsInfraInitializer = previousInitializer;
-      core.globalAudioHandler = null;
     });
 
     test(
@@ -639,51 +549,6 @@ void main() {
       );
 
       verify(() => mockSvc.init()).called(1);
-    });
-
-    test(
-        'globalTtsInfraInitializer is never consulted (v1.13 T2 dead path)',
-        () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-
-      // Even if someone sets the closure (legacy main.dart), T2 must not
-      // touch it.
-      var initCalls = 0;
-      core.globalTtsInfraInitializer = () async {
-        initCalls++;
-      };
-
-      final mockSvc = MockTtsService();
-      _stubSettingsAppliers(mockSvc);
-      final stateController = StreamController<TtsState>.broadcast();
-      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
-      when(() => mockSvc.progress)
-          .thenAnswer((_) => const Stream<TtsProgress>.empty());
-      when(() => mockSvc.error)
-          .thenAnswer((_) => const Stream<String>.empty());
-      when(() => mockSvc.isInitialized).thenReturn(false);
-      when(() => mockSvc.init()).thenAnswer((_) async {});
-      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
-        stateController.add(TtsState.speaking);
-      });
-      when(() => mockSvc.dispose()).thenAnswer((_) async {});
-
-      final container = ProviderContainer(overrides: [
-        ttsServiceProvider.overrideWithValue(mockSvc),
-      ]);
-      addTearDown(container.dispose);
-      addTearDown(stateController.close);
-
-      await container.read(ttsPlaybackControllerProvider.notifier).play(
-        scope: const TtsScope.aiMessage(messageId: 'm1'),
-        sentences: [
-          const Sentence(
-              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
-        ],
-      );
-
-      expect(initCalls, 0,
-          reason: 'v1.13 T2: globalTtsInfraInitializer is dead code');
     });
 
     // v1.13 T2 review (BLOCKER): _ensureServiceReady must not call init()
