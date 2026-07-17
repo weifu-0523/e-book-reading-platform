@@ -1,8 +1,13 @@
 package dev.zhiyue.zhiyue.tts
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -17,6 +22,7 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import java.util.Locale
 
 /// v1.13 TTS service — owns TextToSpeech + MediaSession + AudioFocus +
@@ -49,6 +55,11 @@ class ZhiYueTtsService : Service() {
     private var audioManager: AudioManager? = null
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyCallback: TelephonyCallback? = null
+
+    private var isForeground = false
+
+    internal val isForegroundForTest: Boolean
+        get() = isForeground
 
     internal var audioFocusRequestedForTest = false
         private set
@@ -90,6 +101,17 @@ class ZhiYueTtsService : Service() {
         updatePlaybackState(PlaybackStateCompat.STATE_NONE)
         setupAudioFocus()
         setupPhoneStateListener()
+        // LAST: start foreground (must complete within 5s for Android 12+ ANR).
+        //国产 ROM (华为/小米/OPPO/vivo) 会在用户没有感知到前台 service 时 kill 进程，
+        // 因此 onCreate 末尾立即 startForeground，type 为 MEDIA_PLAYBACK。
+        ensureNotificationChannel()
+        val notification = buildNotification("智阅朗读", "准备朗读")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+        isForeground = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -135,9 +157,17 @@ class ZhiYueTtsService : Service() {
         tts?.stop()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         mediaSession?.isActive = false
+        if (isForeground) {
+            stopForeground(true)
+            isForeground = false
+        }
     }
 
     override fun onDestroy() {
+        if (isForeground) {
+            stopForeground(true)
+            isForeground = false
+        }
         tts?.stop()
         tts?.shutdown()
         tts = null
@@ -263,8 +293,55 @@ class ZhiYueTtsService : Service() {
         phoneStateListenerRegisteredForTest = true
     }
 
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "智阅朗读",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "朗读控制通知"
+                setShowBadge(false)
+            }
+            val nm = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(title: String, content: String): Notification {
+        val pauseIntent = PendingIntent.getService(
+            this, 0,
+            Intent(this, ZhiYueTtsService::class.java).setAction(ACTION_PAUSE),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, ZhiYueTtsService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "暂停", pauseIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止", stopIntent)
+            .also { builder ->
+                mediaSession?.sessionToken?.let { token ->
+                    builder.setStyle(
+                        androidx.media.app.NotificationCompat.MediaStyle()
+                            .setMediaSession(token)
+                    )
+                }
+            }
+            .build()
+    }
+
     companion object {
         private const val TAG = "ZhiYueTts"
+
+        private const val NOTIFICATION_ID = 0x7D00
+        private const val CHANNEL_ID = "zhiyue_tts"
 
         const val ACTION_SPEAK = "dev.zhiyue.tts.SPEAK"
         const val ACTION_PAUSE = "dev.zhiyue.tts.PAUSE"

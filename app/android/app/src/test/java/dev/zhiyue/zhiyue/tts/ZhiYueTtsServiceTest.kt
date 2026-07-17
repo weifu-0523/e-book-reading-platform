@@ -166,4 +166,22 @@ class ZhiYueTtsServiceTest {
         org.junit.Assert.assertFalse(service.audioFocusRequestedForTest)
         org.junit.Assert.assertFalse(service.phoneStateListenerRegisteredForTest)
     }
+
+    @Test
+    fun `onCreate starts foreground with mediaPlayback type`() {
+        val controller = org.robolectric.Robolectric.buildService(ZhiYueTtsService::class.java)
+        val service = controller.create().get()
+        org.junit.Assert.assertTrue(service.isForegroundForTest)
+        controller.destroy()
+    }
+
+    @Test
+    fun `STOP intent stops foreground and calls stopSelf`() {
+        val controller = org.robolectric.Robolectric.buildService(ZhiYueTtsService::class.java)
+        val service = controller.create().get()
+        val stopIntent = android.content.Intent(ZhiYueTtsService.ACTION_STOP)
+        service.onStartCommand(stopIntent, 0, 1)
+        org.junit.Assert.assertFalse(service.isForegroundForTest)
+        controller.destroy()
+    }
 }
