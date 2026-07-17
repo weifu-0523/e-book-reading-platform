@@ -113,6 +113,12 @@ class ZhiYueTtsService : Service() {
         updatePlaybackState(PlaybackStateCompat.STATE_NONE)
         setupAudioFocus()
         setupPhoneStateListener()
+        // Wire event emitter to plugin (singleton pattern, set in onAttachedToEngine).
+        // If plugin isn't attached yet (shouldn't happen — service starts after user
+        // clicks 「朗读」), emit() is no-op until plugin attaches.
+        ZhiYueTtsPlugin.instance?.let { plugin ->
+            eventEmitter = plugin::emitEvent
+        }
         // LAST: start foreground (must complete within 5s for Android 12+ ANR).
         //国产 ROM (华为/小米/OPPO/vivo) 会在用户没有感知到前台 service 时 kill 进程，
         // 因此 onCreate 末尾立即 startForeground，type 为 MEDIA_PLAYBACK。

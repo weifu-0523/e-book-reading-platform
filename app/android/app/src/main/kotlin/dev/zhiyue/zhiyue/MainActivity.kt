@@ -42,6 +42,13 @@ import java.io.File
 ///     via MethodChannel with full control over init timing, restoring
 ///     TTS without triggering the ROM kill.
 ///
+/// v1.13 update (2026-07-18): the plan executed. ZhiYueTtsPlugin replaces
+/// flutter_tts on Android; audio_service + audio_session fully removed.
+/// ZhiYueTtsPlugin.onAttachedToEngine is empty (just binds channels),
+/// so it is safe to register alongside the other plugins. ZhiYueTtsService
+/// (started on first 「朗读」 click) owns TextToSpeech + MediaSession +
+/// AudioFocus + startForeground — all deferred until user gesture, satisfying
+/// Android 12+ user-gesture exemption.
 /// DO NOT CALL super.configureFlutterEngine — that triggers
 /// GeneratedPluginRegistrant.registerWith which auto-adds ALL plugins
 /// including the 3 we want to skip. Once they're added, their
@@ -105,6 +112,8 @@ class MainActivity : FlutterActivity() {
             "video_player_android" to { io.flutter.plugins.videoplayer.VideoPlayerPlugin() },
             "wakelock_plus" to { dev.fluttercommunity.plus.wakelock.WakelockPlusPlugin() },
             "webview_flutter_android" to { io.flutter.plugins.webviewflutter.WebViewFlutterPlugin() },
+            // v1.13 新增：自研 TTS plugin，替代被跳过的 flutter_tts
+            "zhiyue_tts" to { dev.zhiyue.zhiyue.tts.ZhiYueTtsPlugin() },
         )
         // integration_test plugin is test-only; not registered here.
         for ((name, factory) in safePlugins) {

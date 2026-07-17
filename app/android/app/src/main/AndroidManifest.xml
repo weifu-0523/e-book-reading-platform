@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
     <!--
       v1.12.2-alpha P0 hotfix: REMOVED audio_service / audio_session manifest
       registration (service + receiver + 3 foreground-service permissions).
@@ -29,6 +32,15 @@
       foreground-service recipe or pivot to a different plugin
       (e.g. just_audio + manual MediaSession). See docs/releases/
       release-notes-v1.12.2-alpha.md for the full write-up.
+    -->
+    <!--
+      v1.13 (2026-07-18): re-added FGS permissions + service/receiver for the
+      self-built ZhiYueTtsService (replaces audio_service). Safe because:
+        1. ZhiYueTtsPlugin.onAttachedToEngine is empty (just binds channels).
+        2. ZhiYueTtsService is only started on user click via startForegroundService.
+        3. No system service binding at app startup → no ROM scanner trigger.
+      The 2026-07-12 lesson learned from audio_service still applies: it was
+      the plugin's attach-time work that crashed, not the manifest entry.
     -->
     <application
         android:label="智阅"
@@ -70,6 +82,19 @@
                 <data android:pathPattern=".*\\..*\\.pdf"/>
             </intent-filter>
         </activity>
+        <!-- v1.13 TTS service + media button receiver -->
+        <service
+            android:name=".tts.ZhiYueTtsService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <receiver
+            android:name=".tts.ZhiYueTtsMediaButtonReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

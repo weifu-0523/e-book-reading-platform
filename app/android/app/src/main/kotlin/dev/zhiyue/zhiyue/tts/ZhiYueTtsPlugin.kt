@@ -46,6 +46,7 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         // CRITICAL: do NOT construct TextToSpeech / MediaSession / AudioFocus /
         // startForeground here. Just bind channels.
+        instance = this
         contextForTest = binding.applicationContext
         channel = MethodChannel(binding.binaryMessenger, "dev.zhiyue.tts").also {
             it.setMethodCallHandler(this)
@@ -122,6 +123,7 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
         eventChannel = null
         realEventSink = null
         contextForTest = null
+        instance = null
     }
 
     override fun onListen(args: Any?, sink: io.flutter.plugin.common.EventChannel.EventSink?) {
@@ -140,5 +142,14 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     /// Test-only: simulate a service event bypassing the real service.
     internal fun simulateServiceEventForTest(event: Map<String, Any?>) {
         emitEvent(event)
+    }
+
+    companion object {
+        /// Singleton reference set in [onAttachedToEngine] and cleared in
+        /// [onDetachedFromEngine]. Used by [ZhiYueTtsService.onCreate] to
+        /// wire `eventEmitter` so service state/progress events flow back
+        /// to Dart via the EventChannel.
+        internal var instance: ZhiYueTtsPlugin? = null
+            private set
     }
 }
