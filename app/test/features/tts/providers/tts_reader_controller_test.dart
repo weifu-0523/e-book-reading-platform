@@ -221,6 +221,11 @@ void main() {
     });
     when(() => svc.pause()).thenAnswer((_) async {});
     when(() => svc.dispose()).thenAnswer((_) async {});
+    // v1.12.2-alpha P1-b: TtsPlaybackController now applies rate/pitch/volume
+    // before each speakSentence. Stub them so MockTtsService doesn't throw.
+    when(() => svc.setSpeechRate(any())).thenAnswer((_) async {});
+    when(() => svc.setPitch(any())).thenAnswer((_) async {});
+    when(() => svc.setVolume(any())).thenAnswer((_) async {});
 
     db = AppDatabase.forTesting();
     await BooksDao(db).upsert(
