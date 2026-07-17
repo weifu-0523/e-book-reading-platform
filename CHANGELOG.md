@@ -9,7 +9,73 @@
 
 v1.12.3-alpha 之后的新变更将记在此处。
 
-## [1.12.3-alpha] - 2026-07-17
+## [1.13.0-alpha] - 2026-07-18
+
+### v1.13.0-alpha — 自研 Android TTS plugin
+
+替代 v1.12.0-alpha 引入的 audio_service + audio_session + flutter_tts 三件套（在国产 ROM 触发启动 crash），完全恢复 Android TTS 四大能力：A 基本朗读 + B 通知栏控件 + C 后台播放 + D 锁屏 + 蓝牙按键。
+
+#### 架构
+
+3 层设计：
+- **Dart 接口层**：`TtsService` interface（v1.12 已存在）+ 新 `SelfBuiltTtsServiceImpl`（Android 走 MethodChannel，桌面仍用 flutter_tts）
+- **Plugin 层**：`ZhiYueTtsPlugin.kt`（Kotlin），`onAttachedToEngine` 完全空 — 只 bind MethodChannel + EventChannel，不构造任何 system service
+- **Service 层**：`ZhiYueTtsService.kt`（Android Service），首次「朗读」时通过 `startForegroundService` 启动，持有 TextToSpeech + MediaSessionCompat + AudioFocus + PhoneStateListener + foreground notification
+
+#### 核心不变量
+
+**`ZhiYueTtsPlugin.onAttachedToEngine` 必须为空。** 所有 system service 构造（TextToSpeech ctor / MediaSession / AudioFocus / PhoneStateListener / startForeground）都在 `ZhiYueTtsService.onCreate` 内，由用户点击「朗读」触发。这是 v1.12.0-v1.12.3-alpha 4 次失败的核心教训：crash 不是 manifest 注册触发的，而是 plugin 的 attach-time system binding 触发的。Android 12+ 国产 ROM 在 process 启动期扫描到 system service bind 会 kill，但 user gesture 触发的 service bind 被豁免。
+
+#### 4 次失败 → v1.13 设计选择
+
+| 版本 | 尝试 | 结果 | 教训 |
+|------|------|------|------|
+| v1.12.1-alpha | lazy init AudioService 在 main() 内 | crash | plugin attach 早于 main，lazy guard 永不触发 |
+| v1.12.2-alpha-exp1 | 删 manifest 注册 | crash | manifest 不是 trigger，onAttachedToEngine 内 binding 才是 |
+| v1.12.3-alpha-exp2 | patch pub-cache flutter_tts + audio_session | crash | audio_service 自己也有 attach-time work，patch 不可持续 |
+| v1.12.3-alpha-exp3 | 跳过全部 audio plugin | 成功启动但 TTS no-op | plugin registration 层 block 是正确做法 |
+| **v1.13.0-alpha** | **自研 plugin + service，onAttachedToEngine 空** | **预期全功能 + 不 crash** | **system binding 推迟到 user gesture** |
+
+#### Build flavor 双保险
+
+- `withFgs`（默认）：完整 FGS + service + receiver 声明，全功能
+- `noFgs`（fallback）：无 FGS 声明，`ensureServiceStarted` 用 try/catch 吞 IllegalArgumentException，TTS 变 no-op
+
+如果真机测试发现 withFgs 在某些 ROM 仍 crash，可快速切到 noFgs 发布 hotfix。
+
+#### 真机测试矩阵（T17 待用户验证）
+
+预期验证 7 项：
+1. 启动不 crash（Honor / 小米 / 华为鸿蒙前）
+2. 点「朗读」→ 朗读出声
+3. Home 切后台 → 通知栏出现控件
+4. 5 分钟后回来 → 仍在读
+5. 锁屏 → 出现控件
+6. 蓝牙耳机按键 → 响应
+7. 电话打入 → 自动 pause
+
+#### 测试覆盖
+
+- Dart 单元测试：~1685 pass + 25 skip + 8 baseline fail（与 v1.12.3-alpha 一致）
+- Kotlin 单元测试：20 pass（PluginTest 8 + ServiceTest 12，覆盖 lifecycle / intent dispatch / state transitions / foreground / event binding）
+- 全部 task 走 subagent-driven TDD（red → green → commit → spec review → code quality review → fixup）
+
+#### 已知限制 + v1.14 路线图
+
+- **iOS 未实现**：v1.13 完全 Android-focused。iOS 端 SelfBuiltTtsServiceImpl 仍调旧 flutter_tts code path。v1.14 计划：iOS 自研 AVSpeechSynthesizer wrapper（预计同样使用 MethodChannel + onAttachedToEngine 空模式）
+- **媒体按钮 receiver body 是 no-op**：AndroidX MediaButtonReceiver 自动路由，但需验证蓝牙耳机真机响应（v1.14 TODO）
+- **eventEmitter re-attach race**：plugin hot restart 场景下 service 持有旧 emitter（v1.14 TODO，加 ServiceConnection 或 plugin 端 push binding）
+- **stopForeground(true) deprecated** API 33+（v1.14 cleanup 改 STOP_FOREGROUND_REMOVE）
+- **handleResume 空实现**：Android TextToSpeech 无原生 pause/resume，Dart 端重发 SPEAK intent
+
+#### 跨设备兼容性
+
+- drift schema 仍 v15（无变更）
+- recordBook payload 不变
+- 同步协议不变
+- 覆盖安装即生效（用户端无 migration 步骤）
+
+
 
 v1.12.1-alpha 之后用户报告的 4 个 bug 批量修复：移动端 startup crash（custom MainActivity 跳过 audio plugin 注册，经 4 次尝试后真正修复）+「播放本章」跳章后从书首播放 + rate/pitch/volume 设置无效 + AI context 默认最近 6 轮可调。
 
