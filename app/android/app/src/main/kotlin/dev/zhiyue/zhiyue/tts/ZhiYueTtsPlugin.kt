@@ -36,8 +36,39 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        // Implemented in T5.
-        result.notImplemented()
+        when (call.method) {
+            "init" -> {
+                ensureServiceCreated()
+                result.success(null)
+            }
+            "speak" -> {
+                ensureServiceCreated()
+                // T11 will forward to ZhiYueTtsService via Intent.
+                // T5 stub: just acknowledge.
+                result.success(null)
+            }
+            "pause", "resume", "stop",
+            "setRate", "setPitch", "setVolume",
+            "setLanguage", "isLanguageAvailable", "isLanguageInstalled", "getDefaultEngine" -> {
+                // T11/T13 will route these to service.
+                // T5 stub: return success with default values for queries.
+                result.success(when (call.method) {
+                    "isLanguageAvailable", "isLanguageInstalled" -> true
+                    "getDefaultEngine" -> "com.google.android.tts"
+                    else -> null
+                })
+            }
+            else -> result.notImplemented()
+        }
+    }
+
+    /// T5 stub: flips [isServiceCreated] for test observability. T11 will
+    /// actually `startForegroundService(Intent(context, ZhiYueTtsService))`
+    /// here so the service owns TextToSpeech / MediaSession / AudioFocus.
+    private fun ensureServiceCreated() {
+        if (!isServiceCreated) {
+            isServiceCreated = true
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
