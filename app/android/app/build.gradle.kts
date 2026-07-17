@@ -72,6 +72,8 @@ dependencies {
     testImplementation("androidx.test:core:1.6.1")
     testImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    // T8: MediaSessionCompat for lock screen + bluetooth headset controls.
+    implementation("androidx.media:media:1.7.0")
 }
 
 // Workaround for Gradle 9.1 + Flutter plugin ordering: the unit-test

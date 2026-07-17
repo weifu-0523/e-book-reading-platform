@@ -82,4 +82,30 @@ class ZhiYueTtsServiceTest {
         // T8-T11 will verify MediaSession/AudioFocus state. For now, no exception = pass.
         service.onDestroy()
     }
+
+    @Test
+    fun `onCreate activates MediaSession`() {
+        val service = createService()
+        service.onCreate()
+        org.junit.Assert.assertNotNull(service.mediaSessionForTest)
+        org.junit.Assert.assertTrue(service.mediaSessionForTest!!.isActive)
+        service.onDestroy()
+    }
+
+    @Test
+    fun `SPEAK intent updates PlaybackState to STATE_PLAYING`() {
+        val service = createService()
+        service.onCreate()
+        val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+            .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+            .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+            .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+        service.onStartCommand(speakIntent, 0, 1)
+        val state = service.mediaSessionForTest!!.controller.playbackState
+        org.junit.Assert.assertEquals(
+            android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING,
+            state.state
+        )
+        service.onDestroy()
+    }
 }

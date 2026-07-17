@@ -5,6 +5,9 @@ import android.content.Intent
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import java.util.Locale
 
@@ -21,6 +24,12 @@ class ZhiYueTtsService : Service() {
     /// Test-only accessor.
     internal val ttsInstanceForTest: TextToSpeech?
         get() = tts
+
+    private var mediaSession: MediaSessionCompat? = null
+
+    /// Test-only accessor.
+    internal val mediaSessionForTest: MediaSessionCompat?
+        get() = mediaSession
 
     override fun onCreate() {
         super.onCreate()
@@ -42,6 +51,19 @@ class ZhiYueTtsService : Service() {
                 Log.e(TAG, "TextToSpeech init failed status=$status")
             }
         }
+        mediaSession = MediaSessionCompat(this, "zhiyue-tts").apply {
+            setFlags(
+                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+            )
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() { handleResume() }
+                override fun onPause() { handlePause() }
+                override fun onStop() { handleStop(); stopSelf() }
+            })
+            isActive = true
+        }
+        updatePlaybackState(PlaybackStateCompat.STATE_NONE)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -65,11 +87,14 @@ class ZhiYueTtsService : Service() {
         val utteranceId = "sent_$idx"
         tts?.language = Locale.forLanguageTag(locale)
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+        updateMetadata("智阅朗读", "朗读中")
     }
 
     private fun handlePause() {
         // Android TextToSpeech has no native pause; stop and let Dart track position.
         tts?.stop()
+        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
     }
 
     private fun handleResume() {
@@ -78,16 +103,42 @@ class ZhiYueTtsService : Service() {
 
     private fun handleStop() {
         tts?.stop()
+        updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
+        mediaSession?.isActive = false
     }
 
     override fun onDestroy() {
         tts?.stop()
         tts?.shutdown()
         tts = null
+        mediaSession?.run {
+            isActive = false
+            release()
+        }
+        mediaSession = null
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun updatePlaybackState(state: Int) {
+        val stateBuilder = PlaybackStateCompat.Builder()
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY or
+                PlaybackStateCompat.ACTION_PAUSE or
+                PlaybackStateCompat.ACTION_STOP
+            )
+            .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
+        mediaSession?.setPlaybackState(stateBuilder.build())
+    }
+
+    private fun updateMetadata(title: String, artist: String) {
+        val metadata = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+            .build()
+        mediaSession?.setMetadata(metadata)
+    }
 
     companion object {
         private const val TAG = "ZhiYueTts"
