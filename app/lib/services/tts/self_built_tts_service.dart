@@ -52,6 +52,9 @@ class SelfBuiltTtsServiceImpl implements TtsService {
       _initialized = true;
       _stateController.add(TtsState.idle);
     } catch (e) {
+      // Cancel the event subscription so a retry doesn't leak a second listener.
+      await _eventSub?.cancel();
+      _eventSub = null;
       _errorController.add('init failed: $e');
       _stateController.add(TtsState.error);
       rethrow;
@@ -59,24 +62,32 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   }
 
   void _handleEvent(dynamic event) {
-    final map = event as Map<dynamic, dynamic>;
-    final type = map['event'] as String?;
-    switch (type) {
-      case 'state':
-        final stateStr = map['state'] as String?;
-        _stateController.add(_parseState(stateStr));
-        break;
-      case 'progress':
-        _progressController.add(TtsProgress(
-          sentenceIndex: _currentSentenceIdx,
-          charStart: map['start'] as int?,
-          charEnd: map['end'] as int?,
-        ));
-        break;
-      case 'error':
-        _errorController.add(map['message'] as String? ?? 'unknown');
-        _stateController.add(TtsState.error);
-        break;
+    // Guard against events arriving after dispose(). Platform dispatch is
+    // asynchronous; a late event would otherwise call .add on a closed
+    // StreamController and throw StateError.
+    if (_stateController.isClosed) return;
+    try {
+      final map = event as Map<dynamic, dynamic>;
+      final type = map['event'] as String?;
+      switch (type) {
+        case 'state':
+          final stateStr = map['state'] as String?;
+          _stateController.add(_parseState(stateStr));
+          break;
+        case 'progress':
+          _progressController.add(TtsProgress(
+            sentenceIndex: _currentSentenceIdx,
+            charStart: map['start'] as int?,
+            charEnd: map['end'] as int?,
+          ));
+          break;
+        case 'error':
+          _errorController.add(map['message'] as String? ?? 'unknown');
+          _stateController.add(TtsState.error);
+          break;
+      }
+    } catch (e) {
+      _errorController.add('event parse failed: $e');
     }
   }
 

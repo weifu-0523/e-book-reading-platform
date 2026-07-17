@@ -139,4 +139,30 @@ void main() {
             c.method == 'setVolume' && (c.arguments as Map)['volume'] == 0.8),
         isTrue);
   });
+
+  test('stop / pause routed through channel', () async {
+    await svc.init();
+    await svc.stop();
+    await svc.pause();
+    expect(methodCalls.any((c) => c.method == 'stop'), isTrue);
+    expect(methodCalls.any((c) => c.method == 'pause'), isTrue);
+  });
+
+  test('unknown state string falls back to idle', () async {
+    final states = <TtsState>[];
+    svc.state.listen(states.add);
+    await svc.init();
+    await emit({'event': 'state', 'state': 'wat'});
+    await Future<void>.delayed(Duration.zero);
+    expect(states, contains(TtsState.idle));
+  });
+
+  test('error event sets state to error', () async {
+    final states = <TtsState>[];
+    svc.state.listen(states.add);
+    await svc.init();
+    await emit({'event': 'error', 'message': 'boom'});
+    await Future<void>.delayed(Duration.zero);
+    expect(states, contains(TtsState.error));
+  });
 }
