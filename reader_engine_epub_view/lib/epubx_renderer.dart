@@ -1032,6 +1032,22 @@ class EpubxRenderer implements EpubRenderer {
         // visible chapter did not change. M2.6/T7 covered only the
         // EpubRangeLocator branch; this completes the fix for CFI branch.
         _stateController.add(const ReaderEngineReady());
+        // v1.12.2-alpha P1-a: emit location immediately so listeners
+        // (reader_body.dart:234 `currentLocation$.listen` → mirror into
+        // ttsCurrentChapterIdxProvider) see the new chapterIndex NOW, not
+        // only after the post-frame callback below successfully rebuilds
+        // `_cachedBreaks`. Without this, TOC / bookmark cross-chapter jumps
+        // land on a frame where `_cachedBreaks == null` and the post-frame
+        // callback early-returns at line ~1060 before reaching its own
+        // `_emitCurrentLocation()` — leaving `ttsCurrentChapterIdxProvider`
+        // stuck at the previous value (0 on first open). Tapping 「朗读本章」
+        // then started TTS from chapter 0.
+        //
+        // Mirrors the pattern in `setChapter` (line 834). The post-frame
+        // callback will re-emit on success (line 1075 / 1086) with a more
+        // precise charOffset; emitting twice is harmless — the listener
+        // is idempotent on chapterIndex equality.
+        _emitCurrentLocation();
       }
       // M2.11/问题1：paged 模式用 charOffset 反查 break 索引 → jumpToPage
       // （双页换算 spread）；scroll 模式仍用 scroll ratio 反推像素。

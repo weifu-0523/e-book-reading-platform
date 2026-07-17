@@ -109,5 +109,44 @@ void main() {
       await sub.cancel();
       await r.dispose();
     });
+
+    // v1.12.2-alpha P1-a regression test: cross-chapter CFI jump must
+    // emit currentLocation$ IMMEDIATELY (not only via post-frame callback).
+    // Without this, ttsCurrentChapterIdxProvider (mirror in reader_body
+    // listener) stays at the previous chapter value, so 「朗读本章」started
+    // TTS from chapter 0 after a TOC/bookmark jump.
+    test(
+        'EpubCfiLocator cross-chapter jump emits location immediately '
+        '(v1.12.2-alpha P1-a)', () async {
+      final r = EpubxRenderer();
+      r.bookForTesting = _bookWithThreeChapters();
+      // Drain any initial location emission from setup.
+      final locations = <EpubCfiLocator>[];
+      final sub = r.currentLocation$.listen(locations.add);
+      await Future<void>.delayed(Duration.zero);
+      locations.clear();
+
+      // Cross-chapter CFI jump: chapter 0 → chapter 2.
+      const cfi = EpubCfiLocator(chapterIndex: 2, cfi: '2:0');
+      await r.gotoLocator(cfi);
+      // DO NOT pump frames — the fix must emit synchronously enough that
+      // a single microtask flush surfaces the new location. The post-frame
+      // callback path is exercised separately and was the source of the
+      // silent-return bug; we verify the immediate emit path here.
+      await Future<void>.delayed(Duration.zero);
+
+      expect(r.currentChapterIndex, 2,
+          reason: 'chapter index should switch');
+      expect(locations, isNotEmpty,
+          reason: 'v1.12.2-alpha P1-a regression: cross-chapter CFI jump '
+              'must emit a location event immediately so ttsCurrentChapterIdxProvider '
+              '(mirror in reader_body.dart:234 listener) updates before user '
+              'can tap 「朗读本章」. Pre-fix the post-frame callback returned '
+              'silently when _cachedBreaks was null and no location event fired.');
+      expect(locations.last.chapterIndex, 2,
+          reason: 'emitted location must carry the new chapter index');
+      await sub.cancel();
+      await r.dispose();
+    });
   });
 }
