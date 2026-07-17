@@ -121,6 +121,26 @@ class ZhiYueTtsPluginTest {
         assertNotNull(stopIntent)
         assertEquals(ZhiYueTtsService.ACTION_STOP, stopIntent.action)
     }
+
+    // ---- T12: EventChannel state/progress events ----
+
+    @Test
+    fun `service emits state events to plugin eventSink`() {
+        val plugin = ZhiYueTtsPlugin()
+        plugin.attachContextForTest(org.robolectric.RuntimeEnvironment.getApplication())
+        val captured = mutableListOf<Map<String, Any?>>()
+        plugin.eventSinkForTest = object : io.flutter.plugin.common.EventChannel.EventSink {
+            override fun success(args: Any?) {
+                @Suppress("UNCHECKED_CAST")
+                captured.add(args as Map<String, Any?>)
+            }
+            override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {}
+            override fun endOfStream() {}
+        }
+        plugin.onMethodCall(io.flutter.plugin.common.MethodCall("init", null), FakeMethodChannelResult())
+        plugin.simulateServiceEventForTest(mapOf("event" to "state", "state" to "speaking"))
+        org.junit.Assert.assertTrue(captured.any { it["state"] == "speaking" })
+    }
 }
 
 /// In-memory MethodChannel.Result that records which terminal method was

@@ -56,6 +56,15 @@ class ZhiYueTtsService : Service() {
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyCallback: TelephonyCallback? = null
 
+    /// Set by ZhiYueTtsPlugin (or test) to receive state/progress events.
+    /// Null until plugin wires it (T13 ServiceConnection binds; for now plugin
+    /// could set via reflection or a static singleton — left as TODO).
+    internal var eventEmitter: ((Map<String, Any?>) -> Unit)? = null
+
+    private fun emit(event: Map<String, Any?>) {
+        eventEmitter?.invoke(event)
+    }
+
     private var isForeground = false
 
     internal val isForegroundForTest: Boolean
@@ -74,12 +83,15 @@ class ZhiYueTtsService : Service() {
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {
                         Log.d(TAG, "utterance onStart $utteranceId")
+                        emit(mapOf("event" to "state", "state" to "speaking", "utteranceId" to (utteranceId ?: "")))
                     }
                     override fun onDone(utteranceId: String?) {
                         Log.d(TAG, "utterance onDone $utteranceId")
+                        emit(mapOf("event" to "done", "utteranceId" to (utteranceId ?: "")))
                     }
                     override fun onError(utteranceId: String?) {
                         Log.e(TAG, "utterance onError $utteranceId")
+                        emit(mapOf("event" to "error", "utteranceId" to (utteranceId ?: "")))
                     }
                 })
             } else {
@@ -147,6 +159,7 @@ class ZhiYueTtsService : Service() {
         // Android TextToSpeech has no native pause; stop and let Dart track position.
         tts?.stop()
         updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+        emit(mapOf("event" to "state", "state" to "paused"))
     }
 
     private fun handleResume() {
@@ -157,6 +170,7 @@ class ZhiYueTtsService : Service() {
         tts?.stop()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         mediaSession?.isActive = false
+        emit(mapOf("event" to "state", "state" to "stopped"))
         if (isForeground) {
             stopForeground(true)
             isForeground = false

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -19,8 +20,12 @@ import io.flutter.plugin.common.MethodChannel
 ///
 /// DO NOT add any `init {}` block or top-level val that touches Android
 /// framework singletons. This is the #1 rule of this file.
-class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
+class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
     private var channel: MethodChannel? = null
+    private var eventChannel: EventChannel? = null
+    internal var eventSinkForTest: EventChannel.EventSink? = null
+        set(value) { field = value; realEventSink = value }
+    private var realEventSink: EventChannel.EventSink? = null
 
     /// Test-only: whether [ZhiYueTtsService] has been created via init call.
     /// Production code shouldn't read this; tests verify the lazy invariant.
@@ -44,6 +49,9 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         contextForTest = binding.applicationContext
         channel = MethodChannel(binding.binaryMessenger, "dev.zhiyue.tts").also {
             it.setMethodCallHandler(this)
+        }
+        eventChannel = EventChannel(binding.binaryMessenger, "dev.zhiyue.tts/events").also {
+            it.setStreamHandler(this)
         }
     }
 
@@ -110,6 +118,27 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
+        eventChannel?.setStreamHandler(null)
+        eventChannel = null
+        realEventSink = null
         contextForTest = null
+    }
+
+    override fun onListen(args: Any?, sink: io.flutter.plugin.common.EventChannel.EventSink?) {
+        realEventSink = sink
+    }
+
+    override fun onCancel(args: Any?) {
+        realEventSink = null
+    }
+
+    /// Called by ZhiYueTtsService (or tests) to emit events to Dart.
+    internal fun emitEvent(event: Map<String, Any?>) {
+        realEventSink?.success(event)
+    }
+
+    /// Test-only: simulate a service event bypassing the real service.
+    internal fun simulateServiceEventForTest(event: Map<String, Any?>) {
+        emitEvent(event)
     }
 }
