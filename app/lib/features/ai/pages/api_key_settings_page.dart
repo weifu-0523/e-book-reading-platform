@@ -40,6 +40,13 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
   bool _obscure = true;
   bool _loaded = false;
 
+  // v1.12.2-alpha P2: sampling + context-window sliders. Kept as doubles
+  // because Slider needs double divisions; converted to int for
+  // contextTurns on save.
+  double _contextTurns = ApiCredentialsDefaults.contextTurns.toDouble();
+  double _temperature = ApiCredentialsDefaults.temperature;
+  double _topP = ApiCredentialsDefaults.topP;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -56,6 +63,12 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
       _apiKeyCtrl.text = c?.apiKey ?? '';
       _baseUrlCtrl.text = c?.baseUrl ?? ApiCredentialsDefaults.baseUrl;
       _modelCtrl.text = c?.model ?? ApiCredentialsDefaults.model;
+      _contextTurns = (c?.contextTurns ?? ApiCredentialsDefaults.contextTurns)
+          .toDouble()
+          .clamp(1.0, 50.0);
+      _temperature =
+          (c?.temperature ?? ApiCredentialsDefaults.temperature).clamp(0.0, 2.0);
+      _topP = (c?.topP ?? ApiCredentialsDefaults.topP).clamp(0.0, 1.0);
     });
   }
 
@@ -89,6 +102,9 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
       model: _modelCtrl.text.trim().isEmpty
           ? ApiCredentialsDefaults.model
           : _modelCtrl.text.trim(),
+      contextTurns: _contextTurns.round(),
+      temperature: _temperature,
+      topP: _topP,
     ));
     if (!mounted) return;
     final l10n = AppLocalizations.of(context)!;
@@ -127,6 +143,9 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
       _apiKeyCtrl.clear();
       _baseUrlCtrl.text = ApiCredentialsDefaults.baseUrl;
       _modelCtrl.text = ApiCredentialsDefaults.model;
+      _contextTurns = ApiCredentialsDefaults.contextTurns.toDouble();
+      _temperature = ApiCredentialsDefaults.temperature;
+      _topP = ApiCredentialsDefaults.topP;
     });
   }
 
@@ -171,6 +190,43 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
             ),
           ),
           const SizedBox(height: 24),
+          // v1.12.2-alpha P2: AI tuning section.
+          _buildSectionLabel('对话上下文（轮次）'),
+          Slider(
+            value: _contextTurns,
+            min: 1,
+            max: 50,
+            divisions: 49,
+            label: _contextTurns.round().toString(),
+            onChanged: (v) => setState(() => _contextTurns = v),
+          ),
+          _buildHelpText(
+              '默认 6 轮（12 条消息）。超过此轮次的历史仍保留在聊天列表但不进入 LLM 上下文，避免长会话撑爆 context window。'),
+          const SizedBox(height: 16),
+          _buildSectionLabel('采样温度（temperature）'),
+          Slider(
+            value: _temperature,
+            min: 0,
+            max: 2,
+            divisions: 20,
+            label: _temperature.toStringAsFixed(1),
+            onChanged: (v) => setState(() => _temperature = v),
+          ),
+          _buildHelpText(
+              '默认 1.0（API 服务端默认）。低值更确定（适合事实问答），高值更随机（适合创意写作）。DeepSeek 官方建议只调 temperature 或 top_p 其一。'),
+          const SizedBox(height: 16),
+          _buildSectionLabel('核采样（top_p）'),
+          Slider(
+            value: _topP,
+            min: 0,
+            max: 1,
+            divisions: 20,
+            label: _topP.toStringAsFixed(2),
+            onChanged: (v) => setState(() => _topP = v),
+          ),
+          _buildHelpText(
+              '默认 1.0（API 服务端默认）。例如 0.95 表示只从累积概率达 95% 的候选词中采样，比 temperature 更稳定的多样性控制。'),
+          const SizedBox(height: 24),
           Row(
             children: [
               FilledButton(
@@ -188,6 +244,33 @@ class _ApiKeySettingsPageState extends State<ApiKeySettingsPage> {
           Text(l10n.aiSettingsHelp,
               style: Theme.of(context).textTheme.bodySmall),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHelpText(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
       ),
     );
   }

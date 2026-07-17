@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import 'dart:async';
+import 'dart:math' show max;
 
 import '../../../data/local/daos/chat_repository.dart';
 import '../../../services/ai/prompt_builder_ext.dart';
@@ -56,10 +57,19 @@ abstract class ChatLlmClient {
 /// state. Subagent-style preset calls (RunChapterGuide, etc.) use the same
 /// ChatRepository but with `presetSource` markers and don't go through here.
 class SendMessageUseCase {
-  SendMessageUseCase({required this.repo, required this.llm});
+  SendMessageUseCase({
+    required this.repo,
+    required this.llm,
+    this.contextTurnsGetter,
+  });
 
   final ChatRepository repo;
   final ChatLlmClient llm;
+  /// v1.12.2-alpha P2: returns the user-configured context-window cap
+  /// (turns). When null, [run] defaults to 6 turns. Injected by
+  /// [sendMessageUseCaseProvider] reading [AiCredentials.contextTurns]
+  /// from the cached credentials.
+  final int Function()? contextTurnsGetter;
 
   /// Runs the send-message flow. Yields each streaming chunk as it arrives.
   /// Completes when the LLM stream closes.
@@ -76,6 +86,7 @@ class SendMessageUseCase {
     required String userContent,
     String? attachmentNoteId,
     String? attachmentSnapshot,
+    int? contextTurns,
   }) async* {
     // 1. Persist user message.
     await repo.appendMessage(
@@ -86,8 +97,17 @@ class SendMessageUseCase {
       attachmentNoteSnapshot: attachmentSnapshot,
     );
 
-    // 2. Load history + mode.
-    final history = await repo.listMessages(sessionId);
+    // 2. Load recent history (capped to contextTurns * 2 messages) + mode.
+    //
+    //    v1.12.2-alpha P2: previously called `listMessages(sessionId)` which
+    //    loaded the entire session. Long-running sessions blew past the
+    //    model context window and produced slow / expensive / truncated
+    //    responses. Now we cap to the most recent N turns. The just-written
+    //    user message is always within the window (it is the last row), so
+    //    the `history.last` filter below still works.
+    final turns = contextTurns ?? contextTurnsGetter?.call() ?? 6;
+    final messageLimit = max(1, turns) * 2;
+    final history = await repo.listRecentMessages(sessionId, messageLimit);
     final session = await repo.getSession(sessionId);
     final mode = session?.mode ?? 'normal';
 

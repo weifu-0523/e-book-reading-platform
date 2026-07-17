@@ -126,6 +126,12 @@ class ChatRepository {
   Future<List<ChatMessage>> listMessages(String sessionId) =>
       _messages.listForSession(sessionId);
 
+  /// v1.12.2-alpha P2: recent-N wrapper for context-bounded prompt
+  /// building. See [ChatMessagesDao.listRecentForSession].
+  Future<List<ChatMessage>> listRecentMessages(
+          String sessionId, int limit) =>
+      _messages.listRecentForSession(sessionId, limit: limit);
+
   Stream<List<ChatMessage>> watchMessages(String sessionId) =>
       _messages.watchForSession(sessionId);
 

@@ -39,6 +39,27 @@ class ChatMessagesDao extends DatabaseAccessor<AppDatabase>
     return q.get();
   }
 
+  /// v1.12.2-alpha P2: the N most recent active messages for [sessionId],
+  /// oldest-first (chat order).
+  ///
+  /// Used by [SendMessageUseCase] to cap the LLM context window. Default
+  /// cap is 12 messages (= 6 turns; user + AI per turn). Older messages
+  /// stay in the table for UI scroll-back but don't enter the prompt.
+  ///
+  /// Implementation: `DESC LIMIT N` then in-memory reverse — sqlite returns
+  /// the tail of the table efficiently and we re-establish chronological
+  /// order with a single O(N) reverse.
+  Future<List<ChatMessage>> listRecentForSession(
+    String sessionId, {
+    required int limit,
+  }) {
+    final descending = select(chatMessages)
+      ..where((t) => t.sessionId.equals(sessionId) & t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
+      ..limit(limit);
+    return descending.get().then((rows) => rows.reversed.toList());
+  }
+
   /// Fetch a single message by id (any state, including soft-deleted).
   ///
   /// Used by [ChatRepository] to read post-stream state for sync record

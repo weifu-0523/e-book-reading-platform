@@ -52,11 +52,18 @@ class AiParseException extends AiException {
 ///
 /// Constructor accepts an optional [httpClient] for testability — production
 /// lets the default client be constructed.
+///
+/// v1.12.2-alpha P2: [temperature] / [topP] surfaced as constructor params
+/// sourced from [AiCredentials]. Defaults match the OpenAI / DeepSeek server
+/// defaults (1.0 / 1.0), so existing behavior is unchanged when the user
+/// hasn't customized these.
 class OpenAiCompatibleClient {
   OpenAiCompatibleClient({
     required this.baseUrl,
     required this.apiKey,
     this.model = 'deepseek-chat',
+    this.temperature = 1.0,
+    this.topP = 1.0,
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 30),
   }) : _httpClient = httpClient ?? http.Client();
@@ -64,6 +71,8 @@ class OpenAiCompatibleClient {
   final String baseUrl;
   final String apiKey;
   final String model;
+  final double temperature;
+  final double topP;
   final Duration timeout;
   final http.Client _httpClient;
 
@@ -87,6 +96,11 @@ class OpenAiCompatibleClient {
           {'role': 'user', 'content': prompt},
         ],
         'stream': true,
+        // v1.12.2-alpha P2: sampling params from AiCredentials. Always sent
+        // (server defaults match our defaults, so behavior is identical to
+        // pre-P2 when the user hasn't customized).
+        'temperature': temperature,
+        'top_p': topP,
       });
 
     final http.StreamedResponse response;

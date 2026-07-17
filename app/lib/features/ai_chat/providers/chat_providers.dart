@@ -68,6 +68,9 @@ final chatLlmClientProvider = Provider<ChatLlmClient>((ref) {
       baseUrl: creds.baseUrl,
       apiKey: creds.apiKey,
       model: creds.model,
+      // v1.12.2-alpha P2: surface user-configurable sampling params.
+      temperature: creds.temperature,
+      topP: creds.topP,
       httpClient: httpClient,
     );
   });
@@ -106,9 +109,16 @@ final chapterGuideCacheProvider = Provider<ChapterGuideCache>((ref) {
 
 /// [SendMessageUseCase] provider.
 final sendMessageUseCaseProvider = Provider<SendMessageUseCase>((ref) {
+  ref.watch(chatCredentialsWarmerProvider); // subscribe so _cachedCredentials is fresh
   return SendMessageUseCase(
     repo: ref.watch(chatRepositoryProvider),
     llm: ref.watch(chatLlmClientProvider),
+    // v1.12.2-alpha P2: read contextTurns from cached credentials at
+    // run() time so settings-page changes take effect immediately (no
+    // provider rebuild needed).
+    contextTurnsGetter: () =>
+        _cachedCredentials?.contextTurns ??
+        ApiCredentialsDefaults.contextTurns,
   );
 });
 
@@ -256,6 +266,9 @@ class _ReviewClientAdapter implements ReviewClientLike {
       baseUrl: _creds.baseUrl,
       apiKey: _creds.apiKey,
       model: _creds.model,
+      // v1.12.2-alpha P2: mirror chatLlmClientProvider wiring.
+      temperature: _creds.temperature,
+      topP: _creds.topP,
       httpClient: _httpClient,
     ).streamChat(prompt: prompt);
   }
