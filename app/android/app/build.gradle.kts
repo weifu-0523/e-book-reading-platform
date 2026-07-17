@@ -56,6 +56,30 @@ android {
             }
         }
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+}
+
+dependencies {
+    // T4: Robolectric commented out — it triggers android-all.jar download
+    // from Maven Central on first test run, which hangs on CN network.
+    // T6+ (ZhiYueTtsService / framework-touching tests) will re-enable it
+    // and pre-stage android-all.jar via mirror.
+    // testImplementation("org.robolectric:robolectric:4.12.2")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+}
+
+// Workaround for Gradle 9.1 + Flutter plugin ordering: the unit-test
+// packaging task needs flutter assets copied first. Without this,
+// `packageDebugUnitTestForUnitTest` reports an implicit-dependency violation.
+project.afterEvaluate {
+    tasks.findByName("packageDebugUnitTestForUnitTest")?.dependsOn("copyFlutterAssetsDebug")
 }
 
 kotlin {
