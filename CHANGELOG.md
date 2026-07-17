@@ -7,17 +7,22 @@
 
 ## [Unreleased]
 
-v1.11.9-alpha 之后的新变更将记在此处。
+v1.12.1-alpha 之后的新变更将记在此处。
+
+## [1.12.1-alpha] - 2026-07-17
+
+Android 启动期 crash 热修（用户报告：v1.12.0-alpha 在华为/小米/OPPO/vivo 等 Android 12+ ROM 上打开后立即返回桌面）。
 
 ### 修复
 
-- **C1：LIKE 通配符 escape**。`AnnotationsDao.searchFts` 和
-  `BookPassagesDao.searchFts` 在 `quote` / `note` / `tags` / `content_text`
-  上做子串 LIKE 搜索时，用户输入的 `%` 和 `_` 被 SQLite 当作通配符——
-  搜 `50%` 会命中 `5000`、搜 `foo_bar` 会命中 `fooxbar`。修复：drift
-  `.like(pattern, escapeChar: '\\')` + `_escapeLikeWildcards` helper 转义
-  `%` / `_` / `\` 后再拼接 pattern。CJK 用户基本不触发，但属于搜索正确性
-  bug，必须修。4 个新测试（`%` / `_` 字面量匹配 × 2 DAO）。
+- **Hotfix：移动端 startup crash（lazy init audio_service）**。v1.12.0-alpha 在 `main()` 内立即调用 `AudioService.init()` 和 `AudioSession.instance.configure()`，触发 foreground service bind。在国产 ROM（华为/小米/OPPO/vivo，Android 12+）上进程启动期就 bind foreground service 会被系统直接 kill，表现为「app 打开后瞬间回桌面，无法操作」。根因是 native crash，无 Dart 堆栈，try/catch 兜不住；v1.11.6-alpha（pre-TTS）在同设备正常 → 消去法指向 audio_service startup init。
+  修复：`globalTtsInfraInitializer` 全局闭包；`main.dart` 只赋值闭包，startup 不再触碰 audio 栈；`TtsPlaybackController.drivePlay/drivePlayAt` 在首次播放时通过 `_ensureMobileInfraReady()` 触发闭包。用户点「朗读」时已是 user gesture，Android 12+ 允许 foreground service start，ROM 不再 kill。Init 失败 swallow → TTS in-app 仍可用，仅 OS 集成（通知/锁屏）降级。5 个新测试覆盖 lazy init 契约。
+- **C1：LIKE 通配符 escape**（从 Unreleased 合并发布）。`AnnotationsDao.searchFts` 和 `BookPassagesDao.searchFts` 在 `quote` / `note` / `tags` / `content_text` 上做子串 LIKE 搜索时，用户输入的 `%` 和 `_` 被 SQLite 当作通配符——搜 `50%` 会命中 `5000`、搜 `foo_bar` 会命中 `fooxbar`。修复：drift `.like(pattern, escapeChar: '\\')` + `_escapeLikeWildcards` helper 转义 `%` / `_` / `\\` 后再拼接 pattern。
+
+### 变更类型说明
+
+- 本次为纯热修，**不涉及 drift schema 变更**（仍是 v15）、**不涉及 outbox/sync 协议变更**。用户侧升级路径：覆盖安装即可。
+- 桌面端（Windows）行为完全不变（lazy init 闭包仅在 mobile 路径设置）。
 
 ## [1.12.0-alpha] - 2026-07-17
 
