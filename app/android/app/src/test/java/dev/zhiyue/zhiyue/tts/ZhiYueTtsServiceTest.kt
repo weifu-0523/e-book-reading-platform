@@ -1,5 +1,6 @@
 package dev.zhiyue.zhiyue.tts
 
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -12,9 +13,31 @@ import org.robolectric.shadows.ShadowLog
 /// `targetSdkVersion > maxSdkVersion` guard. Pin to SDK 34 (Android 14) which
 /// is the highest supported. All TTS framework APIs we touch (Service,
 /// TextToSpeech, MediaSession, AudioFocus, startForeground) exist at 34.
+///
+/// T7 note: `TextToSpeech(this)` calls `Context.getDeviceId()` during its
+/// constructor, so the Service must have `mBase` attached (via `attachBaseContext`)
+/// before `onCreate()` runs. We do this in [createService] rather than using
+/// `Robolectric.buildService` to keep the explicit `onCreate/onDestroy` calls
+/// visible in each test.
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ZhiYueTtsServiceTest {
+
+    /// Construct a Service with an Application context attached so framework
+    /// APIs that touch ContextWrapper.mBase (e.g. TextToSpeech) work.
+    private fun createService(): ZhiYueTtsService {
+        val service = ZhiYueTtsService()
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        // attachBaseContext is protected on ContextWrapper; call via reflection
+        // so we don't need to bump visibility on the Service itself.
+        // Class hierarchy: ZhiYueTtsService -> Service -> ContextWrapper.
+        val wrapperClass = service.javaClass.superclass?.superclass
+        val method = wrapperClass?.getDeclaredMethod("attachBaseContext", Context::class.java)
+            ?: error("Could not locate ContextWrapper.attachBaseContext via reflection")
+        method.isAccessible = true
+        method.invoke(service, ctx)
+        return service
+    }
 
     @Test
     fun `service lifecycle - onCreate then onDestroy does not throw`() {
@@ -22,7 +45,7 @@ class ZhiYueTtsServiceTest {
         // instantiate without going through startForegroundService; T10 will add
         // the real foreground notification (which requires ServiceController +
         // shadow NotificationManager).
-        val service = ZhiYueTtsService()
+        val service = createService()
         service.onCreate()
         service.onDestroy()
         // No exception = pass
@@ -33,12 +56,30 @@ class ZhiYueTtsServiceTest {
 
     @Test
     fun `STOP intent returns START_NOT_STICKY without throwing`() {
-        val service = ZhiYueTtsService()
+        val service = createService()
         service.onCreate()
         val stopIntent = android.content.Intent(ZhiYueTtsService.ACTION_STOP)
         val result = service.onStartCommand(stopIntent, 0, 1)
         org.junit.Assert.assertEquals(
             android.app.Service.START_NOT_STICKY, result)
+        service.onDestroy()
+    }
+
+    @Test
+    fun `onCreate constructs TextToSpeech and sets utterance listener`() {
+        val service = createService()
+        service.onCreate()
+        org.junit.Assert.assertNotNull(service.ttsInstanceForTest)
+        service.onDestroy()
+    }
+
+    @Test
+    fun `STOP intent calls tts stop without throwing`() {
+        val service = createService()
+        service.onCreate()
+        val stopIntent = android.content.Intent(ZhiYueTtsService.ACTION_STOP)
+        service.onStartCommand(stopIntent, 0, 1)
+        // T8-T11 will verify MediaSession/AudioFocus state. For now, no exception = pass.
         service.onDestroy()
     }
 }
