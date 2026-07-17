@@ -309,15 +309,19 @@ class ZhiYueTtsService : Service() {
     }
 
     private fun buildNotification(title: String, content: String): Notification {
+        // FLAG_IMMUTABLE was added in API 23 (M); on API 21-22 it must be 0
+        // (FLAG_MUTABLE was added in API 31, but we don't need mutability).
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            PendingIntent.FLAG_IMMUTABLE else 0
         val pauseIntent = PendingIntent.getService(
             this, 0,
             Intent(this, ZhiYueTtsService::class.java).setAction(ACTION_PAUSE),
-            PendingIntent.FLAG_IMMUTABLE
+            pendingIntentFlags
         )
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, ZhiYueTtsService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_IMMUTABLE
+            pendingIntentFlags
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
