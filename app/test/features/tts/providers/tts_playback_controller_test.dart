@@ -135,6 +135,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);
@@ -189,20 +190,25 @@ void main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // T22 (2026-07-17): routing tests.
+  // v1.13 T2 (2026-07-17): audio_handler routing removed.
   //
-  // The public `pause`/`resume`/`stop` methods must route through
-  // [globalAudioHandler] when on mobile + handler is set. The handler's
-  // callbacks then call `drive*` methods (NOT public) to avoid infinite
-  // recursion. These tests exercise the full loop:
+  // The public `pause`/`resume`/`stop` methods previously routed through
+  // [core.globalAudioHandler] on mobile so the OS notification / lock-
+  // screen stayed in sync. v1.13 replaces audio_service + flutter_tts with
+  // a self-built Android plugin that owns its own MediaSession + foreground
+  // service, so the controller no longer needs the OS-state round-trip:
+  // the underlying [TtsService] handles everything in one call.
   //
-  //   controller.pause() → handler.pause() → onPause → drivePause → svc.pause
+  // New contract:
+  //   controller.pause() → service.pause()      (no global lookup)
+  //   controller.resume() → driveResume()       (no handler.play indirection)
+  //   controller.stop() → service.stop()
   //
-  // and assert that BOTH the handler invocation count and the underlying
-  // TtsService call count are exactly 1 (single trigger, no recursion).
+  // The `_CountingAudioHandler` test double is retained only to assert
+  // that `core.globalAudioHandler` is NOT consulted even when set.
   // ─────────────────────────────────────────────────────────────────────
 
-  group('routing on mobile (handler set, TargetPlatform.android)', () {
+  group('direct service routing (v1.13 T2 — no audio_handler)', () {
     TargetPlatform? previousPlatform;
 
     setUp(() {
@@ -215,8 +221,9 @@ void main() {
       core.globalAudioHandler = null;
     });
 
-    test('pause routes through handler and drives service exactly once',
-        () async {
+    test(
+        'pause calls ttsService.pause directly even when globalAudioHandler is set '
+        '(v1.13 T2 — no audio_handler routing)', () async {
       final mockSvc = MockTtsService();
       _stubSettingsAppliers(mockSvc);
       final stateController = StreamController<TtsState>.broadcast();
@@ -235,6 +242,7 @@ void main() {
 
       final notifier = container.read(ttsPlaybackControllerProvider.notifier);
 
+      // Even with a handler set, the controller must bypass it.
       final handler = _CountingAudioHandler(
         onResume: () async => notifier.driveResume(),
         onPause: () async => notifier.drivePause(),
@@ -246,12 +254,13 @@ void main() {
 
       await notifier.pause();
 
-      expect(handler.pauseCalls, 1,
-          reason: 'handler.pause() must be invoked once on mobile');
+      expect(handler.pauseCalls, 0,
+          reason: 'v1.13 T2: handler.pause() must NOT be invoked');
       verify(() => mockSvc.pause()).called(1);
     });
 
-    test('stop routes through handler and drives service exactly once',
+    test(
+        'stop calls ttsService.stop directly even when globalAudioHandler is set',
         () async {
       final mockSvc = MockTtsService();
       _stubSettingsAppliers(mockSvc);
@@ -282,14 +291,13 @@ void main() {
 
       await notifier.stop();
 
-      expect(handler.stopCalls, 1,
-          reason: 'handler.stop() must be invoked once on mobile');
+      expect(handler.stopCalls, 0,
+          reason: 'v1.13 T2: handler.stop() must NOT be invoked');
       verify(() => mockSvc.stop()).called(1);
     });
 
     test(
-        'resume routes through handler.play() and drives service exactly once '
-        '(state must be paused for driveResume to act)',
+        'resume calls ttsService.speakSentence directly even when handler is set',
         () async {
       final mockSvc = MockTtsService();
       _stubSettingsAppliers(mockSvc);
@@ -299,6 +307,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);
@@ -306,7 +315,6 @@ void main() {
       when(() => mockSvc.pause()).thenAnswer((_) async {});
       when(() => mockSvc.stop()).thenAnswer((_) async {});
       when(() => mockSvc.dispose()).thenAnswer((_) async {});
-      // setCurrentSentenceIndex returns void — no stub needed for Mock.
 
       final container = ProviderContainer(overrides: [
         ttsServiceProvider.overrideWithValue(mockSvc),
@@ -325,7 +333,7 @@ void main() {
       );
       core.globalAudioHandler = handler;
 
-      // 1. Seed a queue so we have something to resume.
+      // Seed + pause so resume has the right precondition.
       await notifier.play(
         scope: const TtsScope.aiMessage(messageId: 'm1'),
         sentences: [
@@ -333,159 +341,13 @@ void main() {
               text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
         ],
       );
-      // 2. Pause so resume has the right precondition.
       await notifier.pause();
-      // Reset mocks so the next resume call count is clean.
       clearInteractions(mockSvc);
 
-      // 3. Resume — should route via handler.play() and end up calling
-      //    _speakCurrent → speakSentence exactly once.
       await notifier.resume();
-
-      expect(handler.playCalls, 1,
-          reason: 'handler.play() must be invoked once for resume on mobile');
-      verify(() => mockSvc.speakSentence(any())).called(1);
-    });
-
-    test(
-        'no infinite recursion: resume called when not paused is a no-op '
-        'on driveResume, breaking the callback cycle',
-        () async {
-      final mockSvc = MockTtsService();
-      _stubSettingsAppliers(mockSvc);
-      final stateController = StreamController<TtsState>.broadcast();
-      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
-      when(() => mockSvc.progress)
-          .thenAnswer((_) => const Stream<TtsProgress>.empty());
-      when(() => mockSvc.error)
-          .thenAnswer((_) => const Stream<String>.empty());
-
-      final container = ProviderContainer(overrides: [
-        ttsServiceProvider.overrideWithValue(mockSvc),
-      ]);
-      addTearDown(container.dispose);
-      addTearDown(stateController.close);
-
-      final notifier = container.read(ttsPlaybackControllerProvider.notifier);
-
-      final handler = _CountingAudioHandler(
-        onResume: () async => notifier.driveResume(),
-        onPause: () async => notifier.drivePause(),
-        onStop: () async => notifier.driveStop(),
-        onSkipNext: () async => notifier.driveSkipNext(),
-        onSkipPrevious: () async => notifier.driveSkipPrevious(),
-      );
-      core.globalAudioHandler = handler;
-
-      // State is idle (no prior playback). driveResume must early-return.
-      await notifier.resume();
-
-      expect(handler.playCalls, 1,
-          reason: 'public resume must still call handler.play()');
-      // Service.speakSentence not called — guard fired.
-      verifyNever(() => mockSvc.speakSentence(any()));
-    });
-
-    test('play does NOT route through handler (programmatic queue setup)',
-        () async {
-      final mockSvc = MockTtsService();
-      _stubSettingsAppliers(mockSvc);
-      final stateController = StreamController<TtsState>.broadcast();
-      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
-      when(() => mockSvc.progress)
-          .thenAnswer((_) => const Stream<TtsProgress>.empty());
-      when(() => mockSvc.error)
-          .thenAnswer((_) => const Stream<String>.empty());
-      when(() => mockSvc.init()).thenAnswer((_) async {});
-      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
-        stateController.add(TtsState.speaking);
-      });
-      when(() => mockSvc.dispose()).thenAnswer((_) async {});
-      // setCurrentSentenceIndex returns void — no stub needed for Mock.
-
-      final container = ProviderContainer(overrides: [
-        ttsServiceProvider.overrideWithValue(mockSvc),
-      ]);
-      addTearDown(container.dispose);
-      addTearDown(stateController.close);
-
-      final notifier = container.read(ttsPlaybackControllerProvider.notifier);
-
-      final handler = _CountingAudioHandler(
-        onResume: () async => notifier.driveResume(),
-        onPause: () async => notifier.drivePause(),
-        onStop: () async => notifier.driveStop(),
-        onSkipNext: () async => notifier.driveSkipNext(),
-        onSkipPrevious: () async => notifier.driveSkipPrevious(),
-      );
-      core.globalAudioHandler = handler;
-
-      await notifier.play(
-        scope: const TtsScope.aiMessage(messageId: 'm1'),
-        sentences: [
-          const Sentence(
-              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
-        ],
-      );
 
       expect(handler.playCalls, 0,
-          reason: 'play({...}) drives directly, never invokes handler.play');
-      verify(() => mockSvc.init()).called(1);
-      verify(() => mockSvc.speakSentence(any())).called(1);
-    });
-
-    test('skipNext does NOT route through handler', () async {
-      final mockSvc = MockTtsService();
-      _stubSettingsAppliers(mockSvc);
-      final stateController = StreamController<TtsState>.broadcast();
-      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
-      when(() => mockSvc.progress)
-          .thenAnswer((_) => const Stream<TtsProgress>.empty());
-      when(() => mockSvc.error)
-          .thenAnswer((_) => const Stream<String>.empty());
-      when(() => mockSvc.init()).thenAnswer((_) async {});
-      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
-        stateController.add(TtsState.speaking);
-      });
-      when(() => mockSvc.stop()).thenAnswer((_) async {});
-      when(() => mockSvc.dispose()).thenAnswer((_) async {});
-      // setCurrentSentenceIndex returns void — no stub needed for Mock.
-
-      final container = ProviderContainer(overrides: [
-        ttsServiceProvider.overrideWithValue(mockSvc),
-      ]);
-      addTearDown(container.dispose);
-      addTearDown(stateController.close);
-
-      final notifier = container.read(ttsPlaybackControllerProvider.notifier);
-
-      final handler = _CountingAudioHandler(
-        onResume: () async => notifier.driveResume(),
-        onPause: () async => notifier.drivePause(),
-        onStop: () async => notifier.driveStop(),
-        onSkipNext: () async => notifier.driveSkipNext(),
-        onSkipPrevious: () async => notifier.driveSkipPrevious(),
-      );
-      core.globalAudioHandler = handler;
-
-      // Seed queue with 2 sentences.
-      await notifier.play(
-        scope: const TtsScope.aiMessage(messageId: 'm1'),
-        sentences: [
-          const Sentence(
-              text: 'First.', locale: 'en-US', charStart: 0, charEnd: 5),
-          const Sentence(
-              text: 'Second.', locale: 'en-US', charStart: 6, charEnd: 12),
-        ],
-      );
-      clearInteractions(mockSvc);
-
-      await notifier.skipNext();
-
-      expect(handler.skipNextCalls, 0,
-          reason: 'skipNext is NOT routed — see T22 routing rules');
-      // Engine.stop + speakSentence fire as part of internal skip.
-      verify(() => mockSvc.stop()).called(greaterThanOrEqualTo(1));
+          reason: 'v1.13 T2: handler.play() must NOT be invoked for resume');
       verify(() => mockSvc.speakSentence(any())).called(1);
     });
   });
@@ -561,6 +423,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);
@@ -596,27 +459,21 @@ void main() {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // v1.12.1-alpha hotfix: lazy init of audio_service / audio_session.
+  // v1.13 T2 (2026-07-17): `_ensureServiceReady` no longer fires a
+  // global `globalTtsInfraInitializer` closure. The audio_service lazy-init
+  // path is gone — `TtsService.init()` itself is now idempotent and cheap
+  // (the self-built plugin defers native TextToSpeech bind until first
+  // utterance). The controller's only remaining responsibility is to make
+  // sure `_service.isInitialized` flips true before driving the first
+  // utterance.
   //
-  // Background: v1.12.0-alpha ran `AudioService.init()` + audio_session
-  // configure() inside main() on mobile. On several Android ROMs (Huawei,
-  // Xiaomi, OPPO, vivo — Android 12+) the foreground-service bind during
-  // process startup caused a native crash; user reported "app opens then
-  // immediately goes to background, unresponsive". Fix: main.dart assigns
-  // a closure to [core.globalTtsInfraInitializer] instead of running init
-  // eagerly. drivePlay / drivePlayAt invoke the closure on first playback
-  // (user gesture → service start allowed on Android 12+).
-  //
-  // These tests verify the lazy-init contract:
-  //   1. On mobile + handler null + initializer set → drivePlay triggers it.
-  //   2. Initializer error is swallowed (in-app TTS continues).
-  //   3. Handler already set → initializer NOT invoked (idempotent short-
-  //      circuit; covers tests that pre-set the handler).
-  //   4. Desktop → initializer NOT invoked (PlatformInfo gate).
-  //   5. playAt (mid-queue resume) also triggers lazy init.
+  // New contract:
+  //   * _service.isInitialized == false → drivePlay calls _service.init()
+  //   * _service.isInitialized == true  → drivePlay skips the init call
+  //   * globalTtsInfraInitializer       → never consulted (dead path)
   // ─────────────────────────────────────────────────────────────────────
 
-  group('lazy infra init (v1.12.1-alpha hotfix)', () {
+  group('service init gate (v1.13 T2 — direct _service.init)', () {
     TargetPlatform? previousPlatform;
     Future<void> Function()? previousInitializer;
 
@@ -634,14 +491,9 @@ void main() {
     });
 
     test(
-        'drivePlay invokes globalTtsInfraInitializer on mobile when handler '
-        'is unset', () async {
+        'drivePlay calls _service.init() on mobile when service reports '
+        '!isInitialized', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
-
-      var initCalls = 0;
-      core.globalTtsInfraInitializer = () async {
-        initCalls++;
-      };
 
       final mockSvc = MockTtsService();
 
@@ -652,6 +504,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);
@@ -664,51 +517,6 @@ void main() {
       addTearDown(container.dispose);
       addTearDown(stateController.close);
 
-      await container.read(ttsPlaybackControllerProvider.notifier).play(
-        scope: const TtsScope.aiMessage(messageId: 'm1'),
-        sentences: [
-          const Sentence(
-              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
-        ],
-      );
-
-      expect(initCalls, 1,
-          reason:
-              'lazy infra init must run on first mobile playback when handler is unset');
-      // Underlying service.init still called exactly once.
-      verify(() => mockSvc.init()).called(1);
-    });
-
-    test('lazy init error is swallowed (in-app TTS continues to work)',
-        () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.android;
-
-      core.globalTtsInfraInitializer = () async {
-        throw StateError('audio_service native bind failed');
-      };
-
-      final mockSvc = MockTtsService();
-
-      _stubSettingsAppliers(mockSvc);
-      final stateController = StreamController<TtsState>.broadcast();
-      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
-      when(() => mockSvc.progress)
-          .thenAnswer((_) => const Stream<TtsProgress>.empty());
-      when(() => mockSvc.error)
-          .thenAnswer((_) => const Stream<String>.empty());
-      when(() => mockSvc.init()).thenAnswer((_) async {});
-      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
-        stateController.add(TtsState.speaking);
-      });
-      when(() => mockSvc.dispose()).thenAnswer((_) async {});
-
-      final container = ProviderContainer(overrides: [
-        ttsServiceProvider.overrideWithValue(mockSvc),
-      ]);
-      addTearDown(container.dispose);
-      addTearDown(stateController.close);
-
-      // Must not throw — error swallowed so playback proceeds in-app.
       await container.read(ttsPlaybackControllerProvider.notifier).play(
         scope: const TtsScope.aiMessage(messageId: 'm1'),
         sentences: [
@@ -721,15 +529,11 @@ void main() {
       verify(() => mockSvc.speakSentence(any())).called(1);
     });
 
-    test('handler already set → initializer NOT invoked (idempotent bypass)',
-        () async {
+    test(
+        'drivePlay skips _service.init() on mobile when service reports '
+        'isInitialized=true', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
 
-      var initCalls = 0;
-      core.globalTtsInfraInitializer = () async {
-        initCalls++;
-      };
-
       final mockSvc = MockTtsService();
 
       _stubSettingsAppliers(mockSvc);
@@ -739,59 +543,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
-      when(() => mockSvc.init()).thenAnswer((_) async {});
-      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
-        stateController.add(TtsState.speaking);
-      });
-      when(() => mockSvc.dispose()).thenAnswer((_) async {});
-
-      final container = ProviderContainer(overrides: [
-        ttsServiceProvider.overrideWithValue(mockSvc),
-      ]);
-      addTearDown(container.dispose);
-      addTearDown(stateController.close);
-
-      final notifier = container.read(ttsPlaybackControllerProvider.notifier);
-
-      // Pre-set the handler — main.dart's eager path or a test setup.
-      final handler = _CountingAudioHandler(
-        onResume: () async => notifier.driveResume(),
-        onPause: () async => notifier.drivePause(),
-        onStop: () async => notifier.driveStop(),
-        onSkipNext: () async => notifier.driveSkipNext(),
-        onSkipPrevious: () async => notifier.driveSkipPrevious(),
-      );
-      core.globalAudioHandler = handler;
-
-      await notifier.play(
-        scope: const TtsScope.aiMessage(messageId: 'm1'),
-        sentences: [
-          const Sentence(
-              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
-        ],
-      );
-
-      expect(initCalls, 0,
-          reason: 'handler already set → lazy init closure must not run');
-    });
-
-    test('desktop → initializer NOT invoked (PlatformInfo gate)', () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-
-      var initCalls = 0;
-      core.globalTtsInfraInitializer = () async {
-        initCalls++;
-      };
-
-      final mockSvc = MockTtsService();
-
-      _stubSettingsAppliers(mockSvc);
-      final stateController = StreamController<TtsState>.broadcast();
-      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
-      when(() => mockSvc.progress)
-          .thenAnswer((_) => const Stream<TtsProgress>.empty());
-      when(() => mockSvc.error)
-          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(true);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);
@@ -812,17 +564,12 @@ void main() {
         ],
       );
 
-      expect(initCalls, 0,
-          reason: 'desktop must never invoke the mobile-only infra init');
+      verifyNever(() => mockSvc.init());
+      verify(() => mockSvc.speakSentence(any())).called(1);
     });
 
-    test('drivePlayAt also triggers lazy init', () async {
+    test('drivePlayAt also respects isInitialized gate', () async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
-
-      var initCalls = 0;
-      core.globalTtsInfraInitializer = () async {
-        initCalls++;
-      };
 
       final mockSvc = MockTtsService();
 
@@ -833,6 +580,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);
@@ -856,8 +604,52 @@ void main() {
         startIndex: 1,
       );
 
-      expect(initCalls, 1,
-          reason: 'drivePlayAt must trigger lazy infra init like drivePlay');
+      verify(() => mockSvc.init()).called(1);
+    });
+
+    test(
+        'globalTtsInfraInitializer is never consulted (v1.13 T2 dead path)',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      // Even if someone sets the closure (legacy main.dart), T2 must not
+      // touch it.
+      var initCalls = 0;
+      core.globalTtsInfraInitializer = () async {
+        initCalls++;
+      };
+
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(mockSvc),
+      ]);
+      addTearDown(container.dispose);
+      addTearDown(stateController.close);
+
+      await container.read(ttsPlaybackControllerProvider.notifier).play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+
+      expect(initCalls, 0,
+          reason: 'v1.13 T2: globalTtsInfraInitializer is dead code');
     });
   });
 
@@ -889,6 +681,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);
@@ -936,6 +729,7 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
       when(() => mockSvc.init()).thenAnswer((_) async {});
       when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
         stateController.add(TtsState.speaking);

@@ -16,10 +16,8 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/platform_info.dart';
 import '../../../core/providers.dart' as core;
 import '../../../services/tts/flutter_tts_service.dart';
 import '../../../services/tts/tts_service.dart';
@@ -137,41 +135,21 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   // ─────────────────────────────────────────────────────────────────────
   // Public API — in-app entry points.
   //
-  // T22 (2026-07-17): split into public route + internal drive to avoid
-  // infinite recursion through [ZhiYueAudioHandler].
+  // v1.13 T2 (2026-07-17): audio_handler routing removed.
   //
-  // Recursion hazard: on mobile, public method → `globalAudioHandler.x()`
-  // → handler callback (e.g. `onResume`) → must NOT call public method
-  // again (would loop). Handler callbacks therefore call the private
-  // `drive*` methods below, which directly drive [TtsService] without
-  // re-routing.
+  // Background: v1.12.x routed `pause`/`resume`/`stop` through
+  // [core.globalAudioHandler] so audio_service could sync OS notification
+  // + lock-screen state. v1.13 replaces audio_service + flutter_tts with
+  // a self-built Android plugin that owns its own MediaSession + foreground
+  // service inside [TtsService]. The OS-state round-trip is no longer the
+  // controller's concern — every public method now drives [TtsService]
+  // directly via the matching `drive*` internal.
   //
-  // Routing rules:
-  //  * [pause] / [resume] / [stop]: route via handler on mobile so the
-  //    OS notification / lock-screen state stays in sync. The handler's
-  //    `play()` / `pause()` / `stop()` overrides both update OS state AND
-  //    invoke the matching callback, which in turn calls `drivePause` /
-  //    `driveResume` / `driveStop`.
-  //  * [play] / [playAt]: NOT routed through `handler.play()` because
-  //    the handler's `play()` overload takes no queue/scope arguments.
-  //    Instead these drive the engine directly and rely on
-  //    [ZhiYueAudioHandler.publishMediaItem] (called by
-  //    `TtsReaderController` per-sentence) plus the next routed call
-  //    (pause/resume) to keep OS state synced. The foreground service
-  //    is activated lazily when the user first interacts with the
-  //    notification OR when `pause()` → `resume()` cycles happen.
-  //  * [skipNext] / [skipPrevious]: NOT routed. Skip is overwhelmingly
-  //    in-app UI (next/prev sentence button), and routing through the
-  //    handler's `skipToNext`/`skipToPrevious` would only re-trigger
-  //    these methods via `onSkipNext`/`onSkipPrevious` callbacks (no OS
-  //    state benefit since each sentence is its own media item via
-  //    `publishMediaItem`). OS-initiated skips (e.g. Bluetooth headset
-  //    long-press) still work — they go through the handler callbacks,
-  //    which call `driveSkipNext` / `driveSkipPrevious` directly.
+  // `play` / `playAt` / `skipNext` / `skipPrevious` were never routed
+  // (see git history — T22 routing rules) and remain unchanged.
   // ─────────────────────────────────────────────────────────────────────
 
-  /// Starts a fresh playback queue. Programmatic entry — does NOT route
-  /// through [ZhiYueAudioHandler] (see routing rules above).
+  /// Starts a fresh playback queue. Programmatic entry.
   Future<void> play({
     required TtsScope scope,
     required List<Sentence> sentences,
@@ -191,103 +169,64 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
         scope: scope, sentences: sentences, startIndex: startIndex);
   }
 
-  /// Pauses playback. On mobile + handler set, routes via
-  /// [ZhiYueAudioHandler.pause] so OS state syncs; the handler's
-  /// `onPause` callback then calls [drivePause].
+  /// Pauses playback. Drives [TtsService.pause] directly (v1.13 T2 —
+  /// the self-built plugin handles OS notification state internally).
   Future<void> pause() async {
-    if (_shouldRouteToHandler) {
-      await core.globalAudioHandler!.pause();
-    } else {
-      await drivePause();
-    }
+    await drivePause();
   }
 
-  /// Resumes playback after [pause]. On mobile + handler set, routes via
-  /// [ZhiYueAudioHandler.play] (the OS "play" button maps to resume in
-  /// audio_service convention); the handler's `onResume` callback then
-  /// calls [driveResume] (guarded — see [driveResume] for why).
+  /// Resumes playback after [pause]. Drives the engine directly via
+  /// [driveResume] (v1.13 T2 — no audio_service round-trip).
   Future<void> resume() async {
-    if (_shouldRouteToHandler) {
-      await core.globalAudioHandler!.play();
-    } else {
-      await driveResume();
-    }
+    await driveResume();
   }
 
-  /// Stops playback and clears the queue. On mobile + handler set, routes
-  /// via [ZhiYueAudioHandler.stop] so the OS notification dismisses;
-  /// handler's `onStop` callback then calls [driveStop].
+  /// Stops playback and clears the queue. Drives [TtsService.stop]
+  /// directly (v1.13 T2 — the plugin dismisses its own notification).
   Future<void> stop() async {
-    if (_shouldRouteToHandler) {
-      await core.globalAudioHandler!.stop();
-    } else {
-      await driveStop();
-    }
+    await driveStop();
   }
 
-  /// Skips to the next sentence in the queue. NOT routed through the
-  /// handler — see routing rules above.
+  /// Skips to the next sentence in the queue.
   Future<void> skipNext() async => driveSkipNext();
 
-  /// Skips to the previous sentence in the queue. NOT routed.
+  /// Skips to the previous sentence in the queue.
   Future<void> skipPrevious() async => driveSkipPrevious();
 
-  /// True when public methods should delegate to [core.globalAudioHandler].
-  /// Static-ish getter (reads globals + [PlatformInfo]); kept as instance
-  /// method so tests can exercise the controller without globals.
-  bool get _shouldRouteToHandler =>
-      PlatformInfo.isMobile && core.globalAudioHandler != null;
-
-  /// v1.12.1-alpha hotfix: fires [core.globalTtsInfraInitializer] on the
-  /// first playback on mobile (when [core.globalAudioHandler] is still
-  /// null). See the docstring on `globalTtsInfraInitializer` in
-  /// `core/providers.dart` for why init is lazy rather than at startup.
+  /// v1.13 T2: ensures the underlying [TtsService] is initialized before
+  /// the first utterance. The legacy `globalTtsInfraInitializer` closure
+  /// (which lazily bound audio_service + audio_session on mobile) is gone
+  /// — the self-built plugin's [TtsService.init] is idempotent and cheap
+  /// (native TextToSpeech bind is itself deferred until first utterance).
   ///
-  /// Idempotent: once the initializer has run (whether it succeeded,
-  /// setting [core.globalAudioHandler], or failed and left it null),
-  /// subsequent calls are no-ops. The closure itself is responsible for
-  /// not double-initing — but we additionally bail out early if a handler
-  /// is already set (covers the case where main.dart ran the closure
-  /// eagerly for some reason, or a test set the handler directly).
+  /// Contract:
+  ///  * `_service.isInitialized == true` → no-op.
+  ///  * `_service.isInitialized == false` → call `_service.init()` once.
   ///
-  /// Errors are swallowed so TTS continues to work in-app even when the
-  /// OS-level integration (notification / lock-screen / Bluetooth) fails
-  /// to initialize.
-  Future<void> _ensureMobileInfraReady() async {
-    if (!PlatformInfo.isMobile) return;
-    if (core.globalAudioHandler != null) return;
-    final init = core.globalTtsInfraInitializer;
-    if (init == null) return;
-    try {
-      await init();
-    } catch (e) {
-      // Swallow — in-app TTS still works; only OS integration is degraded.
-      // debugPrint instead of letting it propagate so we don't break the
-      // user's playback intent over a notification-channel failure.
-      debugPrint('TTS infra lazy init failed (in-app only): $e');
-    }
+  /// Runs on every platform; desktop engines (flutter_tts on Windows) also
+  /// need their one-time setup before the first speakSentence call.
+  Future<void> _ensureServiceReady() async {
+    if (_service.isInitialized) return;
+    await _service.init();
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // Internal drive methods — directly drive [TtsService], NO handler
-  // routing. Called from:
-  //  * public methods above (desktop path / unrouted methods)
-  //  * [ZhiYueAudioHandler] callbacks (mobile path, via main.dart wiring)
+  // Internal drive methods — directly drive [TtsService]. Called from:
+  //  * public methods above
+  //  * tests (white-box verification of state transitions)
   //
-  // These are public (no underscore) so main.dart's callback closures can
-  // reach them via `container.read(ttsPlaybackControllerProvider.notifier)`.
-  // Treat them as internal — do NOT call from UI code; use the
-  // corresponding public method instead.
+  // v1.13 T2: the `ZhiYueAudioHandler` callback path is gone. These
+  // methods remain public because tests reach into them directly, but
+  // application code should use the corresponding public method.
   // ─────────────────────────────────────────────────────────────────────
 
-  /// Internal: drives [TtsService] for fresh playback. No handler routing.
+  /// Internal: drives [TtsService] for fresh playback.
   Future<void> drivePlay({
     required TtsScope scope,
     required List<Sentence> sentences,
   }) async {
     if (sentences.isEmpty) return;
-    await _ensureMobileInfraReady();
-    await _service.init();
+    await _ensureServiceReady();
     _queue = List<Sentence>.unmodifiable(sentences);
     state = TtsPlaybackState(
       phase: TtsPhase.loading,
@@ -305,8 +244,7 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     required int startIndex,
   }) async {
     if (sentences.isEmpty) return;
-    await _ensureMobileInfraReady();
-    await _service.init();
+    await _ensureServiceReady();
     _queue = List<Sentence>.unmodifiable(sentences);
     final clamped = startIndex.clamp(0, sentences.length - 1);
     state = TtsPlaybackState(
@@ -318,34 +256,31 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     await _speakCurrent();
   }
 
-  /// Internal: engine-level pause. No handler routing.
+  /// Internal: engine-level pause.
   Future<void> drivePause() async {
     await _service.pause();
     state = state.copyWith(phase: TtsPhase.paused);
   }
 
-  /// Internal: engine-level resume after pause. No handler routing.
+  /// Internal: engine-level resume after pause.
   ///
   /// Guarded: if state is `idle` or `loading`/`speaking` (i.e. not paused),
-  /// this is a no-op. Why: on mobile, [ZhiYueAudioHandler.play] is called
-  /// both for OS-initiated resume (state=paused → resume) AND potentially
-  /// for foreground-service activation on fresh playback. Without the
-  /// guard, the latter would re-invoke `_speakCurrent` and double-trigger
-  /// the engine. The guard makes the callback safe to fire any time.
+  /// this is a no-op. The guard prevents accidental double-trigger of
+  /// `_speakCurrent` if `resume()` is invoked from a stale UI state.
   Future<void> driveResume() async {
     if (state.phase != TtsPhase.paused) return;
     state = state.copyWith(phase: TtsPhase.loading);
     await _speakCurrent();
   }
 
-  /// Internal: engine-level stop. No handler routing.
+  /// Internal: engine-level stop.
   Future<void> driveStop() async {
     await _service.stop();
     _queue = const [];
     state = const TtsPlaybackState();
   }
 
-  /// Internal: skip to next sentence. No handler routing.
+  /// Internal: skip to next sentence.
   Future<void> driveSkipNext() async {
     if (state.currentIndex + 1 < _queue.length) {
       state = state.copyWith(currentIndex: state.currentIndex + 1);
@@ -356,7 +291,7 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     }
   }
 
-  /// Internal: skip to previous sentence. No handler routing.
+  /// Internal: skip to previous sentence.
   Future<void> driveSkipPrevious() async {
     if (state.currentIndex > 0) {
       state = state.copyWith(currentIndex: state.currentIndex - 1);

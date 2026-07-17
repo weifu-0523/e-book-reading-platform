@@ -212,6 +212,10 @@ void main() {
     when(() => svc.progress)
         .thenAnswer((_) => const Stream<TtsProgress>.empty());
     when(() => svc.error).thenAnswer((_) => const Stream<String>.empty());
+    // v1.13 T2: TtsPlaybackController._ensureServiceReady reads
+    // isInitialized before calling init(). Stub false so the init()
+    // stub below is exercised exactly as in pre-T2 behavior.
+    when(() => svc.isInitialized).thenReturn(false);
     when(() => svc.init()).thenAnswer((_) async {});
     when(() => svc.speakSentence(any())).thenAnswer((_) async {
       stateController.add(TtsState.speaking);
