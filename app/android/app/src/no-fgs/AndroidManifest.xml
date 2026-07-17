@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No FGS permissions, no service declaration. Falls back to no TTS on
+         Android. Used as fallback if withFgs triggers ROM startup kill on
+         devices not yet tested. Plugin is registered but service never starts
+         (startForegroundService fails silently without manifest declaration). -->
+</manifest>

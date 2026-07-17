@@ -1,0 +1,31 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- v1.13 (2026-07-18): self-built ZhiYueTtsService replaces audio_service.
+         Safe because ZhiYueTtsPlugin.onAttachedToEngine is empty (just binds
+         channels), so no system service binding at app startup. Service starts
+         only on user click via startForegroundService (Android 12+ user-gesture
+         exemption). The 2026-07-12 lesson from audio_service applies: it was
+         the plugin's attach-time work that crashed, not the manifest entry. -->
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+
+    <application>
+        <service
+            android:name=".tts.ZhiYueTtsService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
+
+        <!-- TODO(v1.14): ZhiYueTtsMediaButtonReceiver body is currently a no-op.
+             AndroidX MediaButtonReceiver auto-routes via MediaSession, but we need
+             to verify bluetooth headset play/pause actually reaches our service. -->
+        <receiver
+            android:name=".tts.ZhiYueTtsMediaButtonReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

@@ -62,6 +62,25 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    flavorDimensions += "fgs"
+    productFlavors {
+        create("withFgs") {
+            dimension = "fgs"
+        }
+        create("noFgs") {
+            dimension = "fgs"
+        }
+    }
+
+    sourceSets {
+        getByName("withFgs") {
+            manifest.srcFile("src/with-fgs/AndroidManifest.xml")
+        }
+        getByName("noFgs") {
+            manifest.srcFile("src/no-fgs/AndroidManifest.xml")
+        }
+    }
 }
 
 dependencies {
@@ -78,9 +97,11 @@ dependencies {
 
 // Workaround for Gradle 9.1 + Flutter plugin ordering: the unit-test
 // packaging task needs flutter assets copied first. Without this,
-// `packageDebugUnitTestForUnitTest` reports an implicit-dependency violation.
+// `package{Flavor}DebugUnitTestForUnitTest` reports an implicit-dependency
+// violation. v1.13 T14: added per-flavor variants (withFgs / noFgs).
 project.afterEvaluate {
-    tasks.findByName("packageDebugUnitTestForUnitTest")?.dependsOn("copyFlutterAssetsDebug")
+    tasks.findByName("packageWithFgsDebugUnitTestForUnitTest")?.dependsOn("copyFlutterAssetsWithFgsDebug")
+    tasks.findByName("packageNoFgsDebugUnitTestForUnitTest")?.dependsOn("copyFlutterAssetsNoFgsDebug")
 }
 
 kotlin {
