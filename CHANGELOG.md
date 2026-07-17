@@ -7,7 +7,26 @@
 
 ## [Unreleased]
 
-v1.12.1-alpha 之后的新变更将记在此处。
+v1.12.2-alpha 之后的新变更将记在此处。
+
+## [1.12.2-alpha] - 2026-07-17
+
+v1.12.1-alpha 之后用户报告的 4 个 bug 批量修复：移动端 startup crash（彻底剥离 manifest 注册）+「播放本章」跳章后从书首播放 + rate/pitch/volume 设置无效 + AI context 默认最近 6 轮可调。
+
+### 修复
+
+- **P0：移动端 startup crash（manifest 注册彻底剥离）**。v1.12.1-alpha 的 lazy init audio_service 假设不成立——Android 包管理器在 APK 安装/启动扫描期就读 `AndroidManifest.xml`，发现 `<service android:name="com.ryanheise.audioservice.AudioService" android:foregroundServiceType="mediaPlayback">` + `<receiver MediaButtonReceiver>` + 3 个相关权限（FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLAYBACK / WAKE_LOCK）就触发国产 ROM 启动期 foreground service 限制，进程在 Flutter engine 启动前就被 kill，v1.12.1-alpha 的 lazy init 来不及生效。修复：删 3 块 manifest 注册 + 移除 main.dart 的 audio_service / audio_session / zhiyue_audio_handler / audio_session_initializer / tts_playback_controller 5 个 import + `globalTtsInfraInitializer` 闭包整块替换为 no-op。代价：移动端 OS 集成降级（通知/锁屏控件、MediaButton、后台播放都不可用）；in-app TTS 完整保留。桌面端完全不受影响。后续 v1.13.x 考虑用 flutter_local_notifications 替代。
+- **P1-a：「播放本章」跳章后从书首播放**。EPUB renderer 跨章 CFI 跳转（TOC/bookmark jump）后正确切换了内部状态，但没有立即发射 `currentLocation` 通知，TtsReaderController 拿到的还是初始 chapter 0。修复：`epubx_renderer.dart` 在 `_stateController.add(ReaderEngineReady())` 后立即调 `_emitCurrentLocation()`。新增 cross-chapter jump emits location immediately 测试。
+- **P1-b：rate/pitch/volume 设置无听觉效果**。`TtsPlaybackController._speakCurrent()` 直接调 `speakSentence`，没有把 TtsSettings 同步到底层 TtsService。修复：构造器加 `TtsSettings Function() _settingsGetter` 字段；`_speakCurrent` 在 `speakSentence` 前 `setSpeechRate/Pitch/Volume`；Provider 接 `() => ref.read(ttsSettingsProvider)`，每次开播实时读最新设置。新增 settings application 2 测试 + tts_reader_controller_test 补 3 个 stub。当前句播放中改设置 → 下一句生效（flutter_tts API 限制）。
+- **P2：AI 对话默认最近 6 轮 context + 可调 temperature/top_p**。原实现把整段历史塞进 LLM context，长会话用户成本/延迟双高。修复：(1) `SendMessageUseCase` 加 `contextTurnsGetter` 字段，`run()` 内 `max(1, turns) * 2` 截断消息数，改用 `repo.listRecentMessages(sessionId, limit)` 替代 `listMessages`。(2) `ChatMessagesDao.listRecentForSession` 新方法（DESC LIMIT N + reverse）。(3) `AiCredentials` 加 `contextTurns` / `temperature` / `topP` 3 字段（默认 6 / 1.0 / 1.0），存 `flutter_secure_storage` 不走 drift schema。(4) `OpenAiCompatibleClient` 构造器透传 sampling 参数到 HTTP body。(5) `api_key_settings_page.dart` 加 3 Slider + 中文帮助文字；`_pumpPage` helper 设 800×1800 viewport。7 个 ChatRepository test stub 补 `listRecentMessages` 实现。
+
+### 变更类型说明
+
+- 本次涉及 AndroidManifest 删除（P0）+ AI 客户端 HTTP body 始终带 sampling 参数（P2）。
+- **不涉及 drift schema 变更**（仍 v15）、**不涉及 outbox/sync 协议变更**。
+- **跨设备兼容性**：v1.12.0/1.12.1 与 v1.12.2 互通无障碍。
+- **用户侧**：覆盖安装即可。移动端用户强烈建议升级（P0 修复）；桌面端用户建议升级（P1/P2 都是可感知改进）。
+- **AI 行为变化**：默认上下文截断到 6 轮（12 条消息）。用户在 AI 设置页可调到 1–50 轮。temperature/top_p 默认 1.0（API 服务端默认），未自定义时行为与 v1.12.1-alpha 完全一致。
 
 ## [1.12.1-alpha] - 2026-07-17
 
