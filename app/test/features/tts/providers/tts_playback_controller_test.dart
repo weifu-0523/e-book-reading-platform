@@ -28,19 +28,17 @@ class MockTtsService extends Mock implements TtsService {}
 
 class FakeSentence extends Fake implements Sentence {}
 
-/// Test double for [ZhiYueAudioHandler] that records calls without going
-/// through `audio_service` platform channels. Each `play`/`pause`/`stop`/
-/// `skipToNext`/`skipToPrevious` increments a counter. We subclass the
-/// real handler so the global (typed as [ZhiYueAudioHandler]?) accepts it
-/// — `BaseAudioHandler` constructors don't perform platform init, so
-/// this is safe in unit tests.
+/// Negative-assertion target: production code must NOT consult
+/// [core.globalAudioHandler] (v1.13 T2 removed routing). Subclassing
+/// [ZhiYueAudioHandler] here only to verify zero pause/stop/play calls
+/// reach the legacy handler.
 ///
-/// We override the 5 public methods to drop the `_updatePlaybackState` +
-/// `super.stop` calls from T21 (which manipulate `playbackState` and would
-/// require rxdart BehaviorSubject plumbing unrelated to the routing test).
-/// The routing tests only care that the public method on the controller
-/// delegates to the handler's method, which then invokes the callback —
-/// which is exactly what the real handler does.
+/// Each public method still increments a counter and invokes its callback
+/// (used by the routing group's setUp wiring), but the assertions in those
+/// tests are negative — the counters must stay at 0. The handler subclass
+/// is retained only because [core.globalAudioHandler] is typed as
+/// [ZhiYueAudioHandler]? and a real instance is needed to prove the
+/// controller does not look it up.
 class _CountingAudioHandler extends ZhiYueAudioHandler {
   int playCalls = 0;
   int pauseCalls = 0;
@@ -232,7 +230,13 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
       when(() => mockSvc.pause()).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
 
       final container = ProviderContainer(overrides: [
         ttsServiceProvider.overrideWithValue(mockSvc),
@@ -251,6 +255,17 @@ void main() {
         onSkipPrevious: () async => notifier.driveSkipPrevious(),
       );
       core.globalAudioHandler = handler;
+
+      // v1.13 T2 review: drivePause now guards on phase == speaking, so
+      // seed playback first to reach a pausable state.
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+      clearInteractions(mockSvc);
 
       await notifier.pause();
 
@@ -377,7 +392,13 @@ void main() {
           .thenAnswer((_) => const Stream<TtsProgress>.empty());
       when(() => mockSvc.error)
           .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
       when(() => mockSvc.pause()).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
 
       final container = ProviderContainer(overrides: [
         ttsServiceProvider.overrideWithValue(mockSvc),
@@ -385,7 +406,20 @@ void main() {
       addTearDown(container.dispose);
       addTearDown(stateController.close);
 
-      await container.read(ttsPlaybackControllerProvider.notifier).pause();
+      final notifier = container.read(ttsPlaybackControllerProvider.notifier);
+
+      // v1.13 T2 review: drivePause now guards on phase == speaking, so
+      // seed playback first to reach a pausable state.
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+      clearInteractions(mockSvc);
+
+      await notifier.pause();
 
       verify(() => mockSvc.pause()).called(1);
     });
@@ -650,6 +684,72 @@ void main() {
 
       expect(initCalls, 0,
           reason: 'v1.13 T2: globalTtsInfraInitializer is dead code');
+    });
+
+    // v1.13 T2 review (BLOCKER): _ensureServiceReady must not call init()
+    // twice under concurrent entry. Without the Completer guard, two
+    // simultaneous callers both see isInitialized == false and both
+    // invoke init(). The guard collapses them onto a single in-flight
+    // init future.
+    test(
+        'concurrent _ensureServiceReady calls invoke init() exactly once '
+        '(BLOCKER race fix)', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+
+      // Slow init: stays pending until we complete the Completer.
+      final initGate = Completer<void>();
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) => initGate.future);
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(mockSvc),
+      ]);
+      addTearDown(container.dispose);
+      addTearDown(stateController.close);
+
+      final notifier = container.read(ttsPlaybackControllerProvider.notifier);
+
+      // Fire 3 concurrent drivePlay calls — each enters _ensureServiceReady.
+      // The first one creates the Completer; the next two must piggyback.
+      final sentences = [
+        const Sentence(
+            text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+      ];
+      final futures = <Future<void>>[
+        notifier.drivePlay(
+            scope: const TtsScope.aiMessage(messageId: 'm1'),
+            sentences: sentences),
+        notifier.drivePlay(
+            scope: const TtsScope.aiMessage(messageId: 'm2'),
+            sentences: sentences),
+        notifier.drivePlay(
+            scope: const TtsScope.aiMessage(messageId: 'm3'),
+            sentences: sentences),
+      ];
+
+      // Let the event loop turn so all three calls have entered
+      // _ensureServiceReady and hit the await on init().
+      await Future<void>.delayed(Duration.zero);
+
+      // Release the gate — all three pending inits resolve at once.
+      initGate.complete();
+
+      // Wait for all drivePlay futures to settle.
+      await Future.wait(futures).catchError((_, __) => const <void>[]);
+
+      // The BLOCKER assertion: init() must have been called exactly once.
+      verify(() => mockSvc.init()).called(1);
     });
   });
 

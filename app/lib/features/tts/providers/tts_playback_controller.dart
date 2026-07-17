@@ -127,6 +127,14 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   List<Sentence> _queue = const [];
   StreamSubscription<TtsState>? _stateSub;
 
+  /// v1.13 T2 review (BLOCKER): guard against concurrent init races.
+  /// Two simultaneous callers (e.g. `play()` fired while a previous
+  /// `play()` is still awaiting `_service.init()`) both saw
+  /// `isInitialized == false` and both invoked `init()`. The Completer
+  /// collapses them onto a single in-flight init future; the first
+  /// caller creates it, subsequent callers await the same future.
+  Completer<void>? _initCompleter;
+
   TtsPlaybackController(this._service, this._settingsGetter)
       : super(const TtsPlaybackState()) {
     _stateSub = _service.state.listen(_onServiceState);
@@ -201,13 +209,31 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   ///
   /// Contract:
   ///  * `_service.isInitialized == true` → no-op.
-  ///  * `_service.isInitialized == false` → call `_service.init()` once.
+  ///  * `_service.isInitialized == false` → call `_service.init()` exactly
+  ///    once, even under concurrent entry (BLOCKER fixed in v1.13 T2 review).
   ///
   /// Runs on every platform; desktop engines (flutter_tts on Windows) also
   /// need their one-time setup before the first speakSentence call.
   Future<void> _ensureServiceReady() async {
     if (_service.isInitialized) return;
-    await _service.init();
+    // A previous call already kicked off init — piggyback on its future.
+    final existing = _initCompleter;
+    if (existing != null) return existing.future;
+    // First caller: own the gate. Subsequent callers (checked above) will
+    // await this same future until `_initCompleter` is cleared.
+    final completer = Completer<void>();
+    _initCompleter = completer;
+    try {
+      await _service.init();
+      completer.complete();
+    } catch (e, st) {
+      // Allow a fresh retry on the next play attempt rather than caching
+      // the failure forever.
+      _initCompleter = null;
+      completer.completeError(e, st);
+      rethrow;
+    }
+    _initCompleter = null;
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -257,9 +283,19 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   }
 
   /// Internal: engine-level pause.
+  ///
+  /// v1.13 T2 review (IMPORTANT 1): if `_service.pause()` throws, the
+  /// controller transitions to [TtsPhase.error] and records the message
+  /// rather than leaving the state machine stuck in `speaking`.
   Future<void> drivePause() async {
-    await _service.pause();
-    state = state.copyWith(phase: TtsPhase.paused);
+    if (state.phase != TtsPhase.speaking) return;
+    try {
+      await _service.pause();
+      state = state.copyWith(phase: TtsPhase.paused);
+    } catch (e) {
+      state = state.copyWith(
+          phase: TtsPhase.error, errorMessage: e.toString());
+    }
   }
 
   /// Internal: engine-level resume after pause.
@@ -274,10 +310,22 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   }
 
   /// Internal: engine-level stop.
+  ///
+  /// v1.13 T2 review (IMPORTANT 1): if `_service.stop()` throws, the
+  /// controller still resets its local queue + returns to idle so the UI
+  /// is not stuck — but records the error on the state for surfacing.
+  /// Stop is idempotent from the user's perspective ("I want playback to
+  /// end") so even an erroring engine should leave the controller clean.
   Future<void> driveStop() async {
-    await _service.stop();
-    _queue = const [];
-    state = const TtsPlaybackState();
+    try {
+      await _service.stop();
+      _queue = const [];
+      state = const TtsPlaybackState();
+    } catch (e) {
+      _queue = const [];
+      state = TtsPlaybackState(
+          phase: TtsPhase.error, errorMessage: e.toString());
+    }
   }
 
   /// Internal: skip to next sentence.
