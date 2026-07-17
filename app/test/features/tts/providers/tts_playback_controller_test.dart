@@ -552,4 +552,260 @@ void main() {
       verify(() => mockSvc.speakSentence(any())).called(1);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // v1.12.1-alpha hotfix: lazy init of audio_service / audio_session.
+  //
+  // Background: v1.12.0-alpha ran `AudioService.init()` + audio_session
+  // configure() inside main() on mobile. On several Android ROMs (Huawei,
+  // Xiaomi, OPPO, vivo — Android 12+) the foreground-service bind during
+  // process startup caused a native crash; user reported "app opens then
+  // immediately goes to background, unresponsive". Fix: main.dart assigns
+  // a closure to [core.globalTtsInfraInitializer] instead of running init
+  // eagerly. drivePlay / drivePlayAt invoke the closure on first playback
+  // (user gesture → service start allowed on Android 12+).
+  //
+  // These tests verify the lazy-init contract:
+  //   1. On mobile + handler null + initializer set → drivePlay triggers it.
+  //   2. Initializer error is swallowed (in-app TTS continues).
+  //   3. Handler already set → initializer NOT invoked (idempotent short-
+  //      circuit; covers tests that pre-set the handler).
+  //   4. Desktop → initializer NOT invoked (PlatformInfo gate).
+  //   5. playAt (mid-queue resume) also triggers lazy init.
+  // ─────────────────────────────────────────────────────────────────────
+
+  group('lazy infra init (v1.12.1-alpha hotfix)', () {
+    TargetPlatform? previousPlatform;
+    Future<void> Function()? previousInitializer;
+
+    setUp(() {
+      previousPlatform = debugDefaultTargetPlatformOverride;
+      previousInitializer = core.globalTtsInfraInitializer;
+      core.globalAudioHandler = null;
+      core.globalTtsInfraInitializer = null;
+    });
+
+    tearDown(() {
+      debugDefaultTargetPlatformOverride = previousPlatform;
+      core.globalTtsInfraInitializer = previousInitializer;
+      core.globalAudioHandler = null;
+    });
+
+    test(
+        'drivePlay invokes globalTtsInfraInitializer on mobile when handler '
+        'is unset', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      var initCalls = 0;
+      core.globalTtsInfraInitializer = () async {
+        initCalls++;
+      };
+
+      final mockSvc = MockTtsService();
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(mockSvc),
+      ]);
+      addTearDown(container.dispose);
+      addTearDown(stateController.close);
+
+      await container.read(ttsPlaybackControllerProvider.notifier).play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+
+      expect(initCalls, 1,
+          reason:
+              'lazy infra init must run on first mobile playback when handler is unset');
+      // Underlying service.init still called exactly once.
+      verify(() => mockSvc.init()).called(1);
+    });
+
+    test('lazy init error is swallowed (in-app TTS continues to work)',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      core.globalTtsInfraInitializer = () async {
+        throw StateError('audio_service native bind failed');
+      };
+
+      final mockSvc = MockTtsService();
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(mockSvc),
+      ]);
+      addTearDown(container.dispose);
+      addTearDown(stateController.close);
+
+      // Must not throw — error swallowed so playback proceeds in-app.
+      await container.read(ttsPlaybackControllerProvider.notifier).play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+
+      verify(() => mockSvc.init()).called(1);
+      verify(() => mockSvc.speakSentence(any())).called(1);
+    });
+
+    test('handler already set → initializer NOT invoked (idempotent bypass)',
+        () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      var initCalls = 0;
+      core.globalTtsInfraInitializer = () async {
+        initCalls++;
+      };
+
+      final mockSvc = MockTtsService();
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(mockSvc),
+      ]);
+      addTearDown(container.dispose);
+      addTearDown(stateController.close);
+
+      final notifier = container.read(ttsPlaybackControllerProvider.notifier);
+
+      // Pre-set the handler — main.dart's eager path or a test setup.
+      final handler = _CountingAudioHandler(
+        onResume: () async => notifier.driveResume(),
+        onPause: () async => notifier.drivePause(),
+        onStop: () async => notifier.driveStop(),
+        onSkipNext: () async => notifier.driveSkipNext(),
+        onSkipPrevious: () async => notifier.driveSkipPrevious(),
+      );
+      core.globalAudioHandler = handler;
+
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+
+      expect(initCalls, 0,
+          reason: 'handler already set → lazy init closure must not run');
+    });
+
+    test('desktop → initializer NOT invoked (PlatformInfo gate)', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+      var initCalls = 0;
+      core.globalTtsInfraInitializer = () async {
+        initCalls++;
+      };
+
+      final mockSvc = MockTtsService();
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(mockSvc),
+      ]);
+      addTearDown(container.dispose);
+      addTearDown(stateController.close);
+
+      await container.read(ttsPlaybackControllerProvider.notifier).play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+
+      expect(initCalls, 0,
+          reason: 'desktop must never invoke the mobile-only infra init');
+    });
+
+    test('drivePlayAt also triggers lazy init', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+
+      var initCalls = 0;
+      core.globalTtsInfraInitializer = () async {
+        initCalls++;
+      };
+
+      final mockSvc = MockTtsService();
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(mockSvc),
+      ]);
+      addTearDown(container.dispose);
+      addTearDown(stateController.close);
+
+      await container.read(ttsPlaybackControllerProvider.notifier).playAt(
+        scope: const TtsScope.chapter(bookId: 'b1', chapterIdx: 0),
+        sentences: [
+          const Sentence(
+              text: 'First.', locale: 'en-US', charStart: 0, charEnd: 5),
+          const Sentence(
+              text: 'Second.', locale: 'en-US', charStart: 6, charEnd: 12),
+        ],
+        startIndex: 1,
+      );
+
+      expect(initCalls, 1,
+          reason: 'drivePlayAt must trigger lazy infra init like drivePlay');
+    });
+  });
 }

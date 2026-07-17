@@ -16,6 +16,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/platform_info.dart';
@@ -230,6 +231,36 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   bool get _shouldRouteToHandler =>
       PlatformInfo.isMobile && core.globalAudioHandler != null;
 
+  /// v1.12.1-alpha hotfix: fires [core.globalTtsInfraInitializer] on the
+  /// first playback on mobile (when [core.globalAudioHandler] is still
+  /// null). See the docstring on `globalTtsInfraInitializer` in
+  /// `core/providers.dart` for why init is lazy rather than at startup.
+  ///
+  /// Idempotent: once the initializer has run (whether it succeeded,
+  /// setting [core.globalAudioHandler], or failed and left it null),
+  /// subsequent calls are no-ops. The closure itself is responsible for
+  /// not double-initing — but we additionally bail out early if a handler
+  /// is already set (covers the case where main.dart ran the closure
+  /// eagerly for some reason, or a test set the handler directly).
+  ///
+  /// Errors are swallowed so TTS continues to work in-app even when the
+  /// OS-level integration (notification / lock-screen / Bluetooth) fails
+  /// to initialize.
+  Future<void> _ensureMobileInfraReady() async {
+    if (!PlatformInfo.isMobile) return;
+    if (core.globalAudioHandler != null) return;
+    final init = core.globalTtsInfraInitializer;
+    if (init == null) return;
+    try {
+      await init();
+    } catch (e) {
+      // Swallow — in-app TTS still works; only OS integration is degraded.
+      // debugPrint instead of letting it propagate so we don't break the
+      // user's playback intent over a notification-channel failure.
+      debugPrint('TTS infra lazy init failed (in-app only): $e');
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────
   // Internal drive methods — directly drive [TtsService], NO handler
   // routing. Called from:
@@ -248,6 +279,7 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     required List<Sentence> sentences,
   }) async {
     if (sentences.isEmpty) return;
+    await _ensureMobileInfraReady();
     await _service.init();
     _queue = List<Sentence>.unmodifiable(sentences);
     state = TtsPlaybackState(
@@ -266,6 +298,7 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     required int startIndex,
   }) async {
     if (sentences.isEmpty) return;
+    await _ensureMobileInfraReady();
     await _service.init();
     _queue = List<Sentence>.unmodifiable(sentences);
     final clamped = startIndex.clamp(0, sentences.length - 1);

@@ -122,6 +122,32 @@ Directory? globalTtsSettingsDirOverride;
 /// via casting a plain test double.
 ZhiYueAudioHandler? globalAudioHandler;
 
+/// TTS feature (2026-07-17 v1.12.1-alpha hotfix): lazy initializer for
+/// the audio_service + audio_session stack on mobile.
+///
+/// **Why lazy (not eager at startup):** v1.12.0-alpha invoked
+/// `AudioService.init()` + `AudioSession.instance.configure(...)` directly
+/// inside `main()`. On several Android ROMs (Huawei / Xiaomi / OPPO / vivo
+/// flavors of Android 12+) the resulting foreground-service bind during
+/// process startup triggers a native crash — the launcher immediately
+/// returns to the home screen ("app opened then went to background,
+/// unresponsive"). The crash leaves no Dart stack trace (it's a native
+/// SIGSEGV / ROM behavior), and try/catch on the Dart side cannot catch
+/// it. Reproduction is device-dependent; confirmed by elimination —
+/// v1.11.6-alpha (pre-TTS) ran fine on the same device.
+///
+/// Fix: main.dart assigns a closure here instead of running init at
+/// startup. [TtsPlaybackController.drivePlay] / [drivePlayAt] invoke the
+/// closure on first playback. By that point the user has explicitly
+/// tapped a "朗读" affordance — Android 12+ treats this as a legitimate
+/// foreground-service trigger (user gesture → service start allowed).
+/// Desktop is unaffected (closure stays null + never invoked).
+///
+/// If the closure throws, [TtsPlaybackController] swallows the error
+/// and TTS continues in-app-only — [globalAudioHandler] remains null
+/// and routing short-circuits to `drive*` direct calls.
+Future<void> Function()? globalTtsInfraInitializer;
+
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return LocalBookRepository(
