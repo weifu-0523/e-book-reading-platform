@@ -97,15 +97,33 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     /// [Context.startForegroundService] so the service can promote itself
     /// to foreground within the 5-second window; older API levels fall back
     /// to plain [Context.startService].
+    ///
+    /// On the `noFgs` flavor, the service is omitted from the manifest so
+    /// [Context.startForegroundService] throws [IllegalArgumentException]
+    /// ("Service not registered"). We catch that here so the `noFgs` flavor
+    /// degrades gracefully: TTS calls become silent no-ops (no foreground
+    /// promotion, no notification), but the app does not crash and the
+    /// MethodChannel call still returns success.
     private fun ensureServiceStarted(ctx: Context) {
         if (isServiceCreated) return
         val intent = Intent(ctx, ZhiYueTtsService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ctx.startForegroundService(intent)
-        } else {
-            ctx.startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(intent)
+            } else {
+                ctx.startService(intent)
+            }
+            isServiceCreated = true
+        } catch (e: Exception) {
+            // noFgs flavor omits the service declaration; startForegroundService
+            // throws. Log and continue — TTS calls become no-op (no foreground
+            // promotion, no notification), but app does not crash.
+            android.util.Log.w(
+                "ZhiYueTts",
+                "ensureServiceStarted failed (likely noFgs flavor)",
+                e
+            )
         }
-        isServiceCreated = true
     }
 
     /// Forward a control action (PAUSE / RESUME / STOP) to the service.

@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No FGS permissions, no service declaration. Falls back to no TTS on
-         Android. Used as fallback if withFgs triggers ROM startup kill on
-         devices not yet tested. Plugin is registered but service never starts
-         (startForegroundService fails silently without manifest declaration). -->
+    <!-- No FGS permissions, no service declaration. Used as fallback if
+         withFgs triggers ROM startup kill on devices not yet tested.
+
+         Runtime behavior:
+         - ZhiYueTtsPlugin.ensureServiceStarted catches the IllegalArgumentException
+           from ctx.startForegroundService and logs it (TTS becomes no-op).
+         - User-facing: 「朗读」 button does nothing; no crash.
+
+         TODO(v1.14): drop noFgs if withFgs passes T17 real-device matrix. -->
 </manifest>
