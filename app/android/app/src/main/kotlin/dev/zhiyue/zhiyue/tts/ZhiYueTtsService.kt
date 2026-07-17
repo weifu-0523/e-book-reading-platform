@@ -1,13 +1,21 @@
 package dev.zhiyue.zhiyue.tts
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyCallback
+import android.telephony.TelephonyManager
 import android.util.Log
 import java.util.Locale
 
@@ -30,6 +38,16 @@ class ZhiYueTtsService : Service() {
     /// Test-only accessor.
     internal val mediaSessionForTest: MediaSessionCompat?
         get() = mediaSession
+
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var audioManager: AudioManager? = null
+    private var phoneStateListener: PhoneStateListener? = null
+    private var telephonyCallback: TelephonyCallback? = null
+
+    internal var audioFocusRequestedForTest = false
+        private set
+    internal var phoneStateListenerRegisteredForTest = false
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -64,6 +82,8 @@ class ZhiYueTtsService : Service() {
             isActive = true
         }
         updatePlaybackState(PlaybackStateCompat.STATE_NONE)
+        setupAudioFocus()
+        setupPhoneStateListener()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -120,6 +140,23 @@ class ZhiYueTtsService : Service() {
             release()
         }
         mediaSession = null
+        audioFocusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
+        audioFocusRequest = null
+        audioFocusRequestedForTest = false
+
+        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        if (tm != null) {
+            telephonyCallback?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) tm.unregisterTelephonyCallback(it)
+            }
+            phoneStateListener?.let {
+                @Suppress("DEPRECATION")
+                tm.listen(it, PhoneStateListener.LISTEN_NONE)
+            }
+        }
+        telephonyCallback = null
+        phoneStateListener = null
+        phoneStateListenerRegisteredForTest = false
         super.onDestroy()
     }
 
@@ -142,6 +179,57 @@ class ZhiYueTtsService : Service() {
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
             .build()
         mediaSession?.setMetadata(metadata)
+    }
+
+    private fun setupAudioFocus() {
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attrs)
+                .setOnAudioFocusChangeListener { focusChange ->
+                    when (focusChange) {
+                        AudioManager.AUDIOFOCUS_LOSS,
+                        AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> handlePause()
+                        // No auto-resume on focus gain (let user re-click)
+                    }
+                }
+                .build()
+            audioManager?.requestAudioFocus(audioFocusRequest!!)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager?.requestAudioFocus(
+                null,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+        audioFocusRequestedForTest = true
+    }
+
+    private fun setupPhoneStateListener() {
+        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            telephonyCallback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+                override fun onCallStateChanged(state: Int) {
+                    if (state == TelephonyManager.CALL_STATE_RINGING) handlePause()
+                }
+            }
+            tm.registerTelephonyCallback(mainExecutor, telephonyCallback!!)
+        } else {
+            phoneStateListener = @Suppress("DEPRECATION") object : PhoneStateListener() {
+                @Deprecated("deprecated in API 31")
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    if (state == TelephonyManager.CALL_STATE_RINGING) handlePause()
+                }
+            }
+            @Suppress("DEPRECATION")
+            tm.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
+        }
+        phoneStateListenerRegisteredForTest = true
     }
 
     companion object {

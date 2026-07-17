@@ -148,4 +148,22 @@ class ZhiYueTtsServiceTest {
         )
         service.onDestroy()
     }
+
+    @Test
+    fun `onCreate requests AudioFocus and registers PhoneStateListener`() {
+        val service = createService()
+        service.onCreate()
+        org.junit.Assert.assertTrue(service.audioFocusRequestedForTest)
+        org.junit.Assert.assertTrue(service.phoneStateListenerRegisteredForTest)
+        service.onDestroy()
+    }
+
+    @Test
+    fun `onDestroy abandons AudioFocus and unregisters PhoneStateListener`() {
+        val service = createService()
+        service.onCreate()
+        service.onDestroy()
+        org.junit.Assert.assertFalse(service.audioFocusRequestedForTest)
+        org.junit.Assert.assertFalse(service.phoneStateListenerRegisteredForTest)
+    }
 }
