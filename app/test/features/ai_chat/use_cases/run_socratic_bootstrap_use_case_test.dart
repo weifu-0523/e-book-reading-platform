@@ -100,6 +100,15 @@ class _FakeRepo implements ChatRepository {
     return messagesFor(sessionId);
   }
 
+  // v1.12.2-alpha P2: mirror ChatRepository.listRecentMessages.
+  @override
+  Future<List<ChatMessage>> listRecentMessages(
+      String sessionId, int limit) async {
+    final all = await messagesFor(sessionId);
+    if (all.length <= limit) return all;
+    return all.sublist(all.length - limit);
+  }
+
   @override
   Future<void> completeStreamingMessage(String messageId) async {
     completeStreamingCalls.add(messageId);

@@ -74,6 +74,15 @@ class _FakeRepo implements ChatRepository {
           .where((m) => !deletedSessionIds.contains(m.sessionId))
           .toList();
 
+  // v1.12.2-alpha P2: mirror ChatRepository.listRecentMessages.
+  @override
+  Future<List<ChatMessage>> listRecentMessages(
+      String sessionId, int limit) async {
+    final all = await listMessages(sessionId);
+    if (all.length <= limit) return all;
+    return all.sublist(all.length - limit);
+  }
+
   @override
   Future<String> appendMessage({
     required String sessionId,

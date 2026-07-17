@@ -92,6 +92,16 @@ class _FakeRepo implements ChatRepository {
       .map((m) => m.inner)
       .toList();
 
+  // v1.12.2-alpha P2: mirror ChatRepository.listRecentMessages so
+  // SendMessageUseCase context-bounded path works in tests.
+  @override
+  Future<List<ChatMessage>> listRecentMessages(
+      String sessionId, int limit) async {
+    final all = await listMessages(sessionId);
+    if (all.length <= limit) return all;
+    return all.sublist(all.length - limit);
+  }
+
   @override
   Future<void> setSessionMode(String sessionId, String mode) async {
     final s = _sessions[sessionId];

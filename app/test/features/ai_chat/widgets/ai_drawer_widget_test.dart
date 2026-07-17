@@ -71,6 +71,12 @@ class _FakeRepo implements ChatRepository {
   @override
   Future<List<ChatMessage>> listMessages(String sessionId) async => [];
 
+  // v1.12.2-alpha P2: mirror ChatRepository.listRecentMessages.
+  @override
+  Future<List<ChatMessage>> listRecentMessages(
+          String sessionId, int limit) async =>
+      [];
+
   @override
   Stream<List<ChatMessage>> watchMessages(String sessionId) {
     return const Stream<List<ChatMessage>>.empty();
