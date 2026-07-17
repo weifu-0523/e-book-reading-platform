@@ -1,10 +1,35 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <!-- TTS P3 (T23): background media playback foreground service -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
-    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!--
+      v1.12.2-alpha P0 hotfix: REMOVED audio_service / audio_session manifest
+      registration (service + receiver + 3 foreground-service permissions).
+
+      Why: v1.12.0-alpha and v1.12.1-alpha both crash immediately after launch
+      on Chinese Android ROMs (Huawei / Xiaomi / OPPO / vivo, Android 12+) —
+      app opens then instantly returns to home screen with no Dart stack
+      trace. v1.12.1-alpha lazy-init'd AudioService.init() inside main() so
+      startup doesn't touch the audio stack from Dart side, but the crash
+      persisted → root cause is the AndroidManifest scan that happens at
+      process startup, BEFORE main(). These ROMs' custom permission/service
+      scanners detect foregroundServiceType="mediaPlayback" + the
+      MediaButtonReceiver + FOREGROUND_SERVICE_MEDIA_PLAYBACK permission and
+      kill the process before Flutter UI initializes.
+
+      Fix: strip the manifest registration entirely. audio_service plugin
+      stays in pubspec (its `onAttachedToEngine` is lazy — no native init at
+      plugin registration, only at AudioService.init() which we now never
+      call on mobile). Net effect: TTS works in-app (flutter_tts is
+      independent of audio_service); only OS-level integrations are
+      degraded (no lock-screen controls, no notification, no Bluetooth
+      buttons). Acceptable trade-off given the alternative (app won't
+      start).
+
+      P3 (background playback) is parked until we either find a ROM-safe
+      foreground-service recipe or pivot to a different plugin
+      (e.g. just_audio + manual MediaSession). See docs/releases/
+      release-notes-v1.12.2-alpha.md for the full write-up.
+    -->
     <application
         android:label="智阅"
         android:name="${applicationName}"
@@ -50,26 +75,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- TTS P3 (T23): audio_service foreground service for background
-             playback. Activated by AudioService.init in main.dart (mobile only).
-             foregroundServiceType=mediaPlayback + FOREGROUND_SERVICE_MEDIA_PLAYBACK
-             permission are required on Android 14+ (compileSdk 36) for the
-             notification to persist when the app is backgrounded. -->
-        <service
-            android:name="com.ryanheise.audioservice.AudioService"
-            android:foregroundServiceType="mediaPlayback"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.media.browse.MediaBrowserService"/>
-            </intent-filter>
-        </service>
-        <receiver
-            android:name="com.ryanheise.audioservice.MediaButtonReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON"/>
-            </intent-filter>
-        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

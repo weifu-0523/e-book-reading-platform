@@ -17,8 +17,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:audio_service/audio_service.dart';
-import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,11 +32,8 @@ import 'core/router.dart';
 import 'core/scaffold_messenger_key.dart';
 import 'data/local/file_storage.dart';
 import 'features/sync/providers/sync_controller.dart';
-import 'features/tts/providers/tts_playback_controller.dart';
 import 'services/ai/api_key_store.dart';
 import 'services/book_open_bridge.dart';
-import 'services/tts/audio_session_initializer.dart';
-import 'services/tts/zhiyue_audio_handler.dart';
 
 void main(List<String> args) async {
   // M4.6-fix10/R6: 全局错误兜底——widget build 抛异常不再红屏。
@@ -121,122 +116,42 @@ void main(List<String> args) async {
       _WindowCloseHandler(container: container);
     }
 
-    // T22 + v1.12.1-alpha hotfix: register [ZhiYueAudioHandler] on mobile.
+    // T22 + v1.12.1-alpha + v1.12.2-alpha P0 hotfix:
     //
-    // The handler bridges OS media controls (lock screen, notification,
-    // Bluetooth) to [TtsPlaybackController] via 5 callbacks. Callbacks
-    // call `drive*` methods (not public `pause`/`resume`/`stop`) to avoid
-    // infinite recursion: public method → handler.x() → callback → public
-    // method would loop forever.
+    // v1.12.0-alpha ran AudioService.init + AudioSession.configure eagerly
+    // here. v1.12.1-alpha moved it to a closure assigned to
+    // [globalTtsInfraInitializer] (lazy on first playback). Both versions
+    // crashed immediately after launch on Chinese Android ROMs (Huawei /
+    // Xiaomi / OPPO / vivo, Android 12+) — see release-notes-v1.12.2-alpha.
     //
-    // `driveResume` is internally guarded — it no-ops if state is not
-    // `paused`. This makes the `onResume` callback safe to fire even when
-    // the OS sends a spurious "play" event during fresh playback.
+    // Root cause (v1.12.2-alpha conclusion): the crash originates BEFORE
+    // main() — at the AndroidManifest scan / process startup phase. The
+    // ROM's permission scanner sees foregroundServiceType="mediaPlayback" +
+    // FOREGROUND_SERVICE_MEDIA_PLAYBACK + the MediaButtonReceiver in the
+    // manifest and kills the process before Flutter UI initializes. No
+    // Dart-side try/catch can recover from that.
     //
-    // Desktop never enters this branch, so [globalAudioHandler] stays null
-    // and the controller's `_shouldRouteToHandler` evaluates false — desktop
-    // public methods call `drive*` directly with no handler involvement.
+    // v1.12.2-alpha fix: strip the manifest registration entirely (see
+    // AndroidManifest.xml) AND don't assign the lazy-init closure here.
+    // Without manifest registration, AudioService.init() would throw at
+    // runtime (no service to bind), so we never even attempt it. Net
+    // effect on mobile:
+    //   * `globalTtsInfraInitializer` stays null → `_ensureMobileInfraReady`
+    //     in TtsPlaybackController is a no-op.
+    //   * `globalAudioHandler` stays null → `_shouldRouteToHandler` is
+    //     always false → public pause/resume/stop go straight to `drive*`.
+    //   * TTS works in-app (flutter_tts is independent of audio_service).
+    //   * Lost: lock-screen controls, notification, Bluetooth buttons,
+    //     auto-pause on phone call / headphone unplug.
     //
-    // **v1.12.1-alpha lazy init:** v1.12.0-alpha ran `AudioService.init`
-    // and `AudioSession.instance.configure(...)` directly here. On several
-    // Android ROMs (Huawei / Xiaomi / OPPO / vivo, Android 12+) the
-    // foreground-service bind during process startup triggered a native
-    // crash — user reported "app opens, immediately goes to background,
-    // unresponsive". The crash left no Dart stack (native SIGSEGV / ROM
-    // behavior) so try/catch couldn't recover.
+    // P3 (background playback) parked. See docs/releases/release-notes-
+    // v1.12.2-alpha.md for the decision write-up and follow-up options.
     //
-    // Fix: assign a closure to [globalTtsInfraInitializer] instead of
-    // running init here. [TtsPlaybackController.drivePlay] / [drivePlayAt]
-    // invoke the closure on first playback. By that point the user has
-    // explicitly tapped a "朗读" affordance — Android 12+ treats this as
-    // a legitimate foreground-service trigger (user gesture → service
-    // start allowed). If the closure throws, the controller swallows the
-    // error and TTS continues in-app only.
+    // The `if (PlatformInfo.isMobile)` branch is intentionally empty —
+    // kept as a marker so the comment block is co-located with where the
+    // mobile init used to live.
     if (PlatformInfo.isMobile) {
-      globalTtsInfraInitializer = () async {
-        // AudioService.init can fail on platforms without a media framework
-        // (e.g. desktop in test mode, or Android with broken media service).
-        // We swallow + leave [globalAudioHandler] null so TTS still works
-        // in-app — only OS-level integrations (notification, lock screen)
-        // are degraded.
-        try {
-          globalAudioHandler = await AudioService.init(
-            builder: () => ZhiYueAudioHandler(
-              onResume: () async => container
-                  .read(ttsPlaybackControllerProvider.notifier)
-                  .driveResume(),
-              onPause: () async => container
-                  .read(ttsPlaybackControllerProvider.notifier)
-                  .drivePause(),
-              onStop: () async => container
-                  .read(ttsPlaybackControllerProvider.notifier)
-                  .driveStop(),
-              onSkipNext: () async => container
-                  .read(ttsPlaybackControllerProvider.notifier)
-                  .driveSkipNext(),
-              onSkipPrevious: () async => container
-                  .read(ttsPlaybackControllerProvider.notifier)
-                  .driveSkipPrevious(),
-            ),
-            config: const AudioServiceConfig(
-              androidNotificationChannelId: 'zhiyue_tts_channel',
-              androidNotificationChannelName: '智阅朗读',
-              androidNotificationOngoing: true,
-              androidStopForegroundOnPause: true,
-            ),
-          );
-        } catch (e) {
-          debugPrint(
-              'AudioService.init failed (TTS will work in-app only): $e');
-        }
-
-        // T25 (2026-07-17): configure the OS audio session for spoken-audio
-        // playback and wire two system event streams to pause TTS:
-        //  * interruptionEventStream — phone call, alarm, another media app
-        //    stealing focus.
-        //  * becomingNoisyEventStream — headphone unplugged / Bluetooth
-        //    audio device disconnected.
-        //
-        // **Why pause bypasses the audio handler:** [TtsPlaybackController.pause]
-        // (public) routes via [globalAudioHandler] on mobile, which calls
-        // `onPause` callback → `controller.drivePause()`. But during an audio
-        // interruption the OS has already paused our session — calling
-        // `handler.pause()` would re-engage the foreground service we're
-        // trying to wind down. So [onPause] calls `drivePause()` directly.
-        //
-        // **Plan bug note:** the plan (line 2189) specified
-        // `AVAudioSessionCategory.speech` which doesn't exist in
-        // audio_session 0.1.25. We use `playback` (matches the package's
-        // own `AudioSessionConfiguration.speech()` recipe) so background
-        // audio persists when the screen locks.
-        //
-        // Subscriptions live for app lifetime — the OS reclaims them on
-        // process exit. No explicit cancel needed (memory rule only forbids
-        // dispose-time fire-and-forget; this is startup-time setup).
-        try {
-          final session = await AudioSession.instance;
-          await AudioSessionInitializer.init(
-            configure: () => session.configure(
-              const AudioSessionConfiguration(
-                avAudioSessionCategory: AVAudioSessionCategory.playback,
-                avAudioSessionMode: AVAudioSessionMode.spokenAudio,
-                androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
-              ),
-            ),
-            interruptionStream: session.interruptionEventStream,
-            becomingNoisyStream: session.becomingNoisyEventStream,
-            onPause: () async => container
-                .read(ttsPlaybackControllerProvider.notifier)
-                .drivePause(),
-          );
-        } catch (e) {
-          // AudioSession init can fail on platforms without audio hardware
-          // (e.g. CI / test env, or rare Android state where the audio
-          // service is unresponsive). Non-fatal: in-app TTS still works,
-          // only OS-level interruption routing is degraded.
-          debugPrint('AudioSession init failed (non-fatal): $e');
-        }
-      };
+      // no-op — see comment above.
     }
 
     // M7+M8：启动后处理文件 deep-link（Windows argv + Android MethodChannel）。
