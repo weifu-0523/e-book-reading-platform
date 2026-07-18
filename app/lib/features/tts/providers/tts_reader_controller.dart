@@ -97,6 +97,17 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   /// manually stopped before any speech" (no prompt).
   bool _wasSpeaking = false;
 
+  /// v1.13.7-alpha Bug 3: snapshot of the most recently observed non-null
+  /// [TtsScope] from [TtsPlaybackController]. [TtsPlaybackController] clears
+  /// `state.scope` to null when the queue exhausts (see its
+  /// `_onServiceState(idle)` branch that resets state to `const
+  /// TtsPlaybackState()`), so by the time [_onPlaybackChange] observes
+  /// phase=idle the scope is already gone. We snapshot it on every non-idle
+  /// transition so the idle branch can still decide whether the just-finished
+  /// playback was chapter-scoped (→ chapter-boundary branch fires) or AI-
+  /// message-scoped (→ Bug 3: silent stop, no chapter advance / prompt).
+  TtsScope? _lastObservedScope;
+
   /// Triggered by the reader chrome 「朗读本章」 button (T14).
   ///
   /// Reads [ttsReaderEngineRefProvider], [ttsCurrentBookIdProvider],
@@ -238,6 +249,7 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   Future<void> stop() async {
     _wasSpeaking = false;
     _isAutoNavigating = false;
+    _lastObservedScope = null;
     await _playbackSub?.cancel();
     _playbackSub = null;
     await _engineLocationSub?.cancel();
@@ -332,15 +344,35 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   ///      [PaginationMode.scroll] (best-effort; throws caught internally
   ///      so a transient engine state never wedges TTS).
   void _onPlaybackChange(TtsPlaybackState playback) {
+    // v1.13.7-alpha Bug 3: snapshot the scope on every non-idle emission so
+    // the idle branch can still see what kind of playback just finished
+    // (TtsPlaybackController nulls state.scope when queue exhausts).
+    if (playback.scope != null) {
+      _lastObservedScope = playback.scope;
+    }
     if (playback.phase == TtsPhase.idle) {
       final wasSpeaking = _wasSpeaking;
       _wasSpeaking = false;
+      final finishedScope = _lastObservedScope;
+      _lastObservedScope = null;
       _ref.read(ttsCurrentRangeProvider.notifier).state = null;
       state = const TtsReaderState();
       // T17: chapter-boundary handling. Only fire when we were actually
       // speaking (manual stop / queue exhausted from error keeps
       // wasSpeaking=false, so no spurious 「下一章」 prompt).
-      if (wasSpeaking) {
+      //
+      // v1.13.7-alpha Bug 3: ALSO gate on the just-finished playback's
+      // scope — only [TtsScopeChapter] triggers the chapter-boundary branch.
+      // AI message playback ([TtsScopeAiMessage], driven from ai_message_list's
+      // long-press menu) is a one-shot utterance: when it exhausts, the user
+      // expects playback to simply stop, not auto-advance the reader chapter
+      // or surface the「继续听下一章？」SnackBar. Without this guard, AI 朗读
+      // finishing would erroneously trigger chapter advance (continuous) or
+      // the prompt (askAtEnd) because _playbackSub stays attached from a
+      // prior start() call and _wasSpeaking latched true on the AI speaking
+      // phase. We use [_lastObservedScope] (stashed above) instead of
+      // `playback.scope` because the controller nulls scope on idle.
+      if (wasSpeaking && finishedScope is TtsScopeChapter) {
         _onChapterBoundaryReached();
       }
       return;

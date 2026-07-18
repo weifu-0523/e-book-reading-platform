@@ -33,6 +33,7 @@ import 'package:zhiyue/data/repositories/book_repository.dart';
 import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
 import 'package:zhiyue/features/tts/providers/tts_reader_controller.dart';
 import 'package:zhiyue/features/tts/providers/tts_settings_provider.dart';
+import 'package:zhiyue/services/tts/sentence_segmenter.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
 
 // ── Fakes / Mocks ─────────────────────────────────────────────────────────
@@ -714,6 +715,122 @@ void main() {
       final req = container.read(ttsChapterEndRequestProvider);
       expect(req, isNotNull);
       expect(req!.kind, TtsChapterEndKind.lastChapter);
+    });
+  });
+
+  // v1.13.7-alpha Bug 3: AI message playback (TtsScopeAiMessage) must NOT
+  // trigger the chapter-boundary branch when it exhausts. Before the fix,
+  // _onPlaybackChange unconditionally called _onChapterBoundaryReached when
+  // wasSpeaking=true, so an AI chat朗读 finishing would surface 继续听下一章？
+  // (askAtEnd) or auto-advance the chapter (continuous) even though the user
+  // only asked to listen to the AI message. The fix adds a scope type check:
+  // only TtsScopeChapter triggers the chapter-boundary branch.
+  group('TtsReaderController chapter boundary scope guard (Bug 3)', () {
+    test(
+        'AI message scope playback finishing does NOT surface chapter prompt',
+        () async {
+      final engine = _FakeReaderEngine();
+      final container = buildContainer(
+        chapterText: 'Only sentence.',
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container
+        ..listen(ttsPlaybackControllerProvider, (_, __) {})
+        ..listen(ttsChapterEndRequestProvider, (_, __) {});
+
+      // askAtEnd so the chapter-boundary branch is observable via
+      // ttsChapterEndRequestProvider (continuous would auto-advance chapter
+      // index, also observable, but askAtEnd is the more explicit assertion).
+      await container
+          .read(ttsSettingsProvider.notifier)
+          .setChapterBoundary(TtsChapterBoundary.askAtEnd);
+
+      // 1. Start chapter playback so _playbackSub attaches and _wasSpeaking
+      //    latches true (this is the precondition for the bug — _wasSpeaking
+      //    must be true when AI playback exhausts for the bug to manifest).
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(
+          container.read(ttsPlaybackControllerProvider).phase,
+          TtsPhase.speaking,
+          reason: 'precondition: chapter playback reached speaking.');
+
+      // 2. Without stopping chapter, the user invokes AI message朗读
+      //    (mirrors ai_message_list._onSpeak). This drives the playback
+      //    controller with TtsScopeAiMessage — _playbackSub stays attached
+      //    from start() above, so _onPlaybackChange keeps firing.
+      final aiSentences = SentenceSegmenter.split('AI reply sentence.');
+      await container.read(ttsPlaybackControllerProvider.notifier).play(
+            scope: const TtsScopeAiMessage(messageId: 'msg-1'),
+            sentences: aiSentences,
+          );
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(ttsPlaybackControllerProvider).scope,
+          isA<TtsScopeAiMessage>(),
+          reason: 'precondition: scope switched to AI message.');
+      expect(
+          container.read(ttsPlaybackControllerProvider).phase,
+          TtsPhase.speaking,
+          reason: 'precondition: AI playback reached speaking.');
+
+      // 3. Simulate AI playback exhausting (engine emits TtsState.idle after
+      //    the AI sentence completes). This is the bug trigger: idle fires
+      //    with scope=TtsScopeAiMessage and wasSpeaking=true.
+      stateController.add(TtsState.idle);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      // Bug 3 assertion: no chapter prompt, no advance, controller inactive.
+      expect(
+          container.read(ttsChapterEndRequestProvider), isNull,
+          reason: 'v1.13.7-alpha Bug 3: AI message scope must NOT trigger '
+              'the chapter-boundary branch (no askContinue prompt).');
+      expect(container.read(ttsCurrentChapterIdxProvider), 0,
+          reason: 'v1.13.7-alpha Bug 3: AI message scope must NOT auto-advance '
+              'the chapter index.');
+      expect(container.read(ttsReaderControllerProvider).isActive, isFalse,
+          reason: 'v1.13.7-alpha Bug 3: controller should return to inactive '
+              'after AI message playback exhausts.');
+    });
+
+    test(
+        'chapter scope playback finishing still triggers chapter prompt '
+        '(no regression)',
+        () async {
+      final engine = _FakeReaderEngine();
+      final container = buildContainer(
+        chapterText: 'Only sentence.',
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container
+        ..listen(ttsPlaybackControllerProvider, (_, __) {})
+        ..listen(ttsChapterEndRequestProvider, (_, __) {});
+
+      await container
+          .read(ttsSettingsProvider.notifier)
+          .setChapterBoundary(TtsChapterBoundary.askAtEnd);
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      // Queue exhausts → idle fires with scope=TtsScopeChapter.
+      stateController.add(TtsState.idle);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      // No regression: chapter scope still surfaces the askContinue prompt.
+      final req = container.read(ttsChapterEndRequestProvider);
+      expect(req, isNotNull,
+          reason: 'no regression: chapter scope must still trigger prompt.');
+      expect(req!.kind, TtsChapterEndKind.askContinue);
     });
   });
 }
