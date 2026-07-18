@@ -7,7 +7,52 @@
 
 ## [Unreleased]
 
-v1.13.4-alpha 之后的新变更将记在此处。
+v1.13.5-alpha 之后的新变更将记在此处。
+## [1.13.5-alpha] - 2026-07-18
+
+### Changed
+
+- **TTS EventChannel → MethodChannel reverse callback（修复多句只读 queue[0]）**：
+  v1.13.4-alpha 收集到的真机诊断数据是 `emitCount=2 / emitDroppedCount=0 /
+  dartReceivedCount=0` — Kotlin `sink.success()` 两次都成功返回，但 Dart 端
+  `_handleEvent` 从未被调用。这是 EventChannel binary messenger 在国产 ROM
+  上的静默丢包：`success()` 表面无异常，但 envelope 根本没穿过 Flutter runtime
+  到达 Dart 监听器。前两次 fix（v1.13.2 加 `case 'done'`、v1.13.3 提前
+  eventEmitter wiring）的前提假设都错了——链路根本没断在 Kotlin 端。
+
+  v1.13.5-alpha 把事件通道整个换掉：
+
+  - **Kotlin `ZhiYueTtsPlugin`**：移除 `EventChannel` 字段、`StreamHandler`
+    实现及 `onListen`/`onCancel` 回调。`emitEvent(event)` 改用
+    `channel?.invokeMethod("onTtsEvent", event)`，try/catch 包住 invokeMethod
+    调用，失败时记 `invokeExceptionCount` + 异常类型。`onAttachedToEngine` 
+    只绑 MethodChannel，不再绑 EventChannel。
+  - **Dart `SelfBuiltTtsServiceImpl`**：`init()` 里 `_methodChannel
+    .setMethodCallHandler(_onMethodCall)`，handler 在 `call.method ==
+    'onTtsEvent'` 时调用 `_handleEvent(call.arguments)`。`dispose()` 里
+    `setMethodCallHandler(null)` 释放。移除了 EventChannel 字段和
+    `_eventSub`。
+  - **诊断字段升级**：debug state 多了 `invokeSucceededCount` 和
+    `invokeExceptionCount`，加上原 `emitCount`/`emitDroppedCount` 重新映射到
+    invoke 路径的 `attempt`/`channelNull` 计数。Settings → TTS → 调试日志的
+    pipeline 段重命名为 "MethodChannel callback pipeline (v1.13.5)"，诊断
+    规则更新为 `invokeSucceeded==dartReceivedCount → 管道正常`。
+
+  EventChannel 和 MethodChannel 共用同一个 binary messenger，但 invokeMethod
+  反向调用的 envelope 编码和分发路径与 EventChannel sink.success 不同。如果新
+  路径仍然丢包，新增的 `invokeExceptionCount` 至少能直接看到抛出的异常类型，
+  不再是 silent drop。
+
+  单元测试：Dart `self_built_tts_service_test.dart` 重写 emit() helper
+  走 `handlePlatformMessage` + `encodeMethodCall("onTtsEvent", ...)`；Kotlin
+  `ZhiYueTtsPluginTest.kt` 移除依赖已删除 `eventSinkForTest` 的测试，新增
+  `emitEvent with null channel records channelNull counter`。
+
+### Breaking Change
+
+- EventChannel `dev.zhiyue.tts/events` 移除（不再注册）。任何外部代码若依赖此
+  channel 会失效——但此 channel 是 v1.13.0 引入的内部 channel，不对外暴露。
+
 ## [1.13.4-alpha] - 2026-07-18
 
 ### Changed

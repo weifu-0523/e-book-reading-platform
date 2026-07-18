@@ -260,20 +260,26 @@ class TtsSettingsSection extends ConsumerWidget {
     b.writeln('lastAction       : ${state['lastStartCommandAction'] ?? '(none)'}');
     b.writeln('utteranceCallbacks: ${state['utteranceCallbacks']}');
     b.writeln();
-    b.writeln('=== EventChannel pipeline (v1.13.4 diagnostic) ===');
-    b.writeln('onListenCalled   : ${state['onListenCalled']}');
-    b.writeln('sinkReady        : ${state['realEventSinkReady']} '
-        '(false=sink 被 onCancel 清空或从未赋值)');
-    b.writeln('emitCount        : ${state['emitCount']} '
-        '(Kotlin→Dart emit 成功次数)');
-    b.writeln('emitDroppedCount : ${state['emitDroppedCount']} '
-        '(sink null 时静默丢弃次数)');
+    b.writeln('=== MethodChannel callback pipeline (v1.13.5) ===');
+    b.writeln('onListenCalled   : ${state['onListenCalled']} '
+        '(true=plugin attached)');
+    b.writeln('channelReady     : ${state['realEventSinkReady']} '
+        '(false=plugin 已 detach)');
+    b.writeln('invokeAttempt    : ${state['emitCount']} '
+        '(emitEvent 进入 invoke 路径次数)');
+    b.writeln('invokeChannelNull: ${state['emitDroppedCount']} '
+        '(channel 为 null 时丢弃次数)');
+    b.writeln('invokeSucceeded  : ${state['invokeSucceededCount']} '
+        '(invokeMethod 成功返回次数)');
+    b.writeln('invokeException  : ${state['invokeExceptionCount']} '
+        '(invokeMethod 抛异常次数)');
     b.writeln('dartReceivedCount: $dartEventReceivedCount '
         '(Dart _handleEvent 调用次数)');
     b.writeln('诊断推理: '
-        'emitCount>0 && dartReceivedCount==0 → binary messenger 丢包；'
-        'emitCount==0 && emitDroppedCount>0 → sink null（Dart 没 listen）；'
-        'emitCount==0 && emitDroppedCount==0 → Kotlin 端 emit 根本没被调用。');
+        'invokeSucceeded==dartReceivedCount → 管道正常；'
+        'invokeSucceeded>0 && dartReceivedCount==0 → 仍丢包（极不寻常）；'
+        'invokeException>0 → MethodChannel 反向调用失败（看日志异常类型）；'
+        'invokeChannelNull>0 → 插件未 attach（看 attached 字段）。');
     b.writeln();
     b.writeln('=== Service debugLogs ===');
     final logs = state['serviceDebugLogs'];

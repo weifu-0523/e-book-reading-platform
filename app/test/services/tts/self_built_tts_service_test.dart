@@ -5,9 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/services/tts/self_built_tts_service.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
 
-const _eventChannelName = 'dev.zhiyue.tts/events';
 const _methodChannelName = 'dev.zhiyue.tts';
-const _codec = StandardMethodCodec();
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,20 +19,10 @@ void main() {
 
     MethodChannel(_methodChannelName).setMockMethodCallHandler((call) async {
       methodCalls.add(call);
-      // EventChannel internally invokes 'listen'/'cancel' on a MethodChannel
-      // that shares its name with the EventChannel — but since our EventChannel
-      // name differs from the MethodChannel name, those go to the event name.
       if (call.method == 'init') return null;
       if (call.method == 'isLanguageAvailable') return true;
       if (call.method == 'isLanguageInstalled') return true;
       if (call.method == 'getDefaultEngine') return 'com.google.android.tts';
-      return null;
-    });
-
-    // Handle the EventChannel's internal 'listen'/'cancel' method calls.
-    // EventChannel.receiveBroadcastStream invokes these on a MethodChannel
-    // sharing the EventChannel's name; return null to acknowledge.
-    MethodChannel(_eventChannelName).setMockMethodCallHandler((call) async {
       return null;
     });
   });
@@ -42,20 +30,20 @@ void main() {
   tearDown(() async {
     await svc.dispose();
     MethodChannel(_methodChannelName).setMockMethodCallHandler(null);
-    MethodChannel(_eventChannelName).setMockMethodCallHandler(null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMessageHandler(_eventChannelName, null);
   });
 
-  /// Emits a single event as if the platform plugin sent it on the
-  /// EventChannel. Encodes [event] as a success envelope and forwards it
-  /// to whatever handler the EventChannel registered with the binary messenger.
+  /// v1.13.5-alpha: simulates Kotlin side calling
+  /// `channel.invokeMethod("onTtsEvent", event)` to deliver a TTS event
+  /// to the Dart-side MethodCallHandler registered in init().
   Future<void> emit(dynamic event) async {
-    final ByteData encoded = _codec.encodeSuccessEnvelope(event);
-    // The EventChannel's onListen callback calls setMessageHandler(name, h).
-    // Dispatch through the binding so the captured handler runs.
     await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .handlePlatformMessage(_eventChannelName, encoded, null);
+        .handlePlatformMessage(
+      _methodChannelName,
+      const StandardMethodCodec().encodeMethodCall(
+        MethodCall('onTtsEvent', event),
+      ),
+      null,
+    );
   }
 
   test('init invokes MethodChannel init', () async {
@@ -72,8 +60,6 @@ void main() {
     final errors = <String>[];
     svc.error.listen(errors.add);
     await expectLater(svc.init(), throwsA(isA<PlatformException>()));
-    // Broadcast StreamController delivers asynchronously — flush microtasks
-    // before asserting on the error stream.
     await Future<void>.delayed(Duration.zero);
     expect(errors, isNotEmpty);
   });
@@ -95,7 +81,7 @@ void main() {
     );
   });
 
-  test('EventChannel state events mapped to TtsState', () async {
+  test('reverse callback state events mapped to TtsState', () async {
     final states = <TtsState>[];
     svc.state.listen(states.add);
     await svc.init();
@@ -108,7 +94,7 @@ void main() {
     expect(states, contains(TtsState.idle));
   });
 
-  test('EventChannel progress events mapped to TtsProgress', () async {
+  test('reverse callback progress events mapped to TtsProgress', () async {
     final progress = <TtsProgress>[];
     svc.progress.listen(progress.add);
     await svc.init();
@@ -177,5 +163,19 @@ void main() {
     await emit({'event': 'done', 'utteranceId': 'sent_0'});
     await Future<void>.delayed(Duration.zero);
     expect(states, contains(TtsState.idle));
+  });
+
+  // v1.13.5-alpha regression: ensures the new MethodChannel reverse callback
+  // pipeline increments the diagnostic counter, so debug logs can confirm
+  // events actually arrive at Dart (the v1.13.4 EventChannel bug pointed to
+  // emitCount>0 && dartReceivedCount==0).
+  test('eventReceivedCountForDebug increments on each reverse callback',
+      () async {
+    await svc.init();
+    expect(svc.eventReceivedCountForDebug, 0);
+    await emit({'event': 'state', 'state': 'speaking'});
+    await emit({'event': 'done'});
+    await Future<void>.delayed(Duration.zero);
+    expect(svc.eventReceivedCountForDebug, 2);
   });
 }

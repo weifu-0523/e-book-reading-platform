@@ -15,13 +15,17 @@ import 'tts_service.dart';
 /// `ZhiYueTtsService.onCreate`, which only runs after the user clicks
 /// 「朗读」 (user-gesture exemption for Android 12+ FGS).
 ///
-/// Dart side just routes calls through MethodChannel `dev.zhiyue.tts` and
-/// subscribes to EventChannel `dev.zhiyue.tts/events` for state/progress.
+/// **v1.13.5-alpha pipeline rewrite:** events now flow Kotlin → Dart via
+/// MethodChannel reverse callback (`channel.invokeMethod("onTtsEvent", ...)`
+/// on Kotlin side, `setMethodCallHandler` on Dart side). v1.13.4-alpha
+/// diagnostic data confirmed the old EventChannel path was silently dropping
+/// events on Chinese ROMs: Kotlin `sink.success()` returned without throw,
+/// but Dart's `_handleEvent` was never called. MethodChannel's reverse
+/// callback goes through a different code path in the Flutter runtime and
+/// surfaces failures as caught exceptions.
 class SelfBuiltTtsServiceImpl implements TtsService {
   static const MethodChannel _methodChannel =
       MethodChannel('dev.zhiyue.tts');
-  static const EventChannel _eventChannel =
-      EventChannel('dev.zhiyue.tts/events');
 
   final _stateController = StreamController<TtsState>.broadcast();
   final _progressController = StreamController<TtsProgress>.broadcast();
@@ -29,11 +33,10 @@ class SelfBuiltTtsServiceImpl implements TtsService {
 
   bool _initialized = false;
   int _currentSentenceIdx = 0;
-  StreamSubscription? _eventSub;
 
-  /// v1.13.4-alpha diagnostic: incremented on every EventChannel event
-  /// received from Kotlin. Compared against Kotlin's `emitCount` to
-  /// pinpoint where the Kotlin→Dart event pipeline breaks.
+  /// v1.13.4-alpha diagnostic kept through v1.13.5: incremented on every
+  /// event received from Kotlin. Compared against Kotlin's `emitCount`
+  /// (now `invokeSucceededCount`) to pinpoint pipeline breaks.
   int _eventReceivedCount = 0;
 
   @override
@@ -54,27 +57,35 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   @override
   Future<void> init() async {
     if (_initialized) return;
-    _eventSub = _eventChannel.receiveBroadcastStream().listen(_handleEvent);
+    // v1.13.5-alpha: register MethodCallHandler so Kotlin can call back via
+    // channel.invokeMethod("onTtsEvent", event). Must be set BEFORE init()
+    // invokeMethod returns, so any post-init emit from the service reaches
+    // Dart. Replaces the v1.13.0–v1.13.4 EventChannel listener.
+    _methodChannel.setMethodCallHandler(_onMethodCall);
     try {
       await _methodChannel.invokeMethod('init');
       _initialized = true;
       _stateController.add(TtsState.idle);
     } catch (e) {
-      // Cancel the event subscription so a retry doesn't leak a second listener.
-      await _eventSub?.cancel();
-      _eventSub = null;
+      _methodChannel.setMethodCallHandler(null);
       _errorController.add('init failed: $e');
       _stateController.add(TtsState.error);
       rethrow;
     }
   }
 
+  /// v1.13.5-alpha: handles Kotlin → Dart reverse callbacks. The Kotlin
+  /// plugin emits events via `channel.invokeMethod("onTtsEvent", eventMap)`
+  /// — they arrive here instead of going through EventChannel.
+  Future<dynamic> _onMethodCall(MethodCall call) async {
+    if (call.method == 'onTtsEvent') {
+      _handleEvent(call.arguments);
+    }
+    return null;
+  }
+
   void _handleEvent(dynamic event) {
-    // v1.13.4-alpha diagnostic: count every event received from Kotlin.
     _eventReceivedCount++;
-    // Guard against events arriving after dispose(). Platform dispatch is
-    // asynchronous; a late event would otherwise call .add on a closed
-    // StreamController and throw StateError.
     if (_stateController.isClosed) return;
     try {
       final map = event as Map<dynamic, dynamic>;
@@ -94,10 +105,7 @@ class SelfBuiltTtsServiceImpl implements TtsService {
         case 'done':
           // Kotlin UtteranceProgressListener.onDone emits this when an
           // utterance finishes naturally. Map to TtsState.idle so the
-          // Dart-side playback controller advances to the next sentence
-          // (matches flutter_tts's setCompletionHandler behavior on
-          // desktop). Without this, multi-sentence playback halts after
-          // queue[0] (v1.13.2-alpha regression).
+          // Dart-side playback controller advances to the next sentence.
           _stateController.add(TtsState.idle);
           break;
         case 'error':
@@ -194,7 +202,7 @@ class SelfBuiltTtsServiceImpl implements TtsService {
 
   @override
   Future<void> dispose() async {
-    await _eventSub?.cancel();
+    _methodChannel.setMethodCallHandler(null);
     await _stateController.close();
     await _progressController.close();
     await _errorController.close();

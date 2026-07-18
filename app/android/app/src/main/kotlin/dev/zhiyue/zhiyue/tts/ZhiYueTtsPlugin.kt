@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import io.flutter.embedding.engine.plugins.FlutterPlugin
-import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -20,12 +19,18 @@ import io.flutter.plugin.common.MethodChannel
 ///
 /// DO NOT add any `init {}` block or top-level val that touches Android
 /// framework singletons. This is the #1 rule of this file.
-class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
+///
+/// **v1.13.5-alpha pipeline rewrite:** replaced EventChannel with
+/// MethodChannel reverse callbacks. v1.13.4-alpha diagnostic data showed
+/// `emitCount=2, dartReceivedCount=0` — `sink.success()` returned without
+/// throwing on the Kotlin side, but the binary messenger silently dropped
+/// the envelope before it reached Dart's `_handleEvent`. EventChannel and
+/// MethodChannel share the same binary messenger, but the invokeMethod
+/// path goes through different code paths in Flutter's runtime; using
+/// `channel.invokeMethod("onTtsEvent", event)` lets us detect failures
+/// via try/catch + new counters instead of silent drops.
+class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var channel: MethodChannel? = null
-    private var eventChannel: EventChannel? = null
-    internal var eventSinkForTest: EventChannel.EventSink? = null
-        set(value) { field = value; realEventSink = value }
-    private var realEventSink: EventChannel.EventSink? = null
 
     /// Test-only: whether [ZhiYueTtsService] has been created via init call.
     /// Production code shouldn't read this; tests verify the lazy invariant.
@@ -45,29 +50,36 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     internal var speakCallCount: Int = 0
         private set
 
-    /// v1.13.4-alpha diagnostic: emit pipeline instrumentation.
+    /// v1.13.5-alpha pipeline instrumentation (replaces v1.13.4 counters).
     ///
-    /// Background: v1.13.2 + v1.13.3 both attempted fixes for "multi-sentence
-    /// playback halts after queue[0]". User reported both ineffective. The
-    /// Kotlin `UtteranceProgressListener.onStart/onDone` callbacks fire
-    /// correctly (visible in utteranceCallbacks), but Dart-side queue still
-    /// doesn't advance — strongly suggesting events are silently dropped
-    /// between Kotlin `emit()` and Dart `_handleEvent`.
-    ///
-    /// The original `emitEvent` was `realEventSink?.success(event)` — a
-    /// **silent no-op** when realEventSink is null. v1.13.4 adds counters +
-    /// explicit logs at every hop so the next debug-state dump pinpoints
-    /// exactly where the chain breaks:
-    ///   * [onListenCalled] — did Dart ever subscribe to the EventChannel?
-    ///   * [emitCount] — how many events did Kotlin successfully hand off?
-    ///   * [emitDroppedCount] — how many events were silently dropped?
-    /// Comparison with Dart-side `_eventReceivedCount` reveals whether the
-    /// loss is on the Kotlin side (sink null) or the binary-messenger round-trip.
+    /// v1.13.4 diagnostic data confirmed `emitCount=2, dartReceivedCount=0`
+    /// — Kotlin `sink.success()` returned cleanly but events never arrived
+    /// at Dart's `_handleEvent`. This pointed to EventChannel binary
+    /// messenger loss on certain Chinese ROMs. v1.13.5 switches to
+    /// MethodChannel reverse callbacks and adds new counters to verify
+    /// the new pipeline:
+    ///   * [invokeAttemptCount] — times emitEvent tried channel.invokeMethod
+    ///   * [invokeSucceededCount] — times invokeMethod returned without throw
+    ///   * [invokeExceptionCount] — times invokeMethod threw (real failure)
+    ///   * [invokeChannelNullCount] — times channel was null (attach race)
+    ///   * [onListenCalled] — kept for parity, always true post-attach now
+    internal var invokeAttemptCount: Int = 0
+        private set
+    internal var invokeSucceededCount: Int = 0
+        private set
+    internal var invokeExceptionCount: Int = 0
+        private set
+    internal var invokeChannelNullCount: Int = 0
+        private set
+    internal var onListenCalled: Boolean = false
+        private set
+
+    /// v1.13.4 legacy counters kept (always 0 in v1.13.5+) for one release
+    /// so the Dart pretty-printer doesn't blow up if a stale field is read
+    /// during version-skew debugging.
     internal var emitCount: Int = 0
         private set
     internal var emitDroppedCount: Int = 0
-        private set
-    internal var onListenCalled: Boolean = false
         private set
 
     /// Held context. In production this is assigned by
@@ -89,9 +101,9 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
         channel = MethodChannel(binding.binaryMessenger, "dev.zhiyue.tts").also {
             it.setMethodCallHandler(this)
         }
-        eventChannel = EventChannel(binding.binaryMessenger, "dev.zhiyue.tts/events").also {
-            it.setStreamHandler(this)
-        }
+        // v1.13.5-alpha: event delivery is now via MethodChannel reverse
+        // callback (channel.invokeMethod("onTtsEvent", event)). No EventChannel.
+        onListenCalled = true
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -168,11 +180,13 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
             "onStartCommandCount" to ZhiYueTtsService.onStartCommandCount,
             "lastStartCommandAction" to ZhiYueTtsService.lastStartCommandAction,
             "utteranceCallbacks" to ZhiYueTtsService.utteranceCallbacks.toList(),
-            // v1.13.4-alpha: EventChannel pipeline diagnostics.
+            // v1.13.5-alpha: MethodChannel callback pipeline diagnostics.
             "onListenCalled" to onListenCalled,
-            "realEventSinkReady" to (realEventSink != null),
-            "emitCount" to emitCount,
-            "emitDroppedCount" to emitDroppedCount
+            "realEventSinkReady" to (channel != null),
+            "emitCount" to invokeAttemptCount,
+            "emitDroppedCount" to invokeChannelNullCount,
+            "invokeSucceededCount" to invokeSucceededCount,
+            "invokeExceptionCount" to invokeExceptionCount
         )
     }
 
@@ -223,44 +237,42 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
-        eventChannel?.setStreamHandler(null)
-        eventChannel = null
-        realEventSink = null
         contextForTest = null
         instance = null
     }
 
-    override fun onListen(args: Any?, sink: io.flutter.plugin.common.EventChannel.EventSink?) {
-        realEventSink = sink
-        onListenCalled = true
-        ZhiYueTtsService.debugLog("EVENT_SINK_ON_LISTEN fired — realEventSink assigned")
-    }
-
-    override fun onCancel(args: Any?) {
-        realEventSink = null
-        ZhiYueTtsService.debugLog("EVENT_SINK_ON_CANCEL fired — realEventSink cleared")
-    }
-
     /// Called by ZhiYueTtsService (or tests) to emit events to Dart.
     ///
-    /// v1.13.4-alpha: was previously `realEventSink?.success(event)` — a
-    /// **silent no-op** when sink is null. Now records counters + per-event
-    /// debugLog so the user can compare Kotlin emitCount vs Dart
-    /// eventReceivedCount and pinpoint where events vanish.
+    /// v1.13.5-alpha: rewrote to use MethodChannel reverse callback
+    /// (channel.invokeMethod) instead of EventChannel sink.success.
+    /// v1.13.4 diagnostic data showed sink.success returned cleanly but
+    /// events were silently dropped by the binary messenger on Chinese
+    /// ROMs. invokeMethod lets us detect failures via try/catch.
     internal fun emitEvent(event: Map<String, Any?>) {
-        val sink = realEventSink
+        val ch = channel
         val type = event["event"]
-        if (sink == null) {
-            emitDroppedCount++
+        if (ch == null) {
+            invokeChannelNullCount++
             ZhiYueTtsService.debugLog(
-                "EMIT_DROPPED type=$type total_dropped=$emitDroppedCount"
+                "EMIT_DROPPED type=$type reason=channel_null total_dropped=$invokeChannelNullCount"
             )
-        } else {
-            emitCount++
+            return
+        }
+        invokeAttemptCount++
+        ZhiYueTtsService.debugLog(
+            "EMIT_ATTEMPT type=$type total_attempt=$invokeAttemptCount"
+        )
+        try {
+            ch.invokeMethod("onTtsEvent", event)
+            invokeSucceededCount++
             ZhiYueTtsService.debugLog(
-                "EMIT_OK type=$type total_emit=$emitCount"
+                "EMIT_OK type=$type total_ok=$invokeSucceededCount"
             )
-            sink.success(event)
+        } catch (e: Exception) {
+            invokeExceptionCount++
+            ZhiYueTtsService.debugLog(
+                "EMIT_THROWN type=$type ex=${e.javaClass.simpleName}: ${e.message} total_thrown=$invokeExceptionCount"
+            )
         }
     }
 

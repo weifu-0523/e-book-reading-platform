@@ -122,24 +122,24 @@ class ZhiYueTtsPluginTest {
         assertEquals(ZhiYueTtsService.ACTION_STOP, stopIntent.action)
     }
 
-    // ---- T12: EventChannel state/progress events ----
+    // ---- T12 (v1.13.5-alpha rewrite): MethodChannel reverse callback ----
+    //
+    // v1.13.4-alpha used EventChannel + eventSinkForTest to capture emits.
+    // v1.13.5-alpha switched to MethodChannel.invokeMethod reverse callback
+    // because v1.13.4 diagnostic data showed sink.success was silently
+    // dropped by the binary messenger on Chinese ROMs. We can't easily mock
+    // MethodChannel.invokeMethod under Robolectric (it needs a real binary
+    // messenger), so we instead assert on the diagnostic counters that
+    // emitEvent updates. The Dart-side test in
+    // `self_built_tts_service_test.dart` covers the full round-trip.
 
     @Test
-    fun `service emits state events to plugin eventSink`() {
+    fun `emitEvent with null channel records channelNull counter`() {
         val plugin = ZhiYueTtsPlugin()
-        plugin.attachContextForTest(org.robolectric.RuntimeEnvironment.getApplication())
-        val captured = mutableListOf<Map<String, Any?>>()
-        plugin.eventSinkForTest = object : io.flutter.plugin.common.EventChannel.EventSink {
-            override fun success(args: Any?) {
-                @Suppress("UNCHECKED_CAST")
-                captured.add(args as Map<String, Any?>)
-            }
-            override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {}
-            override fun endOfStream() {}
-        }
-        plugin.onMethodCall(io.flutter.plugin.common.MethodCall("init", null), FakeMethodChannelResult())
+        // Don't call onAttachedToEngine — channel stays null.
         plugin.simulateServiceEventForTest(mapOf("event" to "state", "state" to "speaking"))
-        org.junit.Assert.assertTrue(captured.any { it["state"] == "speaking" })
+        org.junit.Assert.assertEquals(1, plugin.invokeChannelNullCount)
+        org.junit.Assert.assertEquals(0, plugin.invokeAttemptCount)
     }
 }
 
