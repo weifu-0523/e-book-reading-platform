@@ -154,6 +154,24 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                         ZhiYueTtsService.EXTRA_SENTENCE_INDEX,
                         (args["sentenceIndex"] as? Number)?.toInt() ?: 0
                     )
+                    // v1.13.7-alpha Bug 4: forward cached rate/pitch/volume so
+                    // the Service can apply them before each utterance. Dart
+                    // side caches these in SelfBuiltTtsServiceImpl and re-sends
+                    // on every speak call (Kotlin setRate/setPitch/setVolume
+                    // MethodChannel handlers remain no-ops; this is the real
+                    // delivery path).
+                    .putExtra(
+                        ZhiYueTtsService.EXTRA_RATE,
+                        (args["rate"] as? Number)?.toDouble() ?: 1.0
+                    )
+                    .putExtra(
+                        ZhiYueTtsService.EXTRA_PITCH,
+                        (args["pitch"] as? Number)?.toDouble() ?: 1.0
+                    )
+                    .putExtra(
+                        ZhiYueTtsService.EXTRA_VOLUME,
+                        (args["volume"] as? Number)?.toDouble() ?: 1.0
+                    )
                 try {
                     ctx.startService(intent)
                     result.success(null)

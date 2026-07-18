@@ -90,6 +90,16 @@ class ZhiYueTtsService : Service() {
     internal var phoneStateListenerRegisteredForTest = false
         private set
 
+    /// v1.13.7-alpha Bug 4: last rate/pitch/volume applied to the engine.
+    /// Surfaced for test verification (Robolectric's TextToSpeech shadow
+    /// doesn't record setSpeechRate/setPitch calls, so we capture them here).
+    internal var lastAppliedRateForTest: Float = 0f
+        private set
+    internal var lastAppliedPitchForTest: Float = 0f
+        private set
+    internal var lastAppliedVolumeForTest: Float = 0f
+        private set
+
     override fun onCreate() {
         super.onCreate()
         debugLog("onCreate start")
@@ -216,6 +226,27 @@ class ZhiYueTtsService : Service() {
         }
         val locale = intent.getStringExtra(EXTRA_LOCALE) ?: "zh-CN"
         val idx = intent.getIntExtra(EXTRA_SENTENCE_INDEX, 0)
+        // v1.13.7-alpha Bug 4: apply rate/pitch/volume from Intent extras.
+        // Dart side piggy-backs cached settings onto each SPEAK intent
+        // because Kotlin's setRate/setPitch/setVolume MethodChannel handlers
+        // are no-ops (historical v1.13.0 oversight). Coerce to engine-safe
+        // ranges to defend against stale/malicious values.
+        val rate = intent.getDoubleExtra(EXTRA_RATE, 1.0)
+            .toFloat()
+            .coerceIn(0.1f, 5.0f)
+        val pitch = intent.getDoubleExtra(EXTRA_PITCH, 1.0)
+            .toFloat()
+            .coerceIn(0.5f, 2.0f)
+        val volume = intent.getDoubleExtra(EXTRA_VOLUME, 1.0)
+            .toFloat()
+            .coerceIn(0.0f, 1.0f)
+        lastAppliedRateForTest = rate
+        lastAppliedPitchForTest = pitch
+        lastAppliedVolumeForTest = volume
+        tts?.setSpeechRate(rate)
+        tts?.setPitch(pitch)
+        applyVolumeToStream(volume)
+        debugLog("apply rate=$rate pitch=$pitch volume=$volume")
         val utteranceId = "sent_$idx"
         val langResult = tts?.setLanguage(Locale.forLanguageTag(locale))
         debugLog("setLanguage($locale) -> $langResult (0=ok, -1=missing_data, -2=not_supported)")
@@ -224,6 +255,18 @@ class ZhiYueTtsService : Service() {
         debugLog("speak() returned $speakRet (0=success, -1=error)")
         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
         updateMetadata("智阅朗读", "朗读中")
+    }
+
+    /// v1.13.7-alpha Bug 4: Android TextToSpeech has no setVolume API, so we
+    /// scale the system STREAM_MUSIC volume proportionally. Known limitation:
+    /// this changes the user's media volume (CHANGELOG'd as a trade-off for
+    /// using the platform engine without audio_session).
+    private fun applyVolumeToStream(volume: Float) {
+        val am = getSystemService(AUDIO_SERVICE) as? AudioManager ?: return
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        val target = (max * volume).toInt().coerceIn(0, max)
+        am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
     }
 
     private fun handlePause() {
@@ -441,6 +484,10 @@ class ZhiYueTtsService : Service() {
         const val EXTRA_LOCALE = "locale"
         const val EXTRA_SENTENCE_INDEX = "sentenceIndex"
         const val EXTRA_UTTERANCE_ID = "utteranceId"
+        // v1.13.7-alpha Bug 4: speak Intent extras for rate/pitch/volume.
+        const val EXTRA_RATE = "rate"
+        const val EXTRA_PITCH = "pitch"
+        const val EXTRA_VOLUME = "volume"
 
         // ---- v1.13.1-alpha debug instrumentation ----
         // Companion fields so they survive the service being killed and

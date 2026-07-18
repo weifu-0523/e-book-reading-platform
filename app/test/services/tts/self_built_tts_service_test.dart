@@ -126,6 +126,49 @@ void main() {
         isTrue);
   });
 
+  // v1.13.7-alpha Bug 4: Slider 改 rate/pitch/volume 无效，根因是 Kotlin
+  // 端 setRate/setPitch/setVolume 是 no-op。修复方案 A：speak Intent 透传
+  // 缓存的 rate/pitch/volume 到 Kotlin，Service 在 speak 前应用。
+  test('speak passes cached rate/pitch/volume to Kotlin (Bug 4)', () async {
+    await svc.init();
+    await svc.setSpeechRate(1.5);
+    await svc.setPitch(1.2);
+    await svc.setVolume(0.8);
+    await svc.speakSentence(const Sentence(
+      text: '测试',
+      locale: 'zh-CN',
+      charStart: 0,
+      charEnd: 2,
+    ));
+    final speakCall = methodCalls.firstWhere(
+      (c) => c.method == 'speak',
+      orElse: () => throw StateError('no speak call captured'),
+    );
+    final args = speakCall.arguments as Map;
+    expect(args['rate'], 1.5);
+    expect(args['pitch'], 1.2);
+    expect(args['volume'], 0.8);
+  });
+
+  // v1.13.7-alpha Bug 4: 默认值 1.0/1.0/1.0（用户从未改 Slider 时）。
+  test('speak defaults rate/pitch/volume to 1.0 when unset (Bug 4)', () async {
+    await svc.init();
+    await svc.speakSentence(const Sentence(
+      text: '测试',
+      locale: 'zh-CN',
+      charStart: 0,
+      charEnd: 2,
+    ));
+    final speakCall = methodCalls.firstWhere(
+      (c) => c.method == 'speak',
+      orElse: () => throw StateError('no speak call captured'),
+    );
+    final args = speakCall.arguments as Map;
+    expect(args['rate'], 1.0);
+    expect(args['pitch'], 1.0);
+    expect(args['volume'], 1.0);
+  });
+
   test('stop / pause routed through channel', () async {
     await svc.init();
     await svc.stop();

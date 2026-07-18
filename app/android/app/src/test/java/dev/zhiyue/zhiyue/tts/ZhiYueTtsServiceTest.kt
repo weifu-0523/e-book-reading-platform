@@ -167,6 +167,66 @@ class ZhiYueTtsServiceTest {
         org.junit.Assert.assertFalse(service.phoneStateListenerRegisteredForTest)
     }
 
+    // ---- v1.13.7-alpha Bug 4: speak Intent must apply rate/pitch/volume
+    // before handing the utterance to TextToSpeech. ----
+
+    @Test
+    fun `SPEAK intent captures rate pitch volume from extras (Bug 4)`() {
+        val service = createService()
+        service.onCreate()
+        val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+            .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+            .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+            .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+            .putExtra(ZhiYueTtsService.EXTRA_RATE, 1.5)
+            .putExtra(ZhiYueTtsService.EXTRA_PITCH, 1.2)
+            .putExtra(ZhiYueTtsService.EXTRA_VOLUME, 0.8)
+        service.onStartCommand(speakIntent, 0, 1)
+        org.junit.Assert.assertEquals(
+            "rate should be captured from Intent extras",
+            1.5f,
+            service.lastAppliedRateForTest
+        )
+        org.junit.Assert.assertEquals(
+            "pitch should be captured from Intent extras",
+            1.2f,
+            service.lastAppliedPitchForTest
+        )
+        org.junit.Assert.assertEquals(
+            "volume should be captured from Intent extras",
+            0.8f,
+            service.lastAppliedVolumeForTest
+        )
+        service.onDestroy()
+    }
+
+    @Test
+    fun `SPEAK intent defaults rate pitch volume to 1_0 when extras missing (Bug 4)`() {
+        val service = createService()
+        service.onCreate()
+        val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+            .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+            .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+            .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+        service.onStartCommand(speakIntent, 0, 1)
+        org.junit.Assert.assertEquals(
+            "default rate",
+            1.0f,
+            service.lastAppliedRateForTest
+        )
+        org.junit.Assert.assertEquals(
+            "default pitch",
+            1.0f,
+            service.lastAppliedPitchForTest
+        )
+        org.junit.Assert.assertEquals(
+            "default volume",
+            1.0f,
+            service.lastAppliedVolumeForTest
+        )
+        service.onDestroy()
+    }
+
     @Test
     fun `onCreate starts foreground with mediaPlayback type`() {
         val controller = org.robolectric.Robolectric.buildService(ZhiYueTtsService::class.java)

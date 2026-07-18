@@ -34,6 +34,14 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   bool _initialized = false;
   int _currentSentenceIdx = 0;
 
+  /// v1.13.7-alpha Bug 4: caches the user's last-set rate/pitch/volume so
+  /// they can be piggy-backed onto every speak Intent. Kotlin's
+  /// setRate/setPitch/setVolume are no-ops in v1.13.0–v1.13.6, so we reapply
+  /// on each sentence via the speak MethodChannel args.
+  double _cachedRate = 1.0;
+  double _cachedPitch = 1.0;
+  double _cachedVolume = 1.0;
+
   /// v1.13.4-alpha diagnostic kept through v1.13.5: incremented on every
   /// event received from Kotlin. Compared against Kotlin's `emitCount`
   /// (now `invokeSucceededCount`) to pinpoint pipeline breaks.
@@ -141,6 +149,13 @@ class SelfBuiltTtsServiceImpl implements TtsService {
       'text': sentence.text,
       'locale': sentence.locale,
       'sentenceIndex': _currentSentenceIdx,
+      // v1.13.7-alpha Bug 4: piggy-back cached settings so the Kotlin Service
+      // can reapply them before each utterance. Kotlin's setRate/setPitch/
+      // setVolume MethodChannel handlers are no-ops; this is the actual
+      // delivery path.
+      'rate': _cachedRate,
+      'pitch': _cachedPitch,
+      'volume': _cachedVolume,
     });
   }
 
@@ -158,16 +173,22 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   void setCurrentSentenceIndex(int idx) => _currentSentenceIdx = idx;
 
   @override
-  Future<void> setSpeechRate(double rate) =>
-      _methodChannel.invokeMethod('setRate', {'rate': rate});
+  Future<void> setSpeechRate(double rate) {
+    _cachedRate = rate;
+    return _methodChannel.invokeMethod('setRate', {'rate': rate});
+  }
 
   @override
-  Future<void> setPitch(double pitch) =>
-      _methodChannel.invokeMethod('setPitch', {'pitch': pitch});
+  Future<void> setPitch(double pitch) {
+    _cachedPitch = pitch;
+    return _methodChannel.invokeMethod('setPitch', {'pitch': pitch});
+  }
 
   @override
-  Future<void> setVolume(double volume) =>
-      _methodChannel.invokeMethod('setVolume', {'volume': volume});
+  Future<void> setVolume(double volume) {
+    _cachedVolume = volume;
+    return _methodChannel.invokeMethod('setVolume', {'volume': volume});
+  }
 
   @override
   Future<bool> isLanguageAvailable(String locale) async {
