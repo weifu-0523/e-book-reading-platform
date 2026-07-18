@@ -19,7 +19,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/tts_playback_controller.dart';
 
-/// Compact TTS playback bar floating above the AI input composer (T7).
+/// Compact TTS playback bar floating above the AI input composer (T7) and
+/// at the top of the reader_body Stack (T6 Bug 2 part B).
 ///
 /// Renders [SizedBox.shrink] when [TtsPhase.idle] — transparent to existing
 /// composer tests when no playback is queued. When any other phase is
@@ -28,9 +29,15 @@ import '../providers/tts_playback_controller.dart';
 /// * 上一句 (skip_previous) — disabled at queue head
 /// * 暂停 / 恢复 (pause / play_arrow) — toggles on phase
 /// * 下一句 (skip_next) — disabled at queue tail
-/// * 停止 (stop) — calls [TtsPlaybackController.stop]
+/// * 停止 (stop) — calls [TtsPlaybackController.stop] + invokes [onStopped]
 /// * 关闭 (close) — also calls stop (UX redundancy; see known issue below)
 /// * `${currentIndex + 1} / ${queueLength}` counter
+///
+/// T6 (2026-07-19): the [onStopped] callback lets the host widget react
+/// after stop completes — e.g. reader_body could close a side panel or
+/// surface a confirmation toast. The callback is invoked once per stop
+/// tap. The widget itself relies on [TtsPhase.idle] for hiding; the
+/// callback is purely an opt-in side-channel.
 ///
 /// Known minor: 停止 and 关闭 both invoke `stop()`. The plan called for
 /// semantic distinction (stop = halt + retain queue position; close = halt
@@ -38,7 +45,13 @@ import '../providers/tts_playback_controller.dart';
 /// queue, so both end up equivalent. Will revisit if user feedback wants
 /// different semantics.
 class TtsMiniControls extends ConsumerWidget {
-  const TtsMiniControls({super.key});
+  const TtsMiniControls({super.key, this.onStopped});
+
+  /// Optional callback fired after the 停止 (or 关闭) button calls
+  /// [TtsPlaybackController.stop]. Use it for host-specific cleanup
+  /// (close panels, surface toasts, etc.). The widget's own visibility
+  /// is driven by the playback phase transition back to idle.
+  final VoidCallback? onStopped;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,6 +62,11 @@ class TtsMiniControls extends ConsumerWidget {
     final canSkipPrev = state.currentIndex > 0;
     final canSkipNext = state.currentIndex + 1 < state.queueLength;
     final isPaused = state.phase == TtsPhase.paused;
+
+    Future<void> doStop() async {
+      await notifier.stop();
+      onStopped?.call();
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -82,12 +100,12 @@ class TtsMiniControls extends ConsumerWidget {
           IconButton(
             tooltip: '停止',
             icon: const Icon(Icons.stop),
-            onPressed: () => notifier.stop(),
+            onPressed: () => doStop(),
           ),
           IconButton(
             tooltip: '关闭',
             icon: const Icon(Icons.close),
-            onPressed: () => notifier.stop(),
+            onPressed: () => doStop(),
           ),
           const SizedBox(width: 8),
           Expanded(

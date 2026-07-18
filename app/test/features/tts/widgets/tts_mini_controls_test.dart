@@ -107,5 +107,66 @@ void main() {
     // here. Defer to an integration test that uses a controllable fake
     // service (emit speaking → emit idle → expect queue advance; or pause
     // during speaking → expect paused phase).
+    //
+    // T6 (2026-07-19): Bug 2 part B - 统一悬浮控制台挂到 reader_body Stack 顶层
+    // 验证点：
+    //   1. phase=idle → 不渲染任何按钮（隐式 SizedBox.shrink）
+    //   2. speaking 状态下点击 stop → controller.stop() 被调用 + onStopped callback
+    //      触发 + 控制台因为 phase 翻回 idle 而消失
+    testWidgets(
+        'T6 Bug 2 part B: tap stop → calls controller.stop + onStopped callback '
+        'and the bar disappears (phase → idle)', (tester) async {
+      final svc = StubTtsService();
+      addTearDown(svc.dispose);
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(svc),
+      ]);
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      // Track whether the onStopped callback fired.
+      int onStoppedCalls = 0;
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: TtsMiniControls(
+              onStopped: () => onStoppedCalls++,
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+
+      // Trigger playback so phase → loading → speaking.
+      await container.read(ttsPlaybackControllerProvider.notifier).play(
+            scope: const TtsScope.aiMessage(messageId: 'm1'),
+            sentences: const [
+              Sentence(
+                  text: 'One.', locale: 'en-US', charStart: 0, charEnd: 4),
+              Sentence(
+                  text: 'Two.', locale: 'en-US', charStart: 5, charEnd: 9),
+            ],
+          );
+      await tester.pumpAndSettle();
+
+      // Sanity: the stop button is now present.
+      expect(find.byTooltip('停止'), findsOneWidget);
+      expect(onStoppedCalls, 0);
+
+      // Tap stop. StubTtsService.stop emits TtsState.idle synchronously;
+      // the controller's listener transitions phase back to idle and the
+      // widget should re-render as SizedBox.shrink.
+      await tester.tap(find.byTooltip('停止'));
+      await tester.pumpAndSettle();
+
+      expect(onStoppedCalls, 1,
+          reason: 'T6: onStopped callback must fire once after stop tapped');
+      expect(find.byTooltip('停止'), findsNothing,
+          reason: 'T6: bar must hide (phase=idle) after stop tapped');
+      expect(container.read(ttsPlaybackControllerProvider).phase,
+          TtsPhase.idle,
+          reason: 'T6: controller must be back to idle after stop');
+    });
   });
 }

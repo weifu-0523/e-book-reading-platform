@@ -54,6 +54,7 @@ import '../../../services/tts/sentence_segmenter.dart';
 import '../../../features/ai_chat/providers/chat_session_controller.dart';
 import '../../../features/ai_chat/widgets/ai_drawer_widget.dart';
 import '../../../features/tts/widgets/tts_chapter_end_prompt_listener.dart';
+import '../../../features/tts/widgets/tts_mini_controls.dart';
 import '../../../features/tts/widgets/tts_resume_prompt.dart';
 import '../controllers/bookmark_controller.dart';
 import '../controllers/reader_ui_controller.dart';
@@ -913,6 +914,20 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
             right: 0,
             bottom: 0,
             child: ReaderProgressBar(engine: engine),
+          ),
+          // T6 (2026-07-19) Bug 2 part B: 统一 TTS 悬浮控制台。所有朗读入口
+          // （朗读本章 / 朗读选中 / AI 聊天朗读）共用同一个 TtsPlaybackController，
+          // 所以这里挂一个 TtsMiniControls 自动覆盖 3 个入口的播放控制需求。
+          // 位置避让：bottom 56 让出进度条（~36px）+ 视觉间距；right 16 与
+          // chrome 隐藏时弹出的 AI 抽屉 FAB（right: 16, bottom: 56）同基线，
+          // TtsMiniControls 高度通常 ~48px 在 FAB 上方，视觉上不重叠（FAB
+          // 是固定 56x56 圆形，控制台是 horizontal bar，宽度铺满 left/right 16）。
+          // 控制台 phase==idle 时返回 SizedBox.shrink，对触屏事件透明。
+          const Positioned(
+            left: 16,
+            right: 16,
+            bottom: 56,
+            child: TtsMiniControls(),
           ),
           // Bug 2b (2026-07-11): chrome 隐藏时（全屏 / 3s auto-hide / 用户切换）
           // AppBar 消失，AI 抽屉的唯一入口也消失。原 M2.10/Bug C1 在此放书签 FAB，
