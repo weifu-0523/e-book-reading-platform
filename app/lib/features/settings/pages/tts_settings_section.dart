@@ -193,7 +193,10 @@ class TtsSettingsSection extends ConsumerWidget {
     final state = await service.getDebugState();
     if (!context.mounted) return;
 
-    final pretty = _prettyDebugState(state);
+    final pretty = _prettyDebugState(
+      state,
+      dartEventReceivedCount: service.eventReceivedCountForDebug,
+    );
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -224,7 +227,13 @@ class TtsSettingsSection extends ConsumerWidget {
   /// Pretty-print the debug state map as a readable multi-line string for
   /// the dialog body. Keys ordered roughly by data flow (plugin → service
   /// onCreate → onStartCommand → TTS engine).
-  static String _prettyDebugState(Map<String, dynamic> state) {
+  ///
+  /// v1.13.4-alpha: added EventChannel pipeline section so we can pinpoint
+  /// where events vanish between Kotlin `emit()` and Dart `_handleEvent`.
+  static String _prettyDebugState(
+    Map<String, dynamic> state, {
+    int? dartEventReceivedCount,
+  }) {
     final b = StringBuffer();
     b.writeln('=== Plugin ===');
     b.writeln('attached         : ${state['pluginAttached']}');
@@ -250,6 +259,21 @@ class TtsSettingsSection extends ConsumerWidget {
     b.writeln('count            : ${state['onStartCommandCount']}');
     b.writeln('lastAction       : ${state['lastStartCommandAction'] ?? '(none)'}');
     b.writeln('utteranceCallbacks: ${state['utteranceCallbacks']}');
+    b.writeln();
+    b.writeln('=== EventChannel pipeline (v1.13.4 diagnostic) ===');
+    b.writeln('onListenCalled   : ${state['onListenCalled']}');
+    b.writeln('sinkReady        : ${state['realEventSinkReady']} '
+        '(false=sink 被 onCancel 清空或从未赋值)');
+    b.writeln('emitCount        : ${state['emitCount']} '
+        '(Kotlin→Dart emit 成功次数)');
+    b.writeln('emitDroppedCount : ${state['emitDroppedCount']} '
+        '(sink null 时静默丢弃次数)');
+    b.writeln('dartReceivedCount: $dartEventReceivedCount '
+        '(Dart _handleEvent 调用次数)');
+    b.writeln('诊断推理: '
+        'emitCount>0 && dartReceivedCount==0 → binary messenger 丢包；'
+        'emitCount==0 && emitDroppedCount>0 → sink null（Dart 没 listen）；'
+        'emitCount==0 && emitDroppedCount==0 → Kotlin 端 emit 根本没被调用。');
     b.writeln();
     b.writeln('=== Service debugLogs ===');
     final logs = state['serviceDebugLogs'];

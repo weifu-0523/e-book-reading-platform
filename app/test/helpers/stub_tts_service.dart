@@ -54,6 +54,9 @@ class StubTtsService implements TtsService {
   @override
   bool get isInitialized => true;
 
+  @override
+  int? get eventReceivedCountForDebug => null;
+
   /// Emit a state event from test code (e.g., to simulate speaking→idle
   /// queue advance). Default impl already emits [TtsState.speaking] inside
   /// [speakSentence], so most tests don't need to call this directly.

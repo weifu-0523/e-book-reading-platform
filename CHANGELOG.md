@@ -7,7 +7,44 @@
 
 ## [Unreleased]
 
-v1.13.3-alpha 之后的新变更将记在此处。
+v1.13.4-alpha 之后的新变更将记在此处。
+## [1.13.4-alpha] - 2026-07-18
+
+### Changed
+
+- **TTS EventChannel 链路诊断（纯诊断版本，无功能修复）**：v1.13.3-alpha 
+  fix 无效（用户报告"依旧只读一句"），且 debug log 显示 onCreate 完整跑完、
+  eventEmitter wired、Kotlin onStart/onDone 全部成对触发，但 Dart 端 queue 
+  仍未推进。Iron Law 第三次：不再继续猜测 fix，先发布诊断版本收集证据。
+
+  加 4 个 counter / log 点（覆盖 Kotlin emit / Dart handle 全链路）：
+
+  - `ZhiYueTtsPlugin.onListenCalled`：EventChannel.onListen 是否曾被触发
+    （Dart 是否成功订阅 stream）
+  - `ZhiYueTtsPlugin.realEventSinkReady`：当前 sink 是否非 null
+  - `ZhiYueTtsPlugin.emitCount`：Kotlin 成功调 sink.success() 的次数
+  - `ZhiYueTtsPlugin.emitDroppedCount`：sink 为 null 时静默丢弃的次数
+    （v1.13.3 之前完全静默，这是导致前两次 fix 误判的关键盲区）
+
+  Dart 端 `SelfBuiltTtsServiceImpl._eventReceivedCount`：_handleEvent 
+  被调用的次数。`TtsService` 接口加 `eventReceivedCountForDebug` getter。
+
+  4 个 counter 在 Settings → TTS → 「TTS 调试日志」对话框新增 
+  "EventChannel pipeline" 段显示，并附诊断推理规则：
+
+  - `emitCount > 0 && dartReceivedCount == 0` → binary messenger 丢包
+  - `emitCount == 0 && emitDroppedCount > 0` → sink null（Dart 没 listen）
+  - `emitCount == 0 && emitDroppedCount == 0` → Kotlin emit 根本没调
+
+  同时 `emitEvent` 每次 emit 写 debugLog（EMIT_OK / EMIT_DROPPED），让
+  时序级证据直接出现在 "Service debugLogs" 段。
+
+  **预期结果**：用户装 v1.13.4 后再次测试"只读一句"现象，调试日志会
+  直接指出哪一段断了，再做 v1.13.5 真正的 fix。
+
+  教训：连续两次 fix 失败说明我对 emit 路径的假设是错的。停止猜测，
+  先 instrumentation，根据真实数据再 fix——这就是 systematic-debugging 
+  Iron Law 的核心。
 ## [1.13.3-alpha] - 2026-07-18
 
 ### Fixed

@@ -40,6 +40,12 @@ class FlutterTtsServiceImpl implements TtsService {
   @override
   bool get isInitialized => _initialized;
 
+  // v1.13.4-alpha diagnostic: this impl doesn't track event count (desktop
+  // flutter_tts path isn't the subject of the diagnostic). Inherited default
+  // would be `=> null`, but `implements` requires explicit declaration.
+  @override
+  int? get eventReceivedCountForDebug => null;
+
   @override
   Future<void> init() async {
     if (_initialized) return;

@@ -81,5 +81,12 @@ abstract class TtsService {
   /// SMT engine which silently fails on Chinese.
   Future<String?> getDefaultEngine();
 
+  /// v1.13.4-alpha diagnostic: number of events received from the platform
+  /// EventChannel since [init]. Returns null when this impl doesn't expose
+  /// the counter (e.g. desktop flutter_tts wrapper, mocks). Surfaced in the
+  /// TTS debug-state dialog so the user can compare against the Kotlin-side
+  /// `emitCount` and pinpoint where events vanish.
+  int? get eventReceivedCountForDebug => null;
+
   Future<void> dispose();
 }

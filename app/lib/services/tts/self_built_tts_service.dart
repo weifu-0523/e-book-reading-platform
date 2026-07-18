@@ -31,6 +31,11 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   int _currentSentenceIdx = 0;
   StreamSubscription? _eventSub;
 
+  /// v1.13.4-alpha diagnostic: incremented on every EventChannel event
+  /// received from Kotlin. Compared against Kotlin's `emitCount` to
+  /// pinpoint where the Kotlin→Dart event pipeline breaks.
+  int _eventReceivedCount = 0;
+
   @override
   Stream<TtsState> get state => _stateController.stream;
 
@@ -42,6 +47,9 @@ class SelfBuiltTtsServiceImpl implements TtsService {
 
   @override
   bool get isInitialized => _initialized;
+
+  @override
+  int? get eventReceivedCountForDebug => _eventReceivedCount;
 
   @override
   Future<void> init() async {
@@ -62,6 +70,8 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   }
 
   void _handleEvent(dynamic event) {
+    // v1.13.4-alpha diagnostic: count every event received from Kotlin.
+    _eventReceivedCount++;
     // Guard against events arriving after dispose(). Platform dispatch is
     // asynchronous; a late event would otherwise call .add on a closed
     // StreamController and throw StateError.

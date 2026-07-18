@@ -45,6 +45,31 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     internal var speakCallCount: Int = 0
         private set
 
+    /// v1.13.4-alpha diagnostic: emit pipeline instrumentation.
+    ///
+    /// Background: v1.13.2 + v1.13.3 both attempted fixes for "multi-sentence
+    /// playback halts after queue[0]". User reported both ineffective. The
+    /// Kotlin `UtteranceProgressListener.onStart/onDone` callbacks fire
+    /// correctly (visible in utteranceCallbacks), but Dart-side queue still
+    /// doesn't advance — strongly suggesting events are silently dropped
+    /// between Kotlin `emit()` and Dart `_handleEvent`.
+    ///
+    /// The original `emitEvent` was `realEventSink?.success(event)` — a
+    /// **silent no-op** when realEventSink is null. v1.13.4 adds counters +
+    /// explicit logs at every hop so the next debug-state dump pinpoints
+    /// exactly where the chain breaks:
+    ///   * [onListenCalled] — did Dart ever subscribe to the EventChannel?
+    ///   * [emitCount] — how many events did Kotlin successfully hand off?
+    ///   * [emitDroppedCount] — how many events were silently dropped?
+    /// Comparison with Dart-side `_eventReceivedCount` reveals whether the
+    /// loss is on the Kotlin side (sink null) or the binary-messenger round-trip.
+    internal var emitCount: Int = 0
+        private set
+    internal var emitDroppedCount: Int = 0
+        private set
+    internal var onListenCalled: Boolean = false
+        private set
+
     /// Held context. In production this is assigned by
     /// [onAttachedToEngine]; in tests by [attachContextForTest].
     internal var contextForTest: Context? = null
@@ -142,7 +167,12 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
             "ttsLastSpeakReturn" to ZhiYueTtsService.ttsLastSpeakReturn,
             "onStartCommandCount" to ZhiYueTtsService.onStartCommandCount,
             "lastStartCommandAction" to ZhiYueTtsService.lastStartCommandAction,
-            "utteranceCallbacks" to ZhiYueTtsService.utteranceCallbacks.toList()
+            "utteranceCallbacks" to ZhiYueTtsService.utteranceCallbacks.toList(),
+            // v1.13.4-alpha: EventChannel pipeline diagnostics.
+            "onListenCalled" to onListenCalled,
+            "realEventSinkReady" to (realEventSink != null),
+            "emitCount" to emitCount,
+            "emitDroppedCount" to emitDroppedCount
         )
     }
 
@@ -202,15 +232,36 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
 
     override fun onListen(args: Any?, sink: io.flutter.plugin.common.EventChannel.EventSink?) {
         realEventSink = sink
+        onListenCalled = true
+        ZhiYueTtsService.debugLog("EVENT_SINK_ON_LISTEN fired — realEventSink assigned")
     }
 
     override fun onCancel(args: Any?) {
         realEventSink = null
+        ZhiYueTtsService.debugLog("EVENT_SINK_ON_CANCEL fired — realEventSink cleared")
     }
 
     /// Called by ZhiYueTtsService (or tests) to emit events to Dart.
+    ///
+    /// v1.13.4-alpha: was previously `realEventSink?.success(event)` — a
+    /// **silent no-op** when sink is null. Now records counters + per-event
+    /// debugLog so the user can compare Kotlin emitCount vs Dart
+    /// eventReceivedCount and pinpoint where events vanish.
     internal fun emitEvent(event: Map<String, Any?>) {
-        realEventSink?.success(event)
+        val sink = realEventSink
+        val type = event["event"]
+        if (sink == null) {
+            emitDroppedCount++
+            ZhiYueTtsService.debugLog(
+                "EMIT_DROPPED type=$type total_dropped=$emitDroppedCount"
+            )
+        } else {
+            emitCount++
+            ZhiYueTtsService.debugLog(
+                "EMIT_OK type=$type total_emit=$emitCount"
+            )
+            sink.success(event)
+        }
     }
 
     /// Test-only: simulate a service event bypassing the real service.

@@ -43,6 +43,8 @@ class _FakeTtsService implements TtsService {
   Stream<String> get error => const Stream<String>.empty();
   @override
   bool get isInitialized => true;
+  @override
+  int? get eventReceivedCountForDebug => null;
 
   @override
   Future<void> init() async {}
