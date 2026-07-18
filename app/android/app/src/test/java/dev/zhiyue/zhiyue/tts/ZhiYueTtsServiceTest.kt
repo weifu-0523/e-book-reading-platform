@@ -311,4 +311,116 @@ class ZhiYueTtsServiceTest {
             ZhiYueTtsPlugin.setInstanceForTest(null)
         }
     }
+
+    // ---- v1.13.7-alpha Bug 1: handleResume must emit resume_request so
+    // Dart can re-drive SPEAK; notification must flip pause↔play icon. ----
+
+    /// Builds a service with a real plugin attached so emit() reaches
+    /// countable counters. Returns (service, plugin) for assertions.
+    private fun createServiceWithPlugin(): Pair<ZhiYueTtsService, ZhiYueTtsPlugin> {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        val service = createService()
+        service.onCreate()
+        return service to plugin
+    }
+
+    @Test
+    fun `handleResume emits resume_request event (Bug 1)`() {
+        val (service, plugin) = createServiceWithPlugin()
+        try {
+            val before = emitReachCount(plugin)
+            // Trigger handleResume via the same path the MediaSession
+            // Callback.onPlay uses (RESUME intent → onStartCommand).
+            val resumeIntent = android.content.Intent(ZhiYueTtsService.ACTION_RESUME)
+            service.onStartCommand(resumeIntent, 0, 1)
+            val after = emitReachCount(plugin)
+            org.junit.Assert.assertTrue(
+                "handleResume should have emitted at least one event " +
+                    "(before=$before after=$after)",
+                after > before
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `handleResume updates playback state to STATE_PLAYING (Bug 1)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            // First PAUSE so we know we're transitioning out of STATE_PAUSED.
+            val pauseIntent = android.content.Intent(ZhiYueTtsService.ACTION_PAUSE)
+            service.onStartCommand(pauseIntent, 0, 1)
+            org.junit.Assert.assertEquals(
+                android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED,
+                service.mediaSessionForTest!!.controller.playbackState.state
+            )
+
+            val resumeIntent = android.content.Intent(ZhiYueTtsService.ACTION_RESUME)
+            service.onStartCommand(resumeIntent, 0, 2)
+            org.junit.Assert.assertEquals(
+                "handleResume must flip playback state to PLAYING",
+                android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING,
+                service.mediaSessionForTest!!.controller.playbackState.state
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `buildNotification shows play icon and 继续 action when paused (Bug 1)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            // Drive playback into PAUSED so the notification toggle should
+            // flip to a play button.
+            val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+                .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+            service.onStartCommand(speakIntent, 0, 1)
+            val pauseIntent = android.content.Intent(ZhiYueTtsService.ACTION_PAUSE)
+            service.onStartCommand(pauseIntent, 0, 2)
+
+            val notification = service.buildNotificationForTest("智阅朗读", "已暂停")
+            val actions = notification.actions
+            org.junit.Assert.assertNotNull("notification must have actions", actions)
+            val toggleAction = actions!!.firstOrNull { it.title == "继续" }
+            org.junit.Assert.assertNotNull(
+                "paused notification must show a '继续' (play) action",
+                toggleAction
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `buildNotification shows pause icon and 暂停 action when playing (Bug 1)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+                .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+            service.onStartCommand(speakIntent, 0, 1)
+
+            val notification = service.buildNotificationForTest("智阅朗读", "朗读中")
+            val actions = notification.actions
+            org.junit.Assert.assertNotNull("notification must have actions", actions)
+            val toggleAction = actions!!.firstOrNull { it.title == "暂停" }
+            org.junit.Assert.assertNotNull(
+                "playing notification must show a '暂停' (pause) action",
+                toggleAction
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
 }

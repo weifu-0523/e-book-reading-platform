@@ -274,10 +274,22 @@ class ZhiYueTtsService : Service() {
         tts?.stop()
         updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
         emit(mapOf("event" to "state", "state" to "paused"))
+        // v1.13.7-alpha Bug 1: refresh the notification so the toggle button
+        // flips from pause → play while playback is paused.
+        refreshNotification(content = "已暂停")
     }
 
     private fun handleResume() {
-        // Dart side re-sends SPEAK intent with current sentence index (no native resume).
+        // v1.13.7-alpha Bug 1: previously empty — Kotlin never told Dart to
+        // resume, so notification-bar play taps after a pause were lost.
+        // Android TextToSpeech has no native resume; we emit a resume_request
+        // event and let Dart re-drive SPEAK for the current sentence.
+        debugLog("handleResume emit resume_request")
+        emit(mapOf("event" to "resume_request"))
+        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+        updateMetadata("智阅朗读", "朗读中")
+        // Refresh the notification so the toggle button flips play → pause.
+        refreshNotification(content = "朗读中")
     }
 
     private fun handleStop() {
@@ -441,10 +453,25 @@ class ZhiYueTtsService : Service() {
         // (FLAG_MUTABLE was added in API 31, but we don't need mutability).
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             PendingIntent.FLAG_IMMUTABLE else 0
-        val pauseIntent = PendingIntent.getService(
+        // v1.13.7-alpha Bug 1: notification bar toggle button flips between
+        // pause (while PLAYING) and play (while PAUSED). Some ROMs auto-flip
+        // based on MediaSession state, but most don't — drive it explicitly
+        // from the current playback state so users always see the right icon.
+        val currentPlayState = mediaSession?.controller?.playbackState?.state
+        val isPlaying = currentPlayState == PlaybackStateCompat.STATE_PLAYING
+        val toggleAction = if (isPlaying) ACTION_PAUSE else ACTION_RESUME
+        val toggleIcon = if (isPlaying) android.R.drawable.ic_media_pause
+                         else android.R.drawable.ic_media_play
+        val toggleLabel = if (isPlaying) "暂停" else "继续"
+        // v1.13.7-alpha Bug 1: combine FLAG_UPDATE_CURRENT with the request
+        // code 0 so the toggle PendingIntent's Intent action is updated
+        // in-place — without this the first-built intent (whichever action
+        // won the race) sticks and the toggle button keeps firing PAUSE
+        // even after we flip to PAUSED.
+        val toggleIntent = PendingIntent.getService(
             this, 0,
-            Intent(this, ZhiYueTtsService::class.java).setAction(ACTION_PAUSE),
-            pendingIntentFlags
+            Intent(this, ZhiYueTtsService::class.java).setAction(toggleAction),
+            pendingIntentFlags or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val stopIntent = PendingIntent.getService(
             this, 1,
@@ -456,7 +483,7 @@ class ZhiYueTtsService : Service() {
             .setContentTitle(title)
             .setContentText(content)
             .setOngoing(true)
-            .addAction(android.R.drawable.ic_media_pause, "暂停", pauseIntent)
+            .addAction(toggleIcon, toggleLabel, toggleIntent)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "停止", stopIntent)
             .also { builder ->
                 mediaSession?.sessionToken?.let { token ->
@@ -467,6 +494,26 @@ class ZhiYueTtsService : Service() {
                 }
             }
             .build()
+    }
+
+    /// Test-only: builds a fresh notification with the current playback state
+    /// so tests can assert the toggle icon/action label without going through
+    /// the full startForeground path.
+    internal fun buildNotificationForTest(title: String, content: String): Notification =
+        buildNotification(title, content)
+
+    /// v1.13.7-alpha Bug 1: re-posts the notification so the toggle button
+    /// reflects the latest playback state after pause/resume. No-op if the
+    /// system can't hand back a [NotificationManager] (defensive — should
+    /// never happen on a real device).
+    private fun refreshNotification(title: String = "智阅朗读", content: String = "朗读中") {
+        if (!isForeground) return
+        val nm = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        try {
+            nm.notify(NOTIFICATION_ID, buildNotification(title, content))
+        } catch (e: Exception) {
+            debugLog("refreshNotification failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     companion object {

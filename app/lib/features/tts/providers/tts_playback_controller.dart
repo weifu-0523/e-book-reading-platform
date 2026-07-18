@@ -19,6 +19,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart' as core;
+import '../../../services/tts/self_built_tts_service.dart';
 import '../../../services/tts/tts_service.dart';
 import '../../../services/tts/tts_service_factory.dart';
 import 'tts_settings_provider.dart';
@@ -136,6 +137,12 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   List<Sentence> _queue = const [];
   StreamSubscription<TtsState>? _stateSub;
 
+  /// v1.13.7-alpha Bug 1: subscribes to Kotlin-originated resume requests
+  /// (notification bar play button while PAUSED). Null on platforms whose
+  /// TtsService doesn't expose a [resumeRequests] stream (e.g. desktop
+  /// flutter_tts wrapper).
+  StreamSubscription<void>? _kotlinResumeSub;
+
   /// v1.13 T2 review (BLOCKER): guard against concurrent init races.
   /// Two simultaneous callers (e.g. `play()` fired while a previous
   /// `play()` is still awaiting `_service.init()`) both saw
@@ -144,9 +151,21 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   /// caller creates it, subsequent callers await the same future.
   Completer<void>? _initCompleter;
 
-  TtsPlaybackController(this._service, this._settingsGetter)
-      : super(const TtsPlaybackState()) {
+  /// v1.13.7-alpha Bug 1: optionally listens to a Kotlin-originated
+  /// resume-request stream so the notification bar play button (after
+  /// a pause) can drive Dart-side [driveResume]. Production wires this
+  /// from [SelfBuiltTtsServiceImpl.resumeRequests]; tests pass a
+  /// [StreamController] directly. Null on platforms without the
+  /// self-built plugin.
+  TtsPlaybackController(
+    this._service,
+    this._settingsGetter, {
+    Stream<void>? kotlinResumeRequestStream,
+  }) : super(const TtsPlaybackState()) {
     _stateSub = _service.state.listen(_onServiceState);
+    if (kotlinResumeRequestStream != null) {
+      _kotlinResumeSub = kotlinResumeRequestStream.listen(_onKotlinResumeRequest);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -391,11 +410,27 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     } else if (svcState == TtsState.speaking &&
         state.phase == TtsPhase.loading) {
       state = state.copyWith(phase: TtsPhase.speaking);
+    } else if (svcState == TtsState.paused &&
+        state.phase == TtsPhase.speaking) {
+      // v1.13.7-alpha Bug 1: Kotlin MediaSession.Callback.onPause fires
+      // when the user taps the notification bar pause button — Kotlin
+      // emits state=paused via the plugin. Mirror it in TtsPhase so the
+      // UI (floating console, lock screen) flips to the paused affordance.
+      state = state.copyWith(phase: TtsPhase.paused);
     }
+  }
+
+  /// v1.13.7-alpha Bug 1: Kotlin handleResume() emits `resume_request`
+  /// when the user taps the notification bar play button while PAUSED.
+  /// Android TextToSpeech has no native resume, so we re-drive SPEAK
+  /// for the current sentence via [driveResume].
+  void _onKotlinResumeRequest(void _) {
+    driveResume();
   }
 
   @override
   void dispose() {
+    _kotlinResumeSub?.cancel();
     _stateSub?.cancel();
     super.dispose();
   }
@@ -403,8 +438,17 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
 
 final ttsPlaybackControllerProvider =
     StateNotifierProvider<TtsPlaybackController, TtsPlaybackState>(
-  (ref) => TtsPlaybackController(
-    ref.watch(ttsServiceProvider),
-    () => ref.read(ttsSettingsProvider),
-  ),
+  (ref) {
+    final service = ref.watch(ttsServiceProvider);
+    return TtsPlaybackController(
+      service,
+      () => ref.read(ttsSettingsProvider),
+      // v1.13.7-alpha Bug 1: only the self-built Android plugin emits
+      // resume_requests (notification bar play button). Other impls
+      // (flutter_tts desktop) don't expose the stream — pass null and
+      // the controller simply ignores that path.
+      kotlinResumeRequestStream:
+          service is SelfBuiltTtsServiceImpl ? service.resumeRequests : null,
+    );
+  },
 );

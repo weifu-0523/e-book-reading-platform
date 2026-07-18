@@ -31,6 +31,15 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   final _progressController = StreamController<TtsProgress>.broadcast();
   final _errorController = StreamController<String>.broadcast();
 
+  /// v1.13.7-alpha Bug 1: emitted when Kotlin ZhiYueTtsService.handleResume()
+  /// fires a `resume_request` event. This happens when the user taps the
+  /// notification bar play button while playback is PAUSED — Kotlin's
+  /// MediaSession.Callback.onPlay routes to handleResume(), which (since
+  /// Android TextToSpeech has no native resume) asks Dart to re-drive
+  /// SPEAK for the current sentence. The TtsPlaybackController listens
+  /// to this stream and calls driveResume on each event.
+  final _resumeRequestController = StreamController<void>.broadcast();
+
   bool _initialized = false;
   int _currentSentenceIdx = 0;
 
@@ -55,6 +64,10 @@ class SelfBuiltTtsServiceImpl implements TtsService {
 
   @override
   Stream<String> get error => _errorController.stream;
+
+  /// v1.13.7-alpha Bug 1: stream of Kotlin-originated resume requests
+  /// (notification bar play button while PAUSED).
+  Stream<void> get resumeRequests => _resumeRequestController.stream;
 
   @override
   bool get isInitialized => _initialized;
@@ -119,6 +132,12 @@ class SelfBuiltTtsServiceImpl implements TtsService {
         case 'error':
           _errorController.add(map['message'] as String? ?? 'unknown');
           _stateController.add(TtsState.error);
+          break;
+        case 'resume_request':
+          // v1.13.7-alpha Bug 1: Kotlin MediaSession.Callback.onPlay →
+          // handleResume() emits this. Dart side re-drives SPEAK for the
+          // current sentence via TtsPlaybackController.driveResume.
+          _resumeRequestController.add(null);
           break;
       }
     } catch (e) {
@@ -227,6 +246,7 @@ class SelfBuiltTtsServiceImpl implements TtsService {
     await _stateController.close();
     await _progressController.close();
     await _errorController.close();
+    await _resumeRequestController.close();
     _initialized = false;
   }
 }

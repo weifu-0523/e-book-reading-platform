@@ -731,4 +731,121 @@ void main() {
       verify(() => mockSvc.setSpeechRate(0.8)).called(1);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // v1.13.7-alpha Bug 1: Kotlin 通知栏点 play 后必须能恢复播放。
+  //
+  // Background: ZhiYueTtsService.handleResume() previously was an empty
+  // stub. The MediaSession Callback.onPlay routed notification-bar play
+  // clicks to it, but nothing happened — Dart never saw the request and
+  // playback stayed paused forever.
+  //
+  // Fix: Kotlin handleResume emits a "resume_request" event; Dart side
+  // (SelfBuiltTtsServiceImpl) surfaces it via a resumeRequests stream,
+  // which the controller listens to and triggers driveResume. Also, when
+  // Kotlin emits state=paused (notification bar pause), the controller
+  // must mirror that in TtsPhase.
+  // ─────────────────────────────────────────────────────────────────────
+
+  group('notification bar resume (v1.13.7-alpha Bug 1)', () {
+    test(
+        'Kotlin resume_request event drives driveResume and returns to '
+        'loading then speaking', () async {
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      final resumeRequestController = StreamController<void>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.pause()).thenAnswer((_) async {});
+      when(() => mockSvc.stop()).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      addTearDown(stateController.close);
+      addTearDown(resumeRequestController.close);
+
+      // Construct the controller explicitly with a kotlinResumeRequestStream
+      // so the test does not depend on provider wiring.
+      final notifier = TtsPlaybackController(
+        mockSvc,
+        () => TtsSettings(),
+        kotlinResumeRequestStream: resumeRequestController.stream,
+      );
+      addTearDown(notifier.dispose);
+
+      // Seed playback + pause so resume has the right precondition.
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+      await notifier.pause();
+      expect(notifier.state.phase, TtsPhase.paused);
+      clearInteractions(mockSvc);
+
+      // Simulate Kotlin handleResume emitting resume_request.
+      resumeRequestController.add(null);
+
+      // Let the stream listener fire.
+      await Future<void>.delayed(Duration.zero);
+
+      // driveResume should have re-invoked speakSentence.
+      verify(() => mockSvc.speakSentence(any())).called(1);
+    });
+
+    test('Kotlin paused state event transitions controller to paused phase',
+        () async {
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.pause()).thenAnswer((_) async {});
+      when(() => mockSvc.stop()).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final notifier = TtsPlaybackController(
+        mockSvc,
+        () => TtsSettings(),
+      );
+      addTearDown(notifier.dispose);
+      addTearDown(stateController.close);
+
+      // Seed playback so phase becomes speaking.
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'Hello.', locale: 'en-US', charStart: 0, charEnd: 6),
+        ],
+      );
+      expect(notifier.state.phase, TtsPhase.speaking);
+
+      // Simulate Kotlin MediaSession Callback.onPause firing on notification
+      // bar pause — Kotlin emits state=paused via the plugin.
+      stateController.add(TtsState.paused);
+
+      // Let the stream listener fire.
+      await Future<void>.delayed(Duration.zero);
+      expect(notifier.state.phase, TtsPhase.paused);
+    });
+  });
 }
