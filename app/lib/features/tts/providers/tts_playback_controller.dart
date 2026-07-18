@@ -19,8 +19,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart' as core;
-import '../../../services/tts/flutter_tts_service.dart';
 import '../../../services/tts/tts_service.dart';
+import '../../../services/tts/tts_service_factory.dart';
 import 'tts_settings_provider.dart';
 
 /// Top-level playback phase for [TtsPlaybackController].
@@ -97,8 +97,17 @@ class TtsPlaybackState {
 
 /// Concrete [TtsService] used in production. Overridable for tests via
 /// [ttsServiceProvider.overrideWithValue] (see test/features/tts/providers/).
+///
+/// v1.13.1-alpha hotfix: previously hardcoded [FlutterTtsServiceImpl], which
+/// broke Android (MainActivity skips flutter_tts plugin registration to avoid
+/// Chinese ROM startup kill, so the MethodChannel `flutter_tts` is unregistered
+/// and every call silently throws MissingPluginException caught by
+/// `_speakCurrent`'s catch). Wire [createTtsService] factory so Android gets
+/// [SelfBuiltTtsServiceImpl] (MethodChannel `dev.zhiyue.tts` registered by
+/// ZhiYueTtsPlugin), and desktop keeps flutter_tts (SAPI / NSSpeechSynthesizer
+/// / speech-dispatcher).
 final ttsServiceProvider = Provider<TtsService>((ref) {
-  final svc = core.globalTtsServiceOverride ?? FlutterTtsServiceImpl();
+  final svc = core.globalTtsServiceOverride ?? createTtsService();
   ref.onDispose(svc.dispose);
   return svc;
 });

@@ -32,6 +32,19 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     internal var isServiceCreated: Boolean = false
         private set
 
+    /// v1.13.1-alpha debug: last exception message from [ensureServiceStarted].
+    /// Surfaced to Dart via `getDebugState` so the user can paste it back
+    /// without needing adb / logcat.
+    internal var lastStartError: String? = null
+        private set
+
+    /// v1.13.1-alpha debug: how many times `init` / `speak` have been invoked
+    /// from Dart. Lets us confirm the MethodChannel actually received calls.
+    internal var initCallCount: Int = 0
+        private set
+    internal var speakCallCount: Int = 0
+        private set
+
     /// Held context. In production this is assigned by
     /// [onAttachedToEngine]; in tests by [attachContextForTest].
     internal var contextForTest: Context? = null
@@ -63,23 +76,38 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
         }
         when (call.method) {
             "init" -> {
-                ensureServiceStarted(ctx)
-                result.success(null)
+                initCallCount++
+                val ok = ensureServiceStarted(ctx)
+                if (ok) {
+                    result.success(null)
+                } else {
+                    result.error("SERVICE_START_FAILED", lastStartError, null)
+                }
             }
             "speak" -> {
-                ensureServiceStarted(ctx)
+                speakCallCount++
+                val ok = ensureServiceStarted(ctx)
+                if (!ok) {
+                    result.error("SERVICE_START_FAILED", lastStartError, null)
+                    return
+                }
                 @Suppress("UNCHECKED_CAST")
                 val args = (call.arguments as? Map<String, Any?>) ?: emptyMap()
+                val text = args["text"] as? String ?: ""
                 val intent = Intent(ctx, ZhiYueTtsService::class.java)
                     .setAction(ZhiYueTtsService.ACTION_SPEAK)
-                    .putExtra(ZhiYueTtsService.EXTRA_TEXT, args["text"] as? String ?: "")
+                    .putExtra(ZhiYueTtsService.EXTRA_TEXT, text)
                     .putExtra(ZhiYueTtsService.EXTRA_LOCALE, args["locale"] as? String ?: "zh-CN")
                     .putExtra(
                         ZhiYueTtsService.EXTRA_SENTENCE_INDEX,
                         (args["sentenceIndex"] as? Number)?.toInt() ?: 0
                     )
-                ctx.startService(intent)
-                result.success(null)
+                try {
+                    ctx.startService(intent)
+                    result.success(null)
+                } catch (e: Exception) {
+                    result.error("SPEAK_INTENT_FAILED", "${e.javaClass.simpleName}: ${e.message}", null)
+                }
             }
             "pause" -> forwardAction(ctx, ZhiYueTtsService.ACTION_PAUSE, result)
             "resume" -> forwardAction(ctx, ZhiYueTtsService.ACTION_RESUME, result)
@@ -89,8 +117,32 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
             "setRate", "setPitch", "setVolume", "setLanguage" -> result.success(null)
             "isLanguageAvailable", "isLanguageInstalled" -> result.success(true)
             "getDefaultEngine" -> result.success("com.google.android.tts")
+            // v1.13.1-alpha: dump plugin + service debug state for in-app display.
+            "getDebugState" -> result.success(buildDebugState())
             else -> result.notImplemented()
         }
+    }
+
+    /// v1.13.1-alpha: returns a JSON-serializable map of plugin + service
+    /// debug state. Surfaced via `getDebugState` MethodChannel so the user
+    /// can paste it back into chat without needing adb.
+    private fun buildDebugState(): Map<String, Any?> {
+        return mapOf(
+            "pluginAttached" to (contextForTest != null),
+            "isServiceCreated" to isServiceCreated,
+            "initCallCount" to initCallCount,
+            "speakCallCount" to speakCallCount,
+            "lastStartError" to lastStartError,
+            "serviceDebugLogs" to ZhiYueTtsService.debugLogs.toList(),
+            "serviceOnCreateDone" to ZhiYueTtsService.onCreateCompleted,
+            "serviceOnCreateException" to ZhiYueTtsService.onCreateException,
+            "serviceStartForegroundDone" to ZhiYueTtsService.startForegroundCompleted,
+            "ttsInitStatus" to ZhiYueTtsService.ttsInitStatus,
+            "ttsLastSpeakReturn" to ZhiYueTtsService.ttsLastSpeakReturn,
+            "onStartCommandCount" to ZhiYueTtsService.onStartCommandCount,
+            "lastStartCommandAction" to ZhiYueTtsService.lastStartCommandAction,
+            "utteranceCallbacks" to ZhiYueTtsService.utteranceCallbacks.toList()
+        )
     }
 
     /// Idempotently start [ZhiYueTtsService]. On API 26+ we use
@@ -104,25 +156,28 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
     /// degrades gracefully: TTS calls become silent no-ops (no foreground
     /// promotion, no notification), but the app does not crash and the
     /// MethodChannel call still returns success.
-    private fun ensureServiceStarted(ctx: Context) {
-        if (isServiceCreated) return
+    private fun ensureServiceStarted(ctx: Context): Boolean {
+        if (isServiceCreated) return true
         val intent = Intent(ctx, ZhiYueTtsService::class.java)
-        try {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 ctx.startForegroundService(intent)
             } else {
                 ctx.startService(intent)
             }
             isServiceCreated = true
+            true
         } catch (e: Exception) {
             // noFgs flavor omits the service declaration; startForegroundService
             // throws. Log and continue — TTS calls become no-op (no foreground
             // promotion, no notification), but app does not crash.
+            lastStartError = "${e.javaClass.simpleName}: ${e.message}"
             android.util.Log.w(
                 "ZhiYueTts",
                 "ensureServiceStarted failed (likely noFgs flavor)",
                 e
             )
+            false
         }
     }
 

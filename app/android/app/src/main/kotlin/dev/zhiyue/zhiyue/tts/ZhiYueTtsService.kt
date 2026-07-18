@@ -77,65 +77,95 @@ class ZhiYueTtsService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        tts = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                Log.i(TAG, "TextToSpeech engine ready")
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {
-                        Log.d(TAG, "utterance onStart $utteranceId")
-                        emit(mapOf("event" to "state", "state" to "speaking", "utteranceId" to (utteranceId ?: "")))
-                    }
-                    override fun onDone(utteranceId: String?) {
-                        Log.d(TAG, "utterance onDone $utteranceId")
-                        emit(mapOf("event" to "done", "utteranceId" to (utteranceId ?: "")))
-                    }
-                    override fun onError(utteranceId: String?) {
-                        Log.e(TAG, "utterance onError $utteranceId")
-                        emit(mapOf("event" to "error", "utteranceId" to (utteranceId ?: "")))
-                    }
-                })
-            } else {
-                Log.e(TAG, "TextToSpeech init failed status=$status")
+        debugLog("onCreate start")
+        try {
+            debugLog("before TextToSpeech ctor")
+            tts = TextToSpeech(this) { status ->
+                ttsInitStatus = status
+                debugLog("TTS init callback status=$status")
+                if (status == TextToSpeech.SUCCESS) {
+                    Log.i(TAG, "TextToSpeech engine ready")
+                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {
+                            utteranceCallbacks.add("onStart:$utteranceId")
+                            debugLog("utterance onStart $utteranceId")
+                            emit(mapOf("event" to "state", "state" to "speaking", "utteranceId" to (utteranceId ?: "")))
+                        }
+                        override fun onDone(utteranceId: String?) {
+                            utteranceCallbacks.add("onDone:$utteranceId")
+                            debugLog("utterance onDone $utteranceId")
+                            emit(mapOf("event" to "done", "utteranceId" to (utteranceId ?: "")))
+                        }
+                        override fun onError(utteranceId: String?) {
+                            utteranceCallbacks.add("onError:$utteranceId")
+                            debugLog("utterance onError $utteranceId")
+                            emit(mapOf("event" to "error", "utteranceId" to (utteranceId ?: "")))
+                        }
+                    })
+                } else {
+                    debugLog("TTS init FAILED status=$status")
+                    Log.e(TAG, "TextToSpeech init failed status=$status")
+                }
             }
+            debugLog("after TextToSpeech ctor, tts=$tts")
+            mediaSession = MediaSessionCompat(this, "zhiyue-tts").apply {
+                setFlags(
+                    MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+                )
+                setCallback(object : MediaSessionCompat.Callback() {
+                    override fun onPlay() { handleResume() }
+                    override fun onPause() { handlePause() }
+                    override fun onStop() { handleStop(); stopSelf() }
+                })
+                isActive = true
+            }
+            debugLog("MediaSession ready")
+            updatePlaybackState(PlaybackStateCompat.STATE_NONE)
+            setupAudioFocus()
+            debugLog("AudioFocus setup done, requested=$audioFocusRequestedForTest")
+            setupPhoneStateListener()
+            debugLog("PhoneStateListener setup done")
+            // Wire event emitter to plugin (singleton pattern, set in onAttachedToEngine).
+            ZhiYueTtsPlugin.instance?.let { plugin ->
+                eventEmitter = plugin::emitEvent
+                debugLog("eventEmitter wired")
+            } ?: debugLog("WARN: ZhiYueTtsPlugin.instance is null in onCreate")
+            // LAST: start foreground (must complete within 5s for Android 12+ ANR).
+            ensureNotificationChannel()
+            val notification = buildNotification("智阅朗读", "准备朗读")
+            debugLog("before startForeground, SDK=${Build.VERSION.SDK_INT}")
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+                startForegroundCompleted = true
+                isForeground = true
+                debugLog("startForeground SUCCESS")
+            } catch (e: Exception) {
+                debugLog("startForeground FAILED: ${e.javaClass.simpleName}: ${e.message}")
+                Log.e(TAG, "startForeground failed", e)
+                // Re-throw so the system marks this service creation as failed
+                // (otherwise onStartCommand will still be called on a half-broken service).
+                throw e
+            }
+            onCreateCompleted = true
+            debugLog("onCreate complete")
+        } catch (e: Exception) {
+            onCreateException = "${e.javaClass.simpleName}: ${e.message}"
+            debugLog("onCreate EXCEPTION: ${e.javaClass.simpleName}: ${e.message}")
+            Log.e(TAG, "onCreate exception", e)
+            // Don't re-throw: let Android call onStartCommand which will fail
+            // gracefully; re-throwing would crash the service process.
         }
-        mediaSession = MediaSessionCompat(this, "zhiyue-tts").apply {
-            setFlags(
-                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
-                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
-            )
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() { handleResume() }
-                override fun onPause() { handlePause() }
-                override fun onStop() { handleStop(); stopSelf() }
-            })
-            isActive = true
-        }
-        updatePlaybackState(PlaybackStateCompat.STATE_NONE)
-        setupAudioFocus()
-        setupPhoneStateListener()
-        // Wire event emitter to plugin (singleton pattern, set in onAttachedToEngine).
-        // If plugin isn't attached yet (shouldn't happen — service starts after user
-        // clicks 「朗读」), emit() is no-op until plugin attaches.
-        // v1.14 TODO: re-bind on hot restart. If plugin re-attaches after service onCreate,
-        // service holds stale emitter reference and events are lost. Currently safe because
-        // service is created on user click, long after plugin onAttachedToEngine.
-        ZhiYueTtsPlugin.instance?.let { plugin ->
-            eventEmitter = plugin::emitEvent
-        }
-        // LAST: start foreground (must complete within 5s for Android 12+ ANR).
-        //国产 ROM (华为/小米/OPPO/vivo) 会在用户没有感知到前台 service 时 kill 进程，
-        // 因此 onCreate 末尾立即 startForeground，type 为 MEDIA_PLAYBACK。
-        ensureNotificationChannel()
-        val notification = buildNotification("智阅朗读", "准备朗读")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
-        isForeground = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        onStartCommandCount++
+        lastStartCommandAction = intent?.action
+        debugLog("onStartCommand #$onStartCommandCount action=${intent?.action}")
         Log.i(TAG, "onStartCommand: ${intent?.action}")
         when (intent?.action) {
             ACTION_SPEAK -> handleSpeak(intent)
@@ -154,12 +184,19 @@ class ZhiYueTtsService : Service() {
         // Guard: if TTS init failed or isn't ready yet, don't update MediaSession
         // to STATE_PLAYING — that would mislead the lock screen into showing
         // "playing" while no audio is actually being produced.
-        if (tts == null) return
+        debugLog("handleSpeak textLen=${text.length} tts=$tts initStatus=$ttsInitStatus")
+        if (tts == null) {
+            debugLog("handleSpeak ABORT: tts is null")
+            return
+        }
         val locale = intent.getStringExtra(EXTRA_LOCALE) ?: "zh-CN"
         val idx = intent.getIntExtra(EXTRA_SENTENCE_INDEX, 0)
         val utteranceId = "sent_$idx"
-        tts?.language = Locale.forLanguageTag(locale)
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        val langResult = tts?.setLanguage(Locale.forLanguageTag(locale))
+        debugLog("setLanguage($locale) -> $langResult (0=ok, -1=missing_data, -2=not_supported)")
+        val speakRet = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId) ?: -99
+        ttsLastSpeakReturn = speakRet
+        debugLog("speak() returned $speakRet (0=success, -1=error)")
         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
         updateMetadata("智阅朗读", "朗读中")
     }
@@ -379,5 +416,29 @@ class ZhiYueTtsService : Service() {
         const val EXTRA_LOCALE = "locale"
         const val EXTRA_SENTENCE_INDEX = "sentenceIndex"
         const val EXTRA_UTTERANCE_ID = "utteranceId"
+
+        // ---- v1.13.1-alpha debug instrumentation ----
+        // Companion fields so they survive the service being killed and
+        // restarted by Android — the plugin can read them via getDebugState
+        // even after onCreate throws.
+        val debugLogs = mutableListOf<String>()
+        var onCreateCompleted: Boolean = false
+        var onCreateException: String? = null
+        var startForegroundCompleted: Boolean = false
+        var ttsInitStatus: Int = -999  // -999 = callback never fired
+        var ttsLastSpeakReturn: Int = -999
+        var onStartCommandCount: Int = 0
+        var lastStartCommandAction: String? = null
+        val utteranceCallbacks = mutableListOf<String>()
+
+        fun debugLog(msg: String) {
+            val ts = System.currentTimeMillis()
+            // Take only last 100 entries to bound memory.
+            synchronized(debugLogs) {
+                debugLogs.add("[$ts] $msg")
+                while (debugLogs.size > 100) debugLogs.removeAt(0)
+            }
+            Log.d(TAG, msg)
+        }
     }
 }

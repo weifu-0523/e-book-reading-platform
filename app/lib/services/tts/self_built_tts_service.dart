@@ -162,6 +162,17 @@ class SelfBuiltTtsServiceImpl implements TtsService {
     return result is String ? result : null;
   }
 
+  /// v1.13.1-alpha: dump plugin + service debug state as a pretty-printed
+  /// JSON string. Used by the in-app 「TTS 调试日志」 button so users
+  /// without adb can paste diagnostic info back.
+  Future<Map<String, dynamic>> getDebugState() async {
+    final result = await _methodChannel.invokeMethod('getDebugState');
+    if (result is Map) {
+      return Map<String, dynamic>.from(result);
+    }
+    return <String, dynamic>{'error': 'getDebugState returned $result'};
+  }
+
   @override
   Future<void> dispose() async {
     await _eventSub?.cancel();

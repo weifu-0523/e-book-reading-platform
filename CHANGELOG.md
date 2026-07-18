@@ -7,7 +7,22 @@
 
 ## [Unreleased]
 
-v1.12.3-alpha 之后的新变更将记在此处。
+v1.13.1-alpha 之后的新变更将记在此处。
+
+## [1.13.1-alpha] - 2026-07-18
+
+### v1.13.1-alpha — TTS factory wiring hotfix
+
+**Bug**：v1.13.0-alpha 在荣耀手机上安装后启动不 crash，但点「朗读」无声无通知。
+
+**根因**：`ttsServiceProvider`（`features/tts/providers/tts_playback_controller.dart:101`）硬编码 `FlutterTtsServiceImpl()`，没用 v1.13 新写的 `createTtsService()` factory。因此移动端走的是 `flutter_tts` MethodChannel，而 MainActivity 为了避免国产 ROM 启动 crash 明确跳过了 `flutter_tts` plugin 注册 → 所有调用静默 throw `MissingPluginException`，被 `_speakCurrent` 的 catch 吞掉。SelfBuiltTtsServiceImpl 写再完美也没被实例化。
+
+**修复**：`ttsServiceProvider` 从 `FlutterTtsServiceImpl()` 改为 `createTtsService()`，让 platform dispatch 生效。Android → SelfBuiltTtsServiceImpl，桌面/iOS 保留 FlutterTtsServiceImpl。
+
+**额外**：在 设置 → TTS 设置 加「TTS 调试日志」按钮，一键 dump plugin + service 内部状态（init/speak 调用次数、Service onCreate 各步完成情况、startForeground 成败、TextToSpeech init status、speak() 返回值、utterance 回调、完整 debugLogs 列表）。用户截图即可，不需 adb / logcat。
+
+**教训**：写完 factory 函数必须验证其调用点存在。两阶段 review 抓不到这种端到端 platform dispatch 偏差，因为测试都用 FakeTtsService 注入，不走真实 factory。
+
 
 ## [1.13.0-alpha] - 2026-07-18
 

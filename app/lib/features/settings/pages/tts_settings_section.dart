@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/tts/sentence_segmenter.dart';
+import '../../../services/tts/self_built_tts_service.dart';
 import '../../../services/tts/tts_availability.dart';
 import '../../tts/providers/tts_playback_controller.dart';
 import '../../tts/providers/tts_settings_provider.dart';
@@ -144,8 +145,120 @@ class TtsSettingsSection extends ConsumerWidget {
             onPressed: () => _checkTtsEngine(ref, context),
           ),
         ),
+        // v1.13.1-alpha: in-app debug log dump for Android self-built TTS.
+        // Lets users without adb paste plugin/service state back so we can
+        // diagnose startup / speak failures on Chinese-ROM devices.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.bug_report),
+            label: const Text('TTS 调试日志'),
+            onPressed: () => _showTtsDebugLogs(ref, context),
+          ),
+        ),
       ],
     );
+  }
+
+  /// v1.13.1-alpha: dump plugin + service debug state. Shows a dialog with
+  /// a scrollable, copy-pasteable text view so the user can screenshot or
+  /// copy the contents back to the developer.
+  Future<void> _showTtsDebugLogs(WidgetRef ref, BuildContext context) async {
+    final service = ref.read(ttsServiceProvider);
+    if (service is! SelfBuiltTtsServiceImpl) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('TTS 调试日志'),
+          content: Text('当前 TTS 实现不是自研 Android plugin（$service），'
+              '此调试功能仅 Android 端可用。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Trigger a fresh debug snapshot. Also re-init so plugin/service state
+    // is fresh even if the user hasn't clicked 「朗读」 yet.
+    try {
+      await service.init();
+    } catch (_) {
+      // Surface the init error in the dialog below.
+    }
+    final state = await service.getDebugState();
+    if (!context.mounted) return;
+
+    final pretty = _prettyDebugState(state);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('TTS 调试日志'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              pretty,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 11,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Pretty-print the debug state map as a readable multi-line string for
+  /// the dialog body. Keys ordered roughly by data flow (plugin → service
+  /// onCreate → onStartCommand → TTS engine).
+  static String _prettyDebugState(Map<String, dynamic> state) {
+    final b = StringBuffer();
+    b.writeln('=== Plugin ===');
+    b.writeln('attached         : ${state['pluginAttached']}');
+    b.writeln('isServiceCreated : ${state['isServiceCreated']}');
+    b.writeln('initCallCount    : ${state['initCallCount']}');
+    b.writeln('speakCallCount   : ${state['speakCallCount']}');
+    b.writeln('lastStartError   : ${state['lastStartError'] ?? '(none)'}');
+    b.writeln();
+    b.writeln('=== Service onCreate ===');
+    b.writeln('completed         : ${state['serviceOnCreateDone']}');
+    b.writeln('exception         : ${state['serviceOnCreateException'] ?? '(none)'}');
+    b.writeln('startForegroundOk : ${state['serviceStartForegroundDone']}');
+    b.writeln();
+    b.writeln('=== TTS engine ===');
+    b.writeln('initStatus       : ${state['ttsInitStatus']} '
+        '(-999=未回调, 0=SUCCESS, -1=ERROR)');
+    b.writeln('lastSpeakReturn  : ${state['ttsLastSpeakReturn']} '
+        '(0=success, -1=error)');
+    b.writeln();
+    b.writeln('=== onStartCommand ===');
+    b.writeln('count            : ${state['onStartCommandCount']}');
+    b.writeln('lastAction       : ${state['lastStartCommandAction'] ?? '(none)'}');
+    b.writeln('utteranceCallbacks: ${state['utteranceCallbacks']}');
+    b.writeln();
+    b.writeln('=== Service debugLogs ===');
+    final logs = state['serviceDebugLogs'];
+    if (logs is List) {
+      for (final line in logs) {
+        b.writeln(line);
+      }
+    } else {
+      b.writeln(logs);
+    }
+    return b.toString();
   }
 
   Future<void> _checkTtsEngine(WidgetRef ref, BuildContext context) async {
