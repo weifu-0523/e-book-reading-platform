@@ -56,13 +56,28 @@ class ZhiYueTtsService : Service() {
     private var phoneStateListener: PhoneStateListener? = null
     private var telephonyCallback: TelephonyCallback? = null
 
-    /// Set by ZhiYueTtsPlugin (or test) to receive state/progress events.
-    /// Null until plugin wires it (T13 ServiceConnection binds; for now plugin
-    /// could set via reflection or a static singleton — left as TODO).
-    internal var eventEmitter: ((Map<String, Any?>) -> Unit)? = null
-
     private fun emit(event: Map<String, Any?>) {
-        eventEmitter?.invoke(event)
+        // v1.13.7-alpha Bug 5 (P0): every emit reads the CURRENT plugin
+        // instance via companion lookup. Previously onCreate cached
+        // `eventEmitter = plugin::emitEvent` as a method reference holding
+        // plugin_A; after plugin rebinding (Activity recreate / Flutter
+        // engine restart, triggered e.g. by "导入新书"), plugin_A.channel
+        // is nulled out by onDetachedFromEngine but the service kept
+        // invoking plugin_A.emitEvent — every event hit the channel_null
+        // branch and was silently dropped. Dart's TtsPlaybackController
+        // never saw the done event, so multi-sentence playback halted
+        // after queue[0].
+        //
+        // Reading the companion at emit-time guarantees we always reach
+        // the latest attached plugin (plugin_B post-rebind).
+        ZhiYueTtsPlugin.instance?.emitEvent(event)
+            ?: debugLog("EMIT_DROPPED reason=plugin_instance_null event_type=${event["event"]}")
+    }
+
+    /// Test-only: invoke [emit] directly to verify routing without spinning
+    /// up a real TextToSpeech engine.
+    internal fun simulateEmitForTest(event: Map<String, Any?>) {
+        emit(event)
     }
 
     private var isForeground = false
@@ -79,22 +94,15 @@ class ZhiYueTtsService : Service() {
         super.onCreate()
         debugLog("onCreate start")
         try {
-            // FIRST: wire event emitter so onStart/onDone/onError events reach
-            // Dart even if any subsequent setup step throws. v1.13.3-alpha
-            // regression: previously this was the LAST step before
-            // startForeground. But setupPhoneStateListener calls
-            // TelephonyManager.listen which throws SecurityException on
-            // Chinese ROMs (Honor/Xiaomi/OPPO/vivo) that don't grant
-            // READ_PHONE_STATE by default — killing onCreate before
-            // eventEmitter is assigned. All UtteranceProgressListener events
-            // then get silently dropped (emit() is a no-op when eventEmitter
-            // is null), so Dart-side TtsPlaybackController never sees
-            // TtsState.idle and never advances the queue — multi-sentence
-            // playback halts after queue[0] (the v1.13.0/v1.13.2 symptom).
-            ZhiYueTtsPlugin.instance?.let { plugin ->
-                eventEmitter = plugin::emitEvent
-                debugLog("eventEmitter wired (early)")
-            } ?: debugLog("WARN: ZhiYueTtsPlugin.instance is null in onCreate")
+            // v1.13.7-alpha Bug 5: emit() reads ZhiYueTtsPlugin.instance at
+            // call time (no cached reference), so there is no early-wire
+            // step anymore. We still log whether a plugin is currently
+            // attached to help diagnose startup-order regressions.
+            if (ZhiYueTtsPlugin.instance != null) {
+                debugLog("ZhiYueTtsPlugin.instance available; emit() will use companion lookup")
+            } else {
+                debugLog("WARN: ZhiYueTtsPlugin.instance is null in onCreate")
+            }
             debugLog("before TextToSpeech ctor")
             tts = TextToSpeech(this) { status ->
                 ttsInitStatus = status

@@ -184,4 +184,71 @@ class ZhiYueTtsServiceTest {
         org.junit.Assert.assertFalse(service.isForegroundForTest)
         controller.destroy()
     }
+
+    // ---- v1.13.7-alpha Bug 5 (P0): plugin rebinding must not strand service
+    // on a stale plugin reference. ----
+
+    /// Sum of every emit-routing counter on the plugin. Any value > 0 means
+    /// emit reached THIS plugin instance (either succeeded, threw, hit null
+    /// channel, or was attempted).
+    private fun emitReachCount(plugin: ZhiYueTtsPlugin): Int =
+        plugin.invokeAttemptCount +
+            plugin.invokeSucceededCount +
+            plugin.invokeExceptionCount +
+            plugin.invokeChannelNullCount
+
+    @Test
+    fun `emit uses current plugin instance not cached reference`() {
+        // Reproduction: v1.13.6-alpha user reported "导入新书后只读一句".
+        // Diagnostic showed UI counter = 0 (new plugin_B, the one Dart talks
+        // to) but debugLog accumulated 43 EMIT_DROPPED channel_null entries
+        // — service was still invoking plugin_A (whose channel was nulled
+        // by onDetachedFromEngine) because onCreate had cached
+        // eventEmitter = plugin_A::emitEvent.
+        //
+        // After fix, emit() reads ZhiYueTtsPlugin.instance at EVERY call,
+        // so swapping the companion routes subsequent emits to the new plugin.
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+
+        // pluginA attaches as the singleton, then service onCreate runs.
+        val pluginA = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(pluginA)
+        try {
+            val service = createService()
+            service.onCreate()
+            // First emit reaches plugin_A (channel null → channel_null_count++).
+            service.simulateEmitForTest(mapOf("event" to "state", "state" to "speaking"))
+            val pluginAFirst = emitReachCount(pluginA)
+            org.junit.Assert.assertTrue(
+                "pluginA should have seen the first emit (count=$pluginAFirst)",
+                pluginAFirst > 0
+            )
+
+            // Simulate plugin rebinding: plugin_B replaces plugin_A as the
+            // companion (mirrors onDetachedFromEngine clearing instance +
+            // onAttachedToEngine on a fresh plugin after Activity recreate).
+            val pluginB = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+            ZhiYueTtsPlugin.setInstanceForTest(pluginB)
+
+            // Second emit must route to plugin_B, NOT plugin_A.
+            service.simulateEmitForTest(mapOf("event" to "done", "utteranceId" to "sent_0"))
+
+            val pluginAAfter = emitReachCount(pluginA)
+            val pluginBAfter = emitReachCount(pluginB)
+            org.junit.Assert.assertTrue(
+                "pluginB should have seen the second emit (count=$pluginBAfter)",
+                pluginBAfter > 0
+            )
+            org.junit.Assert.assertEquals(
+                "pluginA must not grow after rebinding (cached reference bug)",
+                pluginAFirst,
+                pluginAAfter
+            )
+
+            service.onDestroy()
+        } finally {
+            // Reset companion so other tests start clean.
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
 }

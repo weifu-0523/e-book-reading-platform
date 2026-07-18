@@ -337,10 +337,18 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
 
     companion object {
         /// Singleton reference set in [onAttachedToEngine] and cleared in
-        /// [onDetachedFromEngine]. Used by [ZhiYueTtsService.onCreate] to
-        /// wire `eventEmitter` so service state/progress events flow back
-        /// to Dart via the EventChannel.
+        /// [onDetachedFromEngine]. Read by [ZhiYueTtsService.emit] at every
+        /// call (v1.13.7-alpha Bug 5) so plugin rebinding doesn't strand
+        /// the service on a stale plugin reference.
         internal var instance: ZhiYueTtsPlugin? = null
             private set
+
+        /// Test-only: swap the companion instance so a Robolectric test can
+        /// simulate plugin rebinding (Activity recreate / Flutter engine
+        /// restart) without spinning up a full Flutter engine. Production
+        /// code MUST NOT call this.
+        internal fun setInstanceForTest(plugin: ZhiYueTtsPlugin?) {
+            instance = plugin
+        }
     }
 }
