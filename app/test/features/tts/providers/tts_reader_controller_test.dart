@@ -541,7 +541,11 @@ void main() {
   });
 
   group('TtsReaderController manual flip pause (T18)', () {
-    test('manual location emission during speaking triggers pause',
+    // v1.13.7-alpha Bug 2 part A: T18 的 auto-pause 行为已移除。
+    // 朗读中用户翻页/滚动不再自动 pause — 统一悬浮控制台（T6）让用户
+    // 主动 pause。下面两个测试覆盖新的预期行为。
+    test(
+        'v1.13.7: manual location emission during speaking does NOT pause',
         () async {
       final engine = _FakeLocationEngine();
       addTearDown(engine.locationController.close);
@@ -575,8 +579,10 @@ void main() {
 
       expect(
           container.read(ttsPlaybackControllerProvider).phase,
-          TtsPhase.paused,
-          reason: 'manual page flip should pause TTS');
+          TtsPhase.speaking,
+          reason:
+              'v1.13.7: manual page flip must NOT auto-pause — user controls '
+              'pause via the floating console (T6).');
     });
 
     test(

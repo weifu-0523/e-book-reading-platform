@@ -657,16 +657,21 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   }
 
   /// Reactive callback for the reader engine's location emissions.
-  /// Filters out auto-navigation emissions (T18 guard) and only fires
-  /// pause when the user navigated manually.
+  ///
+  /// v1.13.7-alpha Bug 2 part A: previously this method would auto-pause
+  /// TTS when the user manually flipped a page / scrolled while speaking.
+  /// That behavior was removed — the floating playback console (T6) lets
+  /// the user pause explicitly, so auto-pause became a surprise
+  /// interruption ("朗读停了"). Now this is a no-op aside from the
+  /// [_isAutoNavigating] guard, which is retained for any future
+  /// enhancement (e.g. pause only when the user lands on a page that
+  /// doesn't contain the current sentence).
   void _onEngineLocation(re_locator.Locator loc) {
+    // Guard retained: our own _autoNavigate emissions still flow through
+    // here; the flag is also surfaced via state$ for diagnostics.
     if (_isAutoNavigating) return;
-    if (!state.isActive) return;
-    final phase = _ref.read(ttsPlaybackControllerProvider).phase;
-    if (phase != TtsPhase.speaking) return;
-    // User navigated manually while TTS was speaking → pause so they can
-    // re-orient. Best-effort; never throw.
-    unawaited(_ref.read(ttsPlaybackControllerProvider.notifier).pause());
+    // No-op: v1.13.7 no longer auto-pauses on user navigation. The user
+    // controls pause via the floating playback console (T6).
   }
 
   /// Look up the BooksDao lazily. Wrapped so tests can override the
