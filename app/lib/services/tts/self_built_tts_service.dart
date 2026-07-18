@@ -81,6 +81,15 @@ class SelfBuiltTtsServiceImpl implements TtsService {
             charEnd: map['end'] as int?,
           ));
           break;
+        case 'done':
+          // Kotlin UtteranceProgressListener.onDone emits this when an
+          // utterance finishes naturally. Map to TtsState.idle so the
+          // Dart-side playback controller advances to the next sentence
+          // (matches flutter_tts's setCompletionHandler behavior on
+          // desktop). Without this, multi-sentence playback halts after
+          // queue[0] (v1.13.2-alpha regression).
+          _stateController.add(TtsState.idle);
+          break;
         case 'error':
           _errorController.add(map['message'] as String? ?? 'unknown');
           _stateController.add(TtsState.error);

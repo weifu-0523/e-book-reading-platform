@@ -108,54 +108,127 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   /// No-op when engine is null (still outside reader) or bookId is null.
   /// No-op when the chapter resolves to empty text.
   Future<void> start() async {
+    final prepared = await _prepareCurrentChapter();
+    if (prepared == null) return;
+    await _ref.read(ttsPlaybackControllerProvider.notifier).play(
+      scope: TtsScopeChapter(
+          bookId: prepared.bookId, chapterIdx: prepared.chapterIdx),
+      sentences: prepared.sentences,
+    );
+    state = TtsReaderState(
+      isActive: true,
+      sentenceCount: prepared.sentences.length,
+    );
+  }
+
+  /// v1.13.2-alpha: triggered by the selection toolbar「朗读选中」button.
+  ///
+  /// Differs from [start] only in the entry index: instead of always
+  /// starting at sentence 0, locate the sentence whose char range contains
+  /// the first character of [selectedText] within the chapter plain text,
+  /// and dispatch via [TtsPlaybackController.playAt] with that index.
+  /// Everything else (chapter segmentation, subscriptions, highlight,
+  /// persistence, chapter-boundary branching) is identical to [start] —
+  /// the user's TTS「章节边界」setting (continuous / askAtEnd) governs
+  /// whether playback keeps going after the chapter ends.
+  ///
+  /// Lookup mirrors `_openExcerptSheet` in reader_body.dart: the selection
+  /// plainText is searched via `String.indexOf` against the chapter plain
+  /// text. -1 (not found) falls back to sentence 0 (degrades to [start]).
+  Future<void> startFromSelection({required String selectedText}) async {
+    final prepared = await _prepareCurrentChapter();
+    if (prepared == null) return;
+    final startIdx = _locateSelectionStartIndex(
+      chapterText: prepared.chapterText,
+      sentences: prepared.sentences,
+      selectedText: selectedText,
+    );
+    await _ref.read(ttsPlaybackControllerProvider.notifier).playAt(
+      scope: TtsScopeChapter(
+          bookId: prepared.bookId, chapterIdx: prepared.chapterIdx),
+      sentences: prepared.sentences,
+      startIndex: startIdx,
+    );
+    state = TtsReaderState(
+      isActive: true,
+      sentenceCount: prepared.sentences.length,
+    );
+  }
+
+  /// Locates the sentence index in [sentences] whose [Sentence.charStart] /
+  /// [Sentence.charEnd] range contains the first character of
+  /// [selectedText] inside [chapterText]. Returns 0 if not found.
+  ///
+  /// "首字所在的整句" semantic: if the selection spans multiple sentences,
+  /// the user expects playback to begin from the sentence containing the
+  /// selection's first character (so they hear the leading context too,
+  /// not just from the next sentence boundary).
+  static int _locateSelectionStartIndex({
+    required String chapterText,
+    required List<Sentence> sentences,
+    required String selectedText,
+  }) {
+    if (selectedText.isEmpty) return 0;
+    final startOffset = chapterText.indexOf(selectedText);
+    if (startOffset < 0) return 0;
+    for (var i = 0; i < sentences.length; i++) {
+      final s = sentences[i];
+      if (startOffset >= s.charStart && startOffset < s.charEnd) {
+        return i;
+      }
+    }
+    // startOffset lands between sentences (whitespace/newline gap) →
+    // pick the next sentence whose charStart > startOffset.
+    for (var i = 0; i < sentences.length; i++) {
+      if (sentences[i].charStart > startOffset) return i;
+    }
+    return 0;
+  }
+
+  /// Shared setup for [start] and [startFromSelection]: resolves the
+  /// current book + chapter, segments the chapter text, subscribes to
+  /// playback + engine location streams, and stashes the snapshot in
+  /// `_currentBookId` / `_currentChapterIdx` / `_sentences`.
+  ///
+  /// Returns null (and is a no-op) when: engine is null, bookId is null,
+  /// book lookup fails, or chapter text resolves to empty.
+  Future<_PreparedChapter?> _prepareCurrentChapter() async {
     final engine = _ref.read(ttsReaderEngineRefProvider);
     final bookId = _ref.read(ttsCurrentBookIdProvider);
     final chapterIdx = _ref.read(ttsCurrentChapterIdxProvider);
-    if (engine == null || bookId == null) return;
+    if (engine == null || bookId == null) return null;
 
     _currentBookId = bookId;
     _currentChapterIdx = chapterIdx;
 
-    // Resolve the Book model (for chapterTextProviderFor's switch).
     final book = await _ref.read(bookRepositoryProvider).getById(bookId);
-    if (book == null) return;
+    if (book == null) return null;
 
-    // Resolve chapter plain text via the (overrideable) resolver.
     final resolver = _ref.read(ttsChapterTextResolverProvider);
     final text = await resolver(book, chapterIdx);
-    if (text.isEmpty) return;
+    if (text.isEmpty) return null;
 
-    // Extract per-paragraph CFI ranges for this chapter.
     final boundary = CFIBoundaryExtractor.extract(
       chapterPlainText: text,
       chapterIndex: chapterIdx,
     );
 
-    // Segment into sentences with CFI tags.
     _sentences = SentenceSegmenter.split(
       text,
       paragraphCfiRanges: boundary.cfiRanges,
       paragraphCharSpans: boundary.charSpans,
     );
-    if (_sentences.isEmpty) return;
+    if (_sentences.isEmpty) return null;
 
-    // Subscribe to playback state (idempotent — cancel any prior sub).
     await _playbackSub?.cancel();
     _playbackSub = _playbackControllerStream().listen(_onPlaybackChange);
-
-    // T18: subscribe to engine location stream so manual page flips during
-    // TTS playback trigger pause. Idempotent — prior subscription cancelled.
     _subscribeToEngineLocation(engine);
 
-    // Dispatch play.
-    await _ref.read(ttsPlaybackControllerProvider.notifier).play(
-      scope: TtsScopeChapter(bookId: bookId, chapterIdx: chapterIdx),
+    return _PreparedChapter(
+      bookId: bookId,
+      chapterIdx: chapterIdx,
+      chapterText: text,
       sentences: _sentences,
-    );
-
-    state = TtsReaderState(
-      isActive: true,
-      sentenceCount: _sentences.length,
     );
   }
 
@@ -601,6 +674,23 @@ final ttsReaderControllerProvider =
     StateNotifierProvider<TtsReaderController, TtsReaderState>(
   (ref) => TtsReaderController(ref),
 );
+
+/// v1.13.2-alpha: snapshot returned by [TtsReaderController._prepareCurrentChapter].
+/// Carries the data both [start] and [startFromSelection] need to dispatch
+/// playback without re-running the chapter resolver / segmenter twice.
+class _PreparedChapter {
+  final String bookId;
+  final int chapterIdx;
+  final String chapterText;
+  final List<Sentence> sentences;
+
+  const _PreparedChapter({
+    required this.bookId,
+    required this.chapterIdx,
+    required this.chapterText,
+    required this.sentences,
+  });
+}
 
 // ── T17: chapter-boundary prompt channel ──────────────────────────────────
 //

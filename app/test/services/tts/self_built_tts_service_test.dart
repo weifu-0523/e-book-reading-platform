@@ -165,4 +165,17 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(states, contains(TtsState.error));
   });
+
+  // v1.13.2-alpha regression: Kotlin ZhiYueTtsService.onDone emits
+  // {"event":"done"} (not {"event":"state","state":"idle"}). Without this
+  // mapping, TtsPlaybackController._onServiceState never sees TtsState.idle
+  // after a sentence finishes, so playback halts after queue[0].
+  test('done event maps to TtsState.idle (regression v1.13.2-alpha)', () async {
+    final states = <TtsState>[];
+    svc.state.listen(states.add);
+    await svc.init();
+    await emit({'event': 'done', 'utteranceId': 'sent_0'});
+    await Future<void>.delayed(Duration.zero);
+    expect(states, contains(TtsState.idle));
+  });
 }

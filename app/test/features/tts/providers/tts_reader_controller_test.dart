@@ -361,6 +361,75 @@ void main() {
     });
   });
 
+  // v1.13.2-alpha: selection-toolbar「朗读选中」now drives chapter-scoped
+  // playback from the sentence containing the selection's first character.
+  // The three tests below pin the contract: correct start index, fallback
+  // to 0 when selection text isn't found, and reuses the chapter scope
+  // (not ephemeral AiMessage scope) so cross-chapter continuation works.
+  group('TtsReaderController.startFromSelection', () {
+    test('starts at the sentence containing the selection first char',
+        () async {
+      final container = buildContainer(
+        chapterText: 'First sentence. Second one. Third one.',
+        engine: _FakeReaderEngine(),
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: 'Second one.');
+
+      // SentenceSegmenter splits into 3 sentences; selection's first
+      // character 'S' falls inside sentence index 1 ("Second one.").
+      expect(container.read(ttsReaderControllerProvider).isActive, isTrue);
+      expect(container.read(ttsReaderControllerProvider).sentenceCount, 3);
+      expect(container.read(ttsPlaybackControllerProvider).queueLength, 3);
+      expect(container.read(ttsPlaybackControllerProvider).currentIndex, 1);
+      expect(container.read(ttsPlaybackControllerProvider).scope,
+          isA<TtsScopeChapter>());
+      verify(() => svc.speakSentence(any())).called(1);
+    });
+
+    test('falls back to index 0 when selection text is not in chapter',
+        () async {
+      final container = buildContainer(
+        chapterText: 'First sentence. Second one.',
+        engine: _FakeReaderEngine(),
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: 'Non-existent text');
+
+      expect(container.read(ttsPlaybackControllerProvider).currentIndex, 0);
+      expect(container.read(ttsReaderControllerProvider).isActive, isTrue);
+    });
+
+    test('no-op when engine is null', () async {
+      final container = buildContainer(
+        chapterText: 'whatever',
+        // engine omitted → null
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+
+      await container
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: 'whatever');
+
+      expect(container.read(ttsReaderControllerProvider).isActive, isFalse);
+      verifyNever(() => svc.speakSentence(any()));
+    });
+  });
+
   group('TtsReaderController._onPlaybackChange persistence', () {
     test('writes last_tts_position to BooksDao when speaking', () async {
       final container = buildContainer(

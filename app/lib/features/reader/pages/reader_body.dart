@@ -1257,19 +1257,28 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
     if (mounted) setState(() => _selection = null);
   }
 
-  /// T19 (2026-07-16)：选区 toolbar「朗读选中」。
+  /// 选区 toolbar「朗读选中」入口（v1.13.2-alpha 改造）。
   ///
-  /// spec §3.8：PDF 没有「朗读本章」入口，用户靠选中文本走 ephemeral TTS。
-  /// 决策扩展到全格式（EPUB/MD/TXT）——只朗读选段而不整章，所有格式都实用。
+  /// **EPUB / MD / TXT**：选段视为章节级播放的起点——交给
+  /// [TtsReaderController.startFromSelection]，由它在章节全文里定位
+  /// 「首字所在的整句」并派发 `playAt`。后续逻辑与「朗读本章」完全一致：
+  /// 读完整章 → 按 TTS 设置的「章节边界」选项（continuous / askAtEnd）
+  /// 自动跳下一章或弹询问条。持久化 last_tts_position + 高亮 + 自动翻页
+  /// 自动复用，无需重复实现。
   ///
-  /// 实现：用 [SentenceSegmenter.split] 切句（无需 CFI ranges —— ephemeral
-  /// playback 不需要 offset 跟踪），直接调
-  /// [TtsPlaybackController.play] with [TtsScopeAiMessage]（messageId
-  /// 形如 `pdf-selection-<ms>`，唯一即可，**不**写入 last_tts_position，
-  /// 因为 TtsScopeChapter 才持久化）。
+  /// **PDF**：无章节级文本概念（page-based），维持 v1.13.0 行为——
+  /// 只朗读选段那几句就停（ephemeral scope，不持久化、不跨章）。
   void _onReadSelectionAloud() {
     final sel = _selection;
     if (sel == null || sel.plainText.isEmpty) return;
+    if (engine is! PdfReaderEngine) {
+      ref
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: sel.plainText);
+      if (mounted) setState(() => _selection = null);
+      return;
+    }
+    // PDF：维持 ephemeral 选段播放。
     final sentences = SentenceSegmenter.split(sel.plainText);
     if (sentences.isEmpty) return;
     ref.read(ttsPlaybackControllerProvider.notifier).play(

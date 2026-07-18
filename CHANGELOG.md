@@ -7,7 +7,41 @@
 
 ## [Unreleased]
 
-v1.13.1-alpha 之后的新变更将记在此处。
+v1.13.2-alpha 之后的新变更将记在此处。
+## [1.13.2-alpha] - 2026-07-18
+
+### Fixed
+
+- **Android TTS multi-sentence playback halt**（v1.13.0 regression）：Kotlin
+  `ZhiYueTtsService.UtteranceProgressListener.onDone` emit
+  `{"event":"done"}`，但 Dart 端 `SelfBuiltTtsServiceImpl._handleEvent` 的
+  switch 只识别 `state`/`progress`/`error`，`done` 落 default 被丢弃 →
+  `_stateController` 永远收不到 `TtsState.idle` →
+  `TtsPlaybackController._onServiceState` 的"播完进下一句"逻辑（行
+  380）永不触发 → 多句队列只读 queue[0] 就停。修复：Dart 加 `case 'done'`
+  映射到 `TtsState.idle`，与桌面端 `FlutterTtsServiceImpl` 的
+  `setCompletionHandler` 行为一致。
+
+### Changed
+
+- **选区「朗读选中」语义重构**：之前选段朗读是 ephemeral 播放，只读
+  那几句就停（不接续、不持久化、不跨章）。改为：
+  - **EPUB / MD / TXT**：选段视为章节级播放的起点，交给
+    `TtsReaderController.startFromSelection`，定位「首字所在的整句」并
+    `playAt(scope: TtsScopeChapter, startIndex: idx)`。后续逻辑与
+    「朗读本章」完全一致——读完整章按用户 TTS 设置的「章节边界」选项
+    （continuous 自动跳下一章 / askAtEnd 弹询问条）。
+  - **PDF**：维持 v1.13.0 行为（page-based 无章节文本概念，只读选段）。
+
+### Added
+
+- `TtsReaderController.startFromSelection({required String selectedText})`
+  新公共 API。内部提取 `_prepareCurrentChapter` helper（被 `start` 与
+  `startFromSelection` 共用），消除两份相同的章节加载/订阅代码。
+- 单测：`SelfBuiltTtsServiceImpl.done event → TtsState.idle` 回归 +
+  `TtsReaderController.startFromSelection` 3 例（命中起点句 / 退化到 0 /
+  engine null no-op）。
+
 
 ## [1.13.1-alpha] - 2026-07-18
 
