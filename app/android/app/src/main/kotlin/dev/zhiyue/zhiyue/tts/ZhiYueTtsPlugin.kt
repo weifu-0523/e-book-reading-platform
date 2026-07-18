@@ -137,6 +137,7 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventCha
             "serviceOnCreateDone" to ZhiYueTtsService.onCreateCompleted,
             "serviceOnCreateException" to ZhiYueTtsService.onCreateException,
             "serviceStartForegroundDone" to ZhiYueTtsService.startForegroundCompleted,
+            "phoneStateListenerSetupSkipped" to ZhiYueTtsService.phoneStateListenerSetupSkipped,
             "ttsInitStatus" to ZhiYueTtsService.ttsInitStatus,
             "ttsLastSpeakReturn" to ZhiYueTtsService.ttsLastSpeakReturn,
             "onStartCommandCount" to ZhiYueTtsService.onStartCommandCount,

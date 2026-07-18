@@ -79,6 +79,22 @@ class ZhiYueTtsService : Service() {
         super.onCreate()
         debugLog("onCreate start")
         try {
+            // FIRST: wire event emitter so onStart/onDone/onError events reach
+            // Dart even if any subsequent setup step throws. v1.13.3-alpha
+            // regression: previously this was the LAST step before
+            // startForeground. But setupPhoneStateListener calls
+            // TelephonyManager.listen which throws SecurityException on
+            // Chinese ROMs (Honor/Xiaomi/OPPO/vivo) that don't grant
+            // READ_PHONE_STATE by default — killing onCreate before
+            // eventEmitter is assigned. All UtteranceProgressListener events
+            // then get silently dropped (emit() is a no-op when eventEmitter
+            // is null), so Dart-side TtsPlaybackController never sees
+            // TtsState.idle and never advances the queue — multi-sentence
+            // playback halts after queue[0] (the v1.13.0/v1.13.2 symptom).
+            ZhiYueTtsPlugin.instance?.let { plugin ->
+                eventEmitter = plugin::emitEvent
+                debugLog("eventEmitter wired (early)")
+            } ?: debugLog("WARN: ZhiYueTtsPlugin.instance is null in onCreate")
             debugLog("before TextToSpeech ctor")
             tts = TextToSpeech(this) { status ->
                 ttsInitStatus = status
@@ -124,13 +140,14 @@ class ZhiYueTtsService : Service() {
             updatePlaybackState(PlaybackStateCompat.STATE_NONE)
             setupAudioFocus()
             debugLog("AudioFocus setup done, requested=$audioFocusRequestedForTest")
-            setupPhoneStateListener()
-            debugLog("PhoneStateListener setup done")
-            // Wire event emitter to plugin (singleton pattern, set in onAttachedToEngine).
-            ZhiYueTtsPlugin.instance?.let { plugin ->
-                eventEmitter = plugin::emitEvent
-                debugLog("eventEmitter wired")
-            } ?: debugLog("WARN: ZhiYueTtsPlugin.instance is null in onCreate")
+            try {
+                setupPhoneStateListener()
+                debugLog("PhoneStateListener setup done")
+            } catch (e: SecurityException) {
+                phoneStateListenerSetupSkipped = true
+                debugLog("PhoneStateListener setup skipped: SecurityException ${e.message}")
+                Log.w(TAG, "PhoneStateListener setup skipped (permission denied)", e)
+            }
             // LAST: start foreground (must complete within 5s for Android 12+ ANR).
             ensureNotificationChannel()
             val notification = buildNotification("智阅朗读", "准备朗读")
@@ -430,6 +447,13 @@ class ZhiYueTtsService : Service() {
         var onStartCommandCount: Int = 0
         var lastStartCommandAction: String? = null
         val utteranceCallbacks = mutableListOf<String>()
+
+        // v1.13.3-alpha: true when setupPhoneStateListener threw SecurityException
+        // (READ_PHONE_STATE denied — common on Chinese ROMs). Auto-pause on
+        // incoming call is disabled in this case; surfaced via getDebugState so
+        // the user can see why multi-sentence playback "used to fail" if it
+        // regresses.
+        var phoneStateListenerSetupSkipped: Boolean = false
 
         fun debugLog(msg: String) {
             val ts = System.currentTimeMillis()

@@ -237,6 +237,8 @@ class TtsSettingsSection extends ConsumerWidget {
     b.writeln('completed         : ${state['serviceOnCreateDone']}');
     b.writeln('exception         : ${state['serviceOnCreateException'] ?? '(none)'}');
     b.writeln('startForegroundOk : ${state['serviceStartForegroundDone']}');
+    b.writeln('phoneStateSkipped : ${state['phoneStateListenerSetupSkipped']} '
+        '(v1.13.3: SecurityException 时降级，不影响朗读)');
     b.writeln();
     b.writeln('=== TTS engine ===');
     b.writeln('initStatus       : ${state['ttsInitStatus']} '

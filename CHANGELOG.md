@@ -7,7 +7,52 @@
 
 ## [Unreleased]
 
-v1.13.2-alpha 之后的新变更将记在此处。
+v1.13.3-alpha 之后的新变更将记在此处。
+## [1.13.3-alpha] - 2026-07-18
+
+### Fixed
+
+- **Android TTS 多句只读一句（v1.13.0/v1.13.2 真根因）**：v1.13.2-alpha 加的
+  Dart 端 `case 'done' → TtsState.idle` **没有生效**——用户真机调试日志
+  （Settings → TTS section → 「TTS 调试日志」）揭示了真相：
+  `serviceOnCreateException: SecurityException: listen`、
+  `serviceOnCreateDone: false`、`startForegroundOk: false`，但
+  `utteranceCallbacks` 列表显示 Kotlin 端 onStart/onDone 全部成对触发。
+
+  根因：`ZhiYueTtsService.onCreate()` 中 `setupPhoneStateListener()` 调用
+  `TelephonyManager.listen()`，国产 ROM（荣耀/小米/OPPO/vivo）默认不授予
+  `READ_PHONE_STATE` 权限 → 抛 `SecurityException` → catch 接住但中断
+  onCreate 后续步骤 → `eventEmitter = plugin::emitEvent` 这行**永远到不了**
+  → `eventEmitter` 始终为 null → 所有 `emit(...)` 静默丢弃 → Dart 端
+  `_handleEvent` 从未被调用 → `TtsPlaybackController` 的 phase 一直停在
+  `loading`，第一个 if 条件（需要 `phase == speaking`）永不满足 →
+  **多句队列永不自动推进**。声音能播是因为 `tts.speak` 在异常抛出前已经
+  构造好，引擎独立于 service 生命周期运行。
+
+  v1.13.2 改的 `case 'done'` 代码本身没错，但**事件根本到不了 Dart**，
+  所以 fix 无效。
+
+  修复（commit 即将打）：
+  1. **eventEmitter wiring 移到 onCreate try 块最前**（在任何可能抛异常的
+     setup 之前），保证 TTS 事件不会因后续 setup 失败被静默丢弃。
+  2. **setupPhoneStateListener 用 try/catch 包起来**捕获
+     `SecurityException`，标记 `phoneStateListenerSetupSkipped = true`，
+     不让来电自动暂停这个 nice-to-have 中断关键路径。
+  3. `phoneStateListenerSetupSkipped` 加入 `getDebugState`，用户能看到
+     降级原因。
+
+  教训：用户反馈"fix 没生效"时，**必须重做 systematic-debugging Phase 1**，
+  不要假设上一个 fix 是部分对。这次如果直接信"v1.13.2 应该有效"，会再次
+  错过真根因（onCreate SecurityException）。TTS 调试日志的
+  `utteranceCallbacks + serviceOnCreateException` 组合揭示了 Kotlin 端
+  完整工作而 Dart 端零事件的事实，直接定位到 emit 流向断点。
+
+### Changed
+
+- TTS 调试日志增加 `phoneStateSkipped` 字段（Settings → TTS section），
+  让用户能自查是否处于 PhoneStateListener 降级路径。
+
+
 ## [1.13.2-alpha] - 2026-07-18
 
 ### Fixed
