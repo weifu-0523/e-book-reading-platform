@@ -8,6 +8,36 @@
 ## [Unreleased]
 
 v1.13.6-alpha 之后的新变更将记在此处。
+## [1.13.7-alpha] - 2026-07-19
+
+### Fixed
+
+- **Bug 1** (通知栏暂停后无法继续)：Kotlin `ZhiYueTtsService.handleResume()` 之前是空实现，注释说"Dart side re-sends SPEAK intent"但从未实现；通知栏 PAUSED 状态下也只显示 pause/stop 按钮，无 play。修复：
+  - `handleResume()` emit `resume_request` event → Dart `driveResume` 重发 SPEAK
+  - 通知栏根据 mediaSession playbackState 动态切换 pause/play 图标
+  - Dart `_onServiceState` 处理 paused state 状态切换
+  - Dart `_handleEvent` 加 `resume_request` 分支
+
+- **Bug 2** (选段朗读触屏即停 + 缺控制台)：T18 `_onEngineLocation` 用户翻页/滚动自动 pause + 无控制台可 resume → 看起来"停了"。修复分两部分：
+  - **part A**：移除 T18 auto-pause，`_onEngineLocation` body 改 no-op
+  - **part B**：TtsMiniControls 重构为公共组件（加 `onStopped` callback），挂到 `reader_body` Stack 顶层（`Positioned(bottom: 56, left: 16, right: 16)`）；3 个朗读入口（朗读本章 / 朗读选中 / AI 聊天）共用同一个 widget
+
+- **Bug 3** (AI 朗读完后自动切到正文)：`TtsReaderController._onPlaybackChange` 在 phase==idle 时不检查 scope 就调 `_onChapterBoundaryReached`，导致 `TtsScopeAiMessage`（AI 朗读 / PDF 选段）也触发续章。修复：加 `_lastObservedScope` 快照（playback.scope 在 idle 时已被 reset 为 null 不能直接判），仅 `TtsScopeChapter` 触发续章。
+
+- **Bug 4** (语速/语调/音量 Slider 无效)：v1.13.0 自研 plugin 时漏实现 settings 应用——Kotlin `setRate/setPitch/setVolume` 只 `success(null)` 不转发；`handleSpeak` 不接收 rate/pitch/volume 参数。修复：
+  - Dart speak MethodChannel args 加 rate/pitch/volume（`_cachedRate/_cachedPitch/_cachedVolume` 字段）
+  - Kotlin speak Intent extras 透传到 Service
+  - `handleSpeak` 调用 `TextToSpeech.setSpeechRate/setPitch`
+  - volume 用 `AudioManager.STREAM_MUSIC` 等比缩放（Android TTS 无 setVolume API）
+
+- **Bug 5 (P0)** (导入新书后只读一句回归)：v1.13.6-alpha 用户报 v1.13.6 修好的多句只读 queue[0] 问题在导入新书后复现。诊断日志矛盾：5 个 emit counter 全 0（plugin_B 实例）但 debugLog 累积 43 条 `EMIT_DROPPED channel_null`（plugin_A 实例）。根因：`ZhiYueTtsService.onCreate` 缓存 `eventEmitter = plugin::emitEvent` 方法引用，plugin rebinding（Activity recreate / engine restart）后旧 plugin 已 detach（channel=null）但 service 仍调用 plugin_A.emitEvent，全部 dropped。修复：service `emit()` 不再缓存引用，每次走 `ZhiYueTtsPlugin.instance?.emitEvent(event)`。
+
+### Known Limitations
+
+- **Bug 4 volume**：Android `TextToSpeech` 无 `setVolume` API，volume 通过 `AudioManager.setStreamVolume(STREAM_MUSIC, ...)` 等比缩放实现——**会影响系统媒体音量**。长期方案是用 AudioTrack + WAV render 实现 per-stream volume（不阻塞本次发布）。
+- **Bug 4 in-flight 设置变更**：当前句已锁定参数，下一句生效（Android `TextToSpeech.setSpeechRate` 在 utterance 进行中调用不影响当前播放）。
+
+
 ## [1.13.6-alpha] - 2026-07-18
 
 ### Changed
