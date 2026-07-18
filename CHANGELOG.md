@@ -7,7 +7,33 @@
 
 ## [Unreleased]
 
-v1.13.5-alpha 之后的新变更将记在此处。
+v1.13.6-alpha 之后的新变更将记在此处。
+## [1.13.6-alpha] - 2026-07-18
+
+### Changed
+
+- **TTS invokeMethod 切到 main thread（v1.13.5 真根因）**：v1.13.5-alpha 上线后
+  真机诊断数据决定性证明 TTS 多句只读 queue[0] 的根因不是 EventChannel binary
+  messenger drop，而是 **Android `@UiThread` 线程约束**：UtteranceProgressListener
+  的 `onStart`/`onDone` 回调从 **binder 线程**触发，但 Flutter
+  `MethodChannel.invokeMethod` 标注 `@UiThread` 必须在 main thread 调用。
+  v1.13.5 诊断显示 6 次 invokeMethod 全部抛 `RuntimeException: Methods marked
+  with @UiThread must be executed on the main thread. Current thread:
+  binder:29456_X`。v1.13.5 把 EventChannel silent drop 变成可见异常是正确
+  方向（让 Iron Law Phase 1 收集到证据），但还需要切到 main thread 才能真正修复。
+
+  v1.13.6-alpha 在 Kotlin `ZhiYueTtsPlugin.emitEvent` 加 thread 检测：当
+  `Looper.myLooper() != Looper.getMainLooper()` 时，用
+  `Handler(Looper.getMainLooper()).post { ... }` 把 invokeMethod 切到 main
+  thread。新增计数器 `invokePostedToMainThreadCount` 暴露到 debug state，方便
+  诊断 post 路径触发频率（production 应 > 0；Robolectric unit test 跑在 main
+  thread 上保持 0）。Settings → TTS → 调试日志的 pipeline 段升级为 v1.13.5/v1.13.6
+  双标，加入 `invokePostedToMain` label 和对应诊断推理。
+
+  **回归保护**：EMIT_ATTEMPT 日志现在附 `thread=` 字段方便定位线程来源；
+  EMIT_POST_TO_MAIN 是新日志事件，记录 post 触发；保留 invokeException 计数器
+  万一 main thread 上仍有失败（极不寻常）。
+
 ## [1.13.5-alpha] - 2026-07-18
 
 ### Changed

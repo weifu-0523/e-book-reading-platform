@@ -260,25 +260,28 @@ class TtsSettingsSection extends ConsumerWidget {
     b.writeln('lastAction       : ${state['lastStartCommandAction'] ?? '(none)'}');
     b.writeln('utteranceCallbacks: ${state['utteranceCallbacks']}');
     b.writeln();
-    b.writeln('=== MethodChannel callback pipeline (v1.13.5) ===');
-    b.writeln('onListenCalled   : ${state['onListenCalled']} '
+    b.writeln('=== MethodChannel callback pipeline (v1.13.5/v1.13.6) ===');
+    b.writeln('onListenCalled     : ${state['onListenCalled']} '
         '(true=plugin attached)');
-    b.writeln('channelReady     : ${state['realEventSinkReady']} '
+    b.writeln('channelReady       : ${state['realEventSinkReady']} '
         '(false=plugin 已 detach)');
-    b.writeln('invokeAttempt    : ${state['emitCount']} '
+    b.writeln('invokeAttempt      : ${state['emitCount']} '
         '(emitEvent 进入 invoke 路径次数)');
-    b.writeln('invokeChannelNull: ${state['emitDroppedCount']} '
+    b.writeln('invokeChannelNull  : ${state['emitDroppedCount']} '
         '(channel 为 null 时丢弃次数)');
-    b.writeln('invokeSucceeded  : ${state['invokeSucceededCount']} '
+    b.writeln('invokePostedToMain : ${state['invokePostedToMainThreadCount']} '
+        '(v1.13.6: 从 binder 线程 post 到 main thread 次数)');
+    b.writeln('invokeSucceeded    : ${state['invokeSucceededCount']} '
         '(invokeMethod 成功返回次数)');
-    b.writeln('invokeException  : ${state['invokeExceptionCount']} '
+    b.writeln('invokeException    : ${state['invokeExceptionCount']} '
         '(invokeMethod 抛异常次数)');
-    b.writeln('dartReceivedCount: $dartEventReceivedCount '
+    b.writeln('dartReceivedCount  : $dartEventReceivedCount '
         '(Dart _handleEvent 调用次数)');
     b.writeln('诊断推理: '
+        'invokePostedToMain>0 → TTS callback 来自 binder 线程（v1.13.6 已 post 到 main）；'
         'invokeSucceeded==dartReceivedCount → 管道正常；'
         'invokeSucceeded>0 && dartReceivedCount==0 → 仍丢包（极不寻常）；'
-        'invokeException>0 → MethodChannel 反向调用失败（看日志异常类型）；'
+        'invokeException>0 → invokeMethod 在 main thread 仍失败（看日志异常类型）；'
         'invokeChannelNull>0 → 插件未 attach（看 attached 字段）。');
     b.writeln();
     b.writeln('=== Service debugLogs ===');

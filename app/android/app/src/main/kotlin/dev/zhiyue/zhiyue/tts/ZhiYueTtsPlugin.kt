@@ -3,6 +3,8 @@ package dev.zhiyue.zhiyue.tts
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -63,6 +65,17 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     ///   * [invokeExceptionCount] — times invokeMethod threw (real failure)
     ///   * [invokeChannelNullCount] — times channel was null (attach race)
     ///   * [onListenCalled] — kept for parity, always true post-attach now
+    ///
+    /// v1.13.6-alpha: v1.13.5 production diagnostic data showed all 6
+    /// invokeMethod calls threw `RuntimeException: Methods marked with
+    /// @UiThread must be executed on the main thread. Current thread:
+    /// binder:29456_X`. Android TTS utterance callbacks (onStart/onDone)
+    /// fire on binder threads, but Flutter MethodChannel.invokeMethod is
+    /// annotated @UiThread. emitEvent now detects non-main threads and
+    /// posts to the main thread via Handler(Looper.getMainLooper()).post.
+    /// [invokePostedToMainThreadCount] tracks how often the post path
+    /// triggered — production should see this > 0 (utterances come from
+    /// binder thread); unit tests on Robolectric's main thread should see 0.
     internal var invokeAttemptCount: Int = 0
         private set
     internal var invokeSucceededCount: Int = 0
@@ -70,6 +83,8 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     internal var invokeExceptionCount: Int = 0
         private set
     internal var invokeChannelNullCount: Int = 0
+        private set
+    internal var invokePostedToMainThreadCount: Int = 0
         private set
     internal var onListenCalled: Boolean = false
         private set
@@ -186,7 +201,12 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "emitCount" to invokeAttemptCount,
             "emitDroppedCount" to invokeChannelNullCount,
             "invokeSucceededCount" to invokeSucceededCount,
-            "invokeExceptionCount" to invokeExceptionCount
+            "invokeExceptionCount" to invokeExceptionCount,
+            // v1.13.6-alpha: tracks how often emitEvent had to post from a
+            // binder thread to the main thread. Production should see this
+            // > 0 (utterances come from binder thread); Robolectric unit
+            // tests run on main thread so this stays 0.
+            "invokePostedToMainThreadCount" to invokePostedToMainThreadCount
         )
     }
 
@@ -248,6 +268,16 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     /// v1.13.4 diagnostic data showed sink.success returned cleanly but
     /// events were silently dropped by the binary messenger on Chinese
     /// ROMs. invokeMethod lets us detect failures via try/catch.
+    ///
+    /// v1.13.6-alpha: v1.13.5 production diagnostic data revealed that all
+    /// invokeMethod calls threw `Methods marked with @UiThread must be
+    /// executed on the main thread. Current thread: binder:29456_X`.
+    /// Android TTS utterance callbacks (UtteranceProgressListener.onStart /
+    /// onDone) fire on binder threads, but MethodChannel.invokeMethod is
+    /// annotated @UiThread. We now detect the current thread and post to
+    /// the main looper when not already on it. Same root cause as v1.13.5's
+    /// silent binary messenger drop — sink.success has the same constraint
+    /// but fails silently.
     internal fun emitEvent(event: Map<String, Any?>) {
         val ch = channel
         val type = event["event"]
@@ -260,18 +290,42 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         }
         invokeAttemptCount++
         ZhiYueTtsService.debugLog(
-            "EMIT_ATTEMPT type=$type total_attempt=$invokeAttemptCount"
+            "EMIT_ATTEMPT type=$type total_attempt=$invokeAttemptCount thread=${Thread.currentThread().name}"
         )
+        // v1.13.6-alpha: Android TTS callbacks fire on binder threads;
+        // MethodChannel.invokeMethod must run on the main thread. Post
+        // when not already there.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            invokePostedToMainThreadCount++
+            ZhiYueTtsService.debugLog(
+                "EMIT_POST_TO_MAIN type=$type total_posted=$invokePostedToMainThreadCount from_thread=${Thread.currentThread().name}"
+            )
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    ch.invokeMethod("onTtsEvent", event)
+                    invokeSucceededCount++
+                    ZhiYueTtsService.debugLog(
+                        "EMIT_OK type=$type total_ok=$invokeSucceededCount thread=main(posted)"
+                    )
+                } catch (e: Exception) {
+                    invokeExceptionCount++
+                    ZhiYueTtsService.debugLog(
+                        "EMIT_THROWN type=$type ex=${e.javaClass.simpleName}: ${e.message} total_thrown=$invokeExceptionCount thread=main(posted)"
+                    )
+                }
+            }
+            return
+        }
         try {
             ch.invokeMethod("onTtsEvent", event)
             invokeSucceededCount++
             ZhiYueTtsService.debugLog(
-                "EMIT_OK type=$type total_ok=$invokeSucceededCount"
+                "EMIT_OK type=$type total_ok=$invokeSucceededCount thread=main"
             )
         } catch (e: Exception) {
             invokeExceptionCount++
             ZhiYueTtsService.debugLog(
-                "EMIT_THROWN type=$type ex=${e.javaClass.simpleName}: ${e.message} total_thrown=$invokeExceptionCount"
+                "EMIT_THROWN type=$type ex=${e.javaClass.simpleName}: ${e.message} total_thrown=$invokeExceptionCount thread=main"
             )
         }
     }
