@@ -31,9 +31,16 @@ class FlutterTtsServiceImpl implements TtsService {
   bool _initialized = false;
   int _currentSentenceIdx = 0;
 
-  /// v1.14.0-alpha: voice saved across [previewVoice] for restore-on-completion.
-  /// Null when no preview is in flight or after restore has run.
-  String? _previewSavedVoice;
+  /// Tracks the user's persistent voice selection (last successful
+  /// [setVoice]). Used by [previewVoice] to restore the user's choice after
+  /// a preview playback. null = no explicit selection (system default).
+  String? _currentVoiceId;
+
+  /// v1.14.0-alpha: in-flight preview restore target, captured from
+  /// [_currentVoiceId] at preview start. Non-null while a preview playback
+  /// is queued for restore-on-completion; null when no preview is in flight.
+  /// The inner `String?` is the actual restore target (null = system default).
+  _PreviewRestore? _previewSavedVoice;
 
   /// Production constructor — creates a new [FlutterTts] instance.
   FlutterTtsServiceImpl() : _tts = FlutterTts();
@@ -41,6 +48,12 @@ class FlutterTtsServiceImpl implements TtsService {
   /// Test constructor — injects a mock [FlutterTts].
   @visibleForTesting
   FlutterTtsServiceImpl.withTts(this._tts);
+
+  /// Test-only accessor exposing the cached persistent voice selection.
+  /// Used by tests to verify [setVoice] caching behavior without relying
+  /// on a real plugin round-trip.
+  @visibleForTesting
+  String? get currentVoiceIdForTest => _currentVoiceId;
 
   @override
   Stream<TtsState> get state => _stateController.stream;
@@ -67,13 +80,16 @@ class FlutterTtsServiceImpl implements TtsService {
       ..setStartHandler(() => _stateController.add(TtsState.speaking))
       ..setCompletionHandler(() {
         _stateController.add(TtsState.idle);
-        // v1.14.0-alpha: restore preview voice after preview playback.
-        // Fire-and-forget on purpose; setVoice is idempotent and the
-        // completion handler must not block the platform channel thread.
+        // v1.14.0-alpha: restore the user's persistent voice after preview
+        // playback. Fire-and-forget on purpose; setVoice is idempotent and
+        // the completion handler must not block the platform channel thread.
+        // _previewSavedVoice being null means "no preview in flight" — skip
+        // restore so normal speakSentence calls don't trigger spurious
+        // setVoice.
         final saved = _previewSavedVoice;
         if (saved != null) {
           _previewSavedVoice = null;
-          setVoice(saved);
+          setVoice(saved.voiceId);
         }
       })
       ..setCancelHandler(() => _stateController.add(TtsState.idle))
@@ -212,7 +228,14 @@ class FlutterTtsServiceImpl implements TtsService {
         };
       }
       final result = await _tts.setVoice(voiceMap);
-      return result == 1 || result == true;
+      final ok = result == 1 || result == true;
+      // v1.14.0-alpha: cache the user's persistent selection on success so
+      // previewVoice can restore to the user's choice (not system default).
+      if (ok) {
+        _currentVoiceId =
+            (voiceId == null || voiceId.isEmpty) ? null : voiceId;
+      }
+      return ok;
     } catch (_) {
       return false;
     }
@@ -221,25 +244,28 @@ class FlutterTtsServiceImpl implements TtsService {
   /// Previews a voice without permanently changing the user's setting.
   ///
   /// Implementation pattern (avoids needing a second TTS instance):
-  /// 1. Cache the current [_previewSavedVoice] (null on first preview).
-  /// 2. Call [setVoice] with [voiceId].
+  /// 1. Snapshot the user's persistent voice [_currentVoiceId] (null = system
+  ///    default) into [_previewSavedVoice] (wrapped in [_PreviewRestore] so
+  ///    the completion handler can distinguish "preview in flight" from
+  ///    "no preview in flight" even when the restore target is null).
+  /// 2. Call [setVoice] with [voiceId] — this also updates [_currentVoiceId]
+  ///    to the preview voice, but the snapshot preserves the prior value.
   /// 3. Speak [sampleText] via [_tts.speak].
-  /// 4. The completion handler wired in [init] fires on `idle` and calls
-  ///    [setVoice] with the cached previous voice.
+  /// 4. The completion handler wired in [init] fires on `idle`, calls
+  ///    [setVoice] with the snapshotted prior voice id, and clears
+  ///    [_previewSavedVoice]. [setVoice] re-caches [_currentVoiceId] back to
+  ///    the user's persistent selection.
   ///
   /// If [setVoice] fails we bail out without speaking.
   @override
   Future<void> previewVoice(String voiceId, {String? sampleText}) async {
-    // Snapshot the previous voice before we mutate. `_previewSavedVoice` may
-    // already be non-null if a preview overlaps (rare; user spam-clicking
-    // 试听) — in that case we treat the in-flight preview's `voiceId` as the
-    // prior state, so the completion handler restores to the *real* prior.
-    final previous = _previewSavedVoice ?? voiceId;
+    // Snapshot the user's persistent voice (NOT _previewSavedVoice, which is
+    // the in-flight preview flag). null here means "system default" which
+    // [setVoice] interprets correctly on restore. The wrapper ensures the
+    // completion handler restores even when prior voice was null.
+    final previous = _currentVoiceId;
     if (!await setVoice(voiceId)) return;
-    // Sentinel: empty string means "restore to system default on completion".
-    // Real previous voice id is preserved via the local `previous` closure
-    // captured by re-assigning here.
-    _previewSavedVoice = previous == voiceId ? '' : previous;
+    _previewSavedVoice = _PreviewRestore(voiceId: previous);
     try {
       final text = sampleText ?? '你好，这是该声音的试听样本。';
       await _tts.speak(text);
@@ -247,8 +273,8 @@ class FlutterTtsServiceImpl implements TtsService {
       // Best-effort: clear the preview flag and try to restore immediately.
       final saved = _previewSavedVoice;
       _previewSavedVoice = null;
-      if (saved != null && saved.isNotEmpty) {
-        await setVoice(saved);
+      if (saved != null) {
+        await setVoice(saved.voiceId);
       }
     }
   }
@@ -279,4 +305,17 @@ class FlutterTtsServiceImpl implements TtsService {
     await _errorController.close();
     _initialized = false;
   }
+}
+
+/// Sentinel wrapper used by [FlutterTtsServiceImpl._previewSavedVoice] to
+/// distinguish "no preview in flight" (`null`) from "preview in flight with
+/// system-default restore target" (`_PreviewRestore(voiceId: null)`).
+/// Without this wrapper, a user who never explicitly picked a voice (so
+/// `_currentVoiceId == null`) and previews a voice would have their restore
+/// silently skipped by the completion handler's null-check.
+class _PreviewRestore {
+  const _PreviewRestore({this.voiceId});
+
+  /// Voice to restore after preview playback. null means system default.
+  final String? voiceId;
 }
