@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import 'tts_service.dart';
+import 'tts_voice.dart';
 
 /// Production implementation of [TtsService] backed by the `flutter_tts`
 /// plugin (`flutter_tts: ^4.1.0`).
@@ -124,6 +125,24 @@ class FlutterTtsServiceImpl implements TtsService {
     final result = await _tts.getDefaultEngine;
     return result is String ? result : null;
   }
+
+  // === v1.14.0-alpha: Voice selection ===
+  //
+  // T1 minimal stubs — return empty/false/no-op so the abstract interface
+  // compiles. Real implementations land in T2 (this file) and T3
+  // (self_built_tts_service.dart).
+
+  @override
+  Future<List<TtsVoice>> getVoices() async => const [];
+
+  @override
+  Future<bool> setVoice(String? voiceId) async => false;
+
+  @override
+  Future<void> previewVoice(String voiceId, {String? sampleText}) async {}
+
+  @override
+  Future<bool> openSystemTtsSettings() async => false;
 
   @override
   Future<void> dispose() async {

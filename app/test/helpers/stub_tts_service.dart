@@ -17,6 +17,7 @@
 import 'dart:async';
 
 import 'package:zhiyue/services/tts/tts_service.dart';
+import 'package:zhiyue/services/tts/tts_voice.dart';
 
 /// No-op [TtsService] stub for widget tests.
 ///
@@ -98,6 +99,20 @@ class StubTtsService implements TtsService {
 
   @override
   Future<String?> getDefaultEngine() async => null;
+
+  // === v1.14.0-alpha: Voice selection stubs (T1) ===
+
+  @override
+  Future<List<TtsVoice>> getVoices() async => const [];
+
+  @override
+  Future<bool> setVoice(String? voiceId) async => false;
+
+  @override
+  Future<void> previewVoice(String voiceId, {String? sampleText}) async {}
+
+  @override
+  Future<bool> openSystemTtsSettings() async => false;
 
   @override
   Future<void> dispose() async {

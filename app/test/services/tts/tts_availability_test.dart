@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhiyue/services/tts/samsung_tts_detector.dart';
 import 'package:zhiyue/services/tts/tts_availability.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
+import 'package:zhiyue/services/tts/tts_voice.dart';
 
 /// Fake [TtsService] for [checkTtsAvailability] unit tests.
 ///
@@ -71,6 +72,20 @@ class _FakeTtsService implements TtsService {
       installedLocales.contains(locale);
   @override
   Future<String?> getDefaultEngine() async => engineReturn;
+
+  // === v1.14.0-alpha: Voice selection stubs (T1) ===
+
+  @override
+  Future<List<TtsVoice>> getVoices() async => const [];
+
+  @override
+  Future<bool> setVoice(String? voiceId) async => false;
+
+  @override
+  Future<void> previewVoice(String voiceId, {String? sampleText}) async {}
+
+  @override
+  Future<bool> openSystemTtsSettings() async => false;
 
   @override
   Future<void> dispose() async {}

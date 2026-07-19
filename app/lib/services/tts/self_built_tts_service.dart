@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import 'tts_service.dart';
+import 'tts_voice.dart';
 
 /// v1.13 Android TTS implementation via custom MethodChannel plugin.
 ///
@@ -238,6 +239,24 @@ class SelfBuiltTtsServiceImpl implements TtsService {
     final result = await _methodChannel.invokeMethod('getDefaultEngine');
     return result is String ? result : null;
   }
+
+  // === v1.14.0-alpha: Voice selection ===
+  //
+  // T1 minimal stubs — return empty/false/no-op so the abstract interface
+  // compiles. Real implementations land in T3 (MethodChannel wiring +
+  // Kotlin handlers in T4).
+
+  @override
+  Future<List<TtsVoice>> getVoices() async => const [];
+
+  @override
+  Future<bool> setVoice(String? voiceId) async => false;
+
+  @override
+  Future<void> previewVoice(String voiceId, {String? sampleText}) async {}
+
+  @override
+  Future<bool> openSystemTtsSettings() async => false;
 
   /// v1.13.1-alpha: dump plugin + service debug state as a pretty-printed
   /// JSON string. Used by the in-app 「TTS 调试日志」 button so users

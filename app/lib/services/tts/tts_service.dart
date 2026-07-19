@@ -3,6 +3,8 @@
 
 import 'dart:async';
 
+import 'tts_voice.dart';
+
 /// Playback state machine for TtsService.
 ///
 /// * [idle] — no playback pending.
@@ -77,6 +79,35 @@ abstract class TtsService {
   Future<void> setSpeechRate(double rate); // -1.0 ~ 1.0
   Future<void> setPitch(double pitch); // 0.5 ~ 2.0
   Future<void> setVolume(double volume); // 0.0 ~ 1.0
+
+  // === v1.14.0-alpha: Voice selection ===
+
+  /// Returns all voices available on this device.
+  ///
+  /// Returns empty list when the platform doesn't expose any (rare:
+  /// Huawei/Honor with locked engine, or pre-Android 21).
+  /// **Never throws** — engine errors fall back to empty list; UI shows
+  /// "no voices available, please install a TTS engine".
+  Future<List<TtsVoice>> getVoices();
+
+  /// Sets the active voice for subsequent speak() calls.
+  ///
+  /// Returns true if the platform accepted the voice. Returns false if
+  /// [voiceId] is not in the current voice list (engine uninstall, stale
+  /// persisted setting, etc.) — caller should fall back to system default.
+  Future<bool> setVoice(String? voiceId);
+
+  /// Previews a voice without changing the user's global setting.
+  ///
+  /// Implementations should: (1) save current voice, (2) set to [voiceId],
+  /// (3) speak [sampleText], (4) on next completion/stop event, restore
+  /// the saved voice. Avoids needing a second TTS instance.
+  Future<void> previewVoice(String voiceId, {String? sampleText});
+
+  /// Opens the platform's system TTS settings page (where the user can
+  /// install / select TTS engines). Returns false on platforms without
+  /// a system page.
+  Future<bool> openSystemTtsSettings();
 
   Future<bool> isLanguageAvailable(String locale);
   Future<bool> isLanguageInstalled(String locale);
