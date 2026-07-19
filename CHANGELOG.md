@@ -7,7 +7,28 @@
 
 ## [Unreleased]
 
-v1.13.7-alpha 之后的新变更将记在此处。
+v1.13.8-alpha 之后的新变更将记在此处。
+## [1.13.9-alpha] - 2026-07-19
+
+### Fixed
+
+- **Bug 2 (续)** (选段朗读仍间歇性从头播放)：v1.13.8-alpha 修了"首次 onCreate 后 init race"，但用户测试发现"很大的概率"问题仍在。诊断日志决定性证据：
+
+  ```
+  [onCreate start]                              ← service 第 2 次重建
+  [after TextToSpeech ctor, tts=@b7bdbfa]       ← 新 TextToSpeech 实例
+  [handleSpeak textLen=17 tts=@b7bdbfa initStatus=0]  ← !!! stale companion
+  [setLanguage(zh-CN) -> -2 (NOT_SUPPORTED)]    ← 引擎实际未 init
+  [speak() returned -1 (ERROR)]
+  [TTS init callback status=0]                  ← 47ms 后才真正 init
+  ```
+
+  **根因**：`ZhiYueTtsService.ttsInitStatus` 是 **companion (static) field**，跨 service 实例共享。第一个 service 实例的 SUCCESS 值在 onDestroy 后仍然保留。Android 重建 service 时（用户 STOP 后再点朗读、或系统回收），新 `TextToSpeech` 还没完成异步 init，但 `ttsInitStatus` 仍是上次的 SUCCESS。`handleSpeak` 的 init guard 误判已就绪 → 直接调 `tts.speak()` → 新引擎未 init → 返回 -1 → `UtteranceProgressListener` 不触发 → Dart state 卡 loading → 用户重触发 → `play()` 重置 queue 从 0 → "从头播放"。
+
+  日志中 `pendingSpeakActive: false` 证实 handleSpeak 走的是 immediate 路径（没 defer），证明了 guard 被 bypass。
+
+  **修复**：`onCreate` 开头重置 per-instance companion fields：`ttsInitStatus = -999` + `ttsLastSpeakReturn = -999` + `pendingSpeakActive = false` + `onCreateCompleted = false` + `onCreateException = null` + `startForegroundCompleted = false`。每个新 service 实例都从"未 init"状态开始，handleSpeak 走 pendingSpeak 路径，等 init callback 真正完成后 flush。
+
 ## [1.13.8-alpha] - 2026-07-19
 
 ### Fixed
