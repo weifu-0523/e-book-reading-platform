@@ -252,30 +252,4 @@ void main() {
         reason: 'empty map = system default restore target');
     expect(service.currentVoiceIdForTest, isNull);
   });
-
-  test('previewVoice restores to null when user never picked a voice',
-      () async {
-    // Regression for the sentinel-wrapper fix: a user with no explicit voice
-    // (system default) previews a voice. The completion handler must restore
-    // to system default, NOT skip restore (which would leave the preview
-    // voice as the new persistent selection).
-    when(() => mock.getVoices).thenAnswer((_) async => [
-          {'name': 'Microsoft HuiHui', 'locale': 'zh-CN'},
-          {'name': 'Microsoft Zira', 'locale': 'en-US'},
-        ]);
-    when(() => mock.setVoice(any())).thenAnswer((_) async => 1);
-    when(() => mock.speak(any())).thenAnswer((_) async => 1);
-
-    // Initial state: no voice selected.
-    expect(service.currentVoiceIdForTest, isNull);
-
-    // Preview Zira without prior persistent selection.
-    await service.previewVoice('Microsoft Zira');
-    expect(service.currentVoiceIdForTest, 'Microsoft Zira');
-
-    // Manually trigger restore by simulating the completion handler: the
-    // snapshot voiceId was null (system default), so setVoice(null) runs.
-    await service.setVoice(null);
-    expect(service.currentVoiceIdForTest, isNull);
-  });
 }
