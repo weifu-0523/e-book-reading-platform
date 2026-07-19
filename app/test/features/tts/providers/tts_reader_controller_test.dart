@@ -56,6 +56,56 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
   final StreamController<re_locator.Locator> locationController =
       StreamController<re_locator.Locator>.broadcast();
 
+  /// v1.13.11-alpha Bug 2: backing store for the converter-coordinate
+  /// chapter plain text. Tests that exercise the bug-2 fix set this via
+  /// [currentChapterPlainTextForTesting]; tests that don't care use the
+  /// default empty string (or rely on buildContainer to inject the same
+  /// value as the legacy resolver).
+  ///
+  /// Stored as a list keyed by chapter index so the continuous-mode
+  /// chapter-advance test can supply different text per chapter. The
+  /// engine tracks its own current chapter index internally (incremented
+  /// on [nextSpine]); the lookup falls back to the last entry if the
+  /// index exceeds the list length (defensive default).
+  final List<String> _enginePlainTextsByChapter = <String>[];
+  int _currentEngineChapterIdx = 0;
+
+  /// Test-only setter so [buildContainer] can inject the converter
+  /// coordinate plain text for the current chapter. Mirrors how real
+  /// reader_body.dart reads `engine.currentChapterPlainText` (a Future
+  /// getter), not the resolver.
+  // ignore: avoid_setters_without_getters
+  set currentChapterPlainTextForTesting(String value) {
+    if (_enginePlainTextsByChapter.isEmpty) {
+      _enginePlainTextsByChapter.add(value);
+    } else {
+      _enginePlainTextsByChapter[0] = value;
+    }
+  }
+
+  /// v1.13.11-alpha Bug 2: also accept a list of chapter texts for
+  /// tests that exercise the chapter-advance path (where
+  /// [_loadNextChapterAndContinue] reads the next chapter's plain text
+  /// from `engine.currentChapterPlainText` after `nextSpine`).
+  // ignore: avoid_setters_without_getters
+  set enginePlainTextsByChapterForTesting(List<String> value) {
+    _enginePlainTextsByChapter
+      ..clear()
+      ..addAll(value);
+  }
+
+  /// v1.13.11-alpha Bug 2: TtsReaderController now reads the converter
+  /// coordinate plain text via this getter (instead of the legacy
+  /// ttsChapterTextResolverProvider, which uses the BookTextExtractor
+  /// coordinate and diverges for h1/img structural tags).
+  @override
+  Future<String> get currentChapterPlainText async {
+    if (_enginePlainTextsByChapter.isEmpty) return '';
+    final idx = _currentEngineChapterIdx.clamp(
+        0, _enginePlainTextsByChapter.length - 1);
+    return _enginePlainTextsByChapter[idx];
+  }
+
   @override
   PaginationMode get paginationMode => PaginationMode.paged;
 
@@ -71,7 +121,12 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
   Future<void> get chapterSwitchSettled => Future<void>.value();
 
   @override
-  Future<void> nextSpine() async {}
+  Future<void> nextSpine() async {
+    // v1.13.11-alpha Bug 2: bump the engine's internal chapter index so
+    // the subsequent `currentChapterPlainText` read returns the next
+    // chapter's text (mirrors what real engines do after a chapter switch).
+    _currentEngineChapterIdx++;
+  }
 
   @override
   Stream<re_locator.Locator> get currentLocation$ =>
@@ -271,6 +326,8 @@ void main() {
     int chapterIdx = 0,
     int? chapterCount,
     String? nextChapterText,
+    String? enginePlainText,
+    String? engineNextChapterPlainText,
   }) {
     final overrides = <Override>[
       ttsServiceProvider.overrideWithValue(svc),
@@ -295,6 +352,24 @@ void main() {
     final container = ProviderContainer(overrides: overrides);
     if (engine != null) {
       container.read(ttsReaderEngineRefProvider.notifier).state = engine;
+      // v1.13.11-alpha Bug 2: inject converter-coordinate plain text into
+      // the engine so TtsReaderController's new code path resolves the same
+      // text as the legacy resolver (preserves backwards compatibility for
+      // existing tests). Tests that exercise the bug-2 fix pass a different
+      // string via enginePlainText to simulate the converter/extractor
+      // divergence (U+FFFC for h1, etc.).
+      if (engine is _FakeReaderEngine) {
+        final fakeEngine = engine as _FakeReaderEngine;
+        if (engineNextChapterPlainText != null) {
+          fakeEngine.enginePlainTextsByChapterForTesting = <String>[
+            enginePlainText ?? chapterText,
+            engineNextChapterPlainText,
+          ];
+        } else {
+          fakeEngine.currentChapterPlainTextForTesting =
+              enginePlainText ?? chapterText;
+        }
+      }
     }
     if (bookId != null) {
       container.read(ttsCurrentBookIdProvider.notifier).state = bookId;
@@ -503,6 +578,130 @@ void main() {
           .startFromSelection(selectedText: '你好 世界。');
 
       expect(container.read(ttsPlaybackControllerProvider).currentIndex, 0);
+    });
+  });
+
+  // v1.13.11-alpha Bug 2 REAL root cause: selectedText comes from the
+  // rendering layer via Flutter SelectableRegion (converter coordinate,
+  // U+FFFC for structural tags like h1/img), but chapterText historically
+  // came from BookTextExtractor (PlainTextUtils coordinate, no U+FFFC).
+  // The two coordinates diverge for any selection that spans a structural
+  // block boundary — strict indexOf fails, the v1.13.10-alpha whitespace
+  // fallback ALSO fails (because U+FFFC is not whitespace), and playback
+  // falls back to sentence 0 → "selection朗读 from chapter head."
+  //
+  // Fix: TtsReaderController now reads engine.currentChapterPlainText
+  // (converter coordinate, same source as selectedText) instead of
+  // ttsChapterTextResolverProvider. The tests below pin the contract.
+  group(
+      'TtsReaderController.startFromSelection uses engine.currentChapterPlainText coordinate (v1.13.11-alpha Bug 2 real root cause)',
+      () {
+    test(
+        'selection朗读 does not include h1 title text when h1 collapses to U+FFFC in converter coordinate',
+        () async {
+      // Simulate the converter/extractor divergence:
+      //   - engine.currentChapterPlainText (converter): h1 → U+FFFC + \n\n,
+      //     then two paragraphs separated by \n\n.
+      //   - ttsChapterTextResolverProvider (extractor): h1 title text kept
+      //     as-is, paragraphs concatenated with NO separator.
+      //
+      // SentenceSegmenter on the converter string yields:
+      //   sent_0='￼' (U+FFFC alone — the h1 collapsed to a single emoji),
+      //   sent_1='第一段。',
+      //   sent_2='第二段。'
+      //
+      // User selects '第一段。' (the text they can SEE in the renderer, no
+      // U+FFFC). The new code path should land on sent_1 — and the
+      // dispatched Sentence.text should be '第一段。' (NOT '标题第一段。').
+      //
+      // Old (buggy) implementation: uses extractor '标题第一段。第二段。',
+      // segments to sent_0='标题第一段。' + sent_1='第二段。', indexOf
+      // '第一段。' finds it at offset 2 (inside sent_0 '标题第一段。') →
+      // currentIndex=0 → speakSentence(Sentence('标题第一段。')) — WRONG.
+      const fffc = '￼';
+      final container = buildContainer(
+        chapterText: '标题第一段。第二段。',
+        enginePlainText: '$fffc\n\n第一段。\n\n第二段。\n\n',
+        engine: _FakeReaderEngine(),
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: '第一段。');
+
+      expect(container.read(ttsReaderControllerProvider).isActive, isTrue);
+      expect(container.read(ttsPlaybackControllerProvider).scope,
+          isA<TtsScopeChapter>(),
+          reason: 'selection朗读 must reuse chapter scope.');
+      // Capture the dispatched Sentence and assert its text is exactly
+      // '第一段。' — NOT '标题第一段。' (extractor coordinate mixed title
+      // into the same sentence).
+      final capturedRaw = verify(() => svc.speakSentence(captureAny()))
+          .captured;
+      final captured = capturedRaw.cast<Sentence>();
+      expect(captured, hasLength(1),
+          reason: 'selection朗读 dispatches exactly one speakSentence call '
+              'for the first sentence.');
+      expect(captured.single.text, '第一段。',
+          reason: 'v1.13.11-alpha Bug 2: selectedText is in converter '
+              'coordinate; the dispatched sentence text must NOT contain '
+              'h1 title text from the extractor coordinate.');
+    });
+
+    test(
+        'continuous mode next chapter also reads converter coordinate from engine (no regression on chapter advance)',
+        () async {
+      // Verifies that _loadNextChapterAndContinue also reads the next
+      // chapter's text from engine.currentChapterPlainText after nextSpine,
+      // not from the legacy resolver.
+      final engine = _FakeReaderEngine();
+      final container = buildContainer(
+        chapterText: 'Only sentence.',
+        enginePlainText: 'Only sentence.',
+        // Next chapter text diverges between engine (converter) and the
+        // legacy resolver (extractor). After the fix, the dispatched
+        // sentence must match the ENGINE string.
+        nextChapterText: '标题第二段。',
+        engineNextChapterPlainText: '第二段。',
+        chapterCount: 2,
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      // Let chapter 0 speaking propagate, then exhaust the queue.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      stateController.add(TtsState.idle);
+      // Multiple pumps for the async chapter-advance → nextSpine → re-segment
+      // → play chain.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ttsCurrentChapterIdxProvider), 1,
+          reason: 'continuous mode should advance chapter index.');
+      expect(container.read(ttsReaderControllerProvider).isActive, isTrue,
+          reason: 'continuous mode should keep playback active.');
+      // Capture the LAST speakSentence call (chapter 1's first sentence).
+      final capturedRaw = verify(() => svc.speakSentence(captureAny()))
+          .captured;
+      final captured = capturedRaw.cast<Sentence>();
+      expect(captured, hasLength(2),
+          reason: 'one speakSentence for chapter 0, one for chapter 1.');
+      expect(captured.last.text, '第二段。',
+          reason: 'v1.13.11-alpha Bug 2: _loadNextChapterAndContinue must '
+              'read next-chapter text from engine.currentChapterPlainText '
+              '(converter coordinate), NOT from ttsChapterTextResolverProvider '
+              '(extractor coordinate).');
     });
   });
 
