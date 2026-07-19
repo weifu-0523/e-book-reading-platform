@@ -172,6 +172,14 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                         ZhiYueTtsService.EXTRA_VOLUME,
                         (args["volume"] as? Number)?.toDouble() ?: 1.0
                     )
+                    // v1.14.0-alpha T4: forward voiceId so handleSpeak can
+                    // apply it before setLanguage (avoids engine-reset races).
+                    // Null when the user hasn't picked a voice — service then
+                    // falls back to the cached _voiceOverride or engine default.
+                val voiceId = args["voiceId"] as? String
+                if (voiceId != null) {
+                    intent.putExtra(ZhiYueTtsService.EXTRA_VOICE_ID, voiceId)
+                }
                 try {
                     ctx.startService(intent)
                     result.success(null)
@@ -187,6 +195,33 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "setRate", "setPitch", "setVolume", "setLanguage" -> result.success(null)
             "isLanguageAvailable", "isLanguageInstalled" -> result.success(true)
             "getDefaultEngine" -> result.success("com.google.android.tts")
+            // v1.14.0-alpha T4: voice selection. These handlers need to
+            // reach the live service (engine voices / setVoice mutate the
+            // TextToSpeech state); we go through ZhiYueTtsService.instance
+            // rather than firing an Intent (which can't return a list or
+            // apply voice atomically). If the service isn't running yet,
+            // getVoices returns an empty list and setVoice returns false —
+            // Dart side will see these and prompt the user to start TTS.
+            "getVoices" -> {
+                val service = ZhiYueTtsService.instance
+                if (service == null) {
+                    result.success(emptyList<Map<String, Any>>())
+                } else {
+                    service.handleGetVoices(result)
+                }
+            }
+            "setVoice" -> {
+                val voiceId = call.argument<String>("voiceId")
+                val service = ZhiYueTtsService.instance
+                if (service == null) {
+                    // Service not running: can't apply, surface as failure
+                    // so Dart knows to retry after init.
+                    result.success(false)
+                } else {
+                    service.handleSetVoice(voiceId, result)
+                }
+            }
+            "openSystemTtsSettings" -> openSystemTtsSettings(ctx, result)
             // v1.13.1-alpha: dump plugin + service debug state for in-app display.
             "getDebugState" -> result.success(buildDebugState())
             else -> result.notImplemented()
@@ -272,6 +307,23 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private fun forwardAction(ctx: Context, action: String, result: MethodChannel.Result) {
         ctx.startService(Intent(ctx, ZhiYueTtsService::class.java).setAction(action))
         result.success(null)
+    }
+
+    /// v1.14.0-alpha T4: launch the system's Text-to-Speech settings screen
+    /// so the user can install / configure engine voices. FLAG_ACTIVITY_NEW_TASK
+    /// is required because we're launching from a non-Activity context (the
+    /// plugin's applicationContext). Returns true on success, false on any
+    /// exception (e.g. no Activity found to handle the Intent on this ROM).
+    private fun openSystemTtsSettings(ctx: Context, result: MethodChannel.Result) {
+        try {
+            val intent = Intent("com.android.settings.TTS_SETTINGS")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(intent)
+            result.success(true)
+        } catch (e: Exception) {
+            android.util.Log.w("ZhiYueTts", "openSystemTtsSettings failed", e)
+            result.success(false)
+        }
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {

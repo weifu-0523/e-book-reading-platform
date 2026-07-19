@@ -22,7 +22,9 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
+import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
 /// v1.13 TTS service — owns TextToSpeech + MediaSession + AudioFocus +
@@ -100,6 +102,29 @@ class ZhiYueTtsService : Service() {
     internal var lastAppliedVolumeForTest: Float = 0f
         private set
 
+    // ---- v1.14.0-alpha: voice selection ----
+
+    /// Cached voice name from setVoice, reapplied on each handleSpeak to
+    /// defend against engine resets (some engines pick the engine default
+    /// voice on every setLanguage call, wiping our choice). Null means
+    /// "user has not chosen a voice; use the engine default".
+    private var _voiceOverride: String? = null
+
+    /// Test-only: the voice name actually applied during the last
+    /// handleSpeak / handleSetVoice call. Null when no voice has been
+    /// applied yet. Mirrors the [lastAppliedRateForTest] pattern.
+    @VisibleForTesting
+    internal var lastAppliedVoiceNameForTest: String? = null
+        private set
+
+    /// Test-only: when non-null, [handleGetVoices] uses this voice name as
+    /// the "engine default" instead of `tts.defaultVoice?.name`. Production
+    /// leaves this null (the real engine default is what we surface).
+    /// Robolectric's ShadowTextToSpeech has no setter for defaultVoice,
+    /// so we need this override to test the isDefault mapping.
+    @VisibleForTesting
+    internal var defaultVoiceNameOverrideForTest: String? = null
+
     /// v1.13.8-alpha Bug 2: SPEAK intent that arrived before TTS init
     /// completed. handleSpeak defers here instead of calling tts.speak()
     /// (which would return -1 ERROR and never trigger UtteranceProgressListener).
@@ -135,6 +160,12 @@ class ZhiYueTtsService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // v1.14.0-alpha T4: publish this instance so the plugin can reach
+        // the live service for getVoices / setVoice (which need to query /
+        // mutate the TextToSpeech engine state — Intent-based fire-and-
+        // forget can't return values or apply voice selection atomically).
+        // Cleared in onDestroy to avoid leaking a stopped service.
+        instance = this
         // v1.13.9-alpha Bug 2 (continued): reset per-instance companion
         // fields. v1.13.8's init guard checks `ttsInitStatus == SUCCESS`,
         // but ttsInitStatus is a companion (static) field — it survived
@@ -328,6 +359,13 @@ class ZhiYueTtsService : Service() {
         tts?.setPitch(pitch)
         applyVolumeToStream(volume)
         debugLog("apply rate=$rate pitch=$pitch volume=$volume")
+        // v1.14.0-alpha T4: apply voice BEFORE setLanguage — setLanguage is
+        // allowed to pick the engine's locale-default voice, which would
+        // override our explicit choice if we set voice afterwards. Order:
+        //   1. voiceId from Intent extras (preferred, comes from user pick)
+        //   2. _voiceOverride fallback (engines may reset voice on speak)
+        //   3. engine default (do nothing)
+        applyVoiceForSpeak(intent.getStringExtra(EXTRA_VOICE_ID))
         val utteranceId = "sent_$idx"
         val langResult = tts?.setLanguage(Locale.forLanguageTag(locale))
         debugLog("setLanguage($locale) -> $langResult (0=ok, -1=missing_data, -2=not_supported)")
@@ -348,6 +386,129 @@ class ZhiYueTtsService : Service() {
         if (max <= 0) return
         val target = (max * volume).toInt().coerceIn(0, max)
         am.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+    }
+
+    // ---- v1.14.0-alpha: voice selection handlers ----
+
+    /// Build the canonical voice id used by Dart: `"${name}|${localeTag}"`.
+    /// Locale tag is used (not raw toString) so zh-CN → "zh-CN" rather than
+    /// "zh_CN_#Hans", keeping round-trip stable across Dart ↔ Kotlin.
+    private fun voiceIdOf(name: String, locale: Locale): String =
+        "$name|${locale.toLanguageTag()}"
+
+    /// Apply voice selection during handleSpeak. Priority:
+    ///   1. [explicitVoiceId] from Intent extras (user just picked a voice)
+    ///   2. [_voiceOverride] cached from a prior setVoice call (engines may
+    ///      reset voice on each speak — reapply every time)
+    ///   3. engine default (no-op)
+    ///
+    /// Updates [lastAppliedVoiceNameForTest] and [_voiceOverride] when a
+    /// match is found; leaves both untouched when no match (so the engine
+    /// keeps its current voice).
+    private fun applyVoiceForSpeak(explicitVoiceId: String?) {
+        val tts = tts ?: return
+        val voices = tts.voices ?: return
+        val candidateId = explicitVoiceId ?: _voiceOverride?.let { override ->
+            // Override stores just the name (setVoice receives name|locale,
+            // but engine may report the same name under multiple locales;
+            // first-name match is good enough for reapplication).
+            voices.firstOrNull { it.name == override }?.let { v -> voiceIdOf(v.name, v.locale) }
+        } ?: return
+        val matched = voices.firstOrNull { voiceIdOf(it.name, it.locale) == candidateId }
+        if (matched != null) {
+            tts.voice = matched
+            _voiceOverride = matched.name
+            lastAppliedVoiceNameForTest = matched.name
+            debugLog("applyVoice id=$candidateId name=${matched.name}")
+        } else {
+            debugLog("applyVoice SKIP: no match for id=$candidateId (voices=${voices.size})")
+        }
+    }
+
+    /// Returns the engine's default voice name, preferring the test override
+    /// when set (Robolectric's ShadowTextToSpeech has no defaultVoice setter).
+    private fun defaultVoiceName(): String? =
+        defaultVoiceNameOverrideForTest ?: tts?.defaultVoice?.name
+
+    /// Maps the engine's voice list to the JSON-serializable format Dart
+    /// expects (matches TtsVoice dart class fields).
+    fun handleGetVoices(result: MethodChannel.Result) {
+        val tts = tts ?: run {
+            result.error("NOT_INIT", "TTS engine not initialized", null)
+            return
+        }
+        val defaultName = defaultVoiceName()
+        val voices: List<Map<String, Any>> = tts.voices?.map { v ->
+            mapOf(
+                "id" to voiceIdOf(v.name, v.locale),
+                "name" to v.name,
+                "locale" to v.locale.toLanguageTag(),
+                "isDefault" to (v.name == defaultName),
+            )
+        } ?: emptyList()
+        debugLog("handleGetVoices returned ${voices.size} voices (default=$defaultName)")
+        result.success(voices)
+    }
+
+    /// Apply user's voice pick. Accepts the same id format that
+    /// [handleGetVoices] emits (`name|localeTag`). Returns true on success,
+    /// false when the voiceId doesn't match any engine voice. A null/blank
+    /// [voiceId] clears the override (engine default is used).
+    fun handleSetVoice(voiceId: String?, result: MethodChannel.Result) {
+        if (voiceId.isNullOrBlank()) {
+            _voiceOverride = null
+            debugLog("handleSetVoice: cleared override (using engine default)")
+            result.success(true)
+            return
+        }
+        val tts = tts ?: run {
+            debugLog("handleSetVoice: tts not initialized")
+            result.success(false)
+            return
+        }
+        val matched = tts.voices?.firstOrNull { voiceIdOf(it.name, it.locale) == voiceId }
+        if (matched != null) {
+            tts.voice = matched
+            _voiceOverride = matched.name
+            lastAppliedVoiceNameForTest = matched.name
+            debugLog("handleSetVoice: applied name=${matched.name}")
+            result.success(true)
+        } else {
+            debugLog("handleSetVoice: no match for id=$voiceId")
+            result.success(false)
+        }
+    }
+
+    /// Test-only wrapper for [handleGetVoices] that returns the list directly
+    /// (production wires the result through a MethodChannel.Result, which is
+    /// awkward to construct in a unit test). Mirrors the production mapping
+    /// 1:1.
+    @VisibleForTesting
+    internal fun handleGetVoicesForTest(): List<Map<String, Any>> {
+        val tts = tts ?: return emptyList()
+        val defaultName = defaultVoiceName()
+        return tts.voices?.map { v ->
+            mapOf(
+                "id" to voiceIdOf(v.name, v.locale),
+                "name" to v.name,
+                "locale" to v.locale.toLanguageTag(),
+                "isDefault" to (v.name == defaultName),
+            )
+        } ?: emptyList()
+    }
+
+    /// Test-only wrapper for [handleSetVoice] that returns the boolean
+    /// outcome directly. Skips the null/blank branch (tests cover the
+    /// explicit-id paths).
+    @VisibleForTesting
+    internal fun handleSetVoiceForTest(voiceId: String): Boolean {
+        val tts = tts ?: return false
+        val matched = tts.voices?.firstOrNull { voiceIdOf(it.name, it.locale) == voiceId }
+            ?: return false
+        tts.voice = matched
+        _voiceOverride = matched.name
+        lastAppliedVoiceNameForTest = matched.name
+        return true
     }
 
     private fun handlePause() {
@@ -388,6 +549,9 @@ class ZhiYueTtsService : Service() {
     }
 
     override fun onDestroy() {
+        // v1.14.0-alpha T4: clear live reference so the plugin doesn't route
+        // getVoices / setVoice to a destroyed service (whose tts is null).
+        instance = null
         if (isForeground) {
             stopForeground(true)
             isForeground = false
@@ -606,6 +770,14 @@ class ZhiYueTtsService : Service() {
         private const val NOTIFICATION_ID = 0x7D00
         private const val CHANNEL_ID = "zhiyue_tts"
 
+        /// v1.14.0-alpha T4: live service reference, set in onCreate and
+        /// cleared in onDestroy. Lets the plugin reach the running service
+        /// for getVoices / setVoice without spinning up a bound ServiceConnection
+        /// (which would add lifecycle complexity for two method handlers).
+        /// Mirrors the [ZhiYueTtsPlugin.instance] pattern.
+        internal var instance: ZhiYueTtsService? = null
+            private set
+
         const val ACTION_SPEAK = "dev.zhiyue.tts.SPEAK"
         const val ACTION_PAUSE = "dev.zhiyue.tts.PAUSE"
         const val ACTION_RESUME = "dev.zhiyue.tts.RESUME"
@@ -619,6 +791,9 @@ class ZhiYueTtsService : Service() {
         const val EXTRA_RATE = "rate"
         const val EXTRA_PITCH = "pitch"
         const val EXTRA_VOLUME = "volume"
+        // v1.14.0-alpha T4: speak Intent extra for voice id (format "name|localeTag").
+        // Null/absent means "use cached _voiceOverride or engine default".
+        const val EXTRA_VOICE_ID = "voiceId"
 
         // ---- v1.13.1-alpha debug instrumentation ----
         // Companion fields so they survive the service being killed and
