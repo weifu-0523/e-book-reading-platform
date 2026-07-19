@@ -7,7 +7,24 @@
 
 ## [Unreleased]
 
-v1.13.10-alpha 之后的新变更将记在此处。
+v1.13.11-alpha 之后的新变更将记在此处。
+## [1.13.11-alpha] - 2026-07-19
+
+### Fixed
+
+- **Bug 2 真根因：选段朗读坐标系不匹配**：v1.13.10-alpha 的 whitespace-insensitive regex fallback 没解决问题，因为真根因是坐标系不匹配（不是 whitespace 差异）。
+
+  **坐标系不匹配详解**：
+  - `selectedText` 来自 EPUB 渲染层 `SelectionAssistant.plainText`，走 `HtmlToInlineSpanConverter` 路径（渲染坐标）
+  - `chapterText` 来自 `ttsChapterTextResolverProvider` → `EpubChapterTextProvider.get` → `PlainTextUtils.htmlToPlainWithOffsets`，走另一条提取路径（提取坐标）
+  - 两者在 `<p>`/`<h1>`/`<br>`/`<img>` 等元素的分隔符处理上完全不同：渲染层插入 U+FFFC 替代符，提取层直接删掉 tag
+  - `indexOf` 严格匹配失败，whitespace regex 也无法匹配 U+FFFC（非空白字符）
+
+  **修复**：`TtsReaderController._prepareCurrentChapter` 及 `_loadNextChapterAndContinue` 改用 `engine.currentChapterPlainText`（渲染坐标），与 `reader_body._openExcerptSheet` 同源。`_locateSelectionStartIndex` 保留 whitespace fallback 容错。`resumeFromLast` 保留旧路径（engine 可能不在目标章节）。
+
+  **测试**（2 新）：`TtsReaderController.startFromSelection uses engine.currentChapterPlainText coordinate` 验证新数据源包含 U+FFFC 时仍可命中选区。
+
+  **统计**：Dart 1676 pass / 25 skip / 0 fail（+2 新测试，原 v1.13.10-alpha 的 1673 全保留）；versionCode 2008。
 ## [1.13.10-alpha] - 2026-07-19
 
 ### Fixed
