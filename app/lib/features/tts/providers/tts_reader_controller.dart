@@ -352,6 +352,14 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     }
     if (playback.phase == TtsPhase.idle) {
       final wasSpeaking = _wasSpeaking;
+      // v1.13.10-alpha Bug 1: capture the user-stop flag BEFORE clearing
+      // _wasSpeaking. TtsPlaybackController sets userStopped=true when the
+      // phase transitioned to idle because the user tapped the notification
+      // bar stop button (Kotlin state=stopped) or closed the mini control
+      // (driveStop). Without this guard, the chapter-boundary branch below
+      // would fire on user stop and either auto-advance to the next chapter
+      // (continuous) or surface 继续听下一章？ (askAtEnd) — both wrong.
+      final wasUserStopped = playback.userStopped;
       _wasSpeaking = false;
       final finishedScope = _lastObservedScope;
       _lastObservedScope = null;
@@ -372,7 +380,12 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
       // prior start() call and _wasSpeaking latched true on the AI speaking
       // phase. We use [_lastObservedScope] (stashed above) instead of
       // `playback.scope` because the controller nulls scope on idle.
-      if (wasSpeaking && finishedScope is TtsScopeChapter) {
+      //
+      // v1.13.10-alpha Bug 1: user stop (notification bar / mini control
+      // close) must NOT trigger chapter-boundary auto-advance.
+      if (wasSpeaking &&
+          !wasUserStopped &&
+          finishedScope is TtsScopeChapter) {
         _onChapterBoundaryReached();
       }
       return;

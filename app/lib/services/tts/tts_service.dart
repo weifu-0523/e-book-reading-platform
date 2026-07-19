@@ -9,8 +9,16 @@ import 'dart:async';
 /// * [loading] — language install / engine warming up (future-proofing for T26).
 /// * [speaking] — engine actively producing audio.
 /// * [paused] — pause() called; resume continues from current sentence.
+/// * [stopped] — v1.13.10-alpha Bug 1: user / external stop (notification bar
+///   "停止", mini control close, etc.). Distinct from [idle] (which means
+///   natural completion): the playback controller must NOT advance the queue
+///   when this state arrives, otherwise it would fire a new SPEAK intent,
+///   recreate the destroyed service, and manifest as "auto-resume ~845ms
+///   after stop" to the user. The reader controller also reads the
+///   corresponding `TtsPlaybackState.userStopped` flag to suppress the
+///   chapter-boundary auto-advance / 继续听下一章？ prompt.
 /// * [error] — engine reported an error; user-visible message on [TtsService.error].
-enum TtsState { idle, loading, speaking, paused, error }
+enum TtsState { idle, loading, speaking, paused, stopped, error }
 
 /// Progress event emitted while speaking.
 ///

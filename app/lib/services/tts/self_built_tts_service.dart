@@ -152,8 +152,18 @@ class SelfBuiltTtsServiceImpl implements TtsService {
       case 'paused':
         return TtsState.paused;
       case 'idle':
-      case 'stopped':
         return TtsState.idle;
+      case 'stopped':
+        // v1.13.10-alpha Bug 1: Kotlin ZhiYueTtsService.handleStop emits
+        // state=stopped when the user taps the notification bar stop button.
+        // Previously this fell through to TtsState.idle, which made the
+        // playback controller think the sentence completed naturally and
+        // auto-advanced the queue — firing a new SPEAK intent, recreating
+        // the destroyed service, and surfacing as "auto-resume ~845ms after
+        // stop" to the user. Map to TtsState.stopped so the controller can
+        // reset state WITHOUT advancing (and the reader controller can
+        // suppress the chapter-boundary auto-advance).
+        return TtsState.stopped;
       case 'error':
         return TtsState.error;
       default:

@@ -848,4 +848,145 @@ void main() {
       expect(notifier.state.phase, TtsPhase.paused);
     });
   });
+
+  group('external stop (v1.13.10-alpha Bug 1)', () {
+    test(
+        'TtsState.stopped event resets state without advancing queue or '
+        'sending new SPEAK', () async {
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.pause()).thenAnswer((_) async {});
+      when(() => mockSvc.stop()).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final notifier = TtsPlaybackController(mockSvc, () => TtsSettings());
+      addTearDown(notifier.dispose);
+      addTearDown(stateController.close);
+
+      // Seed playback with 3 sentences and let it reach speaking.
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'A.', locale: 'en-US', charStart: 0, charEnd: 2),
+          const Sentence(
+              text: 'B.', locale: 'en-US', charStart: 2, charEnd: 4),
+          const Sentence(
+              text: 'C.', locale: 'en-US', charStart: 4, charEnd: 6),
+        ],
+      );
+      expect(notifier.state.phase, TtsPhase.speaking);
+      expect(notifier.state.currentIndex, 0);
+      expect(notifier.state.queueLength, 3);
+      expect(notifier.state.userStopped, isFalse);
+      clearInteractions(mockSvc);
+
+      // Simulate Kotlin emitting state=stopped (user tapped notification
+      // bar stop button).
+      stateController.add(TtsState.stopped);
+      await Future<void>.delayed(Duration.zero);
+
+      // v1.13.10-alpha Bug 1 assertions:
+      // - phase reset to idle
+      // - queueLength reset to 0
+      // - userStopped flag is true
+      // - NO new speakSentence call (auto-advance must NOT fire)
+      expect(notifier.state.phase, TtsPhase.idle);
+      expect(notifier.state.queueLength, 0);
+      expect(notifier.state.userStopped, isTrue);
+      verifyNever(() => mockSvc.speakSentence(any()));
+    });
+
+    test('TtsState.idle (natural completion) still advances queue', () async {
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.pause()).thenAnswer((_) async {});
+      when(() => mockSvc.stop()).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final notifier = TtsPlaybackController(mockSvc, () => TtsSettings());
+      addTearDown(notifier.dispose);
+      addTearDown(stateController.close);
+
+      // Seed playback with 2 sentences.
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'A.', locale: 'en-US', charStart: 0, charEnd: 2),
+          const Sentence(
+              text: 'B.', locale: 'en-US', charStart: 2, charEnd: 4),
+        ],
+      );
+      expect(notifier.state.phase, TtsPhase.speaking);
+      expect(notifier.state.currentIndex, 0);
+
+      // Simulate Kotlin emitting TtsState.idle (utterance onDone).
+      stateController.add(TtsState.idle);
+      await Future<void>.delayed(Duration.zero);
+
+      // Natural completion should advance to next sentence.
+      expect(notifier.state.currentIndex, 1);
+      verify(() => mockSvc.speakSentence(any())).called(greaterThanOrEqualTo(1));
+    });
+
+    test('driveStop sets userStopped=true', () async {
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.stop()).thenAnswer((_) async {});
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final notifier = TtsPlaybackController(mockSvc, () => TtsSettings());
+      addTearDown(notifier.dispose);
+      addTearDown(stateController.close);
+
+      // Seed playback.
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'A.', locale: 'en-US', charStart: 0, charEnd: 2),
+        ],
+      );
+      expect(notifier.state.userStopped, isFalse);
+
+      await notifier.stop();
+
+      expect(notifier.state.phase, TtsPhase.idle);
+      expect(notifier.state.userStopped, isTrue);
+    });
+  });
 }

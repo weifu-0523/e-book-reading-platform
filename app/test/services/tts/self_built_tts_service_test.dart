@@ -221,4 +221,30 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(svc.eventReceivedCountForDebug, 2);
   });
+
+  // v1.13.10-alpha Bug 1: Kotlin ZhiYueTtsService.handleStop emits
+  // {"event":"state","state":"stopped"} when the user taps the notification
+  // bar stop button. Previously _parseState collapsed 'stopped' into
+  // TtsState.idle, which made TtsPlaybackController think the current
+  // sentence had completed naturally and auto-advanced to the next one.
+  // That auto-advance fired a new SPEAK intent, recreated the destroyed
+  // service, and manifested as "auto-resume ~845ms after stop" to the user.
+  // 'stopped' MUST now map to its own TtsState.stopped (distinct from
+  // TtsState.idle which still means natural-completion).
+  test(
+      'reverse callback state=stopped maps to TtsState.stopped (Bug 1)',
+      () async {
+    final states = <TtsState>[];
+    svc.state.listen(states.add);
+    await svc.init();
+    await emit({'event': 'state', 'state': 'stopped'});
+    await Future<void>.delayed(Duration.zero);
+    // init() emits TtsState.idle as the initial state, then the stopped
+    // event must arrive as TtsState.stopped (not collapse back to idle).
+    expect(states, contains(TtsState.stopped));
+    expect(states.last, TtsState.stopped,
+        reason:
+            'v1.13.10-alpha Bug 1: state=stopped MUST map to TtsState.stopped, '
+            'not fall through to TtsState.idle.');
+  });
 }

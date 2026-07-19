@@ -70,12 +70,23 @@ class TtsPlaybackState {
   final int queueLength;
   final String? errorMessage;
 
+  /// v1.13.10-alpha Bug 1: true when phase transitioned to idle because of a
+  /// user / external stop (notification bar "停止" → Kotlin state=stopped, or
+  /// user-initiated [driveStop] via mini control close) — NOT because of
+  /// natural completion. Consumed by TtsReaderController to suppress the
+  /// chapter-boundary auto-advance (continuous mode) and the 继续听下一章？
+  /// prompt (askAtEnd mode) that would otherwise fire when the queue
+  /// exhausts. Default false preserves legacy "natural completion" semantics
+  /// for every other code path.
+  final bool userStopped;
+
   const TtsPlaybackState({
     this.phase = TtsPhase.idle,
     this.scope,
     this.currentIndex = 0,
     this.queueLength = 0,
     this.errorMessage,
+    this.userStopped = false,
   });
 
   TtsPlaybackState copyWith({
@@ -85,6 +96,7 @@ class TtsPlaybackState {
     int? queueLength,
     String? errorMessage,
     bool clearScope = false,
+    bool? userStopped,
   }) {
     return TtsPlaybackState(
       phase: phase ?? this.phase,
@@ -92,6 +104,7 @@ class TtsPlaybackState {
       currentIndex: currentIndex ?? this.currentIndex,
       queueLength: queueLength ?? this.queueLength,
       errorMessage: errorMessage,
+      userStopped: userStopped ?? this.userStopped,
     );
   }
 }
@@ -348,7 +361,10 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     try {
       await _service.stop();
       _queue = const [];
-      state = const TtsPlaybackState();
+      // v1.13.10-alpha Bug 1: mark userStopped=true so the reader controller
+      // suppresses chapter-boundary auto-advance when the user closes the
+      // mini control (mirrors the Kotlin state=stopped path).
+      state = const TtsPlaybackState(userStopped: true);
     } catch (e) {
       _queue = const [];
       state = TtsPlaybackState(
@@ -396,6 +412,18 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   }
 
   void _onServiceState(TtsState svcState) {
+    // v1.13.10-alpha Bug 1: Kotlin emits state=stopped when the user
+    // taps the notification bar stop button. Translate to a queue reset
+    // WITHOUT advancing (vs TtsState.idle which advances). Without this
+    // distinction, the old code conflated 'stopped' with 'idle' and
+    // auto-advanced to the next sentence — which then sent a new SPEAK
+    // intent, recreated the destroyed service, and manifested as
+    // "auto-resume after stop" from the user's perspective.
+    if (svcState == TtsState.stopped) {
+      _queue = const [];
+      state = const TtsPlaybackState(userStopped: true);
+      return;
+    }
     if (svcState == TtsState.idle && state.phase == TtsPhase.speaking) {
       // Current sentence completed → advance.
       if (state.currentIndex + 1 < _queue.length) {

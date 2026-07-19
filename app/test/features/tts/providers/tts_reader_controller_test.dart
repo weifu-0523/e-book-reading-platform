@@ -839,4 +839,57 @@ void main() {
       expect(req!.kind, TtsChapterEndKind.askContinue);
     });
   });
+
+  // v1.13.10-alpha Bug 1: when the user taps the notification bar stop button,
+  // Kotlin emits state=stopped. TtsPlaybackController maps this to phase=idle
+  // + userStopped=true. TtsReaderController._onPlaybackChange MUST read the
+  // userStopped flag and NOT trigger _onChapterBoundaryReached — otherwise
+  // the user's "stop" would surface the 继续听下一章？ prompt (askAtEnd) or
+  // auto-advance to the next chapter (continuous mode).
+  group('user stop suppresses chapter boundary (v1.13.10-alpha Bug 1)', () {
+    test(
+        'state=stopped does NOT trigger chapter prompt (askAtEnd mode)',
+        () async {
+      final engine = _FakeReaderEngine();
+      final container = buildContainer(
+        chapterText: 'Only sentence.',
+        engine: engine,
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container
+        ..listen(ttsPlaybackControllerProvider, (_, __) {})
+        ..listen(ttsChapterEndRequestProvider, (_, __) {});
+
+      await container
+          .read(ttsSettingsProvider.notifier)
+          .setChapterBoundary(TtsChapterBoundary.askAtEnd);
+
+      await container.read(ttsReaderControllerProvider.notifier).start();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        container.read(ttsPlaybackControllerProvider).phase,
+        TtsPhase.speaking,
+        reason: 'precondition: chapter playback reached speaking.',
+      );
+
+      // Simulate Kotlin emitting state=stopped (user tapped notification bar
+      // stop button). TtsPlaybackController MUST set userStopped=true and
+      // TtsReaderController MUST NOT trigger chapter-boundary.
+      stateController.add(TtsState.stopped);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(container.read(ttsPlaybackControllerProvider).userStopped, isTrue,
+          reason: 'precondition: TtsState.stopped sets userStopped=true.');
+      expect(container.read(ttsChapterEndRequestProvider), isNull,
+          reason:
+              'v1.13.10-alpha Bug 1: user stop must NOT surface askContinue.');
+      expect(container.read(ttsCurrentChapterIdxProvider), 0,
+          reason:
+              'v1.13.10-alpha Bug 1: user stop must NOT auto-advance chapter.');
+    });
+  });
 }
