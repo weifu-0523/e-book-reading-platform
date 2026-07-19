@@ -52,6 +52,11 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   double _cachedPitch = 1.0;
   double _cachedVolume = 1.0;
 
+  /// v1.14.0-alpha: cached voiceId, piggy-backed onto each SPEAK Intent
+  /// (mirrors v1.13.7 Bug 4 rate/pitch/volume pattern). null means
+  /// "system default" — Kotlin leaves engine default voice alone.
+  String? _cachedVoiceId;
+
   /// v1.13.4-alpha diagnostic kept through v1.13.5: incremented on every
   /// event received from Kotlin. Compared against Kotlin's `emitCount`
   /// (now `invokeSucceededCount`) to pinpoint pipeline breaks.
@@ -186,6 +191,10 @@ class SelfBuiltTtsServiceImpl implements TtsService {
       'rate': _cachedRate,
       'pitch': _cachedPitch,
       'volume': _cachedVolume,
+      // v1.14.0-alpha: piggy-back cached voiceId only when set (null =
+      // system default; omit the key entirely so Kotlin leaves the engine
+      // default voice alone on each speak call).
+      if (_cachedVoiceId != null) 'voiceId': _cachedVoiceId,
     });
   }
 
@@ -241,22 +250,79 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   }
 
   // === v1.14.0-alpha: Voice selection ===
-  //
-  // T1 minimal stubs — return empty/false/no-op so the abstract interface
-  // compiles. Real implementations land in T3 (MethodChannel wiring +
-  // Kotlin handlers in T4).
 
   @override
-  Future<List<TtsVoice>> getVoices() async => const [];
+  Future<List<TtsVoice>> getVoices() async {
+    try {
+      final result =
+          await _methodChannel.invokeMethod<List<dynamic>>('getVoices');
+      if (result == null) return const [];
+      return result.map((v) {
+        final map = v as Map<dynamic, dynamic>;
+        return TtsVoice(
+          id: map['id'] as String,
+          name: map['name'] as String,
+          locale: map['locale'] as String,
+          isDefault: (map['isDefault'] as bool?) ?? false,
+        );
+      }).toList();
+    } catch (_) {
+      // Engine errors fall back to empty list; UI shows "no voices" hint.
+      return const [];
+    }
+  }
 
   @override
-  Future<bool> setVoice(String? voiceId) async => false;
+  Future<bool> setVoice(String? voiceId) async {
+    // Always cache, even if null — speakSentence piggy-back relies on the
+    // latest user selection (or system-default reset).
+    _cachedVoiceId = voiceId;
+    try {
+      final result = await _methodChannel
+          .invokeMethod<bool>('setVoice', {'voiceId': voiceId});
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
-  Future<void> previewVoice(String voiceId, {String? sampleText}) async {}
+  Future<void> previewVoice(String voiceId, {String? sampleText}) async {
+    // Save current voice so we can restore after the preview utterance.
+    final previous = _cachedVoiceId;
+    if (!await setVoice(voiceId)) return;
+    try {
+      final text = sampleText ?? '你好，这是该声音的试听样本。';
+      await _methodChannel.invokeMethod('speak', {
+        'text': text,
+        'locale': 'zh-CN',
+        // -1 sentinel: preview, not main queue (Kotlin ignores for advance).
+        'sentenceIndex': -1,
+        'rate': _cachedRate,
+        'pitch': _cachedPitch,
+        'volume': _cachedVolume,
+        'voiceId': voiceId,
+      });
+    } finally {
+      // Restore eagerly on Dart side. Kotlin flushes its utterance queue
+      // synchronously on the next speak(), so there's no need for a
+      // completion-handler dance like FlutterTtsServiceImpl uses — but we
+      // restore immediately to avoid races if a non-preview speak sneaks
+      // in before the next setVoice lands.
+      await setVoice(previous);
+    }
+  }
 
   @override
-  Future<bool> openSystemTtsSettings() async => false;
+  Future<bool> openSystemTtsSettings() async {
+    try {
+      final result = await _methodChannel
+          .invokeMethod<bool>('openSystemTtsSettings');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// v1.13.1-alpha: dump plugin + service debug state as a pretty-printed
   /// JSON string. Used by the in-app 「TTS 调试日志」 button so users
