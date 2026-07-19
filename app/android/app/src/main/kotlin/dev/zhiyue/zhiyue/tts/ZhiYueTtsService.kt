@@ -135,7 +135,28 @@ class ZhiYueTtsService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        debugLog("onCreate start")
+        // v1.13.9-alpha Bug 2 (continued): reset per-instance companion
+        // fields. v1.13.8's init guard checks `ttsInitStatus == SUCCESS`,
+        // but ttsInitStatus is a companion (static) field — it survived
+        // the previous service instance's onDestroy. So when Android
+        // recreated the service (e.g. after STOP+user re-click), the new
+        // TextToSpeech hadn't finished async init yet, but ttsInitStatus
+        // still held the old SUCCESS value. handleSpeak's guard let
+        // speak() through → setLanguage=-2 + speak()=-1 → Dart stuck in
+        // loading → user re-triggered → "playback starts from beginning".
+        //
+        // Diagnostic signature (v1.13.8 user log):
+        //   handleSpeak textLen=17 tts=@b7bdbfa initStatus=0   ← stale!
+        //   setLanguage(zh-CN) -> -2 (NOT_SUPPORTED)
+        //   speak() returned -1 (ERROR)
+        //   TTS init callback status=0                          ← real init 47ms later
+        ttsInitStatus = -999
+        ttsLastSpeakReturn = -999
+        pendingSpeakActive = false
+        onCreateCompleted = false
+        onCreateException = null
+        startForegroundCompleted = false
+        debugLog("onCreate start (companion state reset: ttsInitStatus=-999)")
         try {
             // v1.13.7-alpha Bug 5: emit() reads ZhiYueTtsPlugin.instance at
             // call time (no cached reference), so there is no early-wire

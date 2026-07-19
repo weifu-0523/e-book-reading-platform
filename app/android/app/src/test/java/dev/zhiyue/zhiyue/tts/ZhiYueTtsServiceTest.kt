@@ -610,4 +610,63 @@ class ZhiYueTtsServiceTest {
             ZhiYueTtsPlugin.setInstanceForTest(null)
         }
     }
+
+    // ---- v1.13.9-alpha Bug 2 (continued): service recreation must reset
+    // companion ttsInitStatus. Without this, the second service instance
+    // inherits the first's SUCCESS value, handleSpeak's init guard lets
+    // speak() through before the new TextToSpeech finishes init, and the
+    // user sees "playback starts from beginning" intermittently. ----
+
+    @Test
+    fun `service recreation resets ttsInitStatus so handleSpeak defers (v1_13_9 Bug 2 companion reset)`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            // First service instance: onCreate + successful init + speak.
+            val firstService = createService()
+            firstService.onCreate()
+            firstService.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.SUCCESS)
+            org.junit.Assert.assertEquals(
+                "first service init should be SUCCESS",
+                android.speech.tts.TextToSpeech.SUCCESS,
+                ZhiYueTtsService.ttsInitStatus
+            )
+            firstService.onDestroy()
+
+            // Companion ttsInitStatus still holds SUCCESS from the first
+            // instance (this is the v1.13.8 blind spot).
+            org.junit.Assert.assertEquals(
+                "precondition: companion should retain SUCCESS across instances",
+                android.speech.tts.TextToSpeech.SUCCESS,
+                ZhiYueTtsService.ttsInitStatus
+            )
+
+            // Android recreates the service (new instance, new TextToSpeech).
+            val secondService = createService()
+            secondService.onCreate()
+
+            // v1.13.9 fix: onCreate must reset ttsInitStatus to -999 so the
+            // new instance's handleSpeak doesn't act on stale SUCCESS.
+            org.junit.Assert.assertEquals(
+                "second service onCreate must reset ttsInitStatus to -999",
+                -999,
+                ZhiYueTtsService.ttsInitStatus
+            )
+
+            // Therefore a SPEAK arriving before the new init callback must
+            // defer (not call speak()).
+            val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 5)
+            secondService.onStartCommand(speakIntent, 0, 1)
+            org.junit.Assert.assertNotNull(
+                "second service must defer SPEAK until new TTS inits",
+                secondService.pendingSpeakForTest
+            )
+            secondService.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
 }
