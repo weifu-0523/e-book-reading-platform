@@ -251,6 +251,16 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
   ///
   /// Returns null (and is a no-op) when: engine is null, bookId is null,
   /// book lookup fails, or chapter text resolves to empty.
+  ///
+  /// v1.13.11-alpha Bug 2: chapter plain text now comes from
+  /// [ReaderEngine.currentChapterPlainText] (converter coordinate, same
+  /// source as Flutter's SelectableRegion → selection plain text). The
+  /// legacy [ttsChapterTextResolverProvider] uses BookTextExtractor
+  /// (PlainTextUtils coordinate, no U+FFFC for h1/img) and diverges for
+  /// any selection that spans a structural block boundary — strict
+  /// indexOf failed and the v1.13.10 whitespace fallback ALSO failed
+  /// (U+FFFC is not whitespace), manifesting as "selection朗读 from
+  /// chapter head."
   Future<_PreparedChapter?> _prepareCurrentChapter() async {
     final engine = _ref.read(ttsReaderEngineRefProvider);
     final bookId = _ref.read(ttsCurrentBookIdProvider);
@@ -263,8 +273,10 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     final book = await _ref.read(bookRepositoryProvider).getById(bookId);
     if (book == null) return null;
 
-    final resolver = _ref.read(ttsChapterTextResolverProvider);
-    final text = await resolver(book, chapterIdx);
+    // v1.13.11-alpha Bug 2: read converter-coordinate plain text from the
+    // engine (NOT the legacy resolver). engine.currentChapterPlainText is
+    // a Future getter — see concrete_reader_engine.dart / epubx_renderer.
+    final text = await engine.currentChapterPlainText;
     if (text.isEmpty) return null;
 
     final boundary = CFIBoundaryExtractor.extract(
@@ -567,11 +579,15 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
       return;
     }
 
-    // Re-resolve chapter text via the same resolver used in [start].
-    final resolver = _ref.read(ttsChapterTextResolverProvider);
+    // v1.13.11-alpha Bug 2: re-resolve chapter text from
+    // engine.currentChapterPlainText (converter coordinate) — same source
+    // as [_prepareCurrentChapter]. After nextSpine + chapterSwitchSettled,
+    // the engine's getter returns the new chapter's text. Reading via the
+    // legacy ttsChapterTextResolverProvider would re-introduce the
+    // coordinate divergence bug (selection朗读 h1 U+FFFC mismatch).
     final String text;
     try {
-      text = await resolver(book, nextIdx);
+      text = await engine.currentChapterPlainText;
     } catch (_) {
       return;
     }

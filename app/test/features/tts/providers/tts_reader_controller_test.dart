@@ -42,6 +42,13 @@ class _MockTtsService extends Mock implements TtsService {}
 
 class _FakeSentence extends Fake implements Sentence {}
 
+/// v1.13.11-alpha Bug 2: shared seam so [buildContainer] can inject the
+/// converter-coordinate chapter plain text into any of the four engine
+/// fakes below without type-switching on each class.
+abstract class _EnginePlainTextAware {
+  set currentChapterPlainTextForTesting(String value);
+}
+
 class _MockBookRepository extends Mock implements BookRepository {}
 
 /// Minimal ReaderEngine fake. Extends `Mock implements ReaderEngine` so
@@ -49,7 +56,8 @@ class _MockBookRepository extends Mock implements BookRepository {}
 /// `paginationMode` / `currentChapterPageBreaks` / `pageController` are
 /// overridden to const defaults so callers don't have to `when(...)`
 /// them; everything else stays mocktail-default.
-class _FakeReaderEngine extends Mock implements ReaderEngine {
+class _FakeReaderEngine extends Mock
+    implements ReaderEngine, _EnginePlainTextAware {
   /// T18: location stream. Defaults to an empty stream so existing T15
   /// tests don't need to wire one up. Tests that exercise the
   /// pause-on-manual-flip behaviour use [_FakeLocationEngine] instead.
@@ -136,12 +144,24 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
 /// Scroll-mode variant of [_FakeReaderEngine]. Records `gotoLocator` calls
 /// so T16's scroll-branch test can assert the engine is navigated rather
 /// than the paged-mode [PageController] being jumped.
-class _FakeScrollReaderEngine extends Mock implements ReaderEngine {
+class _FakeScrollReaderEngine extends Mock
+    implements ReaderEngine, _EnginePlainTextAware {
   final List<re_locator.Locator> gotoLocatorCalls =
       <re_locator.Locator>[];
 
   final StreamController<re_locator.Locator> locationController =
       StreamController<re_locator.Locator>.broadcast();
+
+  String _plainText = '';
+
+  @override
+  set currentChapterPlainTextForTesting(String value) {
+    _plainText = value;
+  }
+
+  @override
+  Future<String> get currentChapterPlainText =>
+      Future<String>.value(_plainText);
 
   @override
   PaginationMode get paginationMode => PaginationMode.scroll;
@@ -171,9 +191,21 @@ class _FakeScrollReaderEngine extends Mock implements ReaderEngine {
 /// T18: reader engine with a controllable `currentLocation$` stream.
 /// Lets tests emit synthetic location changes to verify pause-on-manual-flip
 /// behaviour without dragging in a real EPUB engine.
-class _FakeLocationEngine extends Mock implements ReaderEngine {
+class _FakeLocationEngine extends Mock
+    implements ReaderEngine, _EnginePlainTextAware {
   final StreamController<re_locator.Locator> locationController =
       StreamController<re_locator.Locator>.broadcast();
+
+  String _plainText = '';
+
+  @override
+  set currentChapterPlainTextForTesting(String value) {
+    _plainText = value;
+  }
+
+  @override
+  Future<String> get currentChapterPlainText =>
+      Future<String>.value(_plainText);
 
   @override
   PaginationMode get paginationMode => PaginationMode.paged;
@@ -205,9 +237,20 @@ class _FakeLocationEngine extends Mock implements ReaderEngine {
 /// guard works, our own gotoLocator emission is ignored; without the
 /// guard it would trigger pause.
 class _FakeScrollLocationEmittingEngine extends Mock
-    implements ReaderEngine {
+    implements ReaderEngine, _EnginePlainTextAware {
   final StreamController<re_locator.Locator> locationController =
       StreamController<re_locator.Locator>.broadcast();
+
+  String _plainText = '';
+
+  @override
+  set currentChapterPlainTextForTesting(String value) {
+    _plainText = value;
+  }
+
+  @override
+  Future<String> get currentChapterPlainText =>
+      Future<String>.value(_plainText);
 
   @override
   PaginationMode get paginationMode => PaginationMode.scroll;
@@ -358,6 +401,9 @@ void main() {
       // existing tests). Tests that exercise the bug-2 fix pass a different
       // string via enginePlainText to simulate the converter/extractor
       // divergence (U+FFFC for h1, etc.).
+      //
+      // _FakeReaderEngine additionally supports per-chapter text lists for
+      // the continuous-mode chapter-advance test.
       if (engine is _FakeReaderEngine) {
         final fakeEngine = engine as _FakeReaderEngine;
         if (engineNextChapterPlainText != null) {
@@ -369,6 +415,9 @@ void main() {
           fakeEngine.currentChapterPlainTextForTesting =
               enginePlainText ?? chapterText;
         }
+      } else if (engine is _EnginePlainTextAware) {
+        (engine as _EnginePlainTextAware).currentChapterPlainTextForTesting =
+            enginePlainText ?? chapterText;
       }
     }
     if (bookId != null) {

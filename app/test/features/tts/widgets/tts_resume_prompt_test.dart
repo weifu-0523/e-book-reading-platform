@@ -45,6 +45,14 @@ class _FakeReaderEngine extends Mock implements ReaderEngine {
   final StreamController<re_locator.Locator> locationController =
       StreamController<re_locator.Locator>.broadcast();
 
+  /// v1.13.11-alpha Bug 2: TtsReaderController now reads chapter plain
+  /// text from engine.currentChapterPlainText instead of the legacy
+  /// resolver. Match the legacy stub value ('Sentence.') so existing
+  /// resume-prompt tests keep their behavior.
+  @override
+  Future<String> get currentChapterPlainText =>
+      Future<String>.value('Sentence.');
+
   @override
   PaginationMode get paginationMode => PaginationMode.paged;
 
