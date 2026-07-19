@@ -7,7 +7,27 @@
 
 ## [Unreleased]
 
-v1.13.8-alpha 之后的新变更将记在此处。
+v1.13.10-alpha 之后的新变更将记在此处。
+## [1.13.10-alpha] - 2026-07-19
+
+### Fixed
+
+- **Bug 1** (朗读关闭后自动恢复)：用户报告"朗读开始后从通知栏点停止，~845ms 后朗读自动恢复"。诊断日志决定性证据：STOP 后 service 重建，11ms 后自动收到 SPEAK intent，textLen=12 ≠ 上一句 sent_19 textLen=37（证实是 queue 自动推进到 sent_20）。
+
+  **根因**：`SelfBuiltTtsServiceImpl._parseState` 把 Kotlin `'stopped'` 事件翻译成 `TtsState.idle`。`TtsPlaybackController._onServiceState` 看到 `idle + phase==speaking` → 误判句子自然播完 → 推进 queue → 调 `_speakCurrent()` → 发 SPEAK → service 已被 stopSelf 销毁 → ensureServiceStarted 重建 → onCreate → 朗读自动恢复。
+
+  **次生问题**：TtsReaderController 看到 phase=idle 会触发 `_onChapterBoundaryReached`，朗读本章最后一句时点停止会自动到下一章或弹"继续听下一章？"SnackBar。
+
+  **修复（4 文件）**：
+  - `tts_service.dart`：`TtsState` 加 `stopped` 成员
+  - `self_built_tts_service.dart`：`_parseState('stopped')` 返回 `TtsState.stopped`（不再 fallthrough 到 idle）
+  - `tts_playback_controller.dart`：`TtsPlaybackState` 加 `userStopped` 字段；`_onServiceState` 新增 stopped 分支重置 state 不推进 queue；`driveStop` 也设 `userStopped=true`
+  - `tts_reader_controller.dart`：`_onPlaybackChange` phase=idle 分支读 `playback.userStopped`，user stop 不触发 chapter-boundary
+
+- **Bug 2 (续)** (选段朗读仍从章节头开始)：v1.13.9-alpha 修了 companion 残留后，用户测试 3 本书发现仍有 2 本从章节头开始播放。根因：`TtsReaderController._locateSelectionStartIndex` 的 `chapterText.indexOf(selectedText)` 对某些 EPUB 返回 -1，因为 `chapterText`（BookTextExtractor 输出）和 `selectedText`（EPUB 渲染层 SelectionAssistant.plainText）在某些章节存在 **whitespace 差异**（multiple spaces vs single、newline vs space、leading/trailing）。旧 fallback 直接返回 0 → 从章节头开始。
+
+  **修复**：`_locateSelectionStartIndex` 严格 indexOf 失败时调用新增的 `_findSelectionStartWhitespaceInsensitive`：strip 掉 selectedText 所有 whitespace，每个非空白 char 用 `RegExp.escape` 转义后用 `\s*` 连接，在 chapterText 中 firstMatch。返回原 offset，sentence.charStart 映射不变。3 字符最小门槛 + 30 字符截断平衡唯一性与 regex 性能。
+
 ## [1.13.9-alpha] - 2026-07-19
 
 ### Fixed
