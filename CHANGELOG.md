@@ -7,7 +7,19 @@
 
 ## [Unreleased]
 
-v1.13.6-alpha 之后的新变更将记在此处。
+v1.13.7-alpha 之后的新变更将记在此处。
+## [1.13.8-alpha] - 2026-07-19
+
+### Fixed
+
+- **Bug 1** (控制台按钮过多)：用户反馈"朗读的控制台上不需要太多按钮，前进后退这本来就没用"。`TtsMiniControls` 移除 `skip_previous` / `skip_next` / `stop` 三个 IconButton，只保留 pause/play 切换 + 关闭（实际调 `stop()`）。多句朗读按 sentence 边界自动推进，跳句按钮本就无意义；"停止"和"关闭"语义重复（`TtsPlaybackController.stop` 已清 queue + reset idle）。
+
+- **Bug 2** (选段朗读从头开始播放)：v1.13.7 诊断日志决定性证据：每次 `ZhiYueTtsService.onCreate` 后第一次 SPEAK 在 `TextToSpeech.onInit` 异步完成前到达 → `setLanguage` 返回 -2 (LANG_NOT_SUPPORTED) + `speak()` 返回 -1 (ERROR) + `UtteranceProgressListener` 不触发任何回调 → Dart `_speakCurrent` 卡在 loading 等待 speaking 永不到达 → 用户再次触发朗读 → `play(scope, sentences)` 重置 queue → 现象即"从头播放"。修复：
+  - `handleSpeak` 头部检查 `ttsInitStatus != SUCCESS` → 把 intent 暂存到 `pendingSpeak` 字段并 return（不调 `tts.speak()`）
+  - TTS init callback `status == SUCCESS` 分支末尾检查 `pendingSpeak`，触发 `handleSpeak(it)` 并清空字段
+  - `handleStop` 清空 `pendingSpeak` 避免停止后又被 init callback flush
+  - companion field `pendingSpeakActive` 暴露到 `buildDebugState`（不暴露 Intent 对象本身，Intent 不可序列化）供运行时诊断
+
 ## [1.13.7-alpha] - 2026-07-19
 
 ### Fixed

@@ -254,6 +254,8 @@ class TtsSettingsSection extends ConsumerWidget {
         '(-999=未回调, 0=SUCCESS, -1=ERROR)');
     b.writeln('lastSpeakReturn  : ${state['ttsLastSpeakReturn']} '
         '(0=success, -1=error)');
+    b.writeln('pendingSpeakActive: ${state['pendingSpeakActive']} '
+        '(v1.13.8: true=SPEAK 正在等 TTS init 完成)');
     b.writeln();
     b.writeln('=== onStartCommand ===');
     b.writeln('count            : ${state['onStartCommandCount']}');
