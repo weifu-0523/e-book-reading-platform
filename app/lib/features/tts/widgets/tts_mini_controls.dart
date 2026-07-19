@@ -26,28 +26,26 @@ import '../providers/tts_playback_controller.dart';
 /// composer tests when no playback is queued. When any other phase is
 /// active, shows a single-row bar with:
 ///
-/// * 上一句 (skip_previous) — disabled at queue head
 /// * 暂停 / 恢复 (pause / play_arrow) — toggles on phase
-/// * 下一句 (skip_next) — disabled at queue tail
-/// * 停止 (stop) — calls [TtsPlaybackController.stop] + invokes [onStopped]
-/// * 关闭 (close) — also calls stop (UX redundancy; see known issue below)
+/// * 关闭 (close) — calls [TtsPlaybackController.stop] + invokes [onStopped]
 /// * `${currentIndex + 1} / ${queueLength}` counter
 ///
-/// T6 (2026-07-19): the [onStopped] callback lets the host widget react
-/// after stop completes — e.g. reader_body could close a side panel or
-/// surface a confirmation toast. The callback is invoked once per stop
-/// tap. The widget itself relies on [TtsPhase.idle] for hiding; the
-/// callback is purely an opt-in side-channel.
+/// v1.13.8-alpha Bug 1: removed skip_previous / skip_next / stop buttons
+/// per user feedback. Multi-sentence playback auto-advances by sentence
+/// boundary, so manual sentence skip was unhelpful; "停止" and "关闭"
+/// collapsed into a single 关闭 button (TtsPlaybackController.stop already
+/// clears the queue + resets phase to idle, so the bar disappears on its
+/// own — no semantic distinction needed).
 ///
-/// Known minor: 停止 and 关闭 both invoke `stop()`. The plan called for
-/// semantic distinction (stop = halt + retain queue position; close = halt
-/// + dismiss bar), but [TtsPlaybackController.stop] already clears the
-/// queue, so both end up equivalent. Will revisit if user feedback wants
-/// different semantics.
+/// The [onStopped] callback lets the host widget react after stop
+/// completes — e.g. reader_body could close a side panel or surface a
+/// confirmation toast. The callback is invoked once per 关闭 tap. The
+/// widget itself relies on [TtsPhase.idle] for hiding; the callback is
+/// purely an opt-in side-channel.
 class TtsMiniControls extends ConsumerWidget {
   const TtsMiniControls({super.key, this.onStopped});
 
-  /// Optional callback fired after the 停止 (or 关闭) button calls
+  /// Optional callback fired after the 关闭 button calls
   /// [TtsPlaybackController.stop]. Use it for host-specific cleanup
   /// (close panels, surface toasts, etc.). The widget's own visibility
   /// is driven by the playback phase transition back to idle.
@@ -59,8 +57,6 @@ class TtsMiniControls extends ConsumerWidget {
     if (state.phase == TtsPhase.idle) return const SizedBox.shrink();
 
     final notifier = ref.read(ttsPlaybackControllerProvider.notifier);
-    final canSkipPrev = state.currentIndex > 0;
-    final canSkipNext = state.currentIndex + 1 < state.queueLength;
     final isPaused = state.phase == TtsPhase.paused;
 
     Future<void> doStop() async {
@@ -77,11 +73,6 @@ class TtsMiniControls extends ConsumerWidget {
       child: Row(
         children: [
           IconButton(
-            tooltip: '上一句',
-            icon: const Icon(Icons.skip_previous),
-            onPressed: canSkipPrev ? () => notifier.skipPrevious() : null,
-          ),
-          IconButton(
             tooltip: isPaused ? '恢复' : '暂停',
             icon: Icon(isPaused ? Icons.play_arrow : Icons.pause),
             onPressed: () {
@@ -91,16 +82,6 @@ class TtsMiniControls extends ConsumerWidget {
                 notifier.pause();
               }
             },
-          ),
-          IconButton(
-            tooltip: '下一句',
-            icon: const Icon(Icons.skip_next),
-            onPressed: canSkipNext ? () => notifier.skipNext() : null,
-          ),
-          IconButton(
-            tooltip: '停止',
-            icon: const Icon(Icons.stop),
-            onPressed: () => doStop(),
           ),
           IconButton(
             tooltip: '关闭',
