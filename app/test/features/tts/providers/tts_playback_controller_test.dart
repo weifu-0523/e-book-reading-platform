@@ -657,7 +657,10 @@ void main() {
       final container = ProviderContainer(overrides: [
         ttsServiceProvider.overrideWithValue(mockSvc),
         ttsSettingsProvider.overrideWith((ref) {
-          final notifier = TtsSettingsNotifier(core.globalTtsSettingsDirOverride!)
+          final notifier = TtsSettingsNotifier(
+            core.globalTtsSettingsDirOverride!,
+            mockSvc,
+          )
             ..setRate(0.5)
             ..setPitch(1.5)
             ..setVolume(0.7);
