@@ -213,6 +213,8 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "onStartCommandCount" to ZhiYueTtsService.onStartCommandCount,
             "lastStartCommandAction" to ZhiYueTtsService.lastStartCommandAction,
             "utteranceCallbacks" to ZhiYueTtsService.utteranceCallbacks.toList(),
+            // v1.13.8-alpha Bug 2: deferred SPEAK indicator (init race).
+            "pendingSpeakActive" to ZhiYueTtsService.pendingSpeakActive,
             // v1.13.5-alpha: MethodChannel callback pipeline diagnostics.
             "onListenCalled" to onListenCalled,
             "realEventSinkReady" to (channel != null),

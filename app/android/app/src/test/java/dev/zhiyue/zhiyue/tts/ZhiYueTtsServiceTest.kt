@@ -39,6 +39,18 @@ class ZhiYueTtsServiceTest {
         return service
     }
 
+    /// v1.13.8-alpha Bug 2: createService + onCreate + simulate TTS init
+    /// SUCCESS. Use this for tests that exercise handleSpeak's normal path
+    /// (i.e. SPEAK should reach tts.speak and update playback state).
+    /// Tests that exercise the init-race defer path use plain [createService]
+    /// + [simulateInitNotReady] instead.
+    private fun createReadyService(): ZhiYueTtsService {
+        val service = createService()
+        service.onCreate()
+        service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.SUCCESS)
+        return service
+    }
+
     @Test
     fun `service lifecycle - onCreate then onDestroy does not throw`() {
         // T6 skeleton: service has empty onCreate/onDestroy. Robolectric lets us
@@ -94,8 +106,7 @@ class ZhiYueTtsServiceTest {
 
     @Test
     fun `SPEAK intent updates PlaybackState to STATE_PLAYING`() {
-        val service = createService()
-        service.onCreate()
+        val service = createReadyService()
         val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
             .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
             .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
@@ -111,8 +122,7 @@ class ZhiYueTtsServiceTest {
 
     @Test
     fun `PAUSE intent updates PlaybackState to STATE_PAUSED`() {
-        val service = createService()
-        service.onCreate()
+        val service = createReadyService()
         // 先 SPEAK 让 state 变 PLAYING（更接近真实场景）
         val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
             .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
@@ -132,8 +142,7 @@ class ZhiYueTtsServiceTest {
 
     @Test
     fun `STOP intent updates PlaybackState to STATE_STOPPED and deactivates session`() {
-        val service = createService()
-        service.onCreate()
+        val service = createReadyService()
         val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
             .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
             .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
@@ -172,8 +181,7 @@ class ZhiYueTtsServiceTest {
 
     @Test
     fun `SPEAK intent captures rate pitch volume from extras (Bug 4)`() {
-        val service = createService()
-        service.onCreate()
+        val service = createReadyService()
         val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
             .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
             .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
@@ -202,8 +210,7 @@ class ZhiYueTtsServiceTest {
 
     @Test
     fun `SPEAK intent defaults rate pitch volume to 1_0 when extras missing (Bug 4)`() {
-        val service = createService()
-        service.onCreate()
+        val service = createReadyService()
         val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
             .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
             .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
@@ -317,12 +324,16 @@ class ZhiYueTtsServiceTest {
 
     /// Builds a service with a real plugin attached so emit() reaches
     /// countable counters. Returns (service, plugin) for assertions.
+    /// v1.13.8-alpha Bug 2: drives TTS init SUCCESS so handleSpeak's init
+    /// guard doesn't deflect — callers that want to simulate the init race
+    /// use [simulateInitNotReady] after this returns.
     private fun createServiceWithPlugin(): Pair<ZhiYueTtsService, ZhiYueTtsPlugin> {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
         val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
         ZhiYueTtsPlugin.setInstanceForTest(plugin)
         val service = createService()
         service.onCreate()
+        service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.SUCCESS)
         return service to plugin
     }
 
@@ -417,6 +428,182 @@ class ZhiYueTtsServiceTest {
             org.junit.Assert.assertNotNull(
                 "playing notification must show a '暂停' (pause) action",
                 toggleAction
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    // ---- v1.13.8-alpha Bug 2: TTS init race. handleSpeak must defer SPEAK
+    // intents that arrive before TextToSpeech.onInit(SUCCESS), and flush
+    // them when init completes. Without this guard, tts.speak() returns -1
+    // ERROR, UtteranceProgressListener fires nothing, and Dart's _speakCurrent
+    // hangs in loading forever — manifesting as "playback starts from
+    // beginning" when the user re-triggers playback. ----
+
+    /// Resets the companion init flag to its "callback never fired" value
+    /// (-999) so handleSpeak's init guard deflects the next SPEAK intent.
+    /// The init callback itself is async on real devices; in Robolectric we
+    /// never invoke it for these tests, simulating the race window.
+    private fun simulateInitNotReady() {
+        ZhiYueTtsService.ttsInitStatus = -999
+        ZhiYueTtsService.pendingSpeakActive = false
+    }
+
+    @Test
+    fun `SPEAK before TTS init defers to pendingSpeak without applying rate (Bug 2 happy defer)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            simulateInitNotReady()
+            val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+                .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 3)
+                .putExtra(ZhiYueTtsService.EXTRA_RATE, 1.5)
+            service.onStartCommand(speakIntent, 0, 1)
+
+            org.junit.Assert.assertNotNull(
+                "deferred intent should be cached on pendingSpeak",
+                service.pendingSpeakForTest
+            )
+            org.junit.Assert.assertTrue(
+                "companion pendingSpeakActive must reflect defer state",
+                ZhiYueTtsService.pendingSpeakActive
+            )
+            org.junit.Assert.assertEquals(
+                "handleSpeak must NOT apply rate when deferring (early return)",
+                0f,
+                service.lastAppliedRateForTest
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `TTS init SUCCESS flushes pendingSpeak and applies rate (Bug 2 flush)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            simulateInitNotReady()
+            val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+                .putExtra(ZhiYueTtsService.EXTRA_LOCALE, "zh-CN")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+                .putExtra(ZhiYueTtsService.EXTRA_RATE, 1.7)
+            service.onStartCommand(speakIntent, 0, 1)
+            org.junit.Assert.assertNotNull(service.pendingSpeakForTest)
+
+            // Drive the init callback as if TextToSpeech had just become ready.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.SUCCESS)
+
+            org.junit.Assert.assertNull(
+                "pendingSpeak must be cleared after init flush",
+                service.pendingSpeakForTest
+            )
+            org.junit.Assert.assertFalse(
+                "companion pendingSpeakActive must reset after flush",
+                ZhiYueTtsService.pendingSpeakActive
+            )
+            org.junit.Assert.assertEquals(
+                "flushed handleSpeak must apply the deferred rate",
+                1.7f,
+                service.lastAppliedRateForTest
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `multiple SPEAK before init - last overwrites earlier (Bug 2 QUEUE_FLUSH)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            simulateInitNotReady()
+            val first = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "第一句")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+            val second = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "第二句")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 1)
+            service.onStartCommand(first, 0, 1)
+            service.onStartCommand(second, 0, 2)
+
+            val deferred = service.pendingSpeakForTest
+            org.junit.Assert.assertNotNull(deferred)
+            org.junit.Assert.assertEquals(
+                "later SPEAK must overwrite pending (QUEUE_FLUSH semantics)",
+                "第二句",
+                deferred?.getStringExtra(ZhiYueTtsService.EXTRA_TEXT)
+            )
+            org.junit.Assert.assertEquals(
+                "sentenceIndex of the last deferred intent wins",
+                1,
+                deferred?.getIntExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, -1)
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `STOP before init clears pendingSpeak so late init does not resurrect (Bug 2 stop-cancel)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            simulateInitNotReady()
+            val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+            service.onStartCommand(speakIntent, 0, 1)
+            org.junit.Assert.assertNotNull(service.pendingSpeakForTest)
+
+            val stopIntent = android.content.Intent(ZhiYueTtsService.ACTION_STOP)
+            service.onStartCommand(stopIntent, 0, 2)
+            org.junit.Assert.assertNull(
+                "STOP must clear pendingSpeak",
+                service.pendingSpeakForTest
+            )
+            org.junit.Assert.assertFalse(
+                "companion pendingSpeakActive must reset on STOP",
+                ZhiYueTtsService.pendingSpeakActive
+            )
+
+            // Even if a late init callback arrives now, it must not resurrect playback.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.SUCCESS)
+            org.junit.Assert.assertNull(
+                "late init must not re-arm pendingSpeak",
+                service.pendingSpeakForTest
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `TTS init FAILED does not flush pendingSpeak (Bug 2 init-failed)`() {
+        val (service, _) = createServiceWithPlugin()
+        try {
+            simulateInitNotReady()
+            val speakIntent = android.content.Intent(ZhiYueTtsService.ACTION_SPEAK)
+                .putExtra(ZhiYueTtsService.EXTRA_TEXT, "测试")
+                .putExtra(ZhiYueTtsService.EXTRA_SENTENCE_INDEX, 0)
+            service.onStartCommand(speakIntent, 0, 1)
+            org.junit.Assert.assertNotNull(service.pendingSpeakForTest)
+
+            // Engine reports failure: pending must remain, so the user's
+            // next app restart triggers a fresh service that may init OK.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.junit.Assert.assertNotNull(
+                "init FAILURE must not flush pendingSpeak (avoids replay of broken state)",
+                service.pendingSpeakForTest
+            )
+            org.junit.Assert.assertTrue(
+                "companion pendingSpeakActive stays true on init failure",
+                ZhiYueTtsService.pendingSpeakActive
             )
             service.onDestroy()
         } finally {

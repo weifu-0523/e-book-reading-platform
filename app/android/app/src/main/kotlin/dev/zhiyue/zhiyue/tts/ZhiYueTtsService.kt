@@ -100,6 +100,39 @@ class ZhiYueTtsService : Service() {
     internal var lastAppliedVolumeForTest: Float = 0f
         private set
 
+    /// v1.13.8-alpha Bug 2: SPEAK intent that arrived before TTS init
+    /// completed. handleSpeak defers here instead of calling tts.speak()
+    /// (which would return -1 ERROR and never trigger UtteranceProgressListener).
+    /// The init callback flushes this when status == SUCCESS.
+    ///
+    /// Setter keeps [Companion.pendingSpeakActive] in sync so buildDebugState
+    /// (read from ZhiYueTtsPlugin, which only sees companion fields) reports
+    /// the current defer state without exposing the Intent itself.
+    private var _pendingSpeak: Intent? = null
+    private var pendingSpeak: Intent?
+        get() = _pendingSpeak
+        set(value) {
+            _pendingSpeak = value
+            pendingSpeakActive = value != null
+        }
+
+    /// Test-only accessor for the deferred intent (null when no pending).
+    internal val pendingSpeakForTest: Intent?
+        get() = _pendingSpeak
+
+    /// v1.13.8-alpha Bug 2: TTS init listener extracted as a field so tests
+    /// can replay init callback timing. Production wires it in onCreate
+    /// before constructing TextToSpeech; tests call
+    /// [simulateTtsInitCallbackForTest] to drive the post-init path without
+    /// relying on Robolectric's ShadowTextToSpeech timing.
+    private var ttsInitListener: ((Int) -> Unit)? = null
+
+    /// Test-only: invokes the captured TTS init listener with [status].
+    /// No-op if onCreate hasn't run yet (listener is null).
+    internal fun simulateTtsInitCallbackForTest(status: Int) {
+        ttsInitListener?.invoke(status)
+    }
+
     override fun onCreate() {
         super.onCreate()
         debugLog("onCreate start")
@@ -114,7 +147,9 @@ class ZhiYueTtsService : Service() {
                 debugLog("WARN: ZhiYueTtsPlugin.instance is null in onCreate")
             }
             debugLog("before TextToSpeech ctor")
-            tts = TextToSpeech(this) { status ->
+            // v1.13.8-alpha Bug 2: extract the init listener to a field so
+            // tests can drive init callback timing deterministically.
+            ttsInitListener = { status ->
                 ttsInitStatus = status
                 debugLog("TTS init callback status=$status")
                 if (status == TextToSpeech.SUCCESS) {
@@ -136,11 +171,22 @@ class ZhiYueTtsService : Service() {
                             emit(mapOf("event" to "error", "utteranceId" to (utteranceId ?: "")))
                         }
                     })
+                    // v1.13.8-alpha Bug 2: flush any SPEAK that arrived before
+                    // init completed. handleSpeak defers such intents to
+                    // pendingSpeak instead of calling tts.speak() (which would
+                    // return -1 ERROR and never fire UtteranceProgressListener,
+                    // leaving Dart's _speakCurrent stuck in loading forever).
+                    pendingSpeak?.let { deferred ->
+                        pendingSpeak = null
+                        debugLog("flushing pending SPEAK after TTS init")
+                        handleSpeak(deferred)
+                    }
                 } else {
                     debugLog("TTS init FAILED status=$status")
                     Log.e(TAG, "TextToSpeech init failed status=$status")
                 }
             }
+            tts = TextToSpeech(this, ttsInitListener!!)
             debugLog("after TextToSpeech ctor, tts=$tts")
             mediaSession = MediaSessionCompat(this, "zhiyue-tts").apply {
                 setFlags(
@@ -224,6 +270,20 @@ class ZhiYueTtsService : Service() {
             debugLog("handleSpeak ABORT: tts is null")
             return
         }
+        // v1.13.8-alpha Bug 2: TTS init race. If the engine hasn't called
+        // onInit(SUCCESS) yet, queue this intent and bail. The init callback
+        // will flush it. Without this guard, tts.speak() returns -1 (ERROR),
+        // UtteranceProgressListener fires nothing, and Dart's _speakCurrent
+        // hangs in loading forever — manifesting as "playback starts from
+        // beginning" when the user re-triggers playback. Diagnostic signature:
+        //   setLanguage(zh-CN) -> -2 (NOT_SUPPORTED)
+        //   speak() returned -1 (ERROR)
+        //   TTS init callback status=0    ← arrives ~50ms AFTER the failed speak
+        if (ttsInitStatus != TextToSpeech.SUCCESS) {
+            debugLog("handleSpeak DEFER: tts not ready (initStatus=$ttsInitStatus), queuing intent")
+            pendingSpeak = intent
+            return
+        }
         val locale = intent.getStringExtra(EXTRA_LOCALE) ?: "zh-CN"
         val idx = intent.getIntExtra(EXTRA_SENTENCE_INDEX, 0)
         // v1.13.7-alpha Bug 4: apply rate/pitch/volume from Intent extras.
@@ -293,6 +353,9 @@ class ZhiYueTtsService : Service() {
     }
 
     private fun handleStop() {
+        // v1.13.8-alpha Bug 2: drop any deferred SPEAK so a late TTS init
+        // callback doesn't resurrect a playback the user just stopped.
+        pendingSpeak = null
         tts?.stop()
         updatePlaybackState(PlaybackStateCompat.STATE_STOPPED)
         mediaSession?.isActive = false
@@ -556,6 +619,13 @@ class ZhiYueTtsService : Service() {
         // the user can see why multi-sentence playback "used to fail" if it
         // regresses.
         var phoneStateListenerSetupSkipped: Boolean = false
+
+        // v1.13.8-alpha Bug 2: true iff a SPEAK intent is currently deferred
+        // in pendingSpeak (waiting for TTS init callback). Surfaced via
+        // getDebugState so the user can confirm whether playback stalled
+        // because of init race vs. some other failure. Reset to false on
+        // flush (init SUCCESS) or handleStop.
+        var pendingSpeakActive: Boolean = false
 
         fun debugLog(msg: String) {
             val ts = System.currentTimeMillis()
