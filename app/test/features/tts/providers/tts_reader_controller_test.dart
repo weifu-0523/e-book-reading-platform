@@ -431,6 +431,81 @@ void main() {
     });
   });
 
+  // v1.13.10-alpha Bug 2: for some EPUBs the renderer's selection plainText
+  // and BookTextExtractor's chapterText differ by whitespace only — strict
+  // indexOf fails, old code fell back to sentence 0 (chapter beginning).
+  // The whitespace-insensitive fallback in _locateSelectionStartIndex
+  // recovers the correct start offset for those books.
+  group(
+      'TtsReaderController.startFromSelection whitespace fallback (v1.13.10-alpha Bug 2)',
+      () {
+    test('selection with newline-instead-of-space still finds correct sentence',
+        () async {
+      // chapterText uses single space; selectedText uses newline.
+      final container = buildContainer(
+        chapterText: 'First sentence. Second one. Third one.',
+        engine: _FakeReaderEngine(),
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      // Selection has \n instead of space between "Second" and "one".
+      // Strict indexOf would fail; fallback should still match sentence 1.
+      await container
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: 'Second\none.');
+
+      expect(container.read(ttsPlaybackControllerProvider).currentIndex, 1);
+      expect(container.read(ttsReaderControllerProvider).isActive, isTrue);
+      verify(() => svc.speakSentence(any())).called(1);
+    });
+
+    test('selection with single-space vs chapter double-space finds match',
+        () async {
+      // chapterText has double space between sentences; selectedText has single.
+      final container = buildContainer(
+        chapterText: 'First  sentence. Second one.',
+        engine: _FakeReaderEngine(),
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      // Selection has single space; chapterText has double space.
+      await container
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: 'First sentence.');
+
+      expect(container.read(ttsPlaybackControllerProvider).currentIndex, 0);
+      expect(container.read(ttsReaderControllerProvider).isActive, isTrue);
+    });
+
+    test('selection with extra chars not in chapter still falls back to 0',
+        () async {
+      // chapterText and selectedText differ in a non-whitespace way — fallback
+      // should NOT match, and we still return 0 (chapter beginning).
+      final container = buildContainer(
+        chapterText: '你好。',
+        engine: _FakeReaderEngine(),
+        bookId: 'b1',
+        chapterIdx: 0,
+      );
+      addTearDown(container.dispose);
+      container.listen(ttsPlaybackControllerProvider, (_, __) {});
+
+      // '你好 世界。' has '世界' which is NOT in chapterText '你好。'.
+      // Whitespace-insensitive search should still fail.
+      await container
+          .read(ttsReaderControllerProvider.notifier)
+          .startFromSelection(selectedText: '你好 世界。');
+
+      expect(container.read(ttsPlaybackControllerProvider).currentIndex, 0);
+    });
+  });
+
   group('TtsReaderController._onPlaybackChange persistence', () {
     test('writes last_tts_position to BooksDao when speaking', () async {
       final container = buildContainer(

@@ -180,7 +180,16 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
     required String selectedText,
   }) {
     if (selectedText.isEmpty) return 0;
-    final startOffset = chapterText.indexOf(selectedText);
+    var startOffset = chapterText.indexOf(selectedText);
+    // v1.13.10-alpha Bug 2: whitespace-insensitive fallback for EPUBs
+    // whose renderer plainText differs from BookTextExtractor output by
+    // whitespace only. Without this, indexOf returns -1 and we fall back
+    // to sentence 0 (chapter beginning) — manifesting as "selection朗读
+    // from chapter head" for some books.
+    if (startOffset < 0) {
+      startOffset = _findSelectionStartWhitespaceInsensitive(
+          chapterText, selectedText);
+    }
     if (startOffset < 0) return 0;
     for (var i = 0; i < sentences.length; i++) {
       final s = sentences[i];
@@ -194,6 +203,45 @@ class TtsReaderController extends StateNotifier<TtsReaderState> {
       if (sentences[i].charStart > startOffset) return i;
     }
     return 0;
+  }
+
+  /// v1.13.10-alpha Bug 2: whitespace-insensitive search fallback.
+  ///
+  /// Strips all whitespace from [selectedText], builds a regex that allows
+  /// any whitespace between each non-whitespace char, and returns the
+  /// start offset of the first match in [chapterText]. Returns -1 if no
+  /// match.
+  ///
+  /// Used when the strict `String.indexOf` in [_locateSelectionStartIndex]
+  /// fails. For some EPUB chapters the renderer's selection plainText and
+  /// the BookTextExtractor's chapterText differ only in whitespace (e.g.,
+  /// newlines vs spaces, multiple spaces collapsed, leading/trailing).
+  /// Without this fallback, indexOf returns -1 and playback starts from
+  /// chapter beginning (sent_0) — symptom: "selection朗读 from chapter
+  /// head" for 2/3 test books.
+  ///
+  /// Algorithm:
+  ///   1. Strip all whitespace from selectedText → nonWs.
+  ///   2. If nonWs has fewer than 3 chars, bail (too short to be unique).
+  ///   3. Truncate to first 30 chars (plenty for uniqueness in a typical
+  ///      chapter; keeps regex small).
+  ///   4. Escape each char as regex literal, join with `\s*`.
+  ///   5. Return the start offset of the first match in chapterText, or -1.
+  ///
+  /// Why not normalize both texts and indexOf? After normalization the
+  /// matched offset no longer maps back to the original chapterText — but
+  /// `sentences[i].charStart/charEnd` use original offsets. The regex
+  /// approach preserves the offset mapping.
+  static int _findSelectionStartWhitespaceInsensitive(
+    String chapterText,
+    String selectedText,
+  ) {
+    final nonWs = selectedText.replaceAll(RegExp(r'\s+'), '');
+    if (nonWs.length < 3) return -1;
+    final key = nonWs.length > 30 ? nonWs.substring(0, 30) : nonWs;
+    final pattern = key.split('').map(RegExp.escape).join(r'\s*');
+    final match = RegExp(pattern).firstMatch(chapterText);
+    return match?.start ?? -1;
   }
 
   /// Shared setup for [start] and [startFromSelection]: resolves the
