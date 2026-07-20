@@ -32,6 +32,7 @@ import '../features/settings/pages/settings_page.dart';
 import '../features/settings/pages/typography_profiles_page.dart';
 import '../features/sync/pages/sync_settings_page.dart';
 import '../features/sync/pages/sync_status_page.dart';
+import '../features/tts/pages/voice_list_page.dart';
 import 'app_providers.dart';
 
 /// 应用路由配置。
@@ -96,6 +97,10 @@ GoRouter createAppRouter() {
       GoRoute(
         path: '/settings/about',
         builder: (context, state) => const AboutPage(),
+      ),
+      GoRoute(
+        path: '/settings/tts/voice',
+        builder: (context, state) => const VoiceListPage(),
       ),
       GoRoute(
         path: '/settings/sync',

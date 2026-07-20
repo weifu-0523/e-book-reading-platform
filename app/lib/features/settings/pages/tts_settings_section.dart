@@ -16,6 +16,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/tts/sentence_segmenter.dart';
@@ -88,6 +89,16 @@ class TtsSettingsSection extends ConsumerWidget {
             label: settings.volume.toStringAsFixed(1),
             onChanged: notifier.setVolume,
           ),
+        ),
+        // v1.14.0-alpha T6: tile routing to VoiceListPage where the user
+        // picks one of the platform-exposed voices or falls back to system
+        // default.
+        ListTile(
+          leading: const Icon(Icons.record_voice_over),
+          title: Text(l10n.ttsSettingsVoiceTile),
+          subtitle: Text(l10n.ttsSettingsVoiceTileSubtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/settings/tts/voice'),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

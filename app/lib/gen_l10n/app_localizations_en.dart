@@ -57,6 +57,36 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ttsTestSpeechText => 'This is a TTS test sentence. 这是一段测试朗读文本。';
 
   @override
+  String get ttsVoiceListTitle => 'Read Aloud Voice';
+
+  @override
+  String get ttsVoiceSystemDefault => 'System Default';
+
+  @override
+  String get ttsVoicePreview => 'Preview';
+
+  @override
+  String get ttsVoiceEmptyHint => 'No selectable voices on this device. Install a TTS engine in system TTS settings (e.g. iFlytek, Baidu, Google TTS).';
+
+  @override
+  String get ttsVoiceOpenSystemSettings => 'Open System TTS Settings';
+
+  @override
+  String get ttsVoiceOpenSystemFailed => 'Could not open system settings; please open it manually.';
+
+  @override
+  String get ttsVoiceLoadError => 'Failed to load voice list';
+
+  @override
+  String get retry => 'Retry';
+
+  @override
+  String get ttsSettingsVoiceTile => 'Read Aloud Voice';
+
+  @override
+  String get ttsSettingsVoiceTileSubtitle => 'Pick the default read-aloud voice';
+
+  @override
   String get settingsTypographyProfiles => 'Typography Profiles';
 
   @override

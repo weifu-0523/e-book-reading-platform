@@ -194,6 +194,66 @@ abstract class AppLocalizations {
   /// **'这是一段测试朗读文本。This is a TTS test.'**
   String get ttsTestSpeechText;
 
+  /// No description provided for @ttsVoiceListTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'朗读声音'**
+  String get ttsVoiceListTitle;
+
+  /// No description provided for @ttsVoiceSystemDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统默认'**
+  String get ttsVoiceSystemDefault;
+
+  /// No description provided for @ttsVoicePreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'试听'**
+  String get ttsVoicePreview;
+
+  /// No description provided for @ttsVoiceEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前设备未提供可选声音。请在系统 TTS 设置里安装引擎（如讯飞语音+、百度语音、Google TTS）。'**
+  String get ttsVoiceEmptyHint;
+
+  /// No description provided for @ttsVoiceOpenSystemSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开系统 TTS 设置'**
+  String get ttsVoiceOpenSystemSettings;
+
+  /// No description provided for @ttsVoiceOpenSystemFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法打开系统设置，请手动前往'**
+  String get ttsVoiceOpenSystemFailed;
+
+  /// No description provided for @ttsVoiceLoadError.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载声音列表失败'**
+  String get ttsVoiceLoadError;
+
+  /// No description provided for @retry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get retry;
+
+  /// No description provided for @ttsSettingsVoiceTile.
+  ///
+  /// In zh, this message translates to:
+  /// **'朗读声音'**
+  String get ttsSettingsVoiceTile;
+
+  /// No description provided for @ttsSettingsVoiceTileSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择默认朗读声音'**
+  String get ttsSettingsVoiceTileSubtitle;
+
   /// No description provided for @settingsTypographyProfiles.
   ///
   /// In zh, this message translates to:

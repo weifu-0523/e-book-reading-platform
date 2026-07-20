@@ -57,6 +57,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get ttsTestSpeechText => '这是一段测试朗读文本。This is a TTS test.';
 
   @override
+  String get ttsVoiceListTitle => '朗读声音';
+
+  @override
+  String get ttsVoiceSystemDefault => '系统默认';
+
+  @override
+  String get ttsVoicePreview => '试听';
+
+  @override
+  String get ttsVoiceEmptyHint => '当前设备未提供可选声音。请在系统 TTS 设置里安装引擎（如讯飞语音+、百度语音、Google TTS）。';
+
+  @override
+  String get ttsVoiceOpenSystemSettings => '打开系统 TTS 设置';
+
+  @override
+  String get ttsVoiceOpenSystemFailed => '无法打开系统设置，请手动前往';
+
+  @override
+  String get ttsVoiceLoadError => '加载声音列表失败';
+
+  @override
+  String get retry => '重试';
+
+  @override
+  String get ttsSettingsVoiceTile => '朗读声音';
+
+  @override
+  String get ttsSettingsVoiceTileSubtitle => '选择默认朗读声音';
+
+  @override
   String get settingsTypographyProfiles => '排版预设';
 
   @override
