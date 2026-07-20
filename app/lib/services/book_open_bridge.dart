@@ -44,6 +44,13 @@ class BookOpenBridge {
 
   static const _channel = MethodChannel('dev.zhiyue.bookopen');
 
+  // v1.14.0-alpha T3: dedicated channel for C++-side popPendingArgv (set up
+  // by FlutterWindow.cpp OnCreate). Lives separate from dev.zhiyue.bookopen
+  // because that channel's setMethodCallHandler is owned by Dart-side
+  // openBook handler; MethodChannel only allows one handler per channel.
+  static const MethodChannel _argvChannel =
+      MethodChannel('dev.zhiyue.bookopen.argv');
+
   /// 是否是支持的电子书路径（按扩展名白名单）。
   ///
   /// 大小写不敏感；空字符串返回 false。
@@ -118,7 +125,27 @@ class BookOpenBridge {
       // 非 Android 平台 / channel 未注册 → 忽略
     }
 
-    // 2b. Warm start：监听后续推送
+    // 2b. Windows warm start：drain C++ cached_argv_（T2 setup）
+    // C++ 在 FlutterWindow::OnCreate 注册 popPendingArgv handler，
+    // 缓存最近一次 WM_COPYDATA payload（warm-start 时 Dart handler 还没注册
+    // 那一刻收到的）。这里把它弹出并 import。
+    // 非 Windows 平台：channel 未注册，invokeMethod 抛
+    // MissingPluginException，catch 静默忽略。
+    try {
+      final cached = await _argvChannel.invokeMethod<String>('popPendingArgv');
+      if (cached != null && cached.isNotEmpty && isSupportedBookPath(cached)) {
+        await handlePath(
+          path: cached,
+          importer: importer,
+          router: router,
+          options: options,
+        );
+      }
+    } catch (_) {
+      // 非 Windows 平台 / channel 未注册 → 忽略
+    }
+
+    // 2c. Warm start：监听后续推送
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'openBook' && call.arguments is String) {
         await handlePath(
