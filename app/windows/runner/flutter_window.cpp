@@ -2,8 +2,38 @@
 
 #include <optional>
 #include <string>
+#include <windows.h>
 
+#include "default_reader_registry.h"
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+
+// UTF-8 <-> UTF-16 conversion helpers. The naive byte-copy range constructor
+// std::wstring(s.begin(), s.end()) is ASCII-only AND triggers C4244 (wchar_t
+// -> char truncation) under /WX, so do it properly with the Win32 API.
+std::wstring Utf8ToWide(const std::string& s) {
+  if (s.empty()) return std::wstring();
+  int needed = MultiByteToWideChar(CP_UTF8, 0, s.c_str(),
+                                   static_cast<int>(s.size()), nullptr, 0);
+  std::wstring out(needed, L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, s.c_str(), static_cast<int>(s.size()),
+                      out.data(), needed);
+  return out;
+}
+
+std::string WideToUtf8(const std::wstring& ws) {
+  if (ws.empty()) return std::string();
+  int needed = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(),
+                                   static_cast<int>(ws.size()), nullptr, 0,
+                                   nullptr, nullptr);
+  std::string out(needed, '\0');
+  WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), static_cast<int>(ws.size()),
+                      out.data(), needed, nullptr, nullptr);
+  return out;
+}
+
+}  // namespace
 
 namespace {
 
@@ -84,6 +114,58 @@ bool FlutterWindow::OnCreate() {
             cached_argv_.clear();
             result->Success(flutter::EncodableValue(out));
           }
+          return;
+        }
+        result->NotImplemented();
+      });
+
+  // v1.14.0-alpha T4: dedicated channel for default-reader registry methods.
+  // Methods: readAssoc(ext) -> string, set_default_reader(exe_path) -> bool.
+  default_reader_channel_ = std::make_shared<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "dev.zhiyue.default_reader",
+      &flutter::StandardMethodCodec::GetInstance());
+  default_reader_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() == "readAssoc") {
+          const auto* args = call.arguments();
+          if (args != nullptr &&
+              std::holds_alternative<flutter::EncodableMap>(*args)) {
+            const auto& m = std::get<flutter::EncodableMap>(*args);
+            auto it = m.find(flutter::EncodableValue("ext"));
+            if (it != m.end() && std::holds_alternative<std::string>(it->second)) {
+              const auto& ext_utf8 = std::get<std::string>(it->second);
+              std::wstring ext_w = Utf8ToWide(ext_utf8);
+              auto cmd = zhiyue::ReadAssocForExtension(ext_w);
+              if (cmd) {
+                std::string utf8 = WideToUtf8(*cmd);
+                result->Success(flutter::EncodableValue(utf8));
+              } else {
+                result->Success(flutter::EncodableValue(std::string()));
+              }
+              return;
+            }
+          }
+          result->Error("invalid_argument", "ext required");
+          return;
+        }
+        if (call.method_name() == "set_default_reader") {
+          const auto* args = call.arguments();
+          if (args != nullptr &&
+              std::holds_alternative<flutter::EncodableMap>(*args)) {
+            const auto& m = std::get<flutter::EncodableMap>(*args);
+            auto it = m.find(flutter::EncodableValue("exe_path"));
+            if (it != m.end() && std::holds_alternative<std::string>(it->second)) {
+              const auto& exe_utf8 = std::get<std::string>(it->second);
+              std::wstring exe_w = Utf8ToWide(exe_utf8);
+              bool ok = zhiyue::SetDefaultReaderForExtension(L".epub", exe_w)
+                     && zhiyue::SetDefaultReaderForExtension(L".pdf", exe_w);
+              result->Success(flutter::EncodableValue(ok));
+              return;
+            }
+          }
+          result->Error("invalid_argument", "exe_path required");
           return;
         }
         result->NotImplemented();

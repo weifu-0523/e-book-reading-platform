@@ -57,6 +57,9 @@ class FlutterWindow : public Win32Window {
   // on dev.zhiyue.bookopen (a MethodChannel only allows one handler).
   std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>> argv_channel_;
 
+  // v1.14.0-alpha T4: handlers for readAssoc / set_default_reader.
+  std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>> default_reader_channel_;
+
   // v1.14.0-alpha T2: caches the most recent argv forwarded by a second
   // instance via WM_COPYDATA. Read + cleared by Dart via popPendingArgv
   // MethodChannel call. Defends against the race where WM_COPYDATA arrives
