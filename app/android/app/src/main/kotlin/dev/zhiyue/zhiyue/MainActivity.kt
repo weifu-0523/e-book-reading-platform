@@ -122,8 +122,35 @@ class MainActivity : FlutterActivity() {
                     result.success(pendingBookPath)
                     pendingBookPath = null
                 }
+                // v1.14.0-alpha T5: jump to system "Default apps" settings so the
+                // user can manually set ZhiYue as the .epub handler. Android does
+                // NOT allow apps to self-register; the user must flip the switch.
+                "openDefaultAppsSettings" -> {
+                    result.success(openDefaultAppsSettingsForTest(this@MainActivity))
+                }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    /// v1.14.0-alpha T5: launches ACTION_MANAGE_DEFAULT_APPS_SETTINGS.
+    /// Returns true if the Intent resolved + started; false on
+    /// ActivityNotFoundException (very old ROMs without this settings page)
+    /// so the Dart caller can fall back to a SnackBar hint.
+    ///
+    /// Test seam: takes a Context parameter so unit tests can inject a
+    /// ContextWrapper that throws, exercising the failure path. Production
+    /// callers pass `this` (the Activity).
+    @VisibleForTesting
+    fun openDefaultAppsSettingsForTest(context: android.content.Context): Boolean {
+        return try {
+            val intent = Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w("ZhiYueBookOpen", "openDefaultAppsSettings failed", e)
+            false
         }
     }
 
