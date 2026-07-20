@@ -3,6 +3,7 @@ package dev.zhiyue.zhiyue
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.annotation.VisibleForTesting
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -59,6 +60,47 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "dev.zhiyue.bookopen"
     private var pendingBookPath: String? = null
     private var methodChannel: MethodChannel? = null
+
+    /// v1.14.0-alpha T1: extensions we will preserve when copying a content
+    /// URI to cache. Must match BookOpenBridge.isSupportedBookPath on the
+    /// Dart side (lib/book_open/book_open_bridge.dart) so the deep-link
+    /// import is not silently filtered out by BookFormatDetector.
+    private val supportedExtensions = listOf(
+        ".epub", ".pdf", ".txt", ".md", ".markdown", ".mdown"
+    )
+
+    /// v1.14.0-alpha T1: infers the file extension for a content/file URI.
+    /// Order: (1) lastPathSegment (file managers expose the original
+    /// filename here, e.g. "三体.epub"), (2) ContentResolver MIME type as
+    /// a defensive fallback for URIs whose lastPathSegment has no extension.
+    /// Returns ".epub" / ".pdf" / ".txt" / ".md" / ".markdown" / ".mdown",
+    /// or "" when no supported extension can be determined.
+    @VisibleForTesting
+    fun inferExtensionFromUriForTest(uri: Uri): String {
+        // 1. lastPathSegment usually contains the original filename.
+        val last = uri.lastPathSegment ?: ""
+        val dot = last.lastIndexOf('.')
+        if (dot >= 0) {
+            val ext = last.substring(dot).lowercase()
+            if (ext in supportedExtensions) return ext
+        }
+
+        // 2. Fallback: MIME type via ContentResolver. Best-effort — if
+        // ContentResolver is unavailable (e.g. unit test without an attached
+        // Context), swallow the exception and return "".
+        val mime = try {
+            contentResolver.getType(uri)
+        } catch (_: Exception) {
+            null
+        }
+        return when (mime) {
+            "application/epub+zip" -> ".epub"
+            "application/pdf" -> ".pdf"
+            "text/plain" -> ".txt"
+            "text/markdown" -> ".md"
+            else -> ""
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -151,8 +193,9 @@ class MainActivity : FlutterActivity() {
 
     private fun copyContentToCache(uri: Uri): String? {
         return try {
+            val extension = inferExtensionFromUriForTest(uri)
             val input = contentResolver.openInputStream(uri) ?: return null
-            val tempFile = File(cacheDir, "import_${System.currentTimeMillis()}.book")
+            val tempFile = File(cacheDir, "import_${System.currentTimeMillis()}${extension}")
             tempFile.outputStream().use { output ->
                 input.use { it.copyTo(output) }
             }
