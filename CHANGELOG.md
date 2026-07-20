@@ -7,7 +7,27 @@
 
 ## [Unreleased]
 
-v1.13.11-alpha 之后的新变更将记在此处。
+v1.14.0-alpha 之后的新变更将记在此处。
+
+## [1.14.0-alpha] - 2026-07-20
+
+### Added
+
+- **TTS 多播音员声音选择**：用户长期要求"目前只有一个播音员声音，能不能多几个可选"。新增 `TtsVoice` 数据类 + `TtsService.getVoices/setVoice/previewVoice/openSystemTtsSettings` 抽象 API。Android 通过 `TextToSpeech.getVoices()` 拿系统/引擎自带声音（华为/荣耀 1 个、小米 1-2 个、Pixel 10+、Samsung SMT 因中文支持差被过滤），Windows 通过 SAPI5 拿已安装桌面声音。设置页"朗读声音"入口，列表支持系统默认 + 单声音试听 + 跳转系统 TTS 设置加声音。`TtsSettings.voiceId` 持久化（drift schema 不变，json 字段），即时同步到 engine，下一句朗读生效。`previewVoice` 完成后恢复用户原设置（不污染全局）。
+- **设为默认阅读器提示**：用户报告"打开 ZhiYue 软件时希望提示设为默认阅读器"。新增 `DefaultReaderDetector` 抽象 + 平台实现（Windows 写 HKCU `Software\Classes\.epub` / `.pdf` 不需 admin；Android 只能跳系统「默认应用」设置）。`AppSettings.promptedDefaultReader` 持久化到 `app_settings.json`，只弹一次。Settings → 关于 提供「设为默认阅读器」入口可手动重触发。
+
+### Fixed
+
+- **Android deep-link 乱码（P0）**：用户报告"在手机文件管理器点 .epub 选「用智阅打开」，出现一个全是乱码的页面，必须从书架导入才行"。根因：`MainActivity.copyContentToCache` 把 content URI 复制到临时文件时硬编码 `.book` 扩展名，破坏下游 `BookFormatDetector.detect`（要求 `.epub`）和 `BookOpenBridge.isSupportedBookPath` 白名单（不含 `.book`）。修复：新增 `inferExtensionFromUri` 从 URI `lastPathSegment`（通常含原始文件名如 `三体.epub`）推断扩展名，失败时 fallback 到 ContentResolver MIME type。临时文件名保留原始扩展名，下游检测正常工作。
+- **Windows 热启动 deep-link 失败（P1）**：用户报告"智阅已开启时双击 .epub 选「用智阅打开」无反应，关闭软件后才能打开"。根因：第二个实例通过 `WM_COPYDATA` 转发 argv 到运行中的实例，`FlutterWindow.MessageHandler` 立即 `channel_->InvokeMethod("openBook", ...)`，但 Dart 端 `setMethodCallHandler` 可能还没注册（engine 启动后几百毫秒窗口），InvokeMethod 静默丢弃消息。冷启动工作是因为 entry-point arguments 经由另一条路径。修复：`FlutterWindow` 新增 `cached_argv_` 字段缓存最新 WM_COPYDATA 载荷（无论 channel 就绪与否都缓存）；新增专用 `dev.zhiyue.bookopen.argv` MethodChannel + `popPendingArgv` 处理器；`BookOpenBridge.init` 在 `popPendingBookPath`（Android）之后调用 `popPendingArgv` 排空缓存。
+
+### Statistics
+
+- **Dart**: 1726 pass / 25 skip / 0 fail（v1.13.11-alpha 是 1676，+50 测试：4 widget + 8 default_reader + 4 voice widget + 3 voice data + 3 tts_settings_provider + 2 voice test self-built/flutter_tts + 5 tts_service + 17 misc）
+- **Kotlin Robolectric**: 43 pass / 0 fail（v1.13.11-alpha 是 37，+6：4 extension infer + 2 default apps settings）
+- **Commits since v1.13.11-alpha**: 15（fd7b6d3 → 53904ff）
+- **versionCode**: 2009（v1.13.11-alpha 是 2008）
+
 ## [1.13.11-alpha] - 2026-07-19
 
 ### Fixed
