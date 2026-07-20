@@ -66,6 +66,29 @@ bool FlutterWindow::OnCreate() {
       "dev.zhiyue.bookopen",
       &flutter::StandardMethodCodec::GetInstance());
 
+  // v1.14.0-alpha T2: dedicated channel for popPendingArgv so we don't
+  // collide with the Dart-side openBook handler on dev.zhiyue.bookopen
+  // (a MethodChannel only allows one handler at a time).
+  argv_channel_ = std::make_shared<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(),
+      "dev.zhiyue.bookopen.argv",
+      &flutter::StandardMethodCodec::GetInstance());
+  argv_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() == "popPendingArgv") {
+          if (cached_argv_.empty()) {
+            result->Success(flutter::EncodableValue(std::string()));
+          } else {
+            std::string out = cached_argv_;
+            cached_argv_.clear();
+            result->Success(flutter::EncodableValue(out));
+          }
+          return;
+        }
+        result->NotImplemented();
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -95,14 +118,20 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   // as Android (BookOpenBridge.init sets up the openBook handler).
   if (message == WM_COPYDATA) {
     auto* cds = reinterpret_cast<COPYDATASTRUCT*>(lparam);
-    if (cds != nullptr && cds->dwData == kCopyDataArgvTag && channel_) {
+    if (cds != nullptr && cds->dwData == kCopyDataArgvTag) {
       // cbData includes trailing null; size the string without it.
       std::string arg(reinterpret_cast<const char*>(cds->lpData),
                       cds->cbData > 0 ? cds->cbData - 1 : 0);
       if (IsSupportedBookPath(arg)) {
-        channel_->InvokeMethod(
-            "openBook",
-            std::make_unique<flutter::EncodableValue>(arg));
+        // v1.14.0-alpha T2: cache regardless of channel_ readiness so Dart
+        // can drain via popPendingArgv even if this InvokeMethod silently
+        // drops (handler not yet registered).
+        cached_argv_ = arg;
+        if (channel_) {
+          channel_->InvokeMethod(
+              "openBook",
+              std::make_unique<flutter::EncodableValue>(arg));
+        }
       }
     }
     return 0;  // we handled it
