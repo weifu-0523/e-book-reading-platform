@@ -21,6 +21,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/responsive_layout_builder.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../reader/providers/chapter_end_prompt_enabled_provider.dart';
+import '../default_reader/widgets/default_reader_settings_tile.dart';
 import '../widgets/language_section.dart';
 import '../widgets/theme_section.dart';
 import 'tts_settings_section.dart';
@@ -75,6 +76,7 @@ class SettingsPage extends ConsumerWidget {
               _SectionHeader(label: l10n.settingsSectionLanguage),
               const LanguageSection(),
               _SectionHeader(label: l10n.settingsSectionAbout),
+              const DefaultReaderSettingsTile(),
               ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: Text(l10n.settingsAbout),

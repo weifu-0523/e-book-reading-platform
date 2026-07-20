@@ -31,6 +31,9 @@ import 'core/providers.dart';
 import 'core/router.dart';
 import 'core/scaffold_messenger_key.dart';
 import 'data/local/file_storage.dart';
+import 'features/settings/default_reader/app_settings.dart';
+import 'features/settings/default_reader/default_reader_detector.dart';
+import 'features/settings/default_reader/default_reader_dialog_coordinator.dart';
 import 'features/sync/providers/sync_controller.dart';
 import 'services/ai/api_key_store.dart';
 import 'services/book_open_bridge.dart';
@@ -98,6 +101,9 @@ void main(List<String> args) async {
     // to FileStorage; the JSON file sits at the same level as library/,
     // covers/, fonts/ subdirs.
     globalTtsSettingsDirOverride = storage.rootDir;
+    // v1.14.0-alpha T7: AppSettingsNotifier persists app_settings.json next
+    // to tts_settings.json. Reusing rootDir mirrors the TTS pattern.
+    globalAppSettingsDirOverride = storage.rootDir;
   } catch (e) {
     // path_provider not available (e.g. widget test env) — leave as '' so
     // binary sync is disabled. App still works for the metadata-only path.
@@ -159,6 +165,24 @@ void main(List<String> args) async {
           },
         ),
       );
+
+      // v1.14.0-alpha T7: maybe prompt for default reader (first launch
+      // only). Best-effort — never block startup on this prompt.
+      try {
+        final detector = defaultReaderDetectorForPlatform();
+        final appSettingsNotifier =
+            container.read(appSettingsProvider.notifier);
+        final coordinator = DefaultReaderDialogCoordinator(
+          detector: detector,
+          settingsNotifier: appSettingsNotifier,
+        );
+        final ctx = scaffoldMessengerKey.currentContext;
+        if (ctx != null) {
+          await coordinator.maybeShow(ctx);
+        }
+      } catch (e) {
+        debugPrint('defaultReader prompt failed: $e');
+      }
     });
 
     // M2.2/T6: seed chapter-end prompt default on first launch.

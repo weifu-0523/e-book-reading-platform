@@ -66,13 +66,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ttsVoicePreview => 'Preview';
 
   @override
-  String get ttsVoiceEmptyHint => 'No selectable voices on this device. Install a TTS engine in system TTS settings (e.g. iFlytek, Baidu, Google TTS).';
+  String get ttsVoiceEmptyHint =>
+      'No selectable voices on this device. Install a TTS engine in system TTS settings (e.g. iFlytek, Baidu, Google TTS).';
 
   @override
   String get ttsVoiceOpenSystemSettings => 'Open System TTS Settings';
 
   @override
-  String get ttsVoiceOpenSystemFailed => 'Could not open system settings; please open it manually.';
+  String get ttsVoiceOpenSystemFailed =>
+      'Could not open system settings; please open it manually.';
 
   @override
   String get ttsVoiceLoadError => 'Failed to load voice list';
@@ -84,7 +86,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ttsSettingsVoiceTile => 'Read Aloud Voice';
 
   @override
-  String get ttsSettingsVoiceTileSubtitle => 'Pick the default read-aloud voice';
+  String get ttsSettingsVoiceTileSubtitle =>
+      'Pick the default read-aloud voice';
 
   @override
   String get settingsTypographyProfiles => 'Typography Profiles';
@@ -817,4 +820,31 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ttsResumePromptDismiss => 'Dismiss';
+
+  @override
+  String get defaultReaderDialogTitle => 'Set as Default Reader?';
+
+  @override
+  String get defaultReaderDialogBodyWindows =>
+      'Set ZhiYue as the default reader for .epub and .pdf files. Double-clicking these files will open them in ZhiYue and add them to your library.';
+
+  @override
+  String get defaultReaderDialogBodyAndroid =>
+      'Open system \"Default apps\" settings to set ZhiYue as the default handler for .epub files.';
+
+  @override
+  String get defaultReaderDialogDismiss => 'Maybe Later';
+
+  @override
+  String get defaultReaderDialogAccept => 'Set as Default';
+
+  @override
+  String get defaultReaderDialogOpenSettings => 'Open System Settings';
+
+  @override
+  String get defaultReaderSettingsTileTitle => 'Default Reader';
+
+  @override
+  String get defaultReaderSettingsTileSubtitle =>
+      'Manage .epub / .pdf default handler';
 }

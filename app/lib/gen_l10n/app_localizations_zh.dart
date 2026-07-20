@@ -66,7 +66,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get ttsVoicePreview => '试听';
 
   @override
-  String get ttsVoiceEmptyHint => '当前设备未提供可选声音。请在系统 TTS 设置里安装引擎（如讯飞语音+、百度语音、Google TTS）。';
+  String get ttsVoiceEmptyHint =>
+      '当前设备未提供可选声音。请在系统 TTS 设置里安装引擎（如讯飞语音+、百度语音、Google TTS）。';
 
   @override
   String get ttsVoiceOpenSystemSettings => '打开系统 TTS 设置';
@@ -802,4 +803,30 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get ttsResumePromptDismiss => '关闭';
+
+  @override
+  String get defaultReaderDialogTitle => '设为默认阅读器？';
+
+  @override
+  String get defaultReaderDialogBodyWindows =>
+      '将智阅设为 .epub 和 .pdf 文件的默认阅读器。后续双击这些文件将自动用智阅打开并加入书架。';
+
+  @override
+  String get defaultReaderDialogBodyAndroid =>
+      '在系统「默认应用」设置里将智阅设为 .epub 文件的默认打开方式。';
+
+  @override
+  String get defaultReaderDialogDismiss => '稍后再说';
+
+  @override
+  String get defaultReaderDialogAccept => '设为默认';
+
+  @override
+  String get defaultReaderDialogOpenSettings => '打开系统设置';
+
+  @override
+  String get defaultReaderSettingsTileTitle => '设为默认阅读器';
+
+  @override
+  String get defaultReaderSettingsTileSubtitle => '管理 .epub / .pdf 默认打开方式';
 }

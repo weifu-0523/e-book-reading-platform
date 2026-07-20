@@ -591,5 +591,21 @@
   "ttsResumePromptResume": "继续朗读",
   "@ttsResumePromptResume": {},
   "ttsResumePromptDismiss": "关闭",
-  "@ttsResumePromptDismiss": {}
+  "@ttsResumePromptDismiss": {},
+  "defaultReaderDialogTitle": "设为默认阅读器？",
+  "@defaultReaderDialogTitle": {},
+  "defaultReaderDialogBodyWindows": "将智阅设为 .epub 和 .pdf 文件的默认阅读器。后续双击这些文件将自动用智阅打开并加入书架。",
+  "@defaultReaderDialogBodyWindows": {},
+  "defaultReaderDialogBodyAndroid": "在系统「默认应用」设置里将智阅设为 .epub 文件的默认打开方式。",
+  "@defaultReaderDialogBodyAndroid": {},
+  "defaultReaderDialogDismiss": "稍后再说",
+  "@defaultReaderDialogDismiss": {},
+  "defaultReaderDialogAccept": "设为默认",
+  "@defaultReaderDialogAccept": {},
+  "defaultReaderDialogOpenSettings": "打开系统设置",
+  "@defaultReaderDialogOpenSettings": {},
+  "defaultReaderSettingsTileTitle": "设为默认阅读器",
+  "@defaultReaderSettingsTileTitle": {},
+  "defaultReaderSettingsTileSubtitle": "管理 .epub / .pdf 默认打开方式",
+  "@defaultReaderSettingsTileSubtitle": {}
 }

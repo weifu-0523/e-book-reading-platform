@@ -1567,6 +1567,54 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'关闭'**
   String get ttsResumePromptDismiss;
+
+  /// No description provided for @defaultReaderDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为默认阅读器？'**
+  String get defaultReaderDialogTitle;
+
+  /// No description provided for @defaultReaderDialogBodyWindows.
+  ///
+  /// In zh, this message translates to:
+  /// **'将智阅设为 .epub 和 .pdf 文件的默认阅读器。后续双击这些文件将自动用智阅打开并加入书架。'**
+  String get defaultReaderDialogBodyWindows;
+
+  /// No description provided for @defaultReaderDialogBodyAndroid.
+  ///
+  /// In zh, this message translates to:
+  /// **'在系统「默认应用」设置里将智阅设为 .epub 文件的默认打开方式。'**
+  String get defaultReaderDialogBodyAndroid;
+
+  /// No description provided for @defaultReaderDialogDismiss.
+  ///
+  /// In zh, this message translates to:
+  /// **'稍后再说'**
+  String get defaultReaderDialogDismiss;
+
+  /// No description provided for @defaultReaderDialogAccept.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为默认'**
+  String get defaultReaderDialogAccept;
+
+  /// No description provided for @defaultReaderDialogOpenSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开系统设置'**
+  String get defaultReaderDialogOpenSettings;
+
+  /// No description provided for @defaultReaderSettingsTileTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'设为默认阅读器'**
+  String get defaultReaderSettingsTileTitle;
+
+  /// No description provided for @defaultReaderSettingsTileSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理 .epub / .pdf 默认打开方式'**
+  String get defaultReaderSettingsTileSubtitle;
 }
 
 class _AppLocalizationsDelegate

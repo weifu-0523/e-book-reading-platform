@@ -450,5 +450,21 @@
   "ttsResumePromptResume": "Resume",
   "@ttsResumePromptResume": {},
   "ttsResumePromptDismiss": "Dismiss",
-  "@ttsResumePromptDismiss": {}
+  "@ttsResumePromptDismiss": {},
+  "defaultReaderDialogTitle": "Set as Default Reader?",
+  "@defaultReaderDialogTitle": {},
+  "defaultReaderDialogBodyWindows": "Set ZhiYue as the default reader for .epub and .pdf files. Double-clicking these files will open them in ZhiYue and add them to your library.",
+  "@defaultReaderDialogBodyWindows": {},
+  "defaultReaderDialogBodyAndroid": "Open system \"Default apps\" settings to set ZhiYue as the default handler for .epub files.",
+  "@defaultReaderDialogBodyAndroid": {},
+  "defaultReaderDialogDismiss": "Maybe Later",
+  "@defaultReaderDialogDismiss": {},
+  "defaultReaderDialogAccept": "Set as Default",
+  "@defaultReaderDialogAccept": {},
+  "defaultReaderDialogOpenSettings": "Open System Settings",
+  "@defaultReaderDialogOpenSettings": {},
+  "defaultReaderSettingsTileTitle": "Default Reader",
+  "@defaultReaderSettingsTileTitle": {},
+  "defaultReaderSettingsTileSubtitle": "Manage .epub / .pdf default handler",
+  "@defaultReaderSettingsTileSubtitle": {}
 }
