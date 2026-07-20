@@ -112,6 +112,21 @@ Directory? globalTtsSettingsDirOverride;
 /// (T6–T12). Lock-screen / notification / Bluetooth support is provided
 /// by the plugin, not by globals here.
 
+/// v1.14.0-alpha T6: global override for the directory backing
+/// [appSettingsDirProvider]. main.dart boot injects the app documents
+/// directory so [AppSettingsNotifier] can persist `app_settings.json`.
+/// Null in widget tests until they explicitly set it.
+Directory? globalAppSettingsDirOverride;
+
+/// v1.14.0-alpha T6: provider that backs [AppSettingsNotifier] — the
+/// directory where `app_settings.json` is written. Mirrors the
+/// [ttsSettingsDirProvider] pattern: production injects the app documents
+/// directory via [globalAppSettingsDirOverride] at boot; tests override
+/// with a temp dir.
+final appSettingsDirProvider = Provider<Directory>((ref) {
+  return globalAppSettingsDirOverride!;
+});
+
 final bookRepositoryProvider = Provider<BookRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return LocalBookRepository(
