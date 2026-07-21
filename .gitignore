@@ -86,3 +86,7 @@ run_build.bat
 pub_get_output.txt
 # 测试失败产物目录（比 app/test/goldens/failures/ 更宽，覆盖任意包的 failures/）
 **/failures/
+
+# TTS POC T1: sherpa-onnx model assets (downloaded, not committed)
+app/assets/tts-models/**/*.onnx
+app/assets/tts-models/**/*.txt
