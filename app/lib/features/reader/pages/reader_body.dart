@@ -74,6 +74,7 @@ import '../widgets/no_toolbar_selection_controls.dart';
 import '../widgets/reader_scaffold.dart';
 import '../widgets/reader_selection_sheet.dart';
 import '../widgets/reader_selection_toolbar.dart';
+import 'package:reader_engine_epub_view/src/no_selection_toolbar.dart';
 import 'reader_progress_bar.dart';
 import 'reader_typography_panel_trigger.dart';
 
@@ -776,15 +777,19 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               padding: const EdgeInsets.only(bottom: kReaderProgressBarHeight),
               child: SelectableRegion(
                 key: _selectableRegionKey,
-                // v1.14.1-alpha：禁用 Flutter 默认 selection toolbar。
-                // 否则移动端选中文字时同时弹两个卡片：
-                //   1. Flutter 框架默认（Copy / Share / Select All，长条白卡）
-                //   2. 项目自定义 ReaderSelectionToolbar（摘录/复制/朗读/问 AI）
-                // 用 [NoToolbarSelectionControls]（mix in TextSelectionHandleControls）
-                // 让框架 hideToolbar，只保留 selection handle（拖拽手柄）。
-                // 桌面端 Ctrl+C 不受影响（reader_scaffold 的 HardwareKeyboard
-                // 全局处理器接管，不依赖此 toolbar）。
+                // v1.14.2-alpha：禁用 Flutter 默认 selection context menu。
+                // 真根因：SelectionArea / SelectableRegion 默认 contextMenuBuilder
+                // 构建 AdaptiveTextSelectionToolbar（Copy/Share/SelectAll 长条白卡）。
+                // v1.14.1-alpha 修了 selectionControls（误判），但 framework 在
+                // selectable_region.dart:1374-1387 检测到 TextSelectionHandleControls
+                // mixin 后跳过 selectionControls 路径走 contextMenuBuilder 路径，
+                // 所以 selectionControls 不是真根因。
+                // 真 fix：传 emptySelectionContextMenu（返回 SizedBox.shrink），
+                // 让 contextMenu overlay 渲染为空。
+                // 同时保留 v1.14.1-alpha 的 NoToolbarSelectionControls 作为防御
+                // （即使 contextMenuBuilder 路径走通，buildToolbar 路径也不会弹）。
                 selectionControls: noToolbarSelectionControls,
+                contextMenuBuilder: emptySelectionContextMenu,
                 onSelectionChanged: _onSelectionChanged,
                 child: ReaderScaffold(
                 content: engine.build(innerContext),

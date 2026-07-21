@@ -19,43 +19,63 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 const _readerBodyPath = 'lib/features/reader/pages/reader_body.dart';
+const _epubxRendererPath = '../reader_engine_epub_view/lib/epubx_renderer.dart';
+const _selectablePageViewPath =
+    '../reader_engine_epub_view/lib/selectable_page_view.dart';
 
 void main() {
-  group('reader_body SelectableRegion selection toolbar (v1.14.1-alpha Bug)', () {
-    // Bug 摘要：v1.14.0-alpha 及之前，reader_body 的 SelectableRegion 配置了
-    // `selectionControls: materialTextSelectionControls`，导致移动端选中文字时
-    // 同时弹出两个 toolbar：
-    //  1. Flutter 框架默认 toolbar（Copy / Share / Select All，系统风格长条白卡）
-    //  2. 项目自定义 toolbar（摘录 / 复制 / 朗读 / 问 AI，由 ReaderSelectionToolbar 渲染）
+  group('reader selection context menu (v1.14.2-alpha Bug)', () {
+    // Bug 摘要：v1.14.1-alpha 之前 reader_body 的 SelectableRegion 用了
+    // materialTextSelectionControls，被误认为是「白色长条 toolbar」的来源。
+    // v1.14.1-alpha 修了 selectionControls，但用户报告「卡片还在」。
     //
-    // 修复：把 selectionControls 显式改为 null。Flutter 框架不再渲染默认 toolbar，
-    // 只剩我们自己的四按钮弹片。
+    // 真根因：SelectionArea / SelectableRegion 的 contextMenuBuilder 默认值
+    // 构建 AdaptiveTextSelectionToolbar（Copy/Share/SelectAll）。selectionControls
+    // 在 framework 检测到 TextSelectionHandleControls mixin 后完全被跳过
+    // （selectable_region.dart:1374-1387），与 toolbar 显示无关。
+    //
+    // 真修复：所有 SelectionArea 和 SelectableRegion 必须显式传
+    // `contextMenuBuilder: emptySelectionContextMenu`（来自
+    // reader_engine_epub_view/lib/src/no_selection_toolbar.dart），
+    // 让 contextMenu overlay 渲染为 SizedBox.shrink()。
     //
     // 这里做防御性静态断言（沿用 database_migration_v14_test.dart 的 degraded
-    // fallback 模式），防止未来 PR 不小心把 materialTextSelectionControls 加回来。
-    // widget test 难以稳定触发框架 toolbar 的渲染时机（pump 时机 + 选区几何），
-    // 源码断言是更稳的保护。
+    // fallback 模式），防止未来 PR 忘记传 contextMenuBuilder。
 
-    test('reader_body does NOT reference materialTextSelectionControls', () {
+    test('reader_body SelectableRegion wires emptySelectionContextMenu', () {
       final source = File(_readerBodyPath).readAsStringSync();
       expect(
         source,
-        isNot(contains('materialTextSelectionControls')),
-        reason: 'reader_body 必须禁用 Flutter 默认 selection toolbar；'
-            '选区 UI 由 ReaderSelectionToolbar 接管（摘录/复制/朗读/问 AI）。',
+        contains('emptySelectionContextMenu'),
+        reason: 'SelectableRegion 必须传 contextMenuBuilder: '
+            'emptySelectionContextMenu，否则 Flutter 框架默认 toolbar '
+            '(AdaptiveTextSelectionToolbar) 仍会显示。',
       );
     });
 
-    test(
-        'reader_body wires NoToolbarSelectionControls (handle-only, no default toolbar)',
+    test('epubx_renderer.dart all SelectionArea wire emptySelectionContextMenu',
         () {
-      final source = File(_readerBodyPath).readAsStringSync();
+      final source = File(_epubxRendererPath).readAsStringSync();
+      // 至少 4 处 SelectionArea（main paged + dual page left/right + fwfh fallback）
+      final count = 'SelectionArea('.allMatches(source).length;
+      expect(count, greaterThanOrEqualTo(4),
+          reason: 'epubx_renderer.dart 应该至少有 4 处 SelectionArea');
+      // 每处都应传 contextMenuBuilder
+      final contextMenuCount = 'emptySelectionContextMenu'.allMatches(source).length;
+      expect(contextMenuCount, greaterThanOrEqualTo(4),
+          reason: '所有 SelectionArea 必须传 contextMenuBuilder: '
+              'emptySelectionContextMenu；找到 $count 处 SelectionArea 但只有 '
+              '$contextMenuCount 处 wiring。');
+    });
+
+    test('selectable_page_view.dart SelectionArea wires emptySelectionContextMenu',
+        () {
+      final source = File(_selectablePageViewPath).readAsStringSync();
       expect(
         source,
-        contains('noToolbarSelectionControls'),
-        reason: 'SelectableRegion.selectionControls 必须使用 NoToolbarSelectionControls，'
-            '让 Flutter 框架检测到 TextSelectionHandleControls mixin 后 hideToolbar。'
-            'handles 仍由 MaterialTextSelectionControls 提供（移动端可拖动调整选区）。',
+        contains('emptySelectionContextMenu'),
+        reason: 'SelectablePageView 内的 SelectionArea 必须传 '
+            'contextMenuBuilder: emptySelectionContextMenu。',
       );
     });
   });

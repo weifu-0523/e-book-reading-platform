@@ -22,3 +22,4 @@ export 'epub_cover_extractor.dart';
 export 'html_chapter_source.dart';
 export 'plain_text_utils.dart';
 export 'src/chapter_end_event.dart';
+export 'src/no_selection_toolbar.dart';

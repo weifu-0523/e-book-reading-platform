@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine_epub_view/inline_span_subtree_slicer.dart';
+import 'package:reader_engine_epub_view/src/no_selection_toolbar.dart';
 
 /// Renders [breaks] pages of [rootSpan] using a [PageView] of
 /// [SelectableText.rich].
@@ -93,6 +94,9 @@ class SelectablePageView extends StatelessWidget {
         InlineSpanSubtreeSlicer.slice(rootSpan, b.startOffset, b.endOffset);
     return SelectionArea(
       onSelectionChanged: onSelectionChanged,
+      // v1.14.2-alpha：禁用 Flutter 默认 context menu（白色长条卡）。
+      // 项目自定义 ReaderSelectionToolbar 在 reader_body 层接管选区 UI。
+      contextMenuBuilder: emptySelectionContextMenu,
       // 2026-07-08 BUG 1：用 Text.rich 而非 SelectableText.rich。SelectableText
       // 自带 EditableText + 私有 SelectionRegistrar，嵌套在 SelectionArea 内时
       // 把 onSelectionChanged 事件吃掉，外层 listener 收不到。Text.rich 让

@@ -23,6 +23,8 @@ import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
+
+import 'src/no_selection_toolbar.dart';
 import 'package:reader_engine/core/locator.dart';
 import 'package:reader_engine/core/page_break.dart';
 import 'package:reader_engine/core/typography_settings.dart';
@@ -1360,6 +1362,9 @@ class EpubxRenderer implements EpubRenderer {
             // 订阅器调 _onSelectionChanged → _selection 设置 → toolbar 渲染。
             child: SelectionArea(
               onSelectionChanged: emitPagedSelection,
+              // v1.14.2-alpha：禁用 Flutter 默认 context menu（白色长条卡）。
+              // 项目自定义 ReaderSelectionToolbar 在 reader_body 层接管选区 UI。
+              contextMenuBuilder: emptySelectionContextMenu,
               child: Text.rich(converted.root),
             ),
           ),
@@ -1497,6 +1502,8 @@ class EpubxRenderer implements EpubRenderer {
         }
         return SelectionArea(
           onSelectionChanged: emitPagedSelection,
+          // v1.14.2-alpha：禁用 Flutter 默认 context menu（白色长条卡）。
+          contextMenuBuilder: emptySelectionContextMenu,
           child: SelectablePageView(
             rootSpan: converted.root,
             plainText: converted.plainText,
@@ -1649,6 +1656,8 @@ class EpubxRenderer implements EpubRenderer {
               Expanded(
                 child: SelectionArea(
                   onSelectionChanged: emitPagedSelection,
+                  // v1.14.2-alpha：禁用 Flutter 默认 context menu（白色长条卡）。
+                  contextMenuBuilder: emptySelectionContextMenu,
                   child: buildSinglePage(leftIdx, verticalMargin: 0),
                 ),
               ),
@@ -1657,6 +1666,8 @@ class EpubxRenderer implements EpubRenderer {
                 Expanded(
                   child: SelectionArea(
                     onSelectionChanged: emitPagedSelection,
+                    // v1.14.2-alpha：禁用 Flutter 默认 context menu（白色长条卡）。
+                    contextMenuBuilder: emptySelectionContextMenu,
                     child: buildSinglePage(rightIdx, verticalMargin: 0),
                   ),
                 ),
