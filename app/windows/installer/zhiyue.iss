@@ -4,7 +4,7 @@
 
 #define MyAppName "智阅"
 #define MyAppNameAscii "ZhiYue"
-#define MyAppVersion "1.15.0-alpha"
+#define MyAppVersion "1.15.1-alpha"
 #define MyAppPublisher "ZhiYue Open Source"
 #define MyAppURL "https://gitee.com/weifu0523/e-book-reading-platform"
 #define MyAppExeName "zhiyue.exe"

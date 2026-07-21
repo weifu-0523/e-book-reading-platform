@@ -7,7 +7,33 @@
 
 ## [Unreleased]
 
-v1.15.0-alpha 之后的新变更将记在此处。
+v1.15.1-alpha 之后的新变更将记在此处。
+
+## [1.15.1-alpha] - 2026-07-21
+
+### Fixed
+
+- **SherpaOnnx 朗读无声音 + mini control 不能关闭（v1.15.0-alpha 真机 hotfix）**：用户报告 v1.15.0-alpha 在 Android 真机切换 SherpaOnnx 引擎 → 重启 app → 选段朗读，**没声音**且**播放面板不能关闭**。代码层 3 处共因：
+  1. **`SherpaOnnxAudioPlayer.play` 用 `onPlayerComplete.first`**：audioplayers Android 部分 ROM + `BytesSource(WAV)` 模式 `onPlayerComplete` stream 不 emit（历史已知 bug），`await p.onPlayerComplete.first` 永远挂起 → `speakSentence` 永远不返回 → `state.phase` 永远 `speaking`。改用 `onPlayerStateChanged.listen` 监听 `PlayerState.completed/stopped`，并加 2x 预期时长 + 5s timeout 兜底。
+  2. **`SherpaOnnxAudioPlayer.stop` await `p.stop()`**：当 play() 卡在 audioplayers 内部 lock 时，stop() 也 await 同一个 lock 让上层 `driveStop` 卡死，UI 上"关闭"按钮按下后 mini control 不消失。改 `unawaited(p.stop().catchError(...))` fire-and-forget。
+  3. **`TtsPlaybackController.driveStop` 先 await service.stop() 再切 state**：上面 (2) 让 driveStop 永远卡。改为**先**切 `state = TtsPlaybackState(userStopped: true)` **再** await service.stop()，UI 立即响应。Service-level 错误不再 surface 为 `TtsPhase.error`（用户意图"关闭"优先于"引擎确认已停"），改 debugPrint 记录。
+
+- **诊断日志**：`SherpaOnnxTtsService.init / speakSentence / stop` + `SherpaOnnxAudioPlayer.play / stop / state-change` 关键路径全部加 `debugPrint`，用户可用 `adb logcat | grep SherpaOnnx` 抓取真机日志帮助定位后续问题。
+
+### Changed
+
+- **`driveStop` 错误处理语义变化**：v1.15.0 之前 `service.stop()` 抛错会进 `TtsPhase.error`（UI 显示 errorMessage）；v1.15.1+ 改为 phase 保持 idle + errorMessage null + debugPrint 记录。Stop 是幂等用户意图，引擎清理失败不应阻塞 UI。现有测试 `driveStop sets userStopped=true` 仍 pass，新增 `driveStop keeps phase=idle even if service.stop() throws` 覆盖回归。
+
+### Known Limitations
+
+- **真根因未在开发机复现**：v1.15.0-alpha 的 `onPlayerComplete` 不 emit 是基于 audioplayers 历史 issue 推断 + 代码分析，未在开发机 Android emulator 直接复现。v1.15.1-alpha 改动基于最可能根因，加 timeout 兜底 + 大量 debugPrint 帮助下次问题快速定位。
+- **`audioplayers.stop` fire-and-forget 副作用**：play() 卡死时 stop() 异步清理，下次 play() 可能仍受旧 AudioPlayer state 影响。当前测试未覆盖此场景，如真机仍有问题需切换到 just_audio 或 soundpool。
+
+### Statistics
+
+- **Dart**: 与 v1.15.0-alpha 持平（1751 pass）+ 1 新测试（`driveStop keeps phase=idle even if service.stop() throws`）
+- **Commits since v1.15.0-alpha**: 3（fix audio player + fix driveStop + release prep）
+- **versionCode**: 2013（v1.15.0-alpha 是 2012）
 
 ## [1.15.0-alpha] - 2026-07-21
 
