@@ -26,6 +26,18 @@ class SherpaOnnxAudioPlayer {
   AudioPlayer? _player;
   bool _stopped = false;
 
+  /// v1.15.2-alpha: optional static sink. When set by [SherpaOnnxTtsService]
+  /// via `SherpaOnnxAudioPlayer.onDebugLog = service._log;`, all internal
+  /// log lines (play / state-change / stop / error) are forwarded here in
+  /// addition to [debugPrint], so the in-app「TTS 调试日志」dialog can
+  /// capture them without adb.
+  static void Function(String)? onDebugLog;
+
+  void _emit(String message) {
+    debugPrint('[SherpaOnnxAudioPlayer] $message');
+    onDebugLog?.call('[AudioPlayer] $message');
+  }
+
   AudioPlayer get _p => _player ??= AudioPlayer();
 
   /// 播放 [samples]（范围 -1.0..1.0,mono）。
@@ -39,11 +51,8 @@ class SherpaOnnxAudioPlayer {
     await p.setReleaseMode(ReleaseMode.stop);
     await p.setVolume(1.0);
 
-    debugPrint(
-      '[SherpaOnnxAudioPlayer] play start '
-      'samples=${samples.length} sampleRate=$sampleRate '
-      'durationMs=$totalMs',
-    );
+    _emit('play start samples=${samples.length} sampleRate=$sampleRate '
+        'durationMs=$totalMs');
 
     // Subscribe BEFORE play() so we don't miss the initial state transition.
     // onPlayerStateChanged fires on every phase change; we want the terminal
@@ -53,13 +62,13 @@ class SherpaOnnxAudioPlayer {
     late StreamSubscription sub;
     sub = p.onPlayerStateChanged.listen(
       (s) {
-        debugPrint('[SherpaOnnxAudioPlayer] state=$s');
+        _emit('state=$s');
         if (s == PlayerState.completed || s == PlayerState.stopped) {
           if (!doneCompleter.isCompleted) doneCompleter.complete();
         }
       },
       onError: (Object e, StackTrace st) {
-        debugPrint('[SherpaOnnxAudioPlayer] state stream error=$e');
+        _emit('state stream error=$e');
         if (!doneCompleter.isCompleted) doneCompleter.completeError(e, st);
       },
       cancelOnError: true,
@@ -67,22 +76,20 @@ class SherpaOnnxAudioPlayer {
 
     try {
       await p.play(BytesSource(wavBytes));
-      debugPrint('[SherpaOnnxAudioPlayer] play() returned, awaiting state');
+      _emit('play() returned, awaiting state');
       // Safety timeout: 2x expected duration + 5s buffer. If audioplayers
       // silently fails to emit any state change, the caller still gets to
       // advance instead of hanging forever.
       final timeout = Duration(milliseconds: totalMs * 2 + 5000);
       await doneCompleter.future.timeout(timeout, onTimeout: () {
-        debugPrint(
-          '[SherpaOnnxAudioPlayer] state timeout after ${timeout.inMilliseconds}ms '
-          '(expected ${totalMs}ms) — forcing completion',
-        );
+        _emit('state timeout after ${timeout.inMilliseconds}ms '
+            '(expected ${totalMs}ms) — forcing completion');
       });
     } finally {
       await sub.cancel();
     }
 
-    debugPrint('[SherpaOnnxAudioPlayer] play done stopped=$_stopped');
+    _emit('play done stopped=$_stopped');
   }
 
   /// 中断当前播放。后续 play() 调用会重新开始。
@@ -95,12 +102,14 @@ class SherpaOnnxAudioPlayer {
     _stopped = true;
     final p = _player;
     if (p != null) {
-      debugPrint('[SherpaOnnxAudioPlayer] stop() issued (fire-and-forget)');
+      _emit('stop() issued (fire-and-forget)');
       unawaited(
         p.stop().catchError((Object e) {
-          debugPrint('[SherpaOnnxAudioPlayer] audioplayers.stop error=$e');
+          _emit('audioplayers.stop error=$e');
         }),
       );
+    } else {
+      _emit('stop() no-op (_player null)');
     }
   }
 

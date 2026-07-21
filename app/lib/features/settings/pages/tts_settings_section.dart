@@ -21,6 +21,7 @@ import 'package:go_router/go_router.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/tts/sentence_segmenter.dart';
 import '../../../services/tts/self_built_tts_service.dart';
+import '../../../services/tts/sherpa_onnx_tts_service.dart';
 import '../../../services/tts/tts_availability.dart';
 import '../../../services/tts/tts_engine_preference.dart';
 import '../../tts/providers/tts_engine_provider.dart';
@@ -228,8 +229,47 @@ class TtsSettingsSection extends ConsumerWidget {
   /// v1.13.1-alpha: dump plugin + service debug state. Shows a dialog with
   /// a scrollable, copy-pasteable text view so the user can screenshot or
   /// copy the contents back to the developer.
+  ///
+  /// v1.15.2-alpha: 添加 SherpaOnnxTtsService 分支 —— POC 引擎同样支持
+  /// getDebugState()，dump 当前 init/speak 状态 + ring buffer 日志。
   Future<void> _showTtsDebugLogs(WidgetRef ref, BuildContext context) async {
     final service = ref.read(ttsServiceProvider);
+
+    // v1.15.2-alpha: SherpaOnnx 分支
+    if (service is SherpaOnnxTtsService) {
+      // 不强制 re-init —— SherpaOnnx init 含 170MB asset 拷贝 + ONNX 加载
+      // (1-3s)，按需触发会让用户等几秒才看到 dialog。直接 dump 当前状态。
+      final state = await service.getDebugState();
+      if (!context.mounted) return;
+      final pretty = _prettySherpaDebugState(state);
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('TTS 调试日志'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                pretty,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     if (service is! SelfBuiltTtsServiceImpl) {
       await showDialog<void>(
         context: context,
@@ -287,6 +327,45 @@ class TtsSettingsSection extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// v1.15.2-alpha: pretty-print SherpaOnnx service state + ring buffer.
+  /// Layout mirrors [_prettyDebugState] but uses SherpaOnnx-specific keys.
+  static String _prettySherpaDebugState(Map<String, dynamic> state) {
+    final b = StringBuffer();
+    b.writeln('=== SherpaOnnx Engine ===');
+    b.writeln('engine           : ${state['engine']}');
+    b.writeln('initialized      : ${state['initialized']}');
+    b.writeln('bindingsReady    : ${state['bindingsInitialized']}');
+    b.writeln('initStartedAt    : ${state['initStartedAt'] ?? '(never)'}');
+    b.writeln('initFinishedAt   : ${state['initFinishedAt'] ?? '(running/never)'}');
+    b.writeln('initDurationMs   : ${state['initDurationMs'] ?? '-'} '
+        '(asset copy + FFI bind + ONNX load)');
+    b.writeln('initError        : ${state['initError'] ?? '(none)'}');
+    b.writeln('modelLoadMs      : ${state['modelLoadDurationMs']}');
+    b.writeln();
+    b.writeln('=== Playback ===');
+    b.writeln('speakCount       : ${state['speakCount']}');
+    b.writeln('speakFailCount   : ${state['speakFailCount']}');
+    b.writeln('currentIdx       : ${state['currentSentenceIndex']}');
+    b.writeln('stopped          : ${state['stopped']}');
+    b.writeln('rate             : ${state['rate']}');
+    b.writeln('volume           : ${state['volume']}');
+    b.writeln();
+    b.writeln('=== Service debugLogs (ring buffer, latest 200) ===');
+    final logs = state['serviceDebugLogs'];
+    if (logs is List) {
+      if (logs.isEmpty) {
+        b.writeln('(空 —— 还没触发过 init/speakSentence/stop)');
+      } else {
+        for (final line in logs) {
+          b.writeln(line);
+        }
+      }
+    } else {
+      b.writeln(logs);
+    }
+    return b.toString();
   }
 
   /// Pretty-print the debug state map as a readable multi-line string for

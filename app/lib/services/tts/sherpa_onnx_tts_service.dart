@@ -52,6 +52,18 @@ class SherpaOnnxTtsService implements TtsService {
   int _currentSentenceIndex = 0;
   bool _stopped = false;
 
+  /// v1.15.2-alpha: ring buffer of recent diagnostic log lines, surfaced in
+  /// the in-app「TTS 调试日志」dialog so users without adb can paste output
+  /// back. Cap at 200 lines; oldest evicted on overflow. Each line is
+  /// `[HH:mm:ss.SSS] message` formatted by [_log].
+  static const _debugLogCap = 200;
+  final List<String> _debugLogs = <String>[];
+  DateTime? _initStartedAt;
+  DateTime? _initFinishedAt;
+  String? _initError;
+  int _speakCount = 0;
+  int _speakFailCount = 0;
+
   @override
   bool get isInitialized => _initialized;
 
@@ -64,11 +76,62 @@ class SherpaOnnxTtsService implements TtsService {
   @override
   Stream<String> get error => _errorController.stream;
 
+  /// v1.15.2-alpha: append `[HH:mm:ss.SSS] message` to [_debugLogs] and
+  /// also forward to [debugPrint] so adb logcat still works. Trims buffer
+  /// to [_debugLogCap] on overflow. Public to allow audio player + tests
+  /// to feed log lines via a single shared sink.
+  void _log(String message) {
+    final now = DateTime.now();
+    final stamp =
+        '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}.'
+        '${now.millisecond.toString().padLeft(3, '0')}';
+    final line = '[$stamp] $message';
+    _debugLogs.add(line);
+    if (_debugLogs.length > _debugLogCap) {
+      _debugLogs.removeRange(0, _debugLogs.length - _debugLogCap);
+    }
+    debugPrint('[SherpaOnnx] $message');
+  }
+
+  /// v1.15.2-alpha: dump current state + recent log lines for the in-app
+  /// 「TTS 调试日志」dialog. Mirrors [SelfBuiltTtsServiceImpl.getDebugState]
+  /// contract but lives outside the [TtsService] interface (same as the
+  /// self-built impl — see `tts_settings_section.dart` `_showTtsDebugLogs`
+  /// dispatches by `is` type).
+  Future<Map<String, dynamic>> getDebugState() async {
+    return <String, dynamic>{
+      'engine': 'SherpaOnnx / MeloTTS-zh_en',
+      'initialized': _initialized,
+      'bindingsInitialized': _bindingsInitialized,
+      'initStartedAt': _initStartedAt?.toIso8601String(),
+      'initFinishedAt': _initFinishedAt?.toIso8601String(),
+      'initDurationMs': _initFinishedAt == null || _initStartedAt == null
+          ? null
+          : _initFinishedAt!.difference(_initStartedAt!).inMilliseconds,
+      'initError': _initError,
+      'modelLoadDurationMs': _modelLoadDuration.inMilliseconds,
+      'speakCount': _speakCount,
+      'speakFailCount': _speakFailCount,
+      'rate': _rate,
+      'volume': _volume,
+      'currentSentenceIndex': _currentSentenceIndex,
+      'stopped': _stopped,
+      'serviceDebugLogs': List<String>.unmodifiable(_debugLogs),
+    };
+  }
+
   @override
   Future<void> init() async {
     if (_initialized) return;
     _stateController.add(TtsState.loading);
-    debugPrint('[SherpaOnnxTtsService] init start');
+    _initStartedAt = DateTime.now();
+    _initError = null;
+    _log('init start');
+
+    // Wire audio player log forward so the dialog captures play/stop events.
+    SherpaOnnxAudioPlayer.onDebugLog = _log;
 
     try {
       // T8: measure total cold-start cost (asset copy + FFI bind + ONNX load)
@@ -82,28 +145,30 @@ class SherpaOnnxTtsService implements TtsService {
         'vits-melo-tts-zh_en',
       );
       await Directory(modelDir).create(recursive: true);
+      _log('supportDir=${supportDir.path}');
 
       for (final file in _modelFiles) {
         final destPath = p.join(modelDir, file);
         if (!await File(destPath).exists()) {
-          debugPrint('[SherpaOnnxTtsService] copying asset $file …');
+          _log('copying asset $file …');
           final data = await rootBundle.load('$_modelAssetDir/$file');
           await File(destPath).writeAsBytes(data.buffer.asUint8List());
-          debugPrint(
-              '[SherpaOnnxTtsService] $file copied (${data.lengthInBytes} bytes)');
+          _log('$file copied (${data.lengthInBytes} bytes)');
+        } else {
+          _log('$file already exists, skip copy');
         }
       }
 
       // 2. 注册 native FFI bindings（全进程一次）
       if (!_bindingsInitialized) {
-        debugPrint('[SherpaOnnxTtsService] initBindings() …');
+        _log('initBindings() …');
         sherpa_onnx.initBindings();
         _bindingsInitialized = true;
-        debugPrint('[SherpaOnnxTtsService] initBindings OK');
+        _log('initBindings OK');
       }
 
       // 3. 创建 OfflineTts 实例（加载 163MB ONNX 模型,需 1-3 秒）
-      debugPrint('[SherpaOnnxTtsService] OfflineTts ctor (loading ONNX) …');
+      _log('OfflineTts ctor (loading ONNX) …');
       _tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(
         model: sherpa_onnx.OfflineTtsModelConfig(
           vits: sherpa_onnx.OfflineTtsVitsModelConfig(
@@ -117,17 +182,20 @@ class SherpaOnnxTtsService implements TtsService {
         // 注意:sherpa_onnx API 字段名是 maxNumSenetences(原作者拼写错误)
         maxNumSenetences: 1,
       ));
-      debugPrint('[SherpaOnnxTtsService] OfflineTts OK');
+      _log('OfflineTts OK');
 
       loadSw.stop();
       _modelLoadDuration = loadSw.elapsed;
-      debugPrint(
-          '[SherpaOnnxTtsService] init done in ${loadSw.elapsedMilliseconds}ms');
+      _initFinishedAt = DateTime.now();
+      _log('init done in ${loadSw.elapsedMilliseconds}ms');
 
       _initialized = true;
       _stateController.add(TtsState.idle);
     } catch (e, st) {
-      debugPrint('[SherpaOnnxTtsService] init FAILED: $e\n$st');
+      _initError = '$e';
+      _initFinishedAt = DateTime.now();
+      _log('init FAILED: $e');
+      _log('stack: $st');
       _errorController.add('SherpaOnnx init failed: $e\n$st');
       _stateController.add(TtsState.error);
       rethrow;
@@ -136,11 +204,12 @@ class SherpaOnnxTtsService implements TtsService {
 
   @override
   Future<void> speakSentence(Sentence sentence) async {
-    debugPrint(
-        '[SherpaOnnxTtsService] speakSentence idx=$_currentSentenceIndex '
+    _speakCount++;
+    _log('speakSentence idx=$_currentSentenceIndex '
         'len=${sentence.text.length} initialized=$_initialized');
     if (!_initialized || _tts == null) {
-      debugPrint('[SherpaOnnxTtsService] speakSentence: not initialized');
+      _speakFailCount++;
+      _log('speakSentence: not initialized');
       _errorController.add('SherpaOnnx not initialized');
       _stateController.add(TtsState.error);
       return;
@@ -155,8 +224,7 @@ class SherpaOnnxTtsService implements TtsService {
       final genSw = Stopwatch()..start();
       final result = _tts!.generate(text: sentence.text, sid: 0, speed: speed);
       genSw.stop();
-      debugPrint(
-          '[SherpaOnnxTtsService] generate OK in ${genSw.elapsedMilliseconds}ms '
+      _log('generate OK in ${genSw.elapsedMilliseconds}ms '
           'samples=${result.samples.length} sampleRate=${result.sampleRate}');
 
       _progressController.add(TtsProgress(
@@ -166,19 +234,20 @@ class SherpaOnnxTtsService implements TtsService {
       ));
 
       if (_stopped) {
-        debugPrint('[SherpaOnnxTtsService] stopped before play');
+        _log('stopped before play');
         _stateController.add(TtsState.idle);
         return;
       }
 
       await _audioPlayer.play(result.samples, result.sampleRate);
-      debugPrint('[SherpaOnnxTtsService] audioPlayer.play returned '
-          'stopped=$_stopped');
+      _log('audioPlayer.play returned stopped=$_stopped');
       if (!_stopped) {
         _stateController.add(TtsState.idle);
       }
     } catch (e, st) {
-      debugPrint('[SherpaOnnxTtsService] speakSentence FAILED: $e\n$st');
+      _speakFailCount++;
+      _log('speakSentence FAILED: $e');
+      _log('stack: $st');
       _errorController.add('SherpaOnnx speak failed: $e\n$st');
       _stateController.add(TtsState.error);
     }
@@ -186,7 +255,7 @@ class SherpaOnnxTtsService implements TtsService {
 
   @override
   Future<void> stop() async {
-    debugPrint('[SherpaOnnxTtsService] stop() invoked stopped=$_stopped');
+    _log('stop() invoked stopped=$_stopped');
     _stopped = true;
     await _audioPlayer.stop();
     _stateController.add(TtsState.stopped);
