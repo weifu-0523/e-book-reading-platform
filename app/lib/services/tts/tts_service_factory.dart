@@ -5,18 +5,32 @@ import 'package:flutter/foundation.dart';
 
 import 'flutter_tts_service.dart';
 import 'self_built_tts_service.dart';
+import 'sherpa_onnx_tts_service.dart';
+import 'tts_engine_preference.dart';
 import 'tts_service.dart';
 
-/// Creates a [TtsService] appropriate for [platform].
+/// Creates a [TtsService] for [platformName] honoring [preferredEngine].
 ///
-/// - Android: [SelfBuiltTtsServiceImpl] (v1.13 — avoids plugin attach-time
-///   work that triggers Chinese ROM startup kill).
-/// - iOS: [FlutterTtsServiceImpl] as fallback (v1.14 will add a native
-///   AVSpeechSynthesizer impl mirroring the Android one).
-/// - Windows/macOS/Linux: [FlutterTtsServiceImpl] (flutter_tts wraps SAPI /
-///   NSSpeechSynthesizer / speech-dispatcher).
-TtsService createTtsServiceForPlatform(String platform) {
-  switch (platform.toLowerCase()) {
+/// POC v1.15.0-alpha: 2 engines (system / sherpaOnnxMelo).
+/// Phase 2 will add more (theresa / aishell3 / cosyvoice-desktop).
+///
+/// If [platformName] is null, uses [defaultTargetPlatform].
+/// If [preferredEngine] is null, uses [TtsEnginePreference.system].
+TtsService createTtsService({
+  String? platformName,
+  TtsEnginePreference? preferredEngine,
+}) {
+  final engine = preferredEngine ?? TtsEnginePreference.system;
+
+  // Sherpa-ONNX MeloTTS works on all supported platforms (POC validates
+  // Android + Windows).
+  if (engine == TtsEnginePreference.sherpaOnnxMelo) {
+    return SherpaOnnxTtsService();
+  }
+
+  // system 偏好:走原平台派发
+  final target = platformName ?? _platformNameFromTargetPlatform();
+  switch (target.toLowerCase()) {
     case 'android':
       return SelfBuiltTtsServiceImpl();
     // TODO(v1.14): case 'ios': return IosAvSpeechTtsServiceImpl();
@@ -25,10 +39,9 @@ TtsService createTtsServiceForPlatform(String platform) {
   }
 }
 
-/// Production entry point — uses [defaultTargetPlatform].
-TtsService createTtsService() {
+String _platformNameFromTargetPlatform() {
   final target = defaultTargetPlatform;
-  final platformName = switch (target) {
+  return switch (target) {
     TargetPlatform.android => 'android',
     TargetPlatform.iOS => 'ios',
     TargetPlatform.macOS => 'macos',
@@ -36,5 +49,4 @@ TtsService createTtsService() {
     TargetPlatform.linux => 'linux',
     TargetPlatform.fuchsia => 'fuchsia',
   };
-  return createTtsServiceForPlatform(platformName);
 }

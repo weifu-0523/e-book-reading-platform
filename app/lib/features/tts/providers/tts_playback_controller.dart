@@ -16,12 +16,15 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart' as core;
 import '../../../services/tts/self_built_tts_service.dart';
+import '../../../services/tts/tts_engine_preference.dart';
 import '../../../services/tts/tts_service.dart';
 import '../../../services/tts/tts_service_factory.dart';
+import 'tts_engine_provider.dart';
 import 'tts_settings_provider.dart';
 
 /// Top-level playback phase for [TtsPlaybackController].
@@ -120,9 +123,37 @@ class TtsPlaybackState {
 /// [SelfBuiltTtsServiceImpl] (MethodChannel `dev.zhiyue.tts` registered by
 /// ZhiYueTtsPlugin), and desktop keeps flutter_tts (SAPI / NSSpeechSynthesizer
 /// / speech-dispatcher).
+///
+/// v1.15.0-alpha POC T6: read user engine preference from [ttsEngineProvider]
+/// and dispatch to appropriate service. Auto-rebuilds on preference change.
 final ttsServiceProvider = Provider<TtsService>((ref) {
-  final svc = core.globalTtsServiceOverride ?? createTtsService();
+  // Test override short-circuit (preserves existing test pattern)
+  if (core.globalTtsServiceOverride != null) {
+    return core.globalTtsServiceOverride!;
+  }
+
+  // v1.15.0-alpha POC T6: read user engine preference and dispatch
+  final engine = ref.watch(ttsEngineProvider);
+  final target = defaultTargetPlatform;
+  final platformName = switch (target) {
+    TargetPlatform.android => 'android',
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.macOS => 'macos',
+    TargetPlatform.windows => 'windows',
+    TargetPlatform.linux => 'linux',
+    TargetPlatform.fuchsia => 'fuchsia',
+  };
+  final svc = createTtsService(
+    platformName: platformName,
+    preferredEngine: engine,
+  );
   ref.onDispose(svc.dispose);
+
+  // SherpaOnnx and other future engines require explicit init();
+  // SelfBuiltTtsServiceImpl / FlutterTtsServiceImpl auto-init in ctor.
+  if (engine != TtsEnginePreference.system) {
+    svc.init(); // fire-and-forget; TtsPlaybackController.play() also awaits init
+  }
   return svc;
 });
 

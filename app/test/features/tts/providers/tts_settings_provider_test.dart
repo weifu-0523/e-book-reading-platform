@@ -7,11 +7,42 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:zhiyue/core/providers.dart';
+import 'package:zhiyue/data/repositories/settings_repository.dart';
 import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
 import 'package:zhiyue/features/tts/providers/tts_settings_provider.dart';
+import 'package:zhiyue/services/tts/tts_engine_preference.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
 
 class _MockTtsService extends Mock implements TtsService {}
+
+/// Fake [SettingsRepository] that pre-seeds tts.engine preference.
+class _FakeSettingsRepoWithEngine implements SettingsRepository {
+  _FakeSettingsRepoWithEngine([this._engine = TtsEnginePreference.system]);
+
+  final TtsEnginePreference _engine;
+  final Map<String, dynamic> _data = {};
+
+  @override
+  Future<T> get<T>(String key, T defaultValue) async {
+    if (key == 'tts.engine') {
+      return _engine.persistedValue as T;
+    }
+    return (_data[key] as T?) ?? defaultValue;
+  }
+
+  @override
+  Future<T?> getOrNull<T>(String key) async {
+    if (key == 'tts.engine') {
+      return _engine.persistedValue as T;
+    }
+    return _data[key] as T?;
+  }
+
+  @override
+  Future<void> set<T>(String key, T value) async {
+    _data[key] = value;
+  }
+}
 
 void main() {
   late Directory tempDir;
@@ -29,8 +60,19 @@ void main() {
     globalTtsSettingsDirOverride = null;
   });
 
+  /// Helper that creates a [ProviderContainer] with necessary overrides for
+  /// tests that don't need a custom TtsService.
+  ProviderContainer createTestContainer() {
+    return ProviderContainer(
+      overrides: [
+        settingsRepositoryProvider
+            .overrideWithValue(_FakeSettingsRepoWithEngine()),
+      ],
+    );
+  }
+
   test('initial defaults: rate 0.0, pitch 1.0, volume 1.0, continuous', () async {
-    final container = ProviderContainer();
+    final container = createTestContainer();
     addTearDown(container.dispose);
     // Allow _load() to settle (it's async-from-constructor)
     await Future<void>.delayed(Duration.zero);
@@ -42,7 +84,7 @@ void main() {
   });
 
   test('setRate persists and propagates', () async {
-    final container = ProviderContainer();
+    final container = createTestContainer();
     addTearDown(container.dispose);
     await Future<void>.delayed(Duration.zero);
     await container.read(ttsSettingsProvider.notifier).setRate(0.5);
@@ -56,7 +98,7 @@ void main() {
   });
 
   test('clamps rate to [-1.0, 1.0]', () async {
-    final container = ProviderContainer();
+    final container = createTestContainer();
     addTearDown(container.dispose);
     await Future<void>.delayed(Duration.zero);
     await container.read(ttsSettingsProvider.notifier).setRate(5.0);
@@ -66,7 +108,7 @@ void main() {
   });
 
   test('clamps pitch to [0.5, 2.0]', () async {
-    final container = ProviderContainer();
+    final container = createTestContainer();
     addTearDown(container.dispose);
     await Future<void>.delayed(Duration.zero);
     await container.read(ttsSettingsProvider.notifier).setPitch(0.0);
@@ -76,7 +118,7 @@ void main() {
   });
 
   test('clamps volume to [0.0, 1.0]', () async {
-    final container = ProviderContainer();
+    final container = createTestContainer();
     addTearDown(container.dispose);
     await Future<void>.delayed(Duration.zero);
     await container.read(ttsSettingsProvider.notifier).setVolume(-1.0);
@@ -91,7 +133,7 @@ void main() {
     await file.writeAsString(
         '{"rate":0.3,"pitch":1.5,"volume":0.8,"chapterBoundary":"askAtEnd"}');
 
-    final container = ProviderContainer();
+    final container = createTestContainer();
     addTearDown(container.dispose);
     // _load() is async-from-constructor (file exists + readAsString).
     // Poll up to ~1s for state to settle — fixed delays are flaky on
@@ -134,6 +176,8 @@ void main() {
     when(() => mockService.setVoice(any())).thenAnswer((_) async => true);
 
     final container = ProviderContainer(overrides: [
+      settingsRepositoryProvider
+          .overrideWithValue(_FakeSettingsRepoWithEngine()),
       ttsSettingsDirProvider.overrideWithValue(tempDir),
       ttsServiceProvider.overrideWithValue(mockService),
     ]);
@@ -159,6 +203,8 @@ void main() {
     when(() => mockService.setVoice(any())).thenAnswer((_) async => true);
 
     final container = ProviderContainer(overrides: [
+      settingsRepositoryProvider
+          .overrideWithValue(_FakeSettingsRepoWithEngine()),
       ttsSettingsDirProvider.overrideWithValue(tempDir),
       ttsServiceProvider.overrideWithValue(mockService),
     ]);

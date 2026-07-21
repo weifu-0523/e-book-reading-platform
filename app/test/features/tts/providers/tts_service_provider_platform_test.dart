@@ -6,9 +6,41 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:zhiyue/core/providers.dart';
+import 'package:zhiyue/data/repositories/settings_repository.dart';
 import 'package:zhiyue/features/tts/providers/tts_playback_controller.dart';
 import 'package:zhiyue/services/tts/flutter_tts_service.dart';
 import 'package:zhiyue/services/tts/self_built_tts_service.dart';
+import 'package:zhiyue/services/tts/tts_engine_preference.dart';
+
+/// Fake [SettingsRepository] that pre-seeds tts.engine preference.
+class _FakeSettingsRepoWithEngine implements SettingsRepository {
+  _FakeSettingsRepoWithEngine([this._engine = TtsEnginePreference.system]);
+
+  final TtsEnginePreference _engine;
+  final Map<String, dynamic> _data = {};
+
+  @override
+  Future<T> get<T>(String key, T defaultValue) async {
+    if (key == 'tts.engine') {
+      return _engine.persistedValue as T;
+    }
+    return (_data[key] as T?) ?? defaultValue;
+  }
+
+  @override
+  Future<T?> getOrNull<T>(String key) async {
+    if (key == 'tts.engine') {
+      return _engine.persistedValue as T;
+    }
+    return _data[key] as T?;
+  }
+
+  @override
+  Future<void> set<T>(String key, T value) async {
+    _data[key] = value;
+  }
+}
 
 /// v1.13.1-alpha regression test: ensure [ttsServiceProvider] dispatches
 /// via [createTtsService] (not hardcoded [FlutterTtsServiceImpl]).
@@ -36,7 +68,12 @@ void main() {
     test('returns SelfBuiltTtsServiceImpl on Android', () {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider
+              .overrideWithValue(_FakeSettingsRepoWithEngine()),
+        ],
+      );
       addTearDown(container.dispose);
       final svc = container.read(ttsServiceProvider);
       expect(svc, isA<SelfBuiltTtsServiceImpl>());
@@ -45,7 +82,12 @@ void main() {
     test('returns FlutterTtsServiceImpl on Windows', () {
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider
+              .overrideWithValue(_FakeSettingsRepoWithEngine()),
+        ],
+      );
       addTearDown(container.dispose);
       final svc = container.read(ttsServiceProvider);
       expect(svc, isA<FlutterTtsServiceImpl>());
@@ -54,7 +96,12 @@ void main() {
     test('returns FlutterTtsServiceImpl on macOS', () {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider
+              .overrideWithValue(_FakeSettingsRepoWithEngine()),
+        ],
+      );
       addTearDown(container.dispose);
       final svc = container.read(ttsServiceProvider);
       expect(svc, isA<FlutterTtsServiceImpl>());
