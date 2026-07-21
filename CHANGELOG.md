@@ -7,7 +7,29 @@
 
 ## [Unreleased]
 
-v1.14.2-alpha 之后的新变更将记在此处。
+v1.15.0-alpha 之后的新变更将记在此处。
+
+## [1.15.0-alpha] - 2026-07-21
+
+### Added
+
+- **Sherpa-ONNX 离线神经 TTS POC（v1.15.0-alpha）**：用户反馈"目前 tts 等基础能力有了，但效果确实一般，而且存在不同手机效果差异明显的情况"。引入 [sherpa_onnx](https://pub.dev/packages/sherpa_onnx) ^1.13.4 作为系统 TTS 之外的离线神经引擎选项，首批嵌入 [MeloTTS-zh_en](https://github.com/myshell-ai/MeloTTS) 模型（163MB ONNX 权重 + 6.5MB 中文词典 + 112 个 BPE tokens）。新增 `SherpaOnnxTtsService implements TtsService`（asset → filesystem 拷贝 → FFI bindings 注册 → `OfflineTts` ctor → `generate(text)` → Float32 PCM → 44-byte WAV header → audioplayers 播放）。`TtsEnginePreference` enum 持久化用户偏好（system / sherpaOnnxMelo），`ttsServiceProvider` `ref.watch(ttsEngineProvider)` 自动 rebuild。设置页「TTS 引擎（实验）」debug 卡片提供 dropdown 切换 + 说明文字。`SherpaOnnxBenchmark` 4-sentence suite（短/中/长/中英混排）+ `service.benchmark(text)` 入口测量 RTF（实时因子）+ 内存峰值 + 模型加载耗时，供 T9 POC report 决策。Android `useLegacyPackaging = true` 保障 sherpa-onnx JNI lib 可执行。
+- **POC report scaffold**（`docs/research/2026-07-21-sherpa-onnx-tts-poc-report.md`）：含执行摘要、benchmark/盲听 placeholder 表、APK 体积影响（135MB → ~325MB release 预测）、架构与依赖图、已知问题（Windows 桌面 ORT API 版本不匹配、模型 asset 体积过大、pause 是 stop+标记、Dart RSS 近似、init 无进度 UI）、Phase 2 实施风险表。
+
+### Known Limitations
+
+- **APK 体积显著增加**：debug APK 135MB → 295MB（+160MB），release 预测 ~325MB。主要来自 MeloTTS-zh_en 163MB ONNX asset（几乎不可压缩）。Phase 2 W1 计划改按需下载到外部存储，APK 回到 ~155MB。
+- **Windows 桌面 SherpaOnnx 不可用**：`sherpa_onnx_windows 1.13.4` 自带的 `onnxruntime.dll` 是 v1.17.1（ORT API v27），sherpa-onnx C API 期望 API v17，加载 `OfflineTts` 时抛 `OrtApiGetApi` 错误。Windows 安装包仍嵌入所有文件，等上游 `sherpa_onnx ^1.13.5+` 修复后可直接使用。
+- **首次切换引擎朗读有 1-3 秒延迟**：170MB asset 拷贝 + ONNX 权重加载到 native heap。后续启动有 filesystem cache 可加速。
+- **盲听评估未完成**：T9 POC report §2 §3 留 placeholder，需用户在真机跑 benchmark + 组织中文母语盲听后填回，再决策 Go/No-Go Phase 2。
+
+### Statistics
+
+- **Dart**: 1751 pass / 26 skip / 1 fail（pre-existing flaky `background_sync_scheduler_test` / `notes_page_test`，与 POC 无关；v1.14.2-alpha 是 1731，+34 新测试 - 14 调整）
+- **Commits since v1.14.2-alpha**: 9（c688803 → 88b2018）
+- **versionCode**: 2012（v1.14.2-alpha 是 2011）
+- **新增依赖**: sherpa_onnx ^1.13.4 / audioplayers ^5.2.1
+- **新增文件**: 10（lib/services/tts 3 + lib/features/tts 2 + lib/features/settings/pages 修改 1 + test 5 + docs/research 1）
 
 ## [1.14.2-alpha] - 2026-07-21
 
