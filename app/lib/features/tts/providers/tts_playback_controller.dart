@@ -443,6 +443,14 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
       await _service.setPitch(s.pitch);
       await _service.setVolume(s.volume);
       _service.setCurrentSentenceIndex(state.currentIndex);
+      // v1.15.4-alpha T2: hint the upcoming sentence so engines with
+      // prefetch support (SherpaOnnxTtsService) can pre-generate audio
+      // during current playback, eliminating the inter-sentence silence
+      // gap. Default no-op for other engines. unawaited because hintNext
+      // must not block the speak path — its work happens in the background.
+      final nextIdx = state.currentIndex + 1;
+      final next = nextIdx < _queue.length ? _queue[nextIdx] : null;
+      unawaited(_service.hintNext(next));
       await _service.speakSentence(sentence);
     } catch (e) {
       state = state.copyWith(phase: TtsPhase.error, errorMessage: e.toString());

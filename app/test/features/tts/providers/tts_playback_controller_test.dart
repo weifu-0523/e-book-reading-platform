@@ -17,10 +17,15 @@ import 'package:zhiyue/services/tts/tts_service.dart';
 /// v1.12.2-alpha P1-b: stub the three TtsService settings appliers so
 /// `_speakCurrent`'s new `setSpeechRate/setPitch/setVolume` calls don't
 /// trip mocktail's MissingStubError. Called after every `MockTtsService()`.
+///
+/// v1.15.4-alpha T2: also stub `hintNext` since `_speakCurrent` now calls
+/// it before every speakSentence. Default no-op matches the real
+/// `TtsService.hintNext` default behavior.
 void _stubSettingsAppliers(MockTtsService svc) {
   when(() => svc.setSpeechRate(any())).thenAnswer((_) async {});
   when(() => svc.setPitch(any())).thenAnswer((_) async {});
   when(() => svc.setVolume(any())).thenAnswer((_) async {});
+  when(() => svc.hintNext(any())).thenAnswer((_) async {});
 }
 
 class MockTtsService extends Mock implements TtsService {}
@@ -1036,6 +1041,125 @@ void main() {
       expect(notifier.state.phase, TtsPhase.idle);
       expect(notifier.state.userStopped, isTrue);
       expect(notifier.state.errorMessage, isNull);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // v1.15.4-alpha T2: prefetch pipeline wiring.
+  //
+  // Background: SherpaOnnxTtsService synthesizes each sentence to a WAV
+  // file on-the-fly, causing a ~500-900ms inter-sentence silence gap
+  // while the next sentence's audio is generated. T1 added a default
+  // no-op `hintNext(Sentence? next)` to TtsService; SherpaOnnx (T4) will
+  // override it to pre-generate `next`'s audio during the current
+  // sentence's playback.
+  //
+  // Contract verified here:
+  //   * controller calls hintNext(next) BEFORE speakSentence(current)
+  //   * next = queue[currentIndex + 1] if available, else null
+  //   * call order: hintNext(s1) → speakSentence(s0) → ... → hintNext(null)
+  //     → speakSentence(s_last)
+  // ─────────────────────────────────────────────────────────────────────
+
+  group('hintNext wiring (v1.15.4-alpha T2)', () {
+    // Helper: build a controller whose mockSvc records the order of
+    // `hintNext` and `speakSentence` calls into `callLog`. Each speakSentence
+    // emits TtsState.speaking immediately so playback advances on its own.
+    MockTtsService buildRecordingMock({
+      required List<String> callLog,
+      required StreamController<TtsState> stateController,
+    }) {
+      final svc = MockTtsService();
+      _stubSettingsAppliers(svc);
+      when(() => svc.state).thenAnswer((_) => stateController.stream);
+      when(() => svc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => svc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => svc.isInitialized).thenReturn(true);
+      when(() => svc.init()).thenAnswer((_) async {});
+      when(() => svc.speakSentence(any())).thenAnswer((inv) async {
+        callLog.add('speak:${(inv.positionalArguments[0] as Sentence).text}');
+        // Mirror real engine flow: speaking → idle (utterance completed),
+        // which triggers the controller's _onServiceState to advance the
+        // queue. Schedule add(idle) on the next microtask so the speaking
+        // state propagates first.
+        stateController.add(TtsState.speaking);
+        await Future<void>.delayed(Duration.zero);
+        stateController.add(TtsState.idle);
+      });
+      when(() => svc.hintNext(any())).thenAnswer((inv) async {
+        final arg = inv.positionalArguments[0];
+        callLog.add(arg == null ? 'hint:null' : 'hint:${(arg as Sentence).text}');
+      });
+      when(() => svc.stop()).thenAnswer((_) async {});
+      when(() => svc.dispose()).thenAnswer((_) async {});
+      return svc;
+    }
+
+    test('play hints next sentence before each speakSentence', () async {
+      final stateController = StreamController<TtsState>.broadcast();
+      final callLog = <String>[];
+      final mockSvc =
+          buildRecordingMock(callLog: callLog, stateController: stateController);
+
+      final notifier = TtsPlaybackController(mockSvc, () => TtsSettings());
+      addTearDown(notifier.dispose);
+      addTearDown(stateController.close);
+
+      final sentences = [
+        const Sentence(text: 'A.', locale: 'en-US', charStart: 0, charEnd: 2),
+        const Sentence(text: 'B.', locale: 'en-US', charStart: 2, charEnd: 4),
+        const Sentence(text: 'C.', locale: 'en-US', charStart: 4, charEnd: 6),
+      ];
+
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: sentences,
+      );
+
+      // Wait for queue to drain (TtsState.idle fires _onServiceState for each
+      // completion, which advances to next sentence). Pump a few microtasks.
+      for (var i = 0; i < 5; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      // Expected interleaving: hintB → speakA → hintC → speakB → hintNull → speakC
+      expect(callLog, [
+        'hint:B.',
+        'speak:A.',
+        'hint:C.',
+        'speak:B.',
+        'hint:null',
+        'speak:C.',
+      ]);
+    });
+
+    test('last sentence calls hintNext with null', () async {
+      final stateController = StreamController<TtsState>.broadcast();
+      final callLog = <String>[];
+      final mockSvc =
+          buildRecordingMock(callLog: callLog, stateController: stateController);
+
+      final notifier = TtsPlaybackController(mockSvc, () => TtsSettings());
+      addTearDown(notifier.dispose);
+      addTearDown(stateController.close);
+
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(text: 'only.', locale: 'en-US', charStart: 0, charEnd: 5),
+        ],
+      );
+
+      for (var i = 0; i < 3; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      // Single-sentence queue: hintNext(null) fires before speakSentence(only).
+      expect(callLog, contains('hint:null'));
+      expect(callLog.indexOf('hint:null'),
+          lessThan(callLog.indexOf('speak:only.')));
     });
   });
 }
