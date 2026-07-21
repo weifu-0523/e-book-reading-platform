@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 ZhiYue Open Source contributors
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -8,6 +9,13 @@ import 'package:flutter/foundation.dart';
 
 /// 把 sherpa_onnx OfflineTts.generate() 输出的 Float32List samples 转 PCM16 WAV
 /// 并用 audioplayers 播放。POC v1.15.0-alpha：单实例,无 voice queue。
+///
+/// v1.15.1-alpha hotfix: 用 [AudioPlayer.onPlayerStateChanged] 替代
+/// [AudioPlayer.onPlayerComplete] 作为播放完成信号 —— 后者在 Android 部分
+/// ROM + BytesSource(WAV) 场景不 emit（audioplayers 历史问题），导致
+/// `await p.onPlayerComplete.first` 永远挂起、speakSentence 永不返回、
+/// UI 卡在 speaking phase。同时 [stop] 改为 fire-and-forget 避免被
+/// audioplayers 内部 lock 拖死。
 ///
 /// Phase 2 如 audioplayers 延迟过大可换 soundpool / flutter_soloud。
 class SherpaOnnxAudioPlayer {
@@ -25,22 +33,74 @@ class SherpaOnnxAudioPlayer {
   Future<void> play(Float32List samples, int sampleRate) async {
     _stopped = false;
     final wavBytes = buildWavFromFloat32(samples, sampleRate);
+    final totalMs = (samples.length / sampleRate * 1000).round();
 
     final p = _p;
     await p.setReleaseMode(ReleaseMode.stop);
     await p.setVolume(1.0);
-    await p.play(BytesSource(wavBytes));
 
-    // 等播放完成或被 stop 中断
-    await p.onPlayerComplete.first;
+    debugPrint(
+      '[SherpaOnnxAudioPlayer] play start '
+      'samples=${samples.length} sampleRate=$sampleRate '
+      'durationMs=$totalMs',
+    );
+
+    // Subscribe BEFORE play() so we don't miss the initial state transition.
+    // onPlayerStateChanged fires on every phase change; we want the terminal
+    // completed/stopped state. v1.15.1-alpha: was onPlayerComplete.first which
+    // silently never fires on some Android ROMs.
+    final doneCompleter = Completer<void>();
+    late StreamSubscription sub;
+    sub = p.onPlayerStateChanged.listen(
+      (s) {
+        debugPrint('[SherpaOnnxAudioPlayer] state=$s');
+        if (s == PlayerState.completed || s == PlayerState.stopped) {
+          if (!doneCompleter.isCompleted) doneCompleter.complete();
+        }
+      },
+      onError: (Object e, StackTrace st) {
+        debugPrint('[SherpaOnnxAudioPlayer] state stream error=$e');
+        if (!doneCompleter.isCompleted) doneCompleter.completeError(e, st);
+      },
+      cancelOnError: true,
+    );
+
+    try {
+      await p.play(BytesSource(wavBytes));
+      debugPrint('[SherpaOnnxAudioPlayer] play() returned, awaiting state');
+      // Safety timeout: 2x expected duration + 5s buffer. If audioplayers
+      // silently fails to emit any state change, the caller still gets to
+      // advance instead of hanging forever.
+      final timeout = Duration(milliseconds: totalMs * 2 + 5000);
+      await doneCompleter.future.timeout(timeout, onTimeout: () {
+        debugPrint(
+          '[SherpaOnnxAudioPlayer] state timeout after ${timeout.inMilliseconds}ms '
+          '(expected ${totalMs}ms) — forcing completion',
+        );
+      });
+    } finally {
+      await sub.cancel();
+    }
+
+    debugPrint('[SherpaOnnxAudioPlayer] play done stopped=$_stopped');
   }
 
   /// 中断当前播放。后续 play() 调用会重新开始。
+  ///
+  /// v1.15.1-alpha: 不 await audioplayers.stop() —— 如果 play() 当前卡在
+  /// 内部 lock，stop() 也会 await 同一个 lock 让调用方（driveStop）卡死，
+  /// 表现为 UI 上的「关闭」按钮按下后 mini control 不消失。fire-and-forget
+  /// 让 driveStop 立即返回，UI 立即响应。
   Future<void> stop() async {
     _stopped = true;
     final p = _player;
     if (p != null) {
-      await p.stop();
+      debugPrint('[SherpaOnnxAudioPlayer] stop() issued (fire-and-forget)');
+      unawaited(
+        p.stop().catchError((Object e) {
+          debugPrint('[SherpaOnnxAudioPlayer] audioplayers.stop error=$e');
+        }),
+      );
     }
   }
 

@@ -388,18 +388,25 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   /// is not stuck — but records the error on the state for surfacing.
   /// Stop is idempotent from the user's perspective ("I want playback to
   /// end") so even an erroring engine should leave the controller clean.
+  ///
+  /// v1.15.1-alpha hotfix: 切换 state **先于** `_service.stop()` 调用。
+  /// 之前顺序是 `await _service.stop(); state = ...`，但 SherpaOnnx 引擎
+  /// 的 `_audioPlayer.stop()` 在 audioplayers 内部 lock 持有时会卡住，
+  /// 导致 mini control「关闭」按钮按下后 UI 不消失。现在先切 state 让 UI
+  /// 立即响应，service.stop() 在后台清理。Stop 是幂等操作，UI 立即反馈
+  /// 优先于"等引擎确认已停"。
   Future<void> driveStop() async {
+    _queue = const [];
+    // 先切 state：UI 立即把 mini control 隐藏，避免被 service.stop() 卡。
+    // v1.13.10-alpha Bug 1: mark userStopped=true so the reader controller
+    // suppresses chapter-boundary auto-advance when the user closes the
+    // mini control (mirrors the Kotlin state=stopped path).
+    state = const TtsPlaybackState(userStopped: true);
     try {
       await _service.stop();
-      _queue = const [];
-      // v1.13.10-alpha Bug 1: mark userStopped=true so the reader controller
-      // suppresses chapter-boundary auto-advance when the user closes the
-      // mini control (mirrors the Kotlin state=stopped path).
-      state = const TtsPlaybackState(userStopped: true);
     } catch (e) {
-      _queue = const [];
-      state = TtsPlaybackState(
-          phase: TtsPhase.error, errorMessage: e.toString());
+      // Engine-level stop failure 不影响 UI（state 已经 idle）。
+      debugPrint('TtsPlaybackController.driveStop service.stop error: $e');
     }
   }
 

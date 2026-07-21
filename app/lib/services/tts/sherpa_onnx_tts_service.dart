@@ -68,6 +68,7 @@ class SherpaOnnxTtsService implements TtsService {
   Future<void> init() async {
     if (_initialized) return;
     _stateController.add(TtsState.loading);
+    debugPrint('[SherpaOnnxTtsService] init start');
 
     try {
       // T8: measure total cold-start cost (asset copy + FFI bind + ONNX load)
@@ -85,18 +86,24 @@ class SherpaOnnxTtsService implements TtsService {
       for (final file in _modelFiles) {
         final destPath = p.join(modelDir, file);
         if (!await File(destPath).exists()) {
+          debugPrint('[SherpaOnnxTtsService] copying asset $file …');
           final data = await rootBundle.load('$_modelAssetDir/$file');
           await File(destPath).writeAsBytes(data.buffer.asUint8List());
+          debugPrint(
+              '[SherpaOnnxTtsService] $file copied (${data.lengthInBytes} bytes)');
         }
       }
 
       // 2. 注册 native FFI bindings（全进程一次）
       if (!_bindingsInitialized) {
+        debugPrint('[SherpaOnnxTtsService] initBindings() …');
         sherpa_onnx.initBindings();
         _bindingsInitialized = true;
+        debugPrint('[SherpaOnnxTtsService] initBindings OK');
       }
 
       // 3. 创建 OfflineTts 实例（加载 163MB ONNX 模型,需 1-3 秒）
+      debugPrint('[SherpaOnnxTtsService] OfflineTts ctor (loading ONNX) …');
       _tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(
         model: sherpa_onnx.OfflineTtsModelConfig(
           vits: sherpa_onnx.OfflineTtsVitsModelConfig(
@@ -110,13 +117,17 @@ class SherpaOnnxTtsService implements TtsService {
         // 注意:sherpa_onnx API 字段名是 maxNumSenetences(原作者拼写错误)
         maxNumSenetences: 1,
       ));
+      debugPrint('[SherpaOnnxTtsService] OfflineTts OK');
 
       loadSw.stop();
       _modelLoadDuration = loadSw.elapsed;
+      debugPrint(
+          '[SherpaOnnxTtsService] init done in ${loadSw.elapsedMilliseconds}ms');
 
       _initialized = true;
       _stateController.add(TtsState.idle);
     } catch (e, st) {
+      debugPrint('[SherpaOnnxTtsService] init FAILED: $e\n$st');
       _errorController.add('SherpaOnnx init failed: $e\n$st');
       _stateController.add(TtsState.error);
       rethrow;
@@ -125,7 +136,11 @@ class SherpaOnnxTtsService implements TtsService {
 
   @override
   Future<void> speakSentence(Sentence sentence) async {
+    debugPrint(
+        '[SherpaOnnxTtsService] speakSentence idx=$_currentSentenceIndex '
+        'len=${sentence.text.length} initialized=$_initialized');
     if (!_initialized || _tts == null) {
+      debugPrint('[SherpaOnnxTtsService] speakSentence: not initialized');
       _errorController.add('SherpaOnnx not initialized');
       _stateController.add(TtsState.error);
       return;
@@ -137,7 +152,12 @@ class SherpaOnnxTtsService implements TtsService {
     try {
       // flutter_tts rate: -1.0..1.0 (0=normal);sherpa_onnx speed: 1.0=normal, >1 faster
       final speed = 1.0 * (1.0 + _rate.clamp(-0.5, 1.0));
+      final genSw = Stopwatch()..start();
       final result = _tts!.generate(text: sentence.text, sid: 0, speed: speed);
+      genSw.stop();
+      debugPrint(
+          '[SherpaOnnxTtsService] generate OK in ${genSw.elapsedMilliseconds}ms '
+          'samples=${result.samples.length} sampleRate=${result.sampleRate}');
 
       _progressController.add(TtsProgress(
         sentenceIndex: _currentSentenceIndex,
@@ -146,15 +166,19 @@ class SherpaOnnxTtsService implements TtsService {
       ));
 
       if (_stopped) {
+        debugPrint('[SherpaOnnxTtsService] stopped before play');
         _stateController.add(TtsState.idle);
         return;
       }
 
       await _audioPlayer.play(result.samples, result.sampleRate);
+      debugPrint('[SherpaOnnxTtsService] audioPlayer.play returned '
+          'stopped=$_stopped');
       if (!_stopped) {
         _stateController.add(TtsState.idle);
       }
     } catch (e, st) {
+      debugPrint('[SherpaOnnxTtsService] speakSentence FAILED: $e\n$st');
       _errorController.add('SherpaOnnx speak failed: $e\n$st');
       _stateController.add(TtsState.error);
     }
@@ -162,6 +186,7 @@ class SherpaOnnxTtsService implements TtsService {
 
   @override
   Future<void> stop() async {
+    debugPrint('[SherpaOnnxTtsService] stop() invoked stopped=$_stopped');
     _stopped = true;
     await _audioPlayer.stop();
     _stateController.add(TtsState.stopped);

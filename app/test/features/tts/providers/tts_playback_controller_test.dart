@@ -991,5 +991,51 @@ void main() {
       expect(notifier.state.phase, TtsPhase.idle);
       expect(notifier.state.userStopped, isTrue);
     });
+
+    // v1.15.1-alpha hotfix: driveStop must not let a throwing service.stop()
+    // surface as TtsPhase.error. User-intent semantics — "I want playback to
+    // end" — take priority over surfacing engine cleanup failures. The UI
+    // should hide the mini control regardless of whether the engine
+    // acknowledged the stop. Regressed the v1.15.0-alpha symptom of "关闭
+    // 按钮按下后 mini control 不消失" when audioplayers internal lock makes
+    // SherpaOnnxTtsService.stop() hang.
+    test('driveStop keeps phase=idle even if service.stop() throws',
+        () async {
+      final mockSvc = MockTtsService();
+      _stubSettingsAppliers(mockSvc);
+      final stateController = StreamController<TtsState>.broadcast();
+      when(() => mockSvc.state).thenAnswer((_) => stateController.stream);
+      when(() => mockSvc.progress)
+          .thenAnswer((_) => const Stream<TtsProgress>.empty());
+      when(() => mockSvc.error)
+          .thenAnswer((_) => const Stream<String>.empty());
+      when(() => mockSvc.isInitialized).thenReturn(false);
+      when(() => mockSvc.init()).thenAnswer((_) async {});
+      when(() => mockSvc.speakSentence(any())).thenAnswer((_) async {
+        stateController.add(TtsState.speaking);
+      });
+      when(() => mockSvc.stop())
+          .thenThrow(Exception('audioplayers lock stuck'));
+      when(() => mockSvc.dispose()).thenAnswer((_) async {});
+
+      final notifier = TtsPlaybackController(mockSvc, () => TtsSettings());
+      addTearDown(notifier.dispose);
+      addTearDown(stateController.close);
+
+      await notifier.play(
+        scope: const TtsScope.aiMessage(messageId: 'm1'),
+        sentences: [
+          const Sentence(
+              text: 'A.', locale: 'en-US', charStart: 0, charEnd: 2),
+        ],
+      );
+
+      await notifier.stop();
+
+      // Phase stays idle (NOT error), errorMessage stays null.
+      expect(notifier.state.phase, TtsPhase.idle);
+      expect(notifier.state.userStopped, isTrue);
+      expect(notifier.state.errorMessage, isNull);
+    });
   });
 }
