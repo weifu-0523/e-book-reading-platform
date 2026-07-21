@@ -29,17 +29,37 @@ import 'tts_voice.dart';
 /// - 模型按需下载（替代 asset bundle）
 /// - 多 voice 切换
 /// - isolate 包裹 generate() 防 jank
+///
+/// v1.15.4-alpha T4: prefetched audio result for one sentence. Holds
+/// the Float32List samples returned by `OfflineTts.generate` plus the
+/// sample rate, keyed externally by sentence text via [_prefetchedKey].
+class _PrefetchedResult {
+  final Float32List samples;
+  final int sampleRate;
+  const _PrefetchedResult(this.samples, this.sampleRate);
+}
+
 class SherpaOnnxTtsService implements TtsService {
-  SherpaOnnxTtsService() : _ttsFactory = _defaultFactory;
+  SherpaOnnxTtsService()
+      : _ttsFactory = _defaultFactory,
+        _audioPlayer = SherpaOnnxAudioPlayer();
 
   /// v1.15.4-alpha T3: test injection seam. Tests pass a mock factory
   /// that returns a fake [sherpa_onnx.OfflineTts] so cache/prefetch
   /// logic can be unit-tested without loading the real 163MB ONNX model.
+  ///
+  /// v1.15.4-alpha T4: optional [audioPlayer] injection so tests can
+  /// pass a fake that doesn't drive the real audioplayers MethodChannel
+  /// (which would otherwise throw MissingPluginException in the unit
+  /// test environment and stall the safety timeout in
+  /// [SherpaOnnxAudioPlayer.play]).
   @visibleForTesting
   SherpaOnnxTtsService.forTest({
     required sherpa_onnx.OfflineTts Function(sherpa_onnx.OfflineTtsConfig)
         ttsFactory,
-  }) : _ttsFactory = ttsFactory;
+    SherpaOnnxAudioPlayer? audioPlayer,
+  })  : _ttsFactory = ttsFactory,
+        _audioPlayer = audioPlayer ?? SherpaOnnxAudioPlayer();
 
   static sherpa_onnx.OfflineTts _defaultFactory(
           sherpa_onnx.OfflineTtsConfig config) =>
@@ -64,11 +84,26 @@ class SherpaOnnxTtsService implements TtsService {
   Duration _modelLoadDuration = Duration.zero;
 
   // T5 fields
-  final SherpaOnnxAudioPlayer _audioPlayer = SherpaOnnxAudioPlayer();
+  final SherpaOnnxAudioPlayer _audioPlayer;
   double _rate = 0.0; // -1..1, 0 = normal speed
   double _volume = 1.0;
   int _currentSentenceIndex = 0;
   bool _stopped = false;
+
+  /// v1.15.4-alpha T4: prefetched next-sentence state. [hintNext] stores
+  /// the hinted sentence; [_doPrefetch] runs in background during current
+  /// playback; [speakSentence] consumes [_prefetchedResult] on cache hit
+  /// (matched by [_prefetchedKey] == sentence.text).
+  ///
+  /// Cache invalidation rules:
+  /// - [hintNext] with different text → clear cache (stale).
+  /// - [hintNext] with same text as cache key → keep cache (re-hint).
+  /// - [speakSentence] cache hit → consume + clear.
+  /// - T5 (follow-up): [setSpeechRate] / [stop] → clear.
+  Sentence? _hintedNext;
+  _PrefetchedResult? _prefetchedResult;
+  String? _prefetchedKey;
+  bool _prefetchInProgress = false;
 
   /// v1.15.2-alpha: ring buffer of recent diagnostic log lines, surfaced in
   /// the in-app「TTS 调试日志」dialog so users without adb can paste output
@@ -239,11 +274,35 @@ class SherpaOnnxTtsService implements TtsService {
     try {
       // flutter_tts rate: -1.0..1.0 (0=normal);sherpa_onnx speed: 1.0=normal, >1 faster
       final speed = 1.0 * (1.0 + _rate.clamp(-0.5, 1.0));
-      final genSw = Stopwatch()..start();
-      final result = _tts!.generate(text: sentence.text, sid: 0, speed: speed);
-      genSw.stop();
-      _log('generate OK in ${genSw.elapsedMilliseconds}ms '
-          'samples=${result.samples.length} sampleRate=${result.sampleRate}');
+
+      // v1.15.4-alpha T4: check prefetch cache. Hit when the cached key
+      // matches the current sentence text AND we have samples.
+      final cached = _prefetchedResult;
+      final cachedKey = _prefetchedKey;
+      final hintHit = cached != null && cachedKey == sentence.text;
+      final Float32List samples;
+      final int sampleRate;
+      if (hintHit) {
+        _log('speakSentence idx=$_currentSentenceIndex using prefetched '
+            'result (cache hit)');
+        samples = cached.samples;
+        sampleRate = cached.sampleRate;
+        _prefetchedResult = null;
+        _prefetchedKey = null;
+        // The hint pointed at the sentence we just consumed; clear it so
+        // we don't kick off a redundant prefetch for the just-spoken text.
+        // The controller will set a fresh hint before the next speakSentence.
+        _hintedNext = null;
+      } else {
+        final genSw = Stopwatch()..start();
+        final result =
+            _tts!.generate(text: sentence.text, sid: 0, speed: speed);
+        genSw.stop();
+        _log('generate OK in ${genSw.elapsedMilliseconds}ms '
+            'samples=${result.samples.length} sampleRate=${result.sampleRate}');
+        samples = result.samples;
+        sampleRate = result.sampleRate;
+      }
 
       _progressController.add(TtsProgress(
         sentenceIndex: _currentSentenceIndex,
@@ -257,7 +316,21 @@ class SherpaOnnxTtsService implements TtsService {
         return;
       }
 
-      await _audioPlayer.play(result.samples, result.sampleRate);
+      // v1.15.4-alpha T4: kick off prefetch for hinted next BEFORE play
+      // await blocks. _doPrefetch runs on the main isolate during audio
+      // playback (audio is on native thread, unaffected). Guards:
+      // - _hintedNext != null: nothing to prefetch.
+      // - !_prefetchInProgress: sherpa_onnx native handle is not thread-
+      //   safe across concurrent invocations.
+      // - _prefetchedResult == null: don't clobber an existing cache.
+      if (_hintedNext != null &&
+          !_prefetchInProgress &&
+          _prefetchedResult == null) {
+        _prefetchInProgress = true;
+        unawaited(_doPrefetch(_hintedNext!, speed));
+      }
+
+      await _audioPlayer.play(samples, sampleRate);
       _log('audioPlayer.play returned stopped=$_stopped');
       if (!_stopped) {
         _stateController.add(TtsState.idle);
@@ -268,6 +341,46 @@ class SherpaOnnxTtsService implements TtsService {
       _log('stack: $st');
       _errorController.add('SherpaOnnx speak failed: $e\n$st');
       _stateController.add(TtsState.error);
+    }
+  }
+
+  /// v1.15.4-alpha T4: pre-generate audio for [target] in the background.
+  /// Runs on the main isolate via unawaited Future scheduled by
+  /// [speakSentence]. FFI generate() blocks main isolate ~500-900ms;
+  /// audio playback is on the native thread so the user doesn't perceive
+  /// a gap. On failure, leaves cache null — [speakSentence] will
+  /// sync-generate as fallback.
+  ///
+  /// Guards:
+  /// - If hint changed during generate (user skip), discard stale result.
+  /// - If cache was filled by another path, don't clobber.
+  Future<void> _doPrefetch(Sentence target, double speed) async {
+    final tts = _tts;
+    if (tts == null) {
+      _prefetchInProgress = false;
+      return;
+    }
+    try {
+      final sw = Stopwatch()..start();
+      final result =
+          tts.generate(text: target.text, sid: 0, speed: speed);
+      sw.stop();
+      // Only cache if hint hasn't changed during generate AND cache wasn't
+      // filled by another path (e.g. user re-hinted).
+      if (_hintedNext?.text == target.text && _prefetchedResult == null) {
+        _prefetchedResult = _PrefetchedResult(result.samples, result.sampleRate);
+        _prefetchedKey = target.text;
+        _log('prefetch OK in ${sw.elapsedMilliseconds}ms '
+            'samples=${result.samples.length}');
+      } else {
+        _log('prefetch stale (hint changed or cache filled), discarding');
+      }
+    } catch (e, st) {
+      _log('prefetch FAILED: $e');
+      _log('stack: $st');
+      // Leave cache null; sync generate will retry on next speakSentence.
+    } finally {
+      _prefetchInProgress = false;
     }
   }
 
@@ -292,12 +405,30 @@ class SherpaOnnxTtsService implements TtsService {
     _currentSentenceIndex = idx;
   }
 
-  /// v1.15.4-alpha T1: placeholder no-op to satisfy interface contract.
-  /// T4 will override with real prefetch pipeline (cache next sentence
-  /// audio during current playback, hit cache on next speakSentence to
-  /// eliminate ~500-900ms inter-sentence silence gap).
+  /// v1.15.4-alpha T4: hint the next sentence so [speakSentence] of the
+  /// current sentence can pre-generate audio for [next] in the background
+  /// (via [_doPrefetch]) during current playback. The cached result is
+  /// consumed on the next [speakSentence] call when its sentence text
+  /// matches [_prefetchedKey].
+  ///
+  /// Cache invalidation:
+  /// - [next]?.text == [_hintedNext]?.text → no-op (same hint).
+  /// - [next]?.text != [_prefetchedKey] → stale cache cleared.
+  /// - [next]?.text == [_prefetchedKey] → cache kept (re-hint of cached).
   @override
-  Future<void> hintNext(Sentence? next) async {}
+  Future<void> hintNext(Sentence? next) async {
+    // Same hint text (including null == null) → no-op.
+    if (next?.text == _hintedNext?.text) return;
+    _hintedNext = next;
+    // Invalidate cache when hint changes. The cache is only valid if the
+    // new hint still points at it (re-hint of the same sentence). A null
+    // hint clears any previous cache.
+    if (next?.text != _prefetchedKey) {
+      _prefetchedResult = null;
+      _prefetchedKey = null;
+    }
+    _log('hintNext: ${next == null ? 'null (clear)' : "len=${next.text.length}"}');
+  }
 
   @override
   Future<void> setSpeechRate(double rate) async {
@@ -339,6 +470,27 @@ class SherpaOnnxTtsService implements TtsService {
   // Default null; would inherit from interface but `implements` requires explicit.
   @override
   int? get eventReceivedCountForDebug => null;
+
+  /// v1.15.4-alpha T4: test seam so unit tests can mark the service
+  /// initialized with a mock [sherpa_onnx.OfflineTts] without invoking
+  /// the real asset-copy + ONNX-load path. Production code must not
+  /// call this — use [init] instead.
+  @visibleForTesting
+  void markInitializedForTest(sherpa_onnx.OfflineTts mockTts) {
+    _initialized = true;
+    _bindingsInitialized = true;
+    _tts = mockTts;
+  }
+
+  /// v1.15.4-alpha T4: test seam to directly populate the prefetch cache,
+  /// simulating the post-conditions of a successful background prefetch.
+  /// Lets unit tests verify [speakSentence] cache-hit behavior without
+  /// orchestrating microtask timing of [_doPrefetch].
+  @visibleForTesting
+  void setPrefetchedForTest(String text, Float32List samples, int sampleRate) {
+    _prefetchedResult = _PrefetchedResult(samples, sampleRate);
+    _prefetchedKey = text;
+  }
 
   /// T8: benchmark entry. Direct call to `_tts!.generate()` (no audio
   /// playback) so we measure pure synthesis cost. Caller must [init] first.
