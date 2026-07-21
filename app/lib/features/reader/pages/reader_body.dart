@@ -70,6 +70,7 @@ import '../widgets/reader_chapter_end_prompt.dart';
 import '../widgets/reader_drawer.dart';
 import '../widgets/reader_drawer_builders.dart';
 import '../widgets/reader_error_view.dart';
+import '../widgets/no_toolbar_selection_controls.dart';
 import '../widgets/reader_scaffold.dart';
 import '../widgets/reader_selection_sheet.dart';
 import '../widgets/reader_selection_toolbar.dart';
@@ -775,7 +776,15 @@ class _ReaderBodyState extends ConsumerState<ReaderBody> {
               padding: const EdgeInsets.only(bottom: kReaderProgressBarHeight),
               child: SelectableRegion(
                 key: _selectableRegionKey,
-                selectionControls: materialTextSelectionControls,
+                // v1.14.1-alpha：禁用 Flutter 默认 selection toolbar。
+                // 否则移动端选中文字时同时弹两个卡片：
+                //   1. Flutter 框架默认（Copy / Share / Select All，长条白卡）
+                //   2. 项目自定义 ReaderSelectionToolbar（摘录/复制/朗读/问 AI）
+                // 用 [NoToolbarSelectionControls]（mix in TextSelectionHandleControls）
+                // 让框架 hideToolbar，只保留 selection handle（拖拽手柄）。
+                // 桌面端 Ctrl+C 不受影响（reader_scaffold 的 HardwareKeyboard
+                // 全局处理器接管，不依赖此 toolbar）。
+                selectionControls: noToolbarSelectionControls,
                 onSelectionChanged: _onSelectionChanged,
                 child: ReaderScaffold(
                 content: engine.build(innerContext),
