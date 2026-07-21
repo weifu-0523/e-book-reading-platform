@@ -7,7 +7,19 @@
 
 ## [Unreleased]
 
-v1.14.0-alpha 之后的新变更将记在此处。
+v1.14.1-alpha 之后的新变更将记在此处。
+
+## [1.14.1-alpha] - 2026-07-21
+
+### Fixed
+
+- **移动端选中文字弹两个卡片（UX）**：用户报告"移动端选中文字后除我们自定义的弹片（摘录/复制/朗读/问 AI）外，还会出现一个更长的白色卡片（Copy / Share / Select All 等），两个卡片同时显示非常难用"。根因：`reader_body.dart` 的 `SelectableRegion` 配置了 `selectionControls: materialTextSelectionControls`，Flutter 框架在 `selectable_region.dart:1374` 检测到该 controls 不是 `TextSelectionHandleControls` 时调用 `showToolbar()`，与项目自定义 `ReaderSelectionToolbar` 同时渲染。修复：新增 `NoToolbarSelectionControls`（`extends MaterialTextSelectionControls with TextSelectionHandleControls`），框架检测到 mixin 后 `hideToolbar()`，默认 toolbar 不再渲染。Selection handles（小水滴拖拽手柄）仍由 `MaterialTextSelectionControls` 提供，移动端可正常拖动调整选区边界。桌面端 Ctrl+C 由 `reader_scaffold` 的 `HardwareKeyboard` 全局处理器接管，不受影响。
+
+### Statistics
+
+- **Dart**: 1728 pass / 25 skip / 0 fail（v1.14.0-alpha 是 1726，+2 防御性源码断言）
+- **Commits since v1.14.0-alpha**: 1（3ec3dd0）
+- **versionCode**: 2010（v1.14.0-alpha 是 2009）
 
 ## [1.14.0-alpha] - 2026-07-20
 
