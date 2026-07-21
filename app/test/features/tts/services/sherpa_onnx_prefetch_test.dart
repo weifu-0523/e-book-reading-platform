@@ -320,4 +320,82 @@ void main() {
       await svc.dispose();
     });
   });
+
+  group('diagnostic counters (v1.15.4-alpha T7)', () {
+    test('getDebugState reports prefetchHitCount/missCount/failCount',
+        () async {
+      final mock = _MockOfflineTts();
+      _stubGenerate(mock);
+      final svc = SherpaOnnxTtsService.forTest(
+        ttsFactory: (_) => mock,
+        audioPlayer: _NoOpAudioPlayer(),
+      );
+      svc.markInitializedForTest(mock);
+
+      // Trigger 1 miss + 1 hit:
+      // 1. Hint 'B' then speakSentence('A') → A is a miss (sync gen).
+      //    speakSentence kicks off background prefetch for 'B'.
+      // 2. After microtask drain, prefetch for 'B' should fill cache.
+      // 3. Hint 'C' (different from cached 'B' would invalidate, so we
+      //    instead re-hint 'B' which keeps cache). To get a hit on B,
+      //    we use setPrefetchedForTest to deterministically populate.
+      await svc.hintNext(_sentence('B'));
+      await svc.speakSentence(_sentence('A')); // miss (cache empty)
+      await Future<void>.delayed(Duration.zero); // allow prefetch to complete
+
+      // Deterministically populate cache for 'B' to guarantee hit path.
+      svc.setPrefetchedForTest('B', Float32List(500), 44100);
+      // Re-hint B (same text as cache key → cache kept).
+      await svc.hintNext(_sentence('B'));
+      // speakSentence('B') → cache hit.
+      await svc.speakSentence(_sentence('B'));
+
+      final state = await svc.getDebugState();
+
+      expect(state['prefetchHitCount'], greaterThanOrEqualTo(1));
+      expect(state['prefetchMissCount'], greaterThanOrEqualTo(1));
+      // prefetchFailCount field exists (surfaced even when 0).
+      expect(state['prefetchFailCount'], isNotNull);
+      await svc.dispose();
+    });
+
+    test('prefetchFailCount increments when _doPrefetch throws', () async {
+      final mock = _MockOfflineTts();
+      // First generate() call (speakSentence 'A' sync path) succeeds so the
+      // prefetch block kicks off. Subsequent calls (prefetch 'B') throw.
+      var callCount = 0;
+      when(
+        () => mock.generate(
+          text: any(named: 'text'),
+          sid: any(named: 'sid'),
+          speed: any(named: 'speed'),
+        ),
+      ).thenAnswer((inv) {
+        callCount++;
+        if (callCount == 1) {
+          return sherpa_onnx.GeneratedAudio(
+            samples: Float32List(100),
+            sampleRate: 44100,
+          );
+        }
+        throw Exception('synth boom');
+      });
+      final svc = SherpaOnnxTtsService.forTest(
+        ttsFactory: (_) => mock,
+        audioPlayer: _NoOpAudioPlayer(),
+      );
+      svc.markInitializedForTest(mock);
+
+      // Hint 'B' then speakSentence('A'). Sync gen 'A' succeeds (callCount=1),
+      // then background prefetch 'B' kicks off and throws (callCount=2).
+      await svc.hintNext(_sentence('B'));
+      await svc.speakSentence(_sentence('A'));
+      await Future<void>.delayed(Duration.zero);
+
+      final state = await svc.getDebugState();
+
+      expect(state['prefetchFailCount'], greaterThanOrEqualTo(1));
+      await svc.dispose();
+    });
+  });
 }

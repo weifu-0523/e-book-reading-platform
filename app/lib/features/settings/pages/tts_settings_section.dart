@@ -378,6 +378,12 @@ class TtsSettingsSection extends ConsumerWidget {
     b.writeln('=== Playback ===');
     b.writeln('speakCount       : ${state['speakCount']}');
     b.writeln('speakFailCount   : ${state['speakFailCount']}');
+    b.writeln('prefetchHit     : ${state['prefetchHitCount']} '
+        '(cache hits — inter-sentence gap eliminated)');
+    b.writeln('prefetchMiss    : ${state['prefetchMissCount']} '
+        '(sync generate — first sentence, hint missed, or post-invalidation)');
+    b.writeln('prefetchFail    : ${state['prefetchFailCount']} '
+        '(background generate errors — fallback to sync)');
     b.writeln('currentIdx       : ${state['currentSentenceIndex']}');
     b.writeln('stopped          : ${state['stopped']}');
     b.writeln('rate             : ${state['rate']}');

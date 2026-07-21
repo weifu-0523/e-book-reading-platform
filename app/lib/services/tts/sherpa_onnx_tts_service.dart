@@ -117,6 +117,15 @@ class SherpaOnnxTtsService implements TtsService {
   int _speakCount = 0;
   int _speakFailCount = 0;
 
+  /// v1.15.4-alpha T7: prefetch diagnostic counters. Surfaced in
+  /// [getDebugState] for the in-app TTS debug log dialog so users can
+  /// report cache effectiveness without adb. Hit = prefetch result
+  /// consumed; Miss = sync generate fallback; Fail = background
+  /// generate threw (cache left null, next speakSentence sync retries).
+  int _prefetchHitCount = 0;
+  int _prefetchMissCount = 0;
+  int _prefetchFailCount = 0;
+
   @override
   bool get isInitialized => _initialized;
 
@@ -167,6 +176,9 @@ class SherpaOnnxTtsService implements TtsService {
       'modelLoadDurationMs': _modelLoadDuration.inMilliseconds,
       'speakCount': _speakCount,
       'speakFailCount': _speakFailCount,
+      'prefetchHitCount': _prefetchHitCount,
+      'prefetchMissCount': _prefetchMissCount,
+      'prefetchFailCount': _prefetchFailCount,
       'rate': _rate,
       'volume': _volume,
       'currentSentenceIndex': _currentSentenceIndex,
@@ -283,6 +295,7 @@ class SherpaOnnxTtsService implements TtsService {
       final Float32List samples;
       final int sampleRate;
       if (hintHit) {
+        _prefetchHitCount++;
         _log('speakSentence idx=$_currentSentenceIndex using prefetched '
             'result (cache hit)');
         samples = cached.samples;
@@ -294,6 +307,7 @@ class SherpaOnnxTtsService implements TtsService {
         // The controller will set a fresh hint before the next speakSentence.
         _hintedNext = null;
       } else {
+        _prefetchMissCount++;
         final genSw = Stopwatch()..start();
         final result =
             _tts!.generate(text: sentence.text, sid: 0, speed: speed);
@@ -376,6 +390,7 @@ class SherpaOnnxTtsService implements TtsService {
         _log('prefetch stale (hint changed or cache filled), discarding');
       }
     } catch (e, st) {
+      _prefetchFailCount++;
       _log('prefetch FAILED: $e');
       _log('stack: $st');
       // Leave cache null; sync generate will retry on next speakSentence.
