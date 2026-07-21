@@ -7,7 +7,31 @@
 
 ## [Unreleased]
 
-v1.15.3-alpha 之后的新变更将记在此处。
+v1.15.4-alpha 之后的新变更将记在此处。
+
+## [1.15.4-alpha] - 2026-07-22
+
+### Fixed
+
+- **Bug 1（SherpaOnnx pitch 无效 + 单声音）**：用户测试 v1.15.3-alpha 后反映设置页调整音调无变化，问"这个 TTS 只有一个声音选择吗？"。真因：sherpa_onnx `OfflineTts.generate(text, sid, speed)` API 没有 pitch 参数，MeloTTS-zh_en VITS 模型不支持运行时变调；`getVoices()` 返回空列表（单说话人 sid=0）。UI 无条件显示 pitch slider + voice tile 误导用户。
+
+  **修复**：`tts_settings_section.dart` 顶部 `ref.watch(ttsEngineProvider)`，engine=sherpaOnnxMelo 时：pitch slider `onChanged: null` 灰显 + 下方提示"SherpaOnnx MeloTTS 不支持音调调整（POC 限制）"；voice tile `onTap: null` 灰显 + subtitle 改为"SherpaOnnx MeloTTS 仅单声音（POC 限制）"。disable + hint 而非 hide：保留肌肉记忆 + 教育用户为何不可用。
+
+- **Bug 2（SherpaOnnx 句间卡顿）**：用户测试 v1.15.3-alpha 后反映"读完一句后等一会才出下一句，需要顺畅不出现卡顿感"。真因：`speakSentence` 完全串行——generate(N) 500-900ms → play(N) 完成 → return → speakSentence(N+1) → generate(N+1) 500-900ms，**句间静音 = generate 时长**。
+
+  **修复**：TtsService 接口加 `hintNext(Sentence?)` 默认 no-op；TtsPlaybackController._speakCurrent 在 `speakSentence(current)` 前调 `hintNext(next)`；SherpaOnnxTtsService 覆写 hintNext 存 hint，speakSentence 检查缓存命中→用 prefetched，未命中→sync generate，然后 `unawaited(_doPrefetch(...))` 在 play await 窗口内并行 generate 下一句。**用户感知到的句间 gap 消除**（audioplayers 在 native audio thread 渲染不受 FFI 阻塞影响）。
+
+### Changed
+
+- **缓存失效策略（v1.13.10-alpha Bug 1 教训套用）**：`setSpeechRate` rate 变化时清缓存（否则播旧速率音频）；`stop` 清 hint + cache（防 stop→skip→resume 序列播 stale 音频）；`pause` 继承（委托 stop）。
+
+### Diagnostics
+
+- **SherpaOnnxTtsService.getDebugState 暴露 prefetch 命中率**：新增 `prefetchHitCount` / `prefetchMissCount` / `prefetchFailCount` 字段，用于诊断对同时追踪命中率（低命中率提示重设计异步 await）。in-app TTS 调试日志 dialog 打印，无需 adb。
+
+### Known Limitations
+
+- **主 isolate jank ~500-900ms during prefetch**：FFI generate 阻塞主 isolate，可能出现播放期间 UI 输入滞后。用户感知到句间 gap 消除，核心目标达成；UI 滞后为 acceptable tradeoff，如用户投诉 v1.16 改 Isolate.run（需重构 sherpa_onnx 绑定）。
 
 ## [1.15.3-alpha] - 2026-07-21
 
