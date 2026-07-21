@@ -7,7 +7,19 @@
 
 ## [Unreleased]
 
-v1.14.1-alpha 之后的新变更将记在此处。
+v1.14.2-alpha 之后的新变更将记在此处。
+
+## [1.14.2-alpha] - 2026-07-21
+
+### Fixed
+
+- **移动端选中文字仍弹 Flutter 默认 toolbar（v1.14.1-alpha 误诊修复）**：v1.14.1-alpha 修了 `SelectableRegion` 的 `selectionControls`（误以为是默认 toolbar 来源），用户报告 v1.14.1 装上后卡片仍在。真根因：`SelectionArea` 的默认 `contextMenuBuilder` 是 `_defaultContextMenuBuilder`（`material/selection_area.dart:54`），构建 `AdaptiveTextSelectionToolbar`（白色长条卡 Copy/Share/SelectAll）。Flutter 框架在 `selectable_region.dart:1374-1387` 检测到 `TextSelectionHandleControls` mixin 后**完全跳过** `selectionControls` 路径，改走 `contextMenuBuilder` 路径，所以 `selectionControls` 与 toolbar 显示无关。EPUB 渲染层有 5 处 `SelectionArea`（`epubx_renderer.dart` 4 处 + `selectable_page_view.dart` 1 处）全部未传 `contextMenuBuilder`，全部弹默认 toolbar。修复：新增 `reader_engine_epub_view/lib/src/no_selection_toolbar.dart` 定义 `emptySelectionContextMenu` 返回 `SizedBox.shrink()`，5 处 `SelectionArea` + `reader_body.dart` 的 `SelectableRegion` 全部传 `contextMenuBuilder: emptySelectionContextMenu`。
+
+### Statistics
+
+- **Dart**: 1731 pass / 25 skip / 0 fail（v1.14.1 是 1729，+2 widget test + 1 源码断言扩展）
+- **Commits since v1.14.1-alpha**: 1（69b1ab2）
+- **versionCode**: 2011（v1.14.1 是 2010）
 
 ## [1.14.1-alpha] - 2026-07-21
 
