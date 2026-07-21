@@ -27,10 +27,16 @@ import 'package:zhiyue/gen_l10n/app_localizations.dart';
 
 import '../../../helpers/stub_tts_service.dart';
 
+// Wrap in SingleChildScrollView mirroring settings_page.dart's ListView —
+// TtsSettingsSection is a Column that expects a scrollable parent
+// (grew past default 800x600 viewport after v1.15.0-alpha T7 added the
+// engine selector Card).
 Widget _wrap(Widget child) => MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(body: child),
+      home: Scaffold(
+        body: SingleChildScrollView(child: child),
+      ),
     );
 
 void main() {

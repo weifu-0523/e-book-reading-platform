@@ -22,6 +22,8 @@ import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/tts/sentence_segmenter.dart';
 import '../../../services/tts/self_built_tts_service.dart';
 import '../../../services/tts/tts_availability.dart';
+import '../../../services/tts/tts_engine_preference.dart';
+import '../../tts/providers/tts_engine_provider.dart';
 import '../../tts/providers/tts_playback_controller.dart';
 import '../../tts/providers/tts_settings_provider.dart';
 
@@ -54,6 +56,58 @@ class TtsSettingsSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // POC v1.15.0-alpha T7: engine selector dropdown
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('TTS 引擎（实验）',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Consumer(builder: (context, ref, _) {
+                  final engine = ref.watch(ttsEngineProvider);
+                  return DropdownButtonFormField<TtsEnginePreference>(
+                    value: engine,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: TtsEnginePreference.system,
+                        child: Text('系统（默认）'),
+                      ),
+                      DropdownMenuItem(
+                        value: TtsEnginePreference.sherpaOnnxMelo,
+                        child: Text('SherpaOnnx MeloTTS（163MB）'),
+                      ),
+                    ],
+                    onChanged: (value) async {
+                      if (value == null) return;
+                      await ref.read(ttsEngineProvider.notifier).setEngine(value);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('引擎已切换,重启朗读生效'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                }),
+                const SizedBox(height: 8),
+                Text(
+                  'POC v1.15.0-alpha：SherpaOnnx MeloTTS 为离线神经引擎,'
+                  '需首次朗读时拷贝 163MB 模型,中文质量可能优于系统 TTS。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ),
         ListTile(
           leading: const Icon(Icons.speed),
           title: Text(l10n.ttsRateLabel),
