@@ -30,6 +30,24 @@ import 'tts_voice.dart';
 /// - 多 voice 切换
 /// - isolate 包裹 generate() 防 jank
 class SherpaOnnxTtsService implements TtsService {
+  SherpaOnnxTtsService() : _ttsFactory = _defaultFactory;
+
+  /// v1.15.4-alpha T3: test injection seam. Tests pass a mock factory
+  /// that returns a fake [sherpa_onnx.OfflineTts] so cache/prefetch
+  /// logic can be unit-tested without loading the real 163MB ONNX model.
+  @visibleForTesting
+  SherpaOnnxTtsService.forTest({
+    required sherpa_onnx.OfflineTts Function(sherpa_onnx.OfflineTtsConfig)
+        ttsFactory,
+  }) : _ttsFactory = ttsFactory;
+
+  static sherpa_onnx.OfflineTts _defaultFactory(
+          sherpa_onnx.OfflineTtsConfig config) =>
+      sherpa_onnx.OfflineTts(config);
+
+  final sherpa_onnx.OfflineTts Function(sherpa_onnx.OfflineTtsConfig)
+      _ttsFactory;
+
   static const _modelAssetDir = 'assets/tts-models/vits-melo-tts-zh_en';
   static const _modelFiles = ['model.onnx', 'lexicon.txt', 'tokens.txt'];
 
@@ -169,7 +187,7 @@ class SherpaOnnxTtsService implements TtsService {
 
       // 3. 创建 OfflineTts 实例（加载 163MB ONNX 模型,需 1-3 秒）
       _log('OfflineTts ctor (loading ONNX) …');
-      _tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(
+      _tts = _ttsFactory(sherpa_onnx.OfflineTtsConfig(
         model: sherpa_onnx.OfflineTtsModelConfig(
           vits: sherpa_onnx.OfflineTtsVitsModelConfig(
             model: p.join(modelDir, 'model.onnx'),
