@@ -387,6 +387,11 @@ class SherpaOnnxTtsService implements TtsService {
   @override
   Future<void> stop() async {
     _log('stop() invoked stopped=$_stopped');
+    // v1.15.4-alpha T5: clear prefetch cache. Otherwise stale audio
+    // could play after user stop + skip + resume sequences.
+    _hintedNext = null;
+    _prefetchedResult = null;
+    _prefetchedKey = null;
     _stopped = true;
     await _audioPlayer.stop();
     _stateController.add(TtsState.stopped);
@@ -432,7 +437,16 @@ class SherpaOnnxTtsService implements TtsService {
 
   @override
   Future<void> setSpeechRate(double rate) async {
-    _rate = rate.clamp(-1.0, 1.0);
+    final newRate = rate.clamp(-1.0, 1.0);
+    if (newRate == _rate) return; // no-op when unchanged
+    // v1.15.4-alpha T5: invalidate prefetch cache. Cached audio was
+    // generated at the old rate; playing it would sound wrong speed.
+    // Same lesson as v1.13.10-alpha Bug 1 (TtsState.stopped) — any
+    // state change that invalidates cached audio must clear the cache.
+    _rate = newRate;
+    _prefetchedResult = null;
+    _prefetchedKey = null;
+    _log('setSpeechRate: rate=$newRate, prefetch cache cleared');
   }
 
   @override

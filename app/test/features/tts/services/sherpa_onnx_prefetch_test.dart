@@ -248,4 +248,76 @@ void main() {
       await svc.dispose();
     });
   });
+
+  group('cache invalidation (v1.15.4-alpha T5)', () {
+    test('setSpeechRate clears prefetched cache', () async {
+      final mock = _MockOfflineTts();
+      _stubGenerate(mock);
+      final svc = SherpaOnnxTtsService.forTest(
+        ttsFactory: (_) => mock,
+        audioPlayer: _NoOpAudioPlayer(),
+      );
+      svc.markInitializedForTest(mock);
+
+      // Pre-populate cache.
+      svc.setPrefetchedForTest('hello', Float32List(100), 44100);
+
+      // Change rate (default _rate=0.0 → 0.5).
+      await svc.setSpeechRate(0.5);
+
+      // Verify cache cleared: speakSentence('hello') should sync-generate
+      // (cache miss) instead of using prefetched samples.
+      when(
+        () => mock.generate(
+          text: any(named: 'text'),
+          sid: any(named: 'sid'),
+          speed: any(named: 'speed'),
+        ),
+      ).thenAnswer(
+        (_) => sherpa_onnx.GeneratedAudio(
+          samples: Float32List(100),
+          sampleRate: 44100,
+        ),
+      );
+
+      await svc.speakSentence(_sentence('hello'));
+
+      verify(
+        () => mock.generate(
+          text: 'hello',
+          sid: any(named: 'sid'),
+          speed: any(named: 'speed'),
+        ),
+      ).called(greaterThanOrEqualTo(1));
+      await svc.dispose();
+    });
+
+    test('stop clears hint and cache', () async {
+      final mock = _MockOfflineTts();
+      _stubGenerate(mock);
+      final svc = SherpaOnnxTtsService.forTest(
+        ttsFactory: (_) => mock,
+        audioPlayer: _NoOpAudioPlayer(),
+      );
+      svc.markInitializedForTest(mock);
+
+      await svc.hintNext(_sentence('world'));
+      svc.setPrefetchedForTest('world', Float32List(100), 44100);
+
+      await svc.stop();
+
+      // After stop, speakSentence('world') should sync-generate (cache miss).
+      // _stopped is reset to false at the start of speakSentence.
+      await svc.speakSentence(_sentence('world'));
+
+      verify(
+        () => mock.generate(
+          text: 'world',
+          sid: any(named: 'sid'),
+          speed: any(named: 'speed'),
+        ),
+      ).called(greaterThanOrEqualTo(1));
+      await svc.dispose();
+    });
+  });
 }
