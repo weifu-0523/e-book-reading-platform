@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
+import 'sherpa_onnx_audio_player.dart';
 import 'tts_service.dart';
 import 'tts_voice.dart';
 
@@ -37,6 +38,13 @@ class SherpaOnnxTtsService implements TtsService {
   bool _initialized = false;
   bool _bindingsInitialized = false;
   sherpa_onnx.OfflineTts? _tts;
+
+  // T5 fields
+  final SherpaOnnxAudioPlayer _audioPlayer = SherpaOnnxAudioPlayer();
+  double _rate = 0.0; // -1..1, 0 = normal speed
+  double _volume = 1.0;
+  int _currentSentenceIndex = 0;
+  bool _stopped = false;
 
   @override
   bool get isInitialized => _initialized;
@@ -105,37 +113,74 @@ class SherpaOnnxTtsService implements TtsService {
 
   @override
   Future<void> speakSentence(Sentence sentence) async {
-    throw UnimplementedError('POC T5 implements');
+    if (!_initialized || _tts == null) {
+      _errorController.add('SherpaOnnx not initialized');
+      _stateController.add(TtsState.error);
+      return;
+    }
+
+    _stopped = false;
+    _stateController.add(TtsState.speaking);
+
+    try {
+      // flutter_tts rate: -1.0..1.0 (0=normal);sherpa_onnx speed: 1.0=normal, >1 faster
+      final speed = 1.0 * (1.0 + _rate.clamp(-0.5, 1.0));
+      final result = _tts!.generate(text: sentence.text, sid: 0, speed: speed);
+
+      _progressController.add(TtsProgress(
+        sentenceIndex: _currentSentenceIndex,
+        charStart: 0,
+        charEnd: sentence.text.length,
+      ));
+
+      if (_stopped) {
+        _stateController.add(TtsState.idle);
+        return;
+      }
+
+      await _audioPlayer.play(result.samples, result.sampleRate);
+      if (!_stopped) {
+        _stateController.add(TtsState.idle);
+      }
+    } catch (e, st) {
+      _errorController.add('SherpaOnnx speak failed: $e\n$st');
+      _stateController.add(TtsState.error);
+    }
   }
 
   @override
   Future<void> stop() async {
-    throw UnimplementedError('POC T5 implements');
+    _stopped = true;
+    await _audioPlayer.stop();
+    _stateController.add(TtsState.stopped);
+    // 后续 idle 由 TtsPlaybackController 读取 stopped 后转 idle
   }
 
   @override
   Future<void> pause() async {
-    throw UnimplementedError('POC T5 implements');
+    // sherpa-onnx offline synthesis 无 native pause;POC 用 stop + 标记实现。
+    // TtsPlaybackController 在 paused state 时仍能 resume（重 speak 当前句）。
+    await stop();
   }
 
   @override
   void setCurrentSentenceIndex(int idx) {
-    // Stateless in skeleton; T5 wires to _currentSentenceIndex field
+    _currentSentenceIndex = idx;
   }
 
   @override
   Future<void> setSpeechRate(double rate) async {
-    throw UnimplementedError('POC T5 implements');
+    _rate = rate.clamp(-1.0, 1.0);
   }
 
   @override
   Future<void> setPitch(double pitch) async {
-    // MeloTTS 不支持运行时调 pitch, no-op
+    // MeloTTS 不支持运行时调 pitch,no-op（保留接口契约）
   }
 
   @override
   Future<void> setVolume(double volume) async {
-    throw UnimplementedError('POC T5 implements');
+    _volume = volume.clamp(0.0, 1.0);
   }
 
   @override
@@ -169,6 +214,7 @@ class SherpaOnnxTtsService implements TtsService {
     _tts?.free();
     _tts = null;
     _initialized = false;
+    await _audioPlayer.dispose();
     await _stateController.close();
     await _progressController.close();
     await _errorController.close();
