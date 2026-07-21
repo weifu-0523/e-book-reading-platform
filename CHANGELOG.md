@@ -7,7 +7,32 @@
 
 ## [Unreleased]
 
-v1.15.1-alpha 之后的新变更将记在此处。
+v1.15.2-alpha 之后的新变更将记在此处。
+
+## [1.15.2-alpha] - 2026-07-21
+
+### Added
+
+- **SherpaOnnx in-app 调试日志面板**：用户报告 v1.15.1-alpha 仍有可能朗读无声音，但用户没有 adb 没法抓 logcat。扩展原有 v1.13.1-alpha 的「TTS 调试日志」按钮支持 SherpaOnnxTtsService：
+  - `SherpaOnnxTtsService` 加 `_debugLogs` ring buffer（200 行 cap）+ `_log(msg)` helper（timestamp + debugPrint + 写 buffer）
+  - `getDebugState()` 返回 init/speak 状态 map（engine / initialized / bindingsReady / initDurationMs / speakCount / speakFailCount / serviceDebugLogs）
+  - `SherpaOnnxAudioPlayer` 加 `static void Function(String)? onDebugLog` 钩子，service.init 时 wire 起来把 audioplayers 路径日志 forward 给同一 buffer
+  - `_showTtsDebugLogs` 加 `SherpaOnnxTtsService` 分支 + 新 `_prettySherpaDebugState` helper 渲染 dialog
+  - **不强制 re-init**（SherpaOnnx init 含 170MB asset 拷贝 1-3s，按需触发会让用户等几秒），直接 dump 当前状态
+
+### 用户面影响
+
+用户切到 SherpaOnnx 引擎后，设置 → 朗读 → 「TTS 调试日志」按钮可以查看：
+- 引擎初始化状态 + 错误（如有）
+- 朗读次数 + 失败次数
+- 最近 200 行 init/copy/bindings/load/generate/play/state-change/stop 日志（含 timestamp）
+- 复制文本贴回给开发者即可定位问题
+
+### Statistics
+
+- **Dart**: 1753 pass / 26 skip / 0 fail（与 v1.15.1 持平，纯 UI/诊断改动无新测试）
+- **Commits since v1.15.1-alpha**: 1 + release prep
+- **versionCode**: 2014（v1.15.1-alpha 是 2013）
 
 ## [1.15.1-alpha] - 2026-07-21
 
