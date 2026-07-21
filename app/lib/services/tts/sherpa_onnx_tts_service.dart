@@ -274,6 +274,13 @@ class SherpaOnnxTtsService implements TtsService {
     _currentSentenceIndex = idx;
   }
 
+  /// v1.15.4-alpha T1: placeholder no-op to satisfy interface contract.
+  /// T4 will override with real prefetch pipeline (cache next sentence
+  /// audio during current playback, hit cache on next speakSentence to
+  /// eliminate ~500-900ms inter-sentence silence gap).
+  @override
+  Future<void> hintNext(Sentence? next) async {}
+
   @override
   Future<void> setSpeechRate(double rate) async {
     _rate = rate.clamp(-1.0, 1.0);

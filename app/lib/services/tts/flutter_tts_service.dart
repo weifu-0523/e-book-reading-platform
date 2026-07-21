@@ -130,6 +130,12 @@ class FlutterTtsServiceImpl implements TtsService {
   @override
   void setCurrentSentenceIndex(int idx) => _currentSentenceIdx = idx;
 
+  /// v1.15.4-alpha: flutter_tts has no prefetch pipeline — no-op.
+  /// Audio is synthesized on-device per speak() call; inter-sentence gap
+  /// is unavoidable here. SherpaOnnxTtsService overrides to pre-generate.
+  @override
+  Future<void> hintNext(Sentence? next) async {}
+
   @override
   Future<void> stop() => _tts.stop();
 

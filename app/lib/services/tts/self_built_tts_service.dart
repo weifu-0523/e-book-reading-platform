@@ -211,6 +211,12 @@ class SelfBuiltTtsServiceImpl implements TtsService {
   @override
   void setCurrentSentenceIndex(int idx) => _currentSentenceIdx = idx;
 
+  /// v1.15.4-alpha: self-built plugin has its own native sentence queue
+  /// (Android TextToSpeech utteranceId sequencing). No Dart-side prefetch
+  /// hint needed. SherpaOnnxTtsService overrides for neural-engine pipelining.
+  @override
+  Future<void> hintNext(Sentence? next) async {}
+
   @override
   Future<void> setSpeechRate(double rate) {
     _cachedRate = rate;

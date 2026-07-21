@@ -58,6 +58,8 @@ class _FakeTtsService implements TtsService {
   @override
   void setCurrentSentenceIndex(int idx) {}
   @override
+  Future<void> hintNext(Sentence? next) async {}
+  @override
   Future<void> setSpeechRate(double r) async {}
   @override
   Future<void> setPitch(double p) async {}

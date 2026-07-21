@@ -76,6 +76,19 @@ abstract class TtsService {
   /// carry the correct sentence index. Impl-specific routing detail.
   void setCurrentSentenceIndex(int idx);
 
+  /// v1.15.4-alpha: Hint the next sentence that will be spoken. Engines
+  /// that support pipelining (e.g. SherpaOnnx) override this to
+  /// pre-generate audio during the current sentence's playback,
+  /// eliminating inter-sentence silence gaps. Default no-op for engines
+  /// without prefetch support (flutter_tts, self-built plugin have their
+  /// own queueing).
+  ///
+  /// Called by TtsPlaybackController._speakCurrent right before
+  /// speakSentence(current). Pass null when current is the last sentence
+  /// in the queue (end of playback) or when clearing stale hints (user
+  /// stop / skip).
+  Future<void> hintNext(Sentence? next) async {}
+
   Future<void> setSpeechRate(double rate); // -1.0 ~ 1.0
   Future<void> setPitch(double pitch); // 0.5 ~ 2.0
   Future<void> setVolume(double volume); // 0.0 ~ 1.0

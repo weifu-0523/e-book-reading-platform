@@ -74,6 +74,10 @@ class StubTtsService implements TtsService {
   @override
   void setCurrentSentenceIndex(int idx) {}
 
+  /// v1.15.4-alpha: no-op for stub (no prefetch pipeline in test env).
+  @override
+  Future<void> hintNext(Sentence? next) async {}
+
   @override
   Future<void> stop() async {
     _state.add(TtsState.idle);
