@@ -53,6 +53,12 @@ class TtsSettingsSection extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final settings = ref.watch(ttsSettingsProvider);
     final notifier = ref.read(ttsSettingsProvider.notifier);
+    // v1.15.4-alpha T6: watch engine once at top of build to drive
+    // pitch-slider / voice-tile disabling for SherpaOnnx (no pitch API,
+    // single speaker model). Previously the engine dropdown's own
+    // Consumer was the sole watcher.
+    final engine = ref.watch(ttsEngineProvider);
+    final isSherpaOnnx = engine == TtsEnginePreference.sherpaOnnxMelo;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -67,38 +73,35 @@ class TtsSettingsSection extends ConsumerWidget {
                 Text('TTS 引擎（实验）',
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
-                Consumer(builder: (context, ref, _) {
-                  final engine = ref.watch(ttsEngineProvider);
-                  return DropdownButtonFormField<TtsEnginePreference>(
-                    value: engine,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      isDense: true,
+                DropdownButtonFormField<TtsEnginePreference>(
+                  value: engine,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: TtsEnginePreference.system,
+                      child: Text('系统（默认）'),
                     ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: TtsEnginePreference.system,
-                        child: Text('系统（默认）'),
-                      ),
-                      DropdownMenuItem(
-                        value: TtsEnginePreference.sherpaOnnxMelo,
-                        child: Text('SherpaOnnx MeloTTS（163MB）'),
-                      ),
-                    ],
-                    onChanged: (value) async {
-                      if (value == null) return;
-                      await ref.read(ttsEngineProvider.notifier).setEngine(value);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('引擎已切换,重启朗读生效'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                  );
-                }),
+                    DropdownMenuItem(
+                      value: TtsEnginePreference.sherpaOnnxMelo,
+                      child: Text('SherpaOnnx MeloTTS（163MB）'),
+                    ),
+                  ],
+                  onChanged: (value) async {
+                    if (value == null) return;
+                    await ref.read(ttsEngineProvider.notifier).setEngine(value);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('引擎已切换,重启朗读生效'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'POC v1.15.0-alpha：SherpaOnnx MeloTTS 为离线神经引擎,'
@@ -124,13 +127,31 @@ class TtsSettingsSection extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.music_note),
           title: Text(l10n.ttsPitchLabel),
-          subtitle: Slider(
-            min: 0.5,
-            max: 2.0,
-            divisions: 15,
-            value: settings.pitch,
-            label: settings.pitch.toStringAsFixed(1),
-            onChanged: notifier.setPitch,
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Slider(
+                min: 0.5,
+                max: 2.0,
+                divisions: 15,
+                value: settings.pitch,
+                label: settings.pitch.toStringAsFixed(1),
+                // v1.15.4-alpha T6: SherpaOnnx engine has no pitch API.
+                // sherpa_onnx OfflineTts accepts (text, sid, speed) only;
+                // MeloTTS-zh_en VITS model doesn't support runtime pitch
+                // shift. Disable slider + show hint instead of silently
+                // no-op'ing.
+                onChanged: isSherpaOnnx ? null : notifier.setPitch,
+              ),
+              if (isSherpaOnnx)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    'SherpaOnnx MeloTTS 不支持音调调整（POC 限制）',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+            ],
           ),
         ),
         ListTile(
@@ -148,12 +169,22 @@ class TtsSettingsSection extends ConsumerWidget {
         // v1.14.0-alpha T6: tile routing to VoiceListPage where the user
         // picks one of the platform-exposed voices or falls back to system
         // default.
+        //
+        // v1.15.4-alpha T6: disable + hint for SherpaOnnx engine.
+        // MeloTTS-zh_en has only sid=0 (single speaker), so the voice list
+        // page would show a single non-selectable entry. Grey out instead
+        // and explain in subtitle.
         ListTile(
           leading: const Icon(Icons.record_voice_over),
           title: Text(l10n.ttsSettingsVoiceTile),
-          subtitle: Text(l10n.ttsSettingsVoiceTileSubtitle),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/settings/tts/voice'),
+          subtitle: Text(isSherpaOnnx
+              ? 'SherpaOnnx MeloTTS 仅单声音（POC 限制）'
+              : l10n.ttsSettingsVoiceTileSubtitle),
+          trailing: Icon(
+            Icons.chevron_right,
+            color: isSherpaOnnx ? Theme.of(context).disabledColor : null,
+          ),
+          onTap: isSherpaOnnx ? null : () => context.push('/settings/tts/voice'),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
