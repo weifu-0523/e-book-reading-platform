@@ -7,7 +7,35 @@
 
 ## [Unreleased]
 
-v1.15.2-alpha 之后的新变更将记在此处。
+v1.15.3-alpha 之后的新变更将记在此处。
+
+## [1.15.3-alpha] - 2026-07-21
+
+### Fixed
+
+- **SherpaOnnx 朗读无声音真根因（v1.15.0-alpha+v1.15.1-alpha+v1.15.2-alpha 三次诊断后定位）**：用户报告 v1.15.2-alpha 调试日志显示 `MissingPluginException(No implementation found for method create on channel xyz.luan/audioplayers)`，**8 次朗读全失败但 generate OK**。真根因：`MainActivity.registerSafePlugins` 列表（v1.12.3-alpha 为绕国产 ROM startup kill 手动 curate 的 safe plugin list）**没有 audioplayers**。v1.12.3 当时只跳过 audio_service / audio_session / flutter_tts 3 个 audio plugin，v1.13 加 ZhiYueTtsPlugin 替代 flutter_tts，**v1.15.0-alpha 引入 audioplayers 时忘记加此列表**，导致 Android 运行时 `xyz.luan/audioplayers` MethodChannel 未注册，`AudioPlayer._create` 必抛 MissingPluginException。
+
+  **修复**：`MainActivity.kt:169` `safePlugins` 列表加 `"audioplayers" to { xyz.luan.audioplayers.AudioplayersPlugin() }`。`AudioplayersPlugin.onAttachedToEngine` 只 bind MethodChannel + EventHandler，不绑系统 audio service（无 AudioManager / AudioDeviceCallback / TextToSpeech），所以加入此 list 不会触发 v1.12.3-alpha 想避免的国产 ROM startup kill。
+
+### Changed
+
+- **v1.15.0+v1.15.1+v1.15.2 修复全部正确但未命中真根因**：
+  - v1.15.1 改 `onPlayerStateChanged` 替代 `onPlayerComplete` 是正确的防御性改动（保留）
+  - v1.15.1 改 `driveStop` 先切 state 再 await service.stop 是正确的 UI 响应改动（保留）
+  - v1.15.2 加 in-app 调试日志是正确的诊断基础设施（保留）
+  - 三次修复都基于合理代码分析但都没命中真实 runtime 失败点。**Iron Law Phase 1 决定性证据的重要性**：v1.15.2 加的 in-app 调试日志直接暴露了 `MissingPluginException`，是定位真根因的唯一途径。
+
+### Known Limitations
+
+- **真机盲听仍待验证**：v1.15.3-alpha 修复 plugin registration 后，SherpaOnnx 应真正能朗读。用户需真机测试 + 填回 POC report §2 benchmark + §3 盲听评分。
+- **audioplayers Android plugin 注册时机风险**：onAttachedToEngine 不绑系统 service（已验证源码），但仍需真机确认 startup 不被国产 ROM kill。
+
+### Statistics
+
+- **Dart**: 1753 pass / 26 skip / 0 fail（与 v1.15.2 持平，纯 Kotlin 改动）
+- **Kotlin**: 33 pass / 0 fail
+- **Commits since v1.15.2-alpha**: 1 + release prep
+- **versionCode**: 2015（v1.15.2-alpha 是 2014）
 
 ## [1.15.2-alpha] - 2026-07-21
 
