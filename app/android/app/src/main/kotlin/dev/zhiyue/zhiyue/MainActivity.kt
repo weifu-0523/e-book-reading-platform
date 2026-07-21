@@ -164,9 +164,18 @@ class MainActivity : FlutterActivity() {
     /// list MUST be updated to mirror the new set (minus the 3 skips).
     /// Mismatch will manifest as runtime "channel not registered"
     /// errors on the missing plugin, not as a crash.
+    ///
+    /// v1.15.3-alpha hotfix: 加入 audioplayers_android（v1.15.0-alpha
+    /// 引入但忘记加此列表，导致 SherpaOnnxTtsService 调 AudioPlayer._create
+    /// 时 `xyz.luan/audioplayers` channel 未注册 → MissingPluginException →
+    /// 8 次朗读全失败但 generate OK（FFI 不依赖 MethodChannel）。Audioplayers
+    /// Plugin.onAttachedToEngine 只 bind MethodChannel + EventHandler，不绑
+    /// 系统 audio service（无 AudioManager / AudioDeviceCallback），所以加入
+    /// 此 list 不会触发 v1.12.3-alpha 想避免的国产 ROM startup kill。
     private fun registerSafePlugins(flutterEngine: FlutterEngine) {
         val tag = "ZhiYuePluginFilter"
         val safePlugins: List<Pair<String, () -> Any>> = listOf(
+            "audioplayers" to { xyz.luan.audioplayers.AudioplayersPlugin() },
             "connectivity_plus" to { dev.fluttercommunity.plus.connectivity.ConnectivityPlugin() },
             "file_picker" to { com.mr.flutter.plugin.filepicker.FilePickerPlugin() },
             "flutter_plugin_android_lifecycle" to { io.flutter.plugins.flutter_plugin_android_lifecycle.FlutterAndroidLifecyclePlugin() },
