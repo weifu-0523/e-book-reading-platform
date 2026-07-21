@@ -4,11 +4,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
+import '../../features/tts/utils/sherpa_onnx_benchmark.dart';
 import 'sherpa_onnx_audio_player.dart';
 import 'tts_service.dart';
 import 'tts_voice.dart';
@@ -39,6 +41,10 @@ class SherpaOnnxTtsService implements TtsService {
   bool _bindingsInitialized = false;
   sherpa_onnx.OfflineTts? _tts;
 
+  /// T8: model load duration measured from asset-copy start to OfflineTts
+  /// ctor return. Captured once during [init]; read by [benchmark].
+  Duration _modelLoadDuration = Duration.zero;
+
   // T5 fields
   final SherpaOnnxAudioPlayer _audioPlayer = SherpaOnnxAudioPlayer();
   double _rate = 0.0; // -1..1, 0 = normal speed
@@ -64,6 +70,9 @@ class SherpaOnnxTtsService implements TtsService {
     _stateController.add(TtsState.loading);
 
     try {
+      // T8: measure total cold-start cost (asset copy + FFI bind + ONNX load)
+      final loadSw = Stopwatch()..start();
+
       // 1. 拷贝 asset → 文件系统（sherpa-onnx 用文件路径加载，不能从 AAsset 读取）
       final supportDir = await getApplicationSupportDirectory();
       final modelDir = p.join(
@@ -101,6 +110,9 @@ class SherpaOnnxTtsService implements TtsService {
         // 注意:sherpa_onnx API 字段名是 maxNumSenetences(原作者拼写错误)
         maxNumSenetences: 1,
       ));
+
+      loadSw.stop();
+      _modelLoadDuration = loadSw.elapsed;
 
       _initialized = true;
       _stateController.add(TtsState.idle);
@@ -208,6 +220,41 @@ class SherpaOnnxTtsService implements TtsService {
   // Default null; would inherit from interface but `implements` requires explicit.
   @override
   int? get eventReceivedCountForDebug => null;
+
+  /// T8: benchmark entry. Direct call to `_tts!.generate()` (no audio
+  /// playback) so we measure pure synthesis cost. Caller must [init] first.
+  ///
+  /// Returns [SherpaOnnxBenchmarkResult] populated with synth/audio/memory
+  /// timings; `_modelLoadDuration` from [init] is attached so the POC
+  /// report (T9) can surface cold-start cost alongside steady-state RTF.
+  @visibleForTesting
+  Future<SherpaOnnxBenchmarkResult> benchmark(String text) async {
+    if (!_initialized || _tts == null) {
+      throw StateError('SherpaOnnx not initialized');
+    }
+    final sw = Stopwatch()..start();
+    final result = _tts!.generate(text: text, sid: 0, speed: 1.0);
+    sw.stop();
+
+    final audioMs = (result.samples.length / result.sampleRate * 1000).round();
+
+    return SherpaOnnxBenchmarkResult(
+      textLength: text.length,
+      synthDuration: sw.elapsed,
+      audioDuration: Duration(milliseconds: audioMs),
+      peakMemoryMb: _currentMemoryMb(),
+      modelLoadDuration: _modelLoadDuration,
+    );
+  }
+
+  /// POC approximation: Dart ProcessInfo.currentRss measures current
+  /// isolate heap, NOT true process RSS (which includes the native heap
+  /// where the 163MB ONNX model lives). True RSS needs a platform channel
+  /// to Android `Debug.MemoryInfo` — deferred to Phase 2 if the POC
+  /// number proves insufficient for the decision.
+  int _currentMemoryMb() {
+    return (ProcessInfo.currentRss / (1024 * 1024)).round();
+  }
 
   @override
   Future<void> dispose() async {
