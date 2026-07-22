@@ -7,7 +7,30 @@
 
 ## [Unreleased]
 
-v1.15.5-alpha 之后的新变更将记在此处。
+v1.15.6-alpha 之后的新变更将记在此处。
+
+## [1.15.6-alpha] - 2026-07-22
+
+### Fixed
+
+- **Bug（prefetch 同步阻塞 isolate）**：v1.15.5-alpha 真机日志显示 `speakSentence → generate OK → prefetch OK → play start` 完全串行，prefetch 在 play 启动前完成。**真根因**：v1.15.4-alpha 的 `unawaited(_doPrefetch(...))` 在 `await _audioPlayer.play(...)` 之前调，但 Dart async function 无 await 会**同步执行整个 body**——FFI `tts.generate()` 阻塞 isolate 2-5 秒，`await _audioPlayer.play(...)` 排队等 isolate，直到 prefetch 完成才能开始 play。用户感知 "读完一句等几秒才开始下一句"。
+
+  **修复**：`SherpaOnnxAudioPlayer.play` 加 `onAudioStarted` callback 参数，在 `p.play()` 返回后（audio queued 到 native thread）触发。`speakSentence` 把 `unawaited(_doPrefetch)` 移到 callback 内——FFI 仍阻塞 isolate，但 audio 在 native thread 渲染不受影响，**prefetch 与播放真正并行**。
+
+- **Bug（setSpeechRate 误清 prefetch cache）**：v1.15.5-alpha 真机日志显示每次 `speakSentence` 之间都触发 `setSpeechRate: cache cleared`（rate=0.8 未变），`prefetchHit=0/miss=5` 决定性证据。**真根因**：v1.15.4-alpha 用 `if (newRate == _rate) return` 精确相等短路，但 `_rate` 在 speakSentence 之间似乎被重置（可能 double 精度问题或 ttsSettingsProvider watch 链触发 service rebuild，根因不明）。**修复**：用 `(newRate - _rate).abs() < 0.001` roughEqual 替代精确 `==`，消除 false cache invalidation。
+
+### Changed
+
+- **`SherpaOnnxAudioPlayer.play` 签名加 `onAudioStarted` callback**：调用方可在 audio 真正 queued 到 native thread 之后启动并行 FFI 工作（如 prefetch）。Production 用法见 `SherpaOnnxTtsService.speakSentence`。
+
+### Diagnostics
+
+- **`onAudioStarted` 触发 log**：`onAudioStarted: kicking off prefetch for next sentence` 或 `onAudioStarted: prefetch skipped (hint=X inProgress=Y cache=Z)`，便于真机日志定位 prefetch 启动时机。
+
+### Known Limitations
+
+- **MeloTTS RTF ≈ 0.8-1.0 限制**：用户真机日志显示 generate 时长接近 audio 时长（793ms/964ms、1725ms/2009ms、2482ms/2902ms）。即使 prefetch 真正并行（本版本修复），当下一句 generate 时长 > 当前句 audio 时长时（用户日志 N=7 prefetch 5429ms vs N=6 audio 2009ms），仍会有 gap。**这是 MeloTTS-zh_en 在中端手机上的本质限制**，需要 (a) 更快的模型，(b) Isolate.run（需重构 sherpa_onnx FFI 绑定），或 (c) 接受现状。
+- **`setSpeechRate` 根因未完全定位**：roughEqual 是 workaround，真正根因（service rebuild 或精度问题）未深挖。如真机日志仍显示每次 cache cleared，v1.15.7 加 service instance ID log 深查。
 
 ## [1.15.5-alpha] - 2026-07-22
 
