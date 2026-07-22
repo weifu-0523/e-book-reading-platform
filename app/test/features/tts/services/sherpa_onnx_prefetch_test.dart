@@ -22,8 +22,16 @@ class _NoOpAudioPlayer extends SherpaOnnxAudioPlayer {
   int playCallCount = 0;
 
   @override
-  Future<void> play(Float32List samples, int sampleRate) async {
+  Future<void> play(
+    Float32List samples,
+    int sampleRate, {
+    void Function()? onAudioStarted,
+  }) async {
     playCallCount++;
+    // v1.15.6-alpha: simulate audio queued to native — fire callback
+    // synchronously (production code calls it after p.play returns,
+    // which in test env returns immediately).
+    onAudioStarted?.call();
   }
 
   @override

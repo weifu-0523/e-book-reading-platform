@@ -53,7 +53,16 @@ class SherpaOnnxAudioPlayer {
 
   /// 播放 [samples]（范围 -1.0..1.0,mono）。
   /// 阻塞至播放完成（或 [stop] 被调用）。
-  Future<void> play(Float32List samples, int sampleRate) async {
+  ///
+  /// v1.15.6-alpha: [onAudioStarted] 在 `p.play()` 返回后（audio 已 queue
+  /// 到 native thread）触发，让调用方（SherpaOnnxTtsService.speakSentence）
+  /// 在 audio 渲染期间启动 prefetch FFI。FFI 同步阻塞 isolate 但 audio 在
+  /// native thread 不受影响——核心机制让 prefetch 真正与播放并行。
+  Future<void> play(
+    Float32List samples,
+    int sampleRate, {
+    void Function()? onAudioStarted,
+  }) async {
     _stopped = false;
     final wavBytes = buildWavFromFloat32(samples, sampleRate);
     final totalMs = (samples.length / sampleRate * 1000).round();
@@ -66,7 +75,15 @@ class SherpaOnnxAudioPlayer {
         'durationMs=$totalMs');
 
     await p.play(BytesSource(wavBytes));
-    _emit('play() returned, awaiting expected duration');
+    _emit('play() returned, audio queued to native thread');
+
+    // v1.15.6-alpha: trigger prefetch NOW — audio is rendering on native
+    // thread, isolate is free for FFI work. Caller's callback runs sync
+    // (unawaited async function executes body until first await). FFI
+    // blocks isolate but audio unaffected — this is the parallelism we
+    // couldn't get with v1.15.4-alpha's design (which called prefetch
+    // BEFORE play, blocking isolate before audio could even start).
+    onAudioStarted?.call();
 
     await awaitCompletion(
       expectedDurationMs: totalMs,

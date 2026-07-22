@@ -330,21 +330,33 @@ class SherpaOnnxTtsService implements TtsService {
         return;
       }
 
-      // v1.15.4-alpha T4: kick off prefetch for hinted next BEFORE play
-      // await blocks. _doPrefetch runs on the main isolate during audio
-      // playback (audio is on native thread, unaffected). Guards:
-      // - _hintedNext != null: nothing to prefetch.
-      // - !_prefetchInProgress: sherpa_onnx native handle is not thread-
-      //   safe across concurrent invocations.
-      // - _prefetchedResult == null: don't clobber an existing cache.
-      if (_hintedNext != null &&
-          !_prefetchInProgress &&
-          _prefetchedResult == null) {
-        _prefetchInProgress = true;
-        unawaited(_doPrefetch(_hintedNext!, speed));
-      }
-
-      await _audioPlayer.play(samples, sampleRate);
+      // v1.15.6-alpha: prefetch MUST start AFTER p.play() returns so audio
+      // is queued to native thread before FFI blocks isolate. v1.15.4-alpha
+      // bug: unawaited(_doPrefetch) was called here BEFORE play, but async
+      // function without await runs synchronously, so FFI generate(N+1)
+      // blocked isolate for 2-5s before play() could even start.
+      //
+      // Now we pass an onAudioStarted callback to _audioPlayer.play which
+      // fires after p.play() returns (audio queued). Inside the callback
+      // we unawaited(_doPrefetch) — FFI blocks isolate, but audio is
+      // rendering on native thread, so user doesn't perceive gap.
+      await _audioPlayer.play(
+        samples,
+        sampleRate,
+        onAudioStarted: () {
+          if (_hintedNext != null &&
+              !_prefetchInProgress &&
+              _prefetchedResult == null) {
+            _prefetchInProgress = true;
+            _log('onAudioStarted: kicking off prefetch for next sentence');
+            unawaited(_doPrefetch(_hintedNext!, speed));
+          } else {
+            _log('onAudioStarted: prefetch skipped '
+                '(hint=${_hintedNext != null} inProgress=$_prefetchInProgress '
+                'cache=${_prefetchedResult != null})');
+          }
+        },
+      );
       _log('audioPlayer.play returned stopped=$_stopped');
       if (!_stopped) {
         _stateController.add(TtsState.idle);
@@ -453,7 +465,12 @@ class SherpaOnnxTtsService implements TtsService {
   @override
   Future<void> setSpeechRate(double rate) async {
     final newRate = rate.clamp(-1.0, 1.0);
-    if (newRate == _rate) return; // no-op when unchanged
+    // v1.15.6-alpha: use rough equality. v1.15.4-alpha used exact `==` but
+    // user reports every speakSentence triggers cache clear (rate=0.8
+    // unchanged), breaking prefetch entirely. Root cause unclear — possibly
+    // double precision issue or ttsSettingsProvider re-reading — but
+    // roughEqual eliminates false cache invalidation.
+    if ((newRate - _rate).abs() < 0.001) return;
     // v1.15.4-alpha T5: invalidate prefetch cache. Cached audio was
     // generated at the old rate; playing it would sound wrong speed.
     // Same lesson as v1.13.10-alpha Bug 1 (TtsState.stopped) — any
