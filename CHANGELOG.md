@@ -7,7 +7,28 @@
 
 ## [Unreleased]
 
-v1.15.4-alpha 之后的新变更将记在此处。
+v1.15.5-alpha 之后的新变更将记在此处。
+
+## [1.15.5-alpha] - 2026-07-22
+
+### Fixed
+
+- **Bug 2（SherpaOnnx 句间卡顿真根因修复）**：用户测试 v1.15.4-alpha 后反映"还是很卡顿，读完一句后要听几秒才开始下一句"。**真根因**：v1.15.1-alpha 的 `onPlayerStateChanged` 修复基于错误前提 —— `audioplayers 5.2.1/lib/src/audioplayer.dart:145-156` 显示 `PlayerState.completed` 只在 `_onPlayerCompleteStreamSubscription`（即 `onPlayerComplete` stream）里被 set，而 `onPlayerComplete` 最终走 `WrappedPlayer.onCompletion()`（`audioplayers_android 4.0.3/player/WrappedPlayer.kt:287`），依赖 Android `MediaPlayer.OnCompletionListener`。该 listener 在荣耀 ROM + `BytesSource(WAV)` 模式下不触发 —— 与 v1.15.0-alpha 是**同一个根因**。v1.15.1-alpha 看似"有声音了"只是因为加了 safety timeout 让 play() 能返回，每句 gap ≈ safety timeout - 实际音频 ≈ 5-10 秒。
+
+  **修复**：`sherpa_onnx_audio_player.dart` 抽 `awaitCompletion` static method —— 用纯 Timer（expectedMs + 200ms buffer）作为完成信号，完全不依赖 audioplayers completion event。监听 `PlayerState.stopped` 仅作为 user stop 的 fast-path（`audioplayers.stop()` 同步 set state）。Safety timeout 兜底极端情况。v1.15.4-alpha prefetch pipeline 设计正确但因 speakSentence 卡在 timeout，cache 命中也救不了；本次修复后 prefetch 命中能真正消除句间 gap。
+
+### Changed
+
+- **v1.15.1-alpha 的 onPlayerStateChanged 监听移除**：原代码 `if (s == PlayerState.completed || s == PlayerState.stopped)` 完成检测替换为 Timer + `s == PlayerState.stopped`（仅 fast-path）。`PlayerState.completed` 分支移除（依赖不可靠的 onCompletion）。
+
+### Diagnostics
+
+- **`awaitCompletion` 日志增强**：`expected-duration timer fired — completing` / `state=stopped (early termination)` / `safety timeout after Xms (expected Yms) — forcing completion` 三种完成路径均打印，便于真机日志定位。
+
+### Known Limitations
+
+- **Timer 触发依赖 expectedMs 准确**：`expectedMs = samples.length / sampleRate * 1000` 理论精确，但 audioplayers 启动 native audio 有 ~50-150ms latency。200ms buffer 足够 absorb；如真机测试发现句尾被截断或句间仍有微 gap，v1.16 调整 buffer 至 300-500ms。
+- **主 isolate jank ~500-900ms during prefetch**（v1.15.4 已知限制保留）：FFI generate 阻塞主 isolate，但 audioplayers 在 native thread 渲染不受影响。
 
 ## [1.15.4-alpha] - 2026-07-22
 
