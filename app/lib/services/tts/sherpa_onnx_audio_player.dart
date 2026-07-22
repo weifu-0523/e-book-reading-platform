@@ -10,12 +10,23 @@ import 'package:flutter/foundation.dart';
 /// 把 sherpa_onnx OfflineTts.generate() 输出的 Float32List samples 转 PCM16 WAV
 /// 并用 audioplayers 播放。POC v1.15.0-alpha：单实例,无 voice queue。
 ///
-/// v1.15.1-alpha hotfix: 用 [AudioPlayer.onPlayerStateChanged] 替代
-/// [AudioPlayer.onPlayerComplete] 作为播放完成信号 —— 后者在 Android 部分
-/// ROM + BytesSource(WAV) 场景不 emit（audioplayers 历史问题），导致
-/// `await p.onPlayerComplete.first` 永远挂起、speakSentence 永不返回、
-/// UI 卡在 speaking phase。同时 [stop] 改为 fire-and-forget 避免被
-/// audioplayers 内部 lock 拖死。
+/// v1.15.5-alpha hotfix: 用 **Timer + expected duration** 替代
+/// [AudioPlayer.onPlayerStateChanged] 作为播放完成信号。
+///
+/// v1.15.1-alpha 的 onPlayerStateChanged 修复基于错误前提 ——
+/// `audioplayers/lib/src/audioplayer.dart:145-156` 显示 `PlayerState.completed`
+/// 只在 `_onPlayerCompleteStreamSubscription`（即 [AudioPlayer.onPlayerComplete]
+/// stream）里被 set，而 `onPlayerComplete` 最终走
+/// `WrappedPlayer.onCompletion()`（`audioplayers_android/player/WrappedPlayer.kt:287`），
+/// 依赖 Android `MediaPlayer.OnCompletionListener`。该 listener 在荣耀 ROM +
+/// `BytesSource(WAV)` 模式下不触发 —— 与 v1.15.0-alpha 是**同一个根因**。
+/// v1.15.1-alpha 改完看似"有声音了"只是因为加了 safety timeout 让 play()
+/// 能返回，但每句 gap = safety timeout - 实际音频 ≈ 5-10 秒（用户感知"几秒"）。
+///
+/// v1.15.5-alpha 用纯 Timer（expectedMs + 200ms buffer）作为完成信号，
+/// 完全不依赖 audioplayers completion event。监听 PlayerState.stopped
+/// 仅作为 user stop 的 fast-path（`audioplayers.stop()` 同步 set state）。
+/// Safety timeout 兜底极端情况（Timer 不应失败但 defensive）。
 ///
 /// Phase 2 如 audioplayers 延迟过大可换 soundpool / flutter_soloud。
 class SherpaOnnxAudioPlayer {
@@ -54,42 +65,84 @@ class SherpaOnnxAudioPlayer {
     _emit('play start samples=${samples.length} sampleRate=$sampleRate '
         'durationMs=$totalMs');
 
-    // Subscribe BEFORE play() so we don't miss the initial state transition.
-    // onPlayerStateChanged fires on every phase change; we want the terminal
-    // completed/stopped state. v1.15.1-alpha: was onPlayerComplete.first which
-    // silently never fires on some Android ROMs.
+    await p.play(BytesSource(wavBytes));
+    _emit('play() returned, awaiting expected duration');
+
+    await awaitCompletion(
+      expectedDurationMs: totalMs,
+      stateStream: p.onPlayerStateChanged,
+      isStopped: () => _stopped,
+      emit: _emit,
+      createTimer: Timer.new,
+    );
+
+    _emit('play done stopped=$_stopped');
+  }
+
+  /// v1.15.5-alpha: pure helper extracted from [play] for testability.
+  ///
+  /// Waits for audio completion using a [Timer] based on expected duration,
+  /// bypassing audioplayers' unreliable `onPlayerComplete` /
+  /// `onPlayerStateChanged.completed` event path (see class doc).
+  ///
+  /// Early-terminates if [PlayerState.stopped] is observed on [stateStream]
+  /// (user pressed [stop] — audioplayers.stop() sets state synchronously).
+  /// Safety timeout (2x expected + 5s) guards against edge cases where the
+  /// Timer itself somehow doesn't fire.
+  ///
+  /// [createTimer] is a factory parameter so tests can inject a fake timer
+  /// without needing [FakeAsync]. In production, pass [Timer.new].
+  @visibleForTesting
+  static Future<void> awaitCompletion({
+    required int expectedDurationMs,
+    required Stream<PlayerState> stateStream,
+    required bool Function() isStopped,
+    required void Function(String) emit,
+    required Timer Function(Duration duration, void Function() callback)
+        createTimer,
+  }) async {
+    const bufferMs = 200;
+    const safetyMultiplier = 2;
+    const safetyBufferMs = 5000;
+
     final doneCompleter = Completer<void>();
-    late StreamSubscription sub;
-    sub = p.onPlayerStateChanged.listen(
+
+    final sub = stateStream.listen(
       (s) {
-        _emit('state=$s');
-        if (s == PlayerState.completed || s == PlayerState.stopped) {
-          if (!doneCompleter.isCompleted) doneCompleter.complete();
+        emit('state=$s');
+        if (s == PlayerState.stopped && !doneCompleter.isCompleted) {
+          emit('state=stopped (early termination)');
+          doneCompleter.complete();
         }
       },
       onError: (Object e, StackTrace st) {
-        _emit('state stream error=$e');
+        emit('state stream error=$e');
         if (!doneCompleter.isCompleted) doneCompleter.completeError(e, st);
       },
-      cancelOnError: true,
+    );
+
+    final timer = createTimer(
+      Duration(milliseconds: expectedDurationMs + bufferMs),
+      () {
+        if (!doneCompleter.isCompleted) {
+          emit('expected-duration timer fired — completing');
+          doneCompleter.complete();
+        }
+      },
     );
 
     try {
-      await p.play(BytesSource(wavBytes));
-      _emit('play() returned, awaiting state');
-      // Safety timeout: 2x expected duration + 5s buffer. If audioplayers
-      // silently fails to emit any state change, the caller still gets to
-      // advance instead of hanging forever.
-      final timeout = Duration(milliseconds: totalMs * 2 + 5000);
-      await doneCompleter.future.timeout(timeout, onTimeout: () {
-        _emit('state timeout after ${timeout.inMilliseconds}ms '
-            '(expected ${totalMs}ms) — forcing completion');
+      final safetyTimeout = Duration(
+        milliseconds: expectedDurationMs * safetyMultiplier + safetyBufferMs,
+      );
+      await doneCompleter.future.timeout(safetyTimeout, onTimeout: () {
+        emit('safety timeout after ${safetyTimeout.inMilliseconds}ms '
+            '(expected ${expectedDurationMs}ms) — forcing completion');
       });
     } finally {
+      timer.cancel();
       await sub.cancel();
     }
-
-    _emit('play done stopped=$_stopped');
   }
 
   /// 中断当前播放。后续 play() 调用会重新开始。
