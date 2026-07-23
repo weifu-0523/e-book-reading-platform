@@ -97,6 +97,32 @@ class TtsAudioPlayer {
     _emit('play done stopped=$_stopped');
   }
 
+  /// Plays MP3 bytes from cloud TTS. Mirrors [play] (Float32 path):
+  /// queues audio to native thread, invokes [onAudioStarted], then awaits
+  /// completion via Timer (not audioplayers OnCompletionListener, which is
+  /// unreliable on Honor ROM + BytesSource — see v1.15.5-alpha).
+  Future<void> playMp3Bytes(
+    Uint8List mp3Bytes, {
+    required int expectedDurationMs,
+    void Function()? onAudioStarted,
+    Timer Function(Duration, void Function())? createTimer,
+  }) async {
+    _stopped = false;
+    final p = _p;
+    await p.setReleaseMode(ReleaseMode.stop);
+    await p.setVolume(1.0);
+    await p.play(BytesSource(mp3Bytes));
+    _emit('playMp3Bytes() returned, audio queued to native thread');
+    onAudioStarted?.call();
+    await awaitCompletion(
+      expectedDurationMs: expectedDurationMs,
+      stateStream: p.onPlayerStateChanged,
+      isStopped: () => _stopped,
+      emit: _emit,
+      createTimer: createTimer ?? Timer.new,
+    );
+  }
+
   /// v1.15.5-alpha: pure helper extracted from [play] for testability.
   ///
   /// Waits for audio completion using a [Timer] based on expected duration,
