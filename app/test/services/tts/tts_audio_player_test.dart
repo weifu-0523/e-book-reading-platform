@@ -191,27 +191,4 @@ void main() {
     });
   });
 
-  // v1.16.0-alpha Task A2: test playMp3Bytes (cloud TTS MP3 path).
-  // Mirrors play() Float32 path: accepts MP3 bytes, queues to native,
-  // invokes onAudioStarted, then completes via Timer-based awaitCompletion.
-  //
-  // NOTE: This test requires platform channels (audioplayers) which fail in
-  // pure Dart test environment. The test is kept for documentation purposes
-  // but will be skipped in automated test runs. Real validation happens
-  // during manual testing on real devices.
-  group('TtsAudioPlayer.playMp3Bytes', () {
-    test('playMp3Bytes plays Uint8List and invokes onAudioStarted after queueing',
-        () async {
-      final player = TtsAudioPlayer();
-      final mp3Bytes = Uint8List.fromList([0xFF, 0xFB, 0x90, 0x00, 0x00]);
-      var startedCalled = false;
-      await player.playMp3Bytes(
-        mp3Bytes,
-        expectedDurationMs: 200,
-        onAudioStarted: () => startedCalled = true,
-        createTimer: (_, cb) => Timer(Duration.zero, cb),
-      );
-      expect(startedCalled, isTrue);
-    }, skip: 'Requires platform channels (audioplayers)');
-  });
 }
