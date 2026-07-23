@@ -6,7 +6,7 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhiyue/services/tts/sherpa_onnx_audio_player.dart';
+import 'package:zhiyue/services/tts/tts_audio_player.dart';
 
 int _rdU32le(Uint8List b, int offset) =>
     b[offset] |
@@ -18,10 +18,10 @@ int _rdU16le(Uint8List b, int offset) =>
     b[offset] | (b[offset + 1] << 8);
 
 void main() {
-  group('SherpaOnnxAudioPlayer.buildWavFromFloat32', () {
+  group('TtsAudioPlayer.buildWavFromFloat32', () {
     test('22050 Hz mono: header structure correct', () {
       final samples = Float32List.fromList([0.0, 0.0, 0.0]);
-      final wav = SherpaOnnxAudioPlayer.buildWavFromFloat32(samples, 22050);
+      final wav = TtsAudioPlayer.buildWavFromFloat32(samples, 22050);
 
       expect(String.fromCharCodes(wav.sublist(0, 4)), equals('RIFF'));
       expect(_rdU32le(wav, 4), equals(36 + 6));
@@ -40,7 +40,7 @@ void main() {
     });
 
     test('Float32 1.0 → Int16 32767 (max amplitude)', () {
-      final wav = SherpaOnnxAudioPlayer.buildWavFromFloat32(
+      final wav = TtsAudioPlayer.buildWavFromFloat32(
         Float32List.fromList([1.0]),
         22050,
       );
@@ -48,7 +48,7 @@ void main() {
     });
 
     test('Float32 -1.0 → Int16 -32767', () {
-      final wav = SherpaOnnxAudioPlayer.buildWavFromFloat32(
+      final wav = TtsAudioPlayer.buildWavFromFloat32(
         Float32List.fromList([-1.0]),
         22050,
       );
@@ -57,7 +57,7 @@ void main() {
     });
 
     test('Float32 > 1.0 clamps to 32767 (no overflow)', () {
-      final wav = SherpaOnnxAudioPlayer.buildWavFromFloat32(
+      final wav = TtsAudioPlayer.buildWavFromFloat32(
         Float32List.fromList([5.0]),
         22050,
       );
@@ -65,7 +65,7 @@ void main() {
     });
 
     test('Float32 < -1.0 clamps to -32767', () {
-      final wav = SherpaOnnxAudioPlayer.buildWavFromFloat32(
+      final wav = TtsAudioPlayer.buildWavFromFloat32(
         Float32List.fromList([-5.0]),
         22050,
       );
@@ -73,7 +73,7 @@ void main() {
     });
 
     test('Empty samples: header only, 44 bytes', () {
-      final wav = SherpaOnnxAudioPlayer.buildWavFromFloat32(
+      final wav = TtsAudioPlayer.buildWavFromFloat32(
         Float32List(0),
         22050,
       );
@@ -87,14 +87,14 @@ void main() {
   // silently never fires on Honor ROM + BytesSource(WAV) (same root cause
   // as v1.15.0-alpha). These tests confirm the new path completes via
   // Timer / stop / safety timeout without relying on the broken event.
-  group('SherpaOnnxAudioPlayer.awaitCompletion', () {
+  group('TtsAudioPlayer.awaitCompletion', () {
     test('completes via expected-duration timer when no state events arrive',
         () async {
       final logs = <String>[];
       final controller = StreamController<PlayerState>();
 
       final sw = Stopwatch()..start();
-      await SherpaOnnxAudioPlayer.awaitCompletion(
+      await TtsAudioPlayer.awaitCompletion(
         expectedDurationMs: 50,
         stateStream: controller.stream,
         isStopped: () => false,
@@ -119,7 +119,7 @@ void main() {
       final controller = StreamController<PlayerState>();
 
       final sw = Stopwatch()..start();
-      final future = SherpaOnnxAudioPlayer.awaitCompletion(
+      final future = TtsAudioPlayer.awaitCompletion(
         // Long enough that the timer won't fire first under normal conditions.
         expectedDurationMs: 2000,
         stateStream: controller.stream,
@@ -154,7 +154,7 @@ void main() {
       }
 
       final sw = Stopwatch()..start();
-      await SherpaOnnxAudioPlayer.awaitCompletion(
+      await TtsAudioPlayer.awaitCompletion(
         expectedDurationMs: 50,
         stateStream: controller.stream,
         isStopped: () => false,
@@ -174,7 +174,7 @@ void main() {
       final logs = <String>[];
       final controller = StreamController<PlayerState>();
 
-      final future = SherpaOnnxAudioPlayer.awaitCompletion(
+      final future = TtsAudioPlayer.awaitCompletion(
         expectedDurationMs: 5000,
         stateStream: controller.stream,
         isStopped: () => false,

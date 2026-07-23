@@ -7,8 +7,9 @@ import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
-/// 把 sherpa_onnx OfflineTts.generate() 输出的 Float32List samples 转 PCM16 WAV
-/// 并用 audioplayers 播放。POC v1.15.0-alpha：单实例,无 voice queue。
+/// 通用 TTS 音频播放器。支持：
+/// - SherpaOnnx Float32 samples (via [playWavSamples])
+/// - Cloud TTS MP3 bytes (via [playMp3Bytes], added in v1.16.0-alpha Task A2)
 ///
 /// v1.15.5-alpha hotfix: 用 **Timer + expected duration** 替代
 /// [AudioPlayer.onPlayerStateChanged] 作为播放完成信号。
@@ -29,23 +30,23 @@ import 'package:flutter/foundation.dart';
 /// Safety timeout 兜底极端情况（Timer 不应失败但 defensive）。
 ///
 /// Phase 2 如 audioplayers 延迟过大可换 soundpool / flutter_soloud。
-class SherpaOnnxAudioPlayer {
-  SherpaOnnxAudioPlayer();
+class TtsAudioPlayer {
+  TtsAudioPlayer();
 
   // Lazy-init: AudioPlayer() ctor invokes MethodChannel which fails in test
   // env without mock. Create on first play() call.
   AudioPlayer? _player;
   bool _stopped = false;
 
-  /// v1.15.2-alpha: optional static sink. When set by [SherpaOnnxTtsService]
-  /// via `SherpaOnnxAudioPlayer.onDebugLog = service._log;`, all internal
+  /// v1.15.2-alpha: optional static sink. When set by [TtsService]
+  /// via `TtsAudioPlayer.onDebugLog = service._log;`, all internal
   /// log lines (play / state-change / stop / error) are forwarded here in
   /// addition to [debugPrint], so the in-app「TTS 调试日志」dialog can
   /// capture them without adb.
   static void Function(String)? onDebugLog;
 
   void _emit(String message) {
-    debugPrint('[SherpaOnnxAudioPlayer] $message');
+    debugPrint('[TtsAudioPlayer] $message');
     onDebugLog?.call('[AudioPlayer] $message');
   }
 

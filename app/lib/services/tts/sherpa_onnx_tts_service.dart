@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import '../../features/tts/utils/sherpa_onnx_benchmark.dart';
-import 'sherpa_onnx_audio_player.dart';
+import 'tts_audio_player.dart';
 import 'tts_service.dart';
 import 'tts_voice.dart';
 
@@ -42,7 +42,7 @@ class _PrefetchedResult {
 class SherpaOnnxTtsService implements TtsService {
   SherpaOnnxTtsService()
       : _ttsFactory = _defaultFactory,
-        _audioPlayer = SherpaOnnxAudioPlayer();
+        _audioPlayer = TtsAudioPlayer();
 
   /// v1.15.4-alpha T3: test injection seam. Tests pass a mock factory
   /// that returns a fake [sherpa_onnx.OfflineTts] so cache/prefetch
@@ -52,14 +52,14 @@ class SherpaOnnxTtsService implements TtsService {
   /// pass a fake that doesn't drive the real audioplayers MethodChannel
   /// (which would otherwise throw MissingPluginException in the unit
   /// test environment and stall the safety timeout in
-  /// [SherpaOnnxAudioPlayer.play]).
+  /// [TtsAudioPlayer.play]).
   @visibleForTesting
   SherpaOnnxTtsService.forTest({
     required sherpa_onnx.OfflineTts Function(sherpa_onnx.OfflineTtsConfig)
         ttsFactory,
-    SherpaOnnxAudioPlayer? audioPlayer,
+    TtsAudioPlayer? audioPlayer,
   })  : _ttsFactory = ttsFactory,
-        _audioPlayer = audioPlayer ?? SherpaOnnxAudioPlayer();
+        _audioPlayer = audioPlayer ?? TtsAudioPlayer();
 
   static sherpa_onnx.OfflineTts _defaultFactory(
           sherpa_onnx.OfflineTtsConfig config) =>
@@ -84,7 +84,7 @@ class SherpaOnnxTtsService implements TtsService {
   Duration _modelLoadDuration = Duration.zero;
 
   // T5 fields
-  final SherpaOnnxAudioPlayer _audioPlayer;
+  final TtsAudioPlayer _audioPlayer;
   double _rate = 0.0; // -1..1, 0 = normal speed
   double _volume = 1.0;
   int _currentSentenceIndex = 0;
@@ -196,7 +196,7 @@ class SherpaOnnxTtsService implements TtsService {
     _log('init start');
 
     // Wire audio player log forward so the dialog captures play/stop events.
-    SherpaOnnxAudioPlayer.onDebugLog = _log;
+    TtsAudioPlayer.onDebugLog = _log;
 
     try {
       // T8: measure total cold-start cost (asset copy + FFI bind + ONNX load)

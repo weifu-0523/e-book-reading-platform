@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
-import 'package:zhiyue/services/tts/sherpa_onnx_audio_player.dart';
+import 'package:zhiyue/services/tts/tts_audio_player.dart';
 import 'package:zhiyue/services/tts/sherpa_onnx_tts_service.dart';
 import 'package:zhiyue/services/tts/tts_service.dart';
 
@@ -15,10 +15,10 @@ class _MockOfflineTts extends Mock implements sherpa_onnx.OfflineTts {}
 class _FakeOfflineTtsConfig extends Fake
     implements sherpa_onnx.OfflineTtsConfig {}
 
-/// Test-only [SherpaOnnxAudioPlayer] that records play() calls without
+/// Test-only [TtsAudioPlayer] that records play() calls without
 /// driving the real audioplayers MethodChannel. Returns immediately so
 /// speakSentence can complete synchronously.
-class _NoOpAudioPlayer extends SherpaOnnxAudioPlayer {
+class _NoOpAudioPlayer extends TtsAudioPlayer {
   int playCallCount = 0;
 
   @override
