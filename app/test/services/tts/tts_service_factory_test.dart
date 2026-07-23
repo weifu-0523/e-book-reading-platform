@@ -2,41 +2,44 @@
 // Copyright (C) 2026 ZhiYue Open Source contributors
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:zhiyue/services/tts/tts_engine_preference.dart';
-import 'package:zhiyue/services/tts/tts_service_factory.dart';
-import 'package:zhiyue/services/tts/self_built_tts_service.dart';
 import 'package:zhiyue/services/tts/flutter_tts_service.dart';
+import 'package:zhiyue/services/tts/tts_engine_preference.dart';
+import 'package:zhiyue/services/tts/tts_service.dart';
+import 'package:zhiyue/services/tts/tts_service_factory.dart';
 
 void main() {
-  test('createTtsService returns SelfBuilt on Android with system preference', () {
-    final svc = createTtsService(
-      platformName: 'android',
-      preferredEngine: TtsEnginePreference.system,
-    );
-    expect(svc, isA<SelfBuiltTtsServiceImpl>());
-  });
+  group('createTtsService', () {
+    test('system engine on windows returns FlutterTtsServiceImpl', () {
+      final service = createTtsService(
+        platformName: 'windows',
+        preferredEngine: TtsEnginePreference.system,
+      );
+      expect(service, isA<FlutterTtsServiceImpl>());
+    });
 
-  test('createTtsService returns FlutterTts on Windows with system preference', () {
-    final svc = createTtsService(
-      platformName: 'windows',
-      preferredEngine: TtsEnginePreference.system,
-    );
-    expect(svc, isA<FlutterTtsServiceImpl>());
-  });
+    test('volcengineCloud throws UnimplementedError (stub until B5)', () {
+      expect(
+        () => createTtsService(
+          platformName: 'android',
+          preferredEngine: TtsEnginePreference.volcengineCloud,
+        ),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
 
-  test('createTtsService returns FlutterTts on macOS with system preference', () {
-    final svc = createTtsService(
-      platformName: 'macos',
-      preferredEngine: TtsEnginePreference.system,
-    );
-    expect(svc, isA<FlutterTtsServiceImpl>());
-  });
+    test('qwenCloud throws UnimplementedError (stub until B6)', () {
+      expect(
+        () => createTtsService(
+          platformName: 'android',
+          preferredEngine: TtsEnginePreference.qwenCloud,
+        ),
+        throwsA(isA<UnimplementedError>()),
+      );
+    });
 
-  test('createTtsService returns FlutterTts on iOS as fallback (slot reserved)', () {
-    final svc = createTtsService(
-      platformName: 'ios',
-      preferredEngine: TtsEnginePreference.system,
-    );
-    expect(svc, isA<FlutterTtsServiceImpl>());
+    test('default engine when null is system', () {
+      final service = createTtsService(platformName: 'windows');
+      expect(service, isA<FlutterTtsServiceImpl>());
+    });
   });
 }
