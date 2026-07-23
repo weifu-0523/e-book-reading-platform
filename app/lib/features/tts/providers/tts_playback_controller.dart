@@ -23,8 +23,10 @@ import '../../../core/providers.dart' as core;
 import '../../../services/tts/self_built_tts_service.dart';
 import '../../../services/tts/tts_engine_preference.dart';
 import '../../../services/tts/tts_service.dart';
+import '../../../services/tts/base_cloud_tts_service.dart';
 import '../../../services/tts/tts_service_factory.dart';
 import 'tts_engine_provider.dart';
+import 'tts_fallback_notifier.dart';
 import 'tts_settings_provider.dart';
 
 /// Top-level playback phase for [TtsPlaybackController].
@@ -171,6 +173,17 @@ final ttsServiceProvider = Provider<TtsService>((ref) {
 /// * On [TtsState.speaking] while `loading` → `speaking`.
 /// * On [TtsState.idle] while `speaking` → advance to next sentence, or
 ///   flush queue if last.
+/// Optional callback invoked when the service's [TtsService.error] stream
+/// emits a transient error (network/server). Wired by
+/// [ttsPlaybackControllerProvider] to: (1) report via [TtsFallbackNotifier]
+/// for UI surfacing, (2) flip [ttsEngineProvider] to system → triggers
+/// provider rebuild → fresh controller with system service. Null in tests
+/// that don't exercise fallback.
+typedef TtsFallbackHandler = void Function({
+  required String fromEngine,
+  required String message,
+});
+
 class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   final TtsService _service;
   /// v1.12.2-alpha P1-b: pulls the current [TtsSettings] (rate/pitch/volume)
@@ -178,8 +191,11 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   /// snapshot so changes in TTS settings page take effect on the next
   /// sentence (no need to re-init the engine).
   final TtsSettings Function() _settingsGetter;
+  final TtsFallbackHandler? _fallbackHandler;
+  final String _engineName;
   List<Sentence> _queue = const [];
   StreamSubscription<TtsState>? _stateSub;
+  StreamSubscription<String>? _errorSub;
 
   /// v1.13.7-alpha Bug 1: subscribes to Kotlin-originated resume requests
   /// (notification bar play button while PAUSED). Null on platforms whose
@@ -195,6 +211,13 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   /// caller creates it, subsequent callers await the same future.
   Completer<void>? _initCompleter;
 
+  /// v1.16.0-alpha B7: true once [_onServiceError] has invoked the
+  /// fallback handler. Guards against the dying cloud engine emitting
+  /// further errors after we've already triggered the engine swap —
+  /// the provider rebuild will swap in a fresh controller, so those
+  /// subsequent errors must not double-fire the handler.
+  bool _fallbackTriggered = false;
+
   /// v1.13.7-alpha Bug 1: optionally listens to a Kotlin-originated
   /// resume-request stream so the notification bar play button (after
   /// a pause) can drive Dart-side [driveResume]. Production wires this
@@ -205,8 +228,13 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     this._service,
     this._settingsGetter, {
     Stream<void>? kotlinResumeRequestStream,
-  }) : super(const TtsPlaybackState()) {
+    String engineName = 'system',
+    TtsFallbackHandler? fallbackHandler,
+  })  : _fallbackHandler = fallbackHandler,
+        _engineName = engineName,
+        super(const TtsPlaybackState()) {
     _stateSub = _service.state.listen(_onServiceState);
+    _errorSub = _service.error.listen(_onServiceError);
     if (kotlinResumeRequestStream != null) {
       _kotlinResumeSub = kotlinResumeRequestStream.listen(_onKotlinResumeRequest);
     }
@@ -502,9 +530,32 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
     driveResume();
   }
 
+  /// v1.16.0-alpha B7: cloud engines emit errors via [TtsService.error].
+  /// Transient errors (network/server) trigger auto-fallback to system
+  /// engine via the injected [_fallbackHandler]. Auth/quota/invalidRequest
+  /// are NOT transient — user must fix credentials/plan first, so they
+  /// surface as phase=error without fallback.
+  ///
+  /// Guard with [_fallbackTriggered] so only the first error in a session
+  /// triggers fallback (subsequent errors from the dying service are
+  /// ignored — the provider rebuild will swap in a fresh controller).
+  void _onServiceError(String message) {
+    if (_fallbackHandler == null) return;
+    if (_fallbackTriggered) return;
+    final trimmed = message.trim();
+    final isTransient = trimmed.startsWith('network:') ||
+        trimmed.startsWith('server:') ||
+        trimmed.startsWith('prefetch-fail network:') ||
+        trimmed.startsWith('prefetch-fail server:');
+    if (!isTransient) return;
+    _fallbackTriggered = true;
+    _fallbackHandler(fromEngine: _engineName, message: message);
+  }
+
   @override
   void dispose() {
     _kotlinResumeSub?.cancel();
+    _errorSub?.cancel();
     _stateSub?.cancel();
     super.dispose();
   }
@@ -514,6 +565,14 @@ final ttsPlaybackControllerProvider =
     StateNotifierProvider<TtsPlaybackController, TtsPlaybackState>(
   (ref) {
     final service = ref.watch(ttsServiceProvider);
+    // v1.16.0-alpha B7: infer engine name from the concrete service type
+    // rather than ref.read(ttsEngineProvider). Reading the engine provider
+    // at construction would force provider init → settingsRepositoryProvider
+    // → drift → path_provider, breaking the 23 pre-existing unit tests that
+    // don't mock path_provider. The service type already carries the engine
+    // identity, and cloud engines are the only ones that emit fallback-worthy
+    // errors anyway.
+    final engineName = service is BaseCloudTtsService ? service.engineName : 'system';
     return TtsPlaybackController(
       service,
       () => ref.read(ttsSettingsProvider),
@@ -523,6 +582,24 @@ final ttsPlaybackControllerProvider =
       // the controller simply ignores that path.
       kotlinResumeRequestStream:
           service is SelfBuiltTtsServiceImpl ? service.resumeRequests : null,
+      engineName: engineName,
+      // v1.16.0-alpha B7: on transient cloud-engine errors, surface via
+      // TtsFallbackNotifier (B8 will render SnackBar) AND flip engine
+      // preference to system → triggers ttsServiceProvider rebuild →
+      // fresh controller with system service. Loses playback position
+      // (user sees SnackBar with CTA to resume manually).
+      fallbackHandler: ({
+        required String fromEngine,
+        required String message,
+      }) {
+        ref.read(ttsFallbackProvider.notifier).reportFallback(
+              fromEngine: fromEngine,
+              message: message,
+            );
+        ref
+            .read(ttsEngineProvider.notifier)
+            .setEngine(TtsEnginePreference.system);
+      },
     );
   },
 );

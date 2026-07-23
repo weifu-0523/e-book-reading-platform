@@ -21,11 +21,17 @@ import 'package:zhiyue/services/tts/tts_service.dart';
 /// v1.15.4-alpha T2: also stub `hintNext` since `_speakCurrent` now calls
 /// it before every speakSentence. Default no-op matches the real
 /// `TtsService.hintNext` default behavior.
+///
+/// v1.16.0-alpha B7: also stub `error` since the controller now subscribes
+/// to it for transient-error fallback. Returns empty stream so no fallback
+/// fires. Tests that exercise the fallback path override this stub with a
+/// real StreamController.
 void _stubSettingsAppliers(MockTtsService svc) {
   when(() => svc.setSpeechRate(any())).thenAnswer((_) async {});
   when(() => svc.setPitch(any())).thenAnswer((_) async {});
   when(() => svc.setVolume(any())).thenAnswer((_) async {});
   when(() => svc.hintNext(any())).thenAnswer((_) async {});
+  when(() => svc.error).thenAnswer((_) => const Stream<String>.empty());
 }
 
 class MockTtsService extends Mock implements TtsService {}
