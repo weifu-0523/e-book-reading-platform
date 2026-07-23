@@ -481,11 +481,29 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
       unawaited(_service.hintNext(next));
       await _service.speakSentence(sentence);
     } catch (e) {
+      // v1.16.0-alpha B7 review (CRITICAL): dispose-during-catch race.
+      // BaseCloudTtsService emits on its error stream synchronously
+      // inside the pending `await _service.speakSentence(...)` call.
+      // The listener `_onServiceError` triggers `_fallbackHandler` →
+      // `setEngine(system)` → provider rebuild → old controller dispose
+      // BEFORE this await unwinds. Without this guard, the catch block
+      // would write `state` on a disposed StateNotifier and throw
+      // `Bad state: Tried to use TtsPlaybackController after dispose`.
+      // Since `_speakCurrent()` is called unawaited at multiple sites,
+      // the resulting async exception is unhandled.
+      if (!mounted) return;
       state = state.copyWith(phase: TtsPhase.error, errorMessage: e.toString());
     }
   }
 
   void _onServiceState(TtsState svcState) {
+    // v1.16.0-alpha B7 review (CRITICAL): dispose-during-catch race —
+    // same family as the `_speakCurrent` catch guard. If the dying cloud
+    // service emits its final state transition (e.g. → idle) during
+    // dispose, this listener can still fire before `_stateSub.cancel()`
+    // runs. Any `state =` assignment below on a disposed StateNotifier
+    // would throw `Bad state`. Bail out early instead.
+    if (!mounted) return;
     // v1.13.10-alpha Bug 1: Kotlin emits state=stopped when the user
     // taps the notification bar stop button. Translate to a queue reset
     // WITHOUT advancing (vs TtsState.idle which advances). Without this
@@ -542,6 +560,11 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   void _onServiceError(String message) {
     if (_fallbackHandler == null) return;
     if (_fallbackTriggered) return;
+    // v1.16.0-alpha B7 review (IMPORTANT): defensive guard. The stream
+    // listener shouldn't fire after dispose (cancel() is called in
+    // dispose()), but best-effort cancellation + cross-provider state
+    // mutation can race — bail out if already disposed.
+    if (!mounted) return;
     final trimmed = message.trim();
     final isTransient = trimmed.startsWith('network:') ||
         trimmed.startsWith('server:') ||
@@ -549,7 +572,17 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
         trimmed.startsWith('prefetch-fail server:');
     if (!isTransient) return;
     _fallbackTriggered = true;
-    _fallbackHandler(fromEngine: _engineName, message: message);
+    // v1.16.0-alpha B7 review (IMPORTANT): the handler mutates
+    // cross-provider state (setEngine → provider rebuild → dispose this).
+    // If it throws for any reason (provider already disposed during
+    // hot-reload, etc.), the exception would escape into the stream
+    // listener and be silently dropped by the stream's error zone,
+    // masking the real failure. Catch + log for diagnosability.
+    try {
+      _fallbackHandler(fromEngine: _engineName, message: message);
+    } catch (e, st) {
+      debugPrint('TtsPlaybackController: fallback handler threw: $e\n$st');
+    }
   }
 
   @override
