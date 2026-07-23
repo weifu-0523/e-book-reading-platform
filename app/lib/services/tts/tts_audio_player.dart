@@ -8,7 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
 /// 通用 TTS 音频播放器。支持：
-/// - SherpaOnnx Float32 samples (via [playWavSamples])
+/// - SherpaOnnx Float32 samples (via [play])
 /// - Cloud TTS MP3 bytes (via [playMp3Bytes], added in v1.16.0-alpha Task A2)
 ///
 /// v1.15.5-alpha hotfix: 用 **Timer + expected duration** 替代
