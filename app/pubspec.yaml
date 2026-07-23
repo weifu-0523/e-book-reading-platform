@@ -76,9 +76,7 @@ dependencies:
   # TTS/T1: 朗读（P1 AI 消息 + EPUB 章节）
   flutter_tts: ^4.1.0
 
-  # TTS POC: sherpa-onnx 离线神经 TTS(MeloTTS-zh_en)
-  sherpa_onnx: ^1.13.4
-  # 朗读 SherpaOnnxTtsService 生成的 PCM 音频
+  # TTS/A2: 云端 TTS MP3 播放（audioplayers 支持 Float32 PCM + MP3）
   audioplayers: ^5.2.1
 
 dependency_overrides:
@@ -122,14 +120,6 @@ flutter:
   uses-material-design: true
   generate: true
 
-  # TTS POC T1: MeloTTS-zh_en 离线神经 TTS 模型(163MB)
-  # gitignored,POC dev 手动从 hf-mirror.com 下载
-  # scripts/download-tts-model.sh 自动化拉取
-  assets:
-    - assets/tts-models/vits-melo-tts-zh_en/model.onnx
-    - assets/tts-models/vits-melo-tts-zh_en/lexicon.txt
-    - assets/tts-models/vits-melo-tts-zh_en/tokens.txt
-
   # M3a/任务5 + M3e/Q3: 打包开源/免费商用中文字体。
   # 字体文件不入 git（体积大，见 .gitignore + scripts/download-fonts.sh），
   # 首次拉取后跑 `bash scripts/download-fonts.sh` 获取。
@@ -141,6 +131,7 @@ flutter:
   #   LXGW WenKai（霞鹜文楷）— LXGW 官方，单字重（OFL 1.1）
   #   Alibaba PuHuiTi（阿里巴巴普惠体）— 阿里巴巴，全球永久免费商用（M3e/Q3 新增）
   #   LXGW Neo XiHei（霞鹜新晰黑）— LXGW，IPA 衍生（OFL 1.1）（M3e/Q3 新增）
+
   fonts:
     - family: NotoSansSC
       fonts:
