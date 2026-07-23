@@ -14,16 +14,24 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../gen_l10n/app_localizations.dart';
+import '../../../services/tts/cloud_tts_credentials.dart';
+import '../../../services/tts/qwen_cloud_tts_service.dart';
 import '../../../services/tts/sentence_segmenter.dart';
 import '../../../services/tts/self_built_tts_service.dart';
 import '../../../services/tts/tts_availability.dart';
 import '../../../services/tts/tts_engine_preference.dart';
+import '../../../services/tts/volcengine_cloud_tts_service.dart';
+import '../../tts/providers/cloud_tts_credentials_providers.dart';
 import '../../tts/providers/tts_engine_provider.dart';
+import '../../tts/providers/tts_fallback_notifier.dart';
 import '../../tts/providers/tts_playback_controller.dart';
 import '../../tts/providers/tts_settings_provider.dart';
 
@@ -55,6 +63,25 @@ class TtsSettingsSection extends ConsumerWidget {
     // v1.16.0-alpha A5: watch engine once at top of build to drive
     // cloud-engine-specific UI (credentials form in Phase B).
     final engine = ref.watch(ttsEngineProvider);
+    // v1.16.0-alpha B8: listen for cloud → system fallback events and
+    // surface as a SnackBar so the user knows playback was interrupted.
+    ref.listen<TtsFallbackState>(ttsFallbackProvider, (prev, next) {
+      if (!next.hasFallback) return;
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('⚠ ${next.message}，已切换至系统 TTS'),
+          action: SnackBarAction(
+            label: '知道了',
+            onPressed: () {
+              ref.read(ttsFallbackProvider.notifier).clear();
+            },
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      ref.read(ttsFallbackProvider.notifier).clear();
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,6 +138,11 @@ class TtsSettingsSection extends ConsumerWidget {
             ),
           ),
         ),
+        // v1.16.0-alpha B8: per-engine credentials form.
+        if (engine == TtsEnginePreference.volcengineCloud)
+          const _VolcengineCredentialsForm(key: ValueKey('volcengine-form')),
+        if (engine == TtsEnginePreference.qwenCloud)
+          const _QwenCredentialsForm(key: ValueKey('qwen-form')),
         ListTile(
           leading: const Icon(Icons.speed),
           title: Text(l10n.ttsRateLabel),
@@ -424,5 +456,385 @@ class TtsSettingsSection extends ConsumerWidget {
           body: '检测到 Samsung 默认 TTS 引擎（com.samsung.SMT），该引擎对中文支持不佳。建议在 系统设置 → 文字转语音输出 切换到 Google TTS 引擎，或在 Samsung Voice Assistant 设置中下载中文语音数据。',
         );
     }
+  }
+}
+
+/// Volcengine credentials form. Fields:
+/// - App ID (text)
+/// - Access Token (obscured)
+/// - Voice dropdown (from CloudTtsVoicePresets.volcengine)
+/// - 「测试连接」button (calls fetchAudio on sample)
+/// - Privacy hint
+class _VolcengineCredentialsForm extends ConsumerStatefulWidget {
+  const _VolcengineCredentialsForm({super.key});
+
+  @override
+  ConsumerState<_VolcengineCredentialsForm> createState() =>
+      _VolcengineCredentialsFormState();
+}
+
+class _VolcengineCredentialsFormState
+    extends ConsumerState<_VolcengineCredentialsForm> {
+  late final TextEditingController _appIdCtrl;
+  late final TextEditingController _tokenCtrl;
+  String _voice = VolcengineTtsCredentials.defaultVoice;
+  bool _saving = false;
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _appIdCtrl = TextEditingController();
+    _tokenCtrl = TextEditingController();
+    // Trigger async load; populate controllers when data arrives.
+    Future(() async {
+      try {
+        final creds = await ref.read(volcengineTtsCredentialsProvider.future);
+        if (!mounted) return;
+        if (creds != null) {
+          _appIdCtrl.text = creds.appId;
+          _tokenCtrl.text = creds.accessToken;
+          setState(() => _voice = creds.voice);
+        }
+      } catch (_) {
+        // Secure storage may throw in widget tests without channel mock.
+        // Swallow so the empty form still renders.
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _appIdCtrl.dispose();
+    _tokenCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final store = ref.read(volcengineTtsCredentialStoreProvider);
+      await store.save(VolcengineTtsCredentials(
+        appId: _appIdCtrl.text.trim(),
+        accessToken: _tokenCtrl.text.trim(),
+        voice: _voice,
+      ));
+      ref.invalidate(volcengineTtsCredentialsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已保存'), duration: Duration(seconds: 1)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _testConnection() async {
+    if (_appIdCtrl.text.isEmpty || _tokenCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写 App ID 和 Token')),
+      );
+      return;
+    }
+    setState(() => _testing = true);
+    try {
+      final service = VolcengineCloudTtsService(
+        credentials: VolcengineTtsCredentials(
+          appId: _appIdCtrl.text.trim(),
+          accessToken: _tokenCtrl.text.trim(),
+          voice: _voice,
+        ),
+      );
+      final Uint8List bytes =
+          await service.fetchAudio('你好，这是测试。', 0.0, _voice);
+      await service.dispose();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ 连接成功（${bytes.length} bytes）'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('✗ 失败: $e'),
+            duration: const Duration(seconds: 5)),
+      );
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('火山引擎凭证',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _appIdCtrl,
+              decoration: const InputDecoration(
+                labelText: 'App ID',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _tokenCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Access Token',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _voice,
+              decoration: const InputDecoration(
+                labelText: '声音',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: CloudTtsVoicePresets.volcengine
+                  .map((v) => DropdownMenuItem(
+                        value: v.id,
+                        child: Text('${v.displayName} (${v.description})'),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _voice = v ?? _voice),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text('测试连接'),
+                  onPressed: _testing ? null : _testConnection,
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  icon: const Icon(Icons.save),
+                  label: const Text('保存'),
+                  onPressed: _saving ? null : _save,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '获取凭证：火山引擎控制台 → 语音技术 → 语音合成 → 应用管理。\n文本将发送至火山引擎服务器合成。',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Qwen credentials form. Fields:
+/// - API Key (obscured)
+/// - Model dropdown
+/// - Voice dropdown
+/// - 「测试连接」button
+/// - Privacy hint
+class _QwenCredentialsForm extends ConsumerStatefulWidget {
+  const _QwenCredentialsForm({super.key});
+
+  @override
+  ConsumerState<_QwenCredentialsForm> createState() =>
+      _QwenCredentialsFormState();
+}
+
+class _QwenCredentialsFormState extends ConsumerState<_QwenCredentialsForm> {
+  late final TextEditingController _apiKeyCtrl;
+  String _model = QwenTtsCredentials.defaultModel;
+  String _voice = QwenTtsCredentials.defaultVoice;
+  bool _saving = false;
+  bool _testing = false;
+
+  static const _models = <String>[
+    'qwen-audio-3.0-tts-flash',
+    'qwen-audio-3.0-tts-plus',
+    'cosyvoice-v1',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _apiKeyCtrl = TextEditingController();
+    Future(() async {
+      try {
+        final creds = await ref.read(qwenTtsCredentialsProvider.future);
+        if (!mounted) return;
+        if (creds != null) {
+          _apiKeyCtrl.text = creds.apiKey;
+          setState(() {
+            _model = creds.model;
+            _voice = creds.voice;
+          });
+        }
+      } catch (_) {
+        // Secure storage may throw in widget tests without channel mock.
+        // Swallow so the empty form still renders.
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _apiKeyCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final store = ref.read(qwenTtsCredentialStoreProvider);
+      await store.save(QwenTtsCredentials(
+        apiKey: _apiKeyCtrl.text.trim(),
+        model: _model,
+        voice: _voice,
+      ));
+      ref.invalidate(qwenTtsCredentialsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已保存'), duration: Duration(seconds: 1)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _testConnection() async {
+    if (_apiKeyCtrl.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写 API Key')),
+      );
+      return;
+    }
+    setState(() => _testing = true);
+    try {
+      final service = QwenCloudTtsService(
+        credentials: QwenTtsCredentials(
+          apiKey: _apiKeyCtrl.text.trim(),
+          model: _model,
+          voice: _voice,
+        ),
+      );
+      final Uint8List bytes =
+          await service.fetchAudio('你好，这是测试。', 0.0, _voice);
+      await service.dispose();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ 连接成功（${bytes.length} bytes）'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('✗ 失败: $e'),
+            duration: const Duration(seconds: 5)),
+      );
+    } finally {
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('阿里云 Qwen 凭证',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _apiKeyCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'API Key',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _model,
+              decoration: const InputDecoration(
+                labelText: 'Model',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: _models
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                  .toList(),
+              onChanged: (v) => setState(() => _model = v ?? _model),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _voice,
+              decoration: const InputDecoration(
+                labelText: '声音',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: CloudTtsVoicePresets.qwen
+                  .map((v) => DropdownMenuItem(
+                        value: v.id,
+                        child: Text('${v.displayName} (${v.description})'),
+                      ))
+                  .toList(),
+              onChanged: (v) => setState(() => _voice = v ?? _voice),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text('测试连接'),
+                  onPressed: _testing ? null : _testConnection,
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  icon: const Icon(Icons.save),
+                  label: const Text('保存'),
+                  onPressed: _saving ? null : _save,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '获取凭证：阿里云百炼控制台 → API-KEY 管理。\n文本将发送至阿里云服务器合成。',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

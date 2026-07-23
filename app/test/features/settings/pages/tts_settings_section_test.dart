@@ -273,5 +273,70 @@ void main() {
       expect(find.text('阿里云 Qwen（云端）'), findsOneWidget);
       expect(find.textContaining('SherpaOnnx'), findsNothing);
     });
+
+    // v1.16.0-alpha B8: cloud credentials forms appear only for their engine.
+    testWidgets('volcengineCloud engine shows Volcengine credentials form',
+        (tester) async {
+      final container = ProviderContainer(overrides: [
+        settingsRepositoryProvider.overrideWithValue(
+            _FakeSettingsRepo(initialEngine: 'volcengineCloud')),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('火山引擎凭证'), findsOneWidget);
+      expect(find.text('App ID'), findsOneWidget);
+      expect(find.text('Access Token'), findsOneWidget);
+      expect(find.text('声音'), findsOneWidget);
+      expect(find.text('测试连接'), findsOneWidget);
+      // Qwen form must NOT be visible.
+      expect(find.text('阿里云 Qwen 凭证'), findsNothing);
+    });
+
+    testWidgets('qwenCloud engine shows Qwen credentials form',
+        (tester) async {
+      final container = ProviderContainer(overrides: [
+        settingsRepositoryProvider
+            .overrideWithValue(_FakeSettingsRepo(initialEngine: 'qwenCloud')),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('阿里云 Qwen 凭证'), findsOneWidget);
+      expect(find.text('API Key'), findsOneWidget);
+      expect(find.text('Model'), findsOneWidget);
+      expect(find.text('声音'), findsOneWidget);
+      expect(find.text('测试连接'), findsOneWidget);
+      // Volcengine form must NOT be visible.
+      expect(find.text('火山引擎凭证'), findsNothing);
+    });
+
+    testWidgets('system engine shows neither cloud credentials form',
+        (tester) async {
+      final container = ProviderContainer(overrides: [
+        settingsRepositoryProvider
+            .overrideWithValue(_FakeSettingsRepo(initialEngine: 'system')),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('火山引擎凭证'), findsNothing);
+      expect(find.text('阿里云 Qwen 凭证'), findsNothing);
+    });
   });
 }
