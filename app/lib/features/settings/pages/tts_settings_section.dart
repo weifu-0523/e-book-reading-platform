@@ -542,17 +542,16 @@ class _VolcengineCredentialsFormState
       return;
     }
     setState(() => _testing = true);
+    final service = VolcengineCloudTtsService(
+      credentials: VolcengineTtsCredentials(
+        appId: _appIdCtrl.text.trim(),
+        accessToken: _tokenCtrl.text.trim(),
+        voice: _voice,
+      ),
+    );
     try {
-      final service = VolcengineCloudTtsService(
-        credentials: VolcengineTtsCredentials(
-          appId: _appIdCtrl.text.trim(),
-          accessToken: _tokenCtrl.text.trim(),
-          voice: _voice,
-        ),
-      );
       final Uint8List bytes =
           await service.fetchAudio('你好，这是测试。', 0.0, _voice);
-      await service.dispose();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -568,6 +567,7 @@ class _VolcengineCredentialsFormState
             duration: const Duration(seconds: 5)),
       );
     } finally {
+      await service.dispose();
       if (mounted) setState(() => _testing = false);
     }
   }
@@ -732,17 +732,16 @@ class _QwenCredentialsFormState extends ConsumerState<_QwenCredentialsForm> {
       return;
     }
     setState(() => _testing = true);
+    final service = QwenCloudTtsService(
+      credentials: QwenTtsCredentials(
+        apiKey: _apiKeyCtrl.text.trim(),
+        model: _model,
+        voice: _voice,
+      ),
+    );
     try {
-      final service = QwenCloudTtsService(
-        credentials: QwenTtsCredentials(
-          apiKey: _apiKeyCtrl.text.trim(),
-          model: _model,
-          voice: _voice,
-        ),
-      );
       final Uint8List bytes =
           await service.fetchAudio('你好，这是测试。', 0.0, _voice);
-      await service.dispose();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -758,6 +757,7 @@ class _QwenCredentialsFormState extends ConsumerState<_QwenCredentialsForm> {
             duration: const Duration(seconds: 5)),
       );
     } finally {
+      await service.dispose();
       if (mounted) setState(() => _testing = false);
     }
   }
