@@ -132,7 +132,7 @@ class FlutterTtsServiceImpl implements TtsService {
 
   /// v1.15.4-alpha: flutter_tts has no prefetch pipeline — no-op.
   /// Audio is synthesized on-device per speak() call; inter-sentence gap
-  /// is unavoidable here. SherpaOnnxTtsService overrides to pre-generate.
+  /// is unavoidable here. Cloud TTS engines override to pre-fetch.
   @override
   Future<void> hintNext(Sentence? next) async {}
 

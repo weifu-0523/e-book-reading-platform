@@ -77,9 +77,9 @@ abstract class TtsService {
   void setCurrentSentenceIndex(int idx);
 
   /// v1.15.4-alpha: Hint the next sentence that will be spoken. Engines
-  /// that support pipelining (e.g. SherpaOnnx) override this to
-  /// pre-generate audio during the current sentence's playback,
-  /// eliminating inter-sentence silence gaps. Default no-op for engines
+  /// that support pipelining (e.g. cloud TTS) override this to
+  /// pre-fetch audio during the current sentence's playback,
+  /// eliminating inter-sentence latency gaps. Default no-op for engines
   /// without prefetch support (flutter_tts, self-built plugin have their
   /// own queueing).
   ///

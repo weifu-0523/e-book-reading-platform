@@ -149,7 +149,7 @@ final ttsServiceProvider = Provider<TtsService>((ref) {
   );
   ref.onDispose(svc.dispose);
 
-  // SherpaOnnx and other future engines require explicit init();
+  // Cloud engines require explicit init();
   // SelfBuiltTtsServiceImpl / FlutterTtsServiceImpl auto-init in ctor.
   if (engine != TtsEnginePreference.system) {
     svc.init(); // fire-and-forget; TtsPlaybackController.play() also awaits init
@@ -390,8 +390,8 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
   /// end") so even an erroring engine should leave the controller clean.
   ///
   /// v1.15.1-alpha hotfix: 切换 state **先于** `_service.stop()` 调用。
-  /// 之前顺序是 `await _service.stop(); state = ...`，但 SherpaOnnx 引擎
-  /// 的 `_audioPlayer.stop()` 在 audioplayers 内部 lock 持有时会卡住，
+  /// 之前顺序是 `await _service.stop(); state = ...`，但某些引擎的
+  /// `_audioPlayer.stop()` 在 audioplayers 内部 lock 持有时会卡住，
   /// 导致 mini control「关闭」按钮按下后 UI 不消失。现在先切 state 让 UI
   /// 立即响应，service.stop() 在后台清理。Stop 是幂等操作，UI 立即反馈
   /// 优先于"等引擎确认已停"。
@@ -444,8 +444,8 @@ class TtsPlaybackController extends StateNotifier<TtsPlaybackState> {
       await _service.setVolume(s.volume);
       _service.setCurrentSentenceIndex(state.currentIndex);
       // v1.15.4-alpha T2: hint the upcoming sentence so engines with
-      // prefetch support (SherpaOnnxTtsService) can pre-generate audio
-      // during current playback, eliminating the inter-sentence silence
+      // prefetch support (cloud TTS engines) can pre-fetch audio
+      // during current playback, eliminating the inter-sentence latency
       // gap. Default no-op for other engines. unawaited because hintNext
       // must not block the speak path — its work happens in the background.
       final nextIdx = state.currentIndex + 1;

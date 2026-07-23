@@ -1003,7 +1003,7 @@ void main() {
     // should hide the mini control regardless of whether the engine
     // acknowledged the stop. Regressed the v1.15.0-alpha symptom of "关闭
     // 按钮按下后 mini control 不消失" when audioplayers internal lock makes
-    // SherpaOnnxTtsService.stop() hang.
+    // TtsService.stop() hang.
     test('driveStop keeps phase=idle even if service.stop() throws',
         () async {
       final mockSvc = MockTtsService();
@@ -1047,12 +1047,11 @@ void main() {
   // ─────────────────────────────────────────────────────────────────────
   // v1.15.4-alpha T2: prefetch pipeline wiring.
   //
-  // Background: SherpaOnnxTtsService synthesizes each sentence to a WAV
-  // file on-the-fly, causing a ~500-900ms inter-sentence silence gap
-  // while the next sentence's audio is generated. T1 added a default
-  // no-op `hintNext(Sentence? next)` to TtsService; SherpaOnnx (T4) will
-  // override it to pre-generate `next`'s audio during the current
-  // sentence's playback.
+  // Background: Cloud TTS engines synthesize each sentence via network API,
+  // causing potential inter-sentence latency. T1 added a default
+  // no-op `hintNext(Sentence? next)` to TtsService; cloud engines override
+  // it to pre-fetch `next`'s audio during the current sentence's playback,
+  // eliminating gaps.
   //
   // Contract verified here:
   //   * controller calls hintNext(next) BEFORE speakSentence(current)

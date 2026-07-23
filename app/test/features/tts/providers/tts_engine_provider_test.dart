@@ -49,11 +49,11 @@ void main() {
     test('setEngine updates state in-memory', () async {
       await container
           .read(ttsEngineProvider.notifier)
-          .setEngine(TtsEnginePreference.sherpaOnnxMelo);
+          .setEngine(TtsEnginePreference.volcengineCloud);
 
       expect(
         container.read(ttsEngineProvider),
-        TtsEnginePreference.sherpaOnnxMelo,
+        TtsEnginePreference.volcengineCloud,
       );
     });
   });

@@ -56,9 +56,9 @@ class TtsAudioPlayer {
   /// 阻塞至播放完成（或 [stop] 被调用）。
   ///
   /// v1.15.6-alpha: [onAudioStarted] 在 `p.play()` 返回后（audio 已 queue
-  /// 到 native thread）触发，让调用方（SherpaOnnxTtsService.speakSentence）
-  /// 在 audio 渲染期间启动 prefetch FFI。FFI 同步阻塞 isolate 但 audio 在
-  /// native thread 不受影响——核心机制让 prefetch 真正与播放并行。
+  /// 到 native thread）触发，让调用方在 audio 渲染期间启动 prefetch。
+  /// 预取操作同步阻塞 isolate 但 audio 在 native thread 不受影响——
+  /// 核心机制让 prefetch 真正与播放并行。
   Future<void> play(
     Float32List samples,
     int sampleRate, {
