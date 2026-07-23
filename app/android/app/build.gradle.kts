@@ -82,13 +82,6 @@ android {
         }
     }
 
-    // TTS POC T1: sherpa-onnx JNI 需要解压 .so 到 /data/app/.../lib/(非压缩路径),
-    // 默认 extractNativeLibs=false 走压缩会导致加载失败。
-    packaging {
-        jniLibs {
-            useLegacyPackaging = true
-        }
-    }
 }
 
 dependencies {
