@@ -5,6 +5,63 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.16.0-alpha] - 2026-07-23
+
+### Major: TTS 混合云策略 (Hybrid Cloud Strategy)
+
+**移除**：SherpaOnnx + MeloTTS POC（v1.15.0 → v1.15.6 共 7 个版本验证失败）。
+真因：(1) RTF ≈ 0.85 在中端手机句间卡顿不可消除；(2) 音质差强人意。
+
+**新增**：双云端 TTS provider
+- 火山引擎（豆包语音）：5 个预设声音（通用女声/男声 + 灿灿/擎苍/炉鼎）
+- 阿里云 Qwen/CosyVoice：6 个预设声音（龙小夏/龙逸尘/龙婉君/龙老伯/龙修/龙白芷）+ 3 个模型可选
+
+**核心架构**（22 commits + ~224 测试）：
+- Phase A (A1-A8)：完全移除 SherpaOnnx（包体 -164MB）、TtsEnginePreference 改为 3 引擎枚举、factory dispatch system/volcengine/qwen
+- Phase B (B1-B8)：
+  - BaseCloudTtsService 抽象基类（HTTP prefetch + onAudioStarted hook + Timer completion + 错误分类）
+  - VolcengineCloudTtsService（POST openspeech.bytedance.com/api/v1/tts，base64 MP3 直接返回）
+  - QwenCloudTtsService（POST dashscope.aliyuncs.com，返回 OSS URL 后二次 GET 拉取 bytes）
+  - 凭证走 flutter_secure_storage（Android Keystore / Windows DPAPI），**不通过 WebDAV 同步**
+  - TtsFallbackNotifier + 控制器 error stream 订阅：网络/服务端瞬时错误自动 fallback system + SnackBar 提示
+  - 设置页条件表单（Volcengine App ID+Token+Voice / Qwen API Key+Model+Voice）+ 测试连接按钮 + 隐私提示
+
+### Changed
+
+- **包体**：APK 264MB → 预期 ~100MB（-60%+）；Windows installer 202MB → 预期 ~50MB
+- **TtsEnginePreference 枚举**：移除 sherpaOnnxMelo，新增 volcengineCloud + qwenCloud
+- **tts_service_factory.dart**：新增 createTtsServiceAsync 异步工厂（先查 secure storage 凭证再构造）
+- **tts_playback_controller.dart**：构造函数加可选 fallbackHandler + engineName 参数；订阅 service.error 流；dispose-time mounted 守卫
+- **TtsSettingsSection**：engine=cloud 时下方条件渲染凭证表单 + ref.listen(ttsFallbackProvider) 显示 SnackBar
+
+### Added
+
+- BaseCloudTtsService（HTTP prefetch + cache invalidation + 5 类错误分类）
+- CloudTtsException / CloudTtsErrorKind（network/auth/quota/server/invalidRequest + isTransient getter）
+- VoicePreset + CloudTtsVoicePresets（volcengine 5 + qwen 6 预设声音）
+- VolcengineTtsCredentialStore + QwenTtsCredentialStore（secure storage 包装）
+- Riverpod providers：volcengineTtsCredentialStoreProvider / volcengineTtsCredentialsProvider / qwenTtsCredentialStoreProvider / qwenTtsCredentialsProvider / ttsFallbackProvider
+
+### Breaking
+
+- tts.engine=sherpaOnnxMelo 持久化值会自动降级到 system（TtsEnginePreferenceX.fromPersistedValue 已处理）
+- SherpaOnnx 相关 Dart API 全部移除（SherpaOnnxTtsService / SherpaOnnxAudioPlayer / sherpa_onnx_tts_benchmark 等）
+- sherpa_onnx pub 依赖 + MeloTTS assets（163MB 模型）+ Android useLegacyPackaging JNI 配置全部移除
+
+### Diagnostics
+
+- Cloud 服务 getDebugState() 返回 prefetch hit/miss/fail 计数器 + 缓存大小 + 当前 voice
+- TtsFallbackNotifier 事件含 fromEngine + message + timestamp，便于排查网络问题
+- 控制器 _onServiceError 失败的 handler 异常 debugPrint 不再静默吞
+
+### Known Limitations
+
+- **Qwen API 二次 GET**：DashScope API 返回 OSS URL 而非 base64 bytes，需二次 HTTP GET 拉取，多 100-200ms 延迟。v1.17 可切 WebSocket 流式减延迟。
+- **Fallback 仅触发于设置页 mounted 时**：用户离开设置页后发生的 fallback 不会显示 SnackBar（v1.17 应移到 app 根 listener）。
+- **凭证不同步**：云端 TTS 凭证仅本机有效，换设备需重新输入（设计权衡：API key 走 WebDAV 风险太大）。
+- **测试连接实例化临时 service**：每次点测试按钮都新建 + dispose 一个 http.Client，频繁点击可能短暂提升连接数（影响可忽略）。
+
+
 ## [Unreleased]
 
 v1.15.6-alpha 之后的新变更将记在此处。
