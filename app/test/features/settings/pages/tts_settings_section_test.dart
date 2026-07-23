@@ -209,73 +209,6 @@ void main() {
       expect(container.read(ttsSettingsProvider).rate, isNot(0.0));
     });
 
-    // v1.15.4-alpha T6: pitch slider disabled + hint shown when engine
-    // is SherpaOnnx (sherpa_onnx OfflineTts API has no pitch param).
-    testWidgets(
-        'pitch slider disabled when engine is sherpaOnnxMelo '
-        'and shows hint text', (tester) async {
-      final container = ProviderContainer(overrides: [
-        settingsRepositoryProvider
-            .overrideWithValue(_FakeSettingsRepo(initialEngine: 'sherpaOnnxMelo')),
-      ]);
-      addTearDown(container.dispose);
-
-      await tester.pumpWidget(UncontrolledProviderScope(
-        container: container,
-        child: _wrap(const TtsSettingsSection()),
-      ));
-      await tester.pumpAndSettle();
-
-      // Sanity: engine is SherpaOnnx.
-      expect(container.read(ttsEngineProvider),
-          TtsEnginePreference.sherpaOnnxMelo);
-
-      // Three sliders present (rate/pitch/volume). The pitch slider is the
-      // second one in tree order.
-      final sliders = tester.widgetList<Slider>(find.byType(Slider));
-      expect(sliders.length, 3);
-      final pitchSlider = sliders.elementAt(1);
-      expect(pitchSlider.min, 0.5);
-      expect(pitchSlider.max, 2.0);
-      // T6: SherpaOnnx has no pitch API → slider must be disabled.
-      expect(pitchSlider.onChanged, isNull,
-          reason: 'T6: pitch slider must be disabled for SherpaOnnx engine');
-
-      // Hint text shown below slider.
-      expect(find.text('SherpaOnnx MeloTTS 不支持音调调整（POC 限制）'),
-          findsOneWidget,
-          reason: 'T6: pitch hint must be visible when engine is SherpaOnnx');
-    });
-
-    // v1.15.4-alpha T6: voice tile disabled + subtitle hint shown when
-    // engine is SherpaOnnx (MeloTTS-zh_en single speaker only).
-    testWidgets(
-        'voice tile onTap null and subtitle hint shown when engine is '
-        'sherpaOnnxMelo', (tester) async {
-      final container = ProviderContainer(overrides: [
-        settingsRepositoryProvider
-            .overrideWithValue(_FakeSettingsRepo(initialEngine: 'sherpaOnnxMelo')),
-      ]);
-      addTearDown(container.dispose);
-
-      await tester.pumpWidget(UncontrolledProviderScope(
-        container: container,
-        child: _wrap(const TtsSettingsSection()),
-      ));
-      await tester.pumpAndSettle();
-
-      // Find the voice tile by leading icon (Icons.record_voice_over).
-      final voiceIconFinder = find.byIcon(Icons.record_voice_over);
-      expect(voiceIconFinder, findsOneWidget);
-      final voiceTile = tester.widget<ListTile>(
-          find.ancestor(of: voiceIconFinder, matching: find.byType(ListTile)));
-      expect(voiceTile.onTap, isNull,
-          reason: 'T6: voice tile must be disabled for SherpaOnnx engine');
-
-      // Subtitle hint must reflect single-voice limitation.
-      expect(find.text('SherpaOnnx MeloTTS 仅单声音（POC 限制）'), findsOneWidget,
-          reason: 'T6: voice tile subtitle hint must be present');
-    });
 
     // v1.15.4-alpha T6 regression guard: system engine preserves original
     // behaviour (pitch slider enabled + voice tile routes to voice page).
@@ -313,6 +246,32 @@ void main() {
           find.ancestor(of: voiceIconFinder, matching: find.byType(ListTile)));
       expect(voiceTile.onTap, isNotNull,
           reason: 'T6 regression: voice tile must be tappable for system');
+    });
+
+    testWidgets('shows 3 engine options, no SherpaOnnx', (tester) async {
+      final container = ProviderContainer(overrides: [
+        settingsRepositoryProvider
+            .overrideWithValue(_FakeSettingsRepo(initialEngine: 'system')),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      // Find dropdown, tap to open
+      await tester.tap(find.byType(DropdownButtonFormField<TtsEnginePreference>));
+      await tester.pumpAndSettle();
+
+      // After opening dropdown, we should see all 3 options in the menu.
+      // Use findsAtLeastNWidgets(2) because the selected value appears twice
+      // (once in collapsed form, once in expanded menu).
+      expect(find.text('系统（默认）'), findsAtLeastNWidgets(2));
+      expect(find.text('火山引擎（云端）'), findsOneWidget);
+      expect(find.text('阿里云 Qwen（云端）'), findsOneWidget);
+      expect(find.textContaining('SherpaOnnx'), findsNothing);
     });
   });
 }

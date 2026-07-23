@@ -21,7 +21,6 @@ import 'package:go_router/go_router.dart';
 import '../../../gen_l10n/app_localizations.dart';
 import '../../../services/tts/sentence_segmenter.dart';
 import '../../../services/tts/self_built_tts_service.dart';
-import '../../../services/tts/sherpa_onnx_tts_service.dart';
 import '../../../services/tts/tts_availability.dart';
 import '../../../services/tts/tts_engine_preference.dart';
 import '../../tts/providers/tts_engine_provider.dart';
@@ -53,12 +52,9 @@ class TtsSettingsSection extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final settings = ref.watch(ttsSettingsProvider);
     final notifier = ref.read(ttsSettingsProvider.notifier);
-    // v1.15.4-alpha T6: watch engine once at top of build to drive
-    // pitch-slider / voice-tile disabling for SherpaOnnx (no pitch API,
-    // single speaker model). Previously the engine dropdown's own
-    // Consumer was the sole watcher.
+    // v1.16.0-alpha A5: watch engine once at top of build to drive
+    // cloud-engine-specific UI (credentials form in Phase B).
     final engine = ref.watch(ttsEngineProvider);
-    final isSherpaOnnx = engine == TtsEnginePreference.sherpaOnnxMelo;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,8 +81,12 @@ class TtsSettingsSection extends ConsumerWidget {
                       child: Text('系统（默认）'),
                     ),
                     DropdownMenuItem(
-                      value: TtsEnginePreference.sherpaOnnxMelo,
-                      child: Text('SherpaOnnx MeloTTS（163MB）'),
+                      value: TtsEnginePreference.volcengineCloud,
+                      child: Text('火山引擎（云端）'),
+                    ),
+                    DropdownMenuItem(
+                      value: TtsEnginePreference.qwenCloud,
+                      child: Text('阿里云 Qwen（云端）'),
                     ),
                   ],
                   onChanged: (value) async {
@@ -104,8 +104,7 @@ class TtsSettingsSection extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'POC v1.15.0-alpha：SherpaOnnx MeloTTS 为离线神经引擎,'
-                  '需首次朗读时拷贝 163MB 模型,中文质量可能优于系统 TTS。',
+                  '云端引擎需在下方填写 API 凭证。网络失败时自动切换至系统 TTS。',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -127,31 +126,13 @@ class TtsSettingsSection extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.music_note),
           title: Text(l10n.ttsPitchLabel),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Slider(
-                min: 0.5,
-                max: 2.0,
-                divisions: 15,
-                value: settings.pitch,
-                label: settings.pitch.toStringAsFixed(1),
-                // v1.15.4-alpha T6: SherpaOnnx engine has no pitch API.
-                // sherpa_onnx OfflineTts accepts (text, sid, speed) only;
-                // MeloTTS-zh_en VITS model doesn't support runtime pitch
-                // shift. Disable slider + show hint instead of silently
-                // no-op'ing.
-                onChanged: isSherpaOnnx ? null : notifier.setPitch,
-              ),
-              if (isSherpaOnnx)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(
-                    'SherpaOnnx MeloTTS 不支持音调调整（POC 限制）',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-            ],
+          subtitle: Slider(
+            min: 0.5,
+            max: 2.0,
+            divisions: 15,
+            value: settings.pitch,
+            label: settings.pitch.toStringAsFixed(1),
+            onChanged: notifier.setPitch,
           ),
         ),
         ListTile(
@@ -170,21 +151,14 @@ class TtsSettingsSection extends ConsumerWidget {
         // picks one of the platform-exposed voices or falls back to system
         // default.
         //
-        // v1.15.4-alpha T6: disable + hint for SherpaOnnx engine.
-        // MeloTTS-zh_en has only sid=0 (single speaker), so the voice list
-        // page would show a single non-selectable entry. Grey out instead
-        // and explain in subtitle.
+        // v1.16.0-alpha B8: cloud engines route to cloud voice preset picker
+        // (Phase B). For now, all engines route to the same voice list page.
         ListTile(
           leading: const Icon(Icons.record_voice_over),
           title: Text(l10n.ttsSettingsVoiceTile),
-          subtitle: Text(isSherpaOnnx
-              ? 'SherpaOnnx MeloTTS 仅单声音（POC 限制）'
-              : l10n.ttsSettingsVoiceTileSubtitle),
-          trailing: Icon(
-            Icons.chevron_right,
-            color: isSherpaOnnx ? Theme.of(context).disabledColor : null,
-          ),
-          onTap: isSherpaOnnx ? null : () => context.push('/settings/tts/voice'),
+          subtitle: Text(l10n.ttsSettingsVoiceTileSubtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/settings/tts/voice'),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -261,45 +235,10 @@ class TtsSettingsSection extends ConsumerWidget {
   /// a scrollable, copy-pasteable text view so the user can screenshot or
   /// copy the contents back to the developer.
   ///
-  /// v1.15.2-alpha: 添加 SherpaOnnxTtsService 分支 —— POC 引擎同样支持
-  /// getDebugState()，dump 当前 init/speak 状态 + ring buffer 日志。
+  /// v1.16.0-alpha A5: removed SherpaOnnxTtsService branch (POC engine
+  /// removed in Phase A).
   Future<void> _showTtsDebugLogs(WidgetRef ref, BuildContext context) async {
     final service = ref.read(ttsServiceProvider);
-
-    // v1.15.2-alpha: SherpaOnnx 分支
-    if (service is SherpaOnnxTtsService) {
-      // 不强制 re-init —— SherpaOnnx init 含 170MB asset 拷贝 + ONNX 加载
-      // (1-3s)，按需触发会让用户等几秒才看到 dialog。直接 dump 当前状态。
-      final state = await service.getDebugState();
-      if (!context.mounted) return;
-      final pretty = _prettySherpaDebugState(state);
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('TTS 调试日志'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                pretty,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  height: 1.3,
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
 
     if (service is! SelfBuiltTtsServiceImpl) {
       await showDialog<void>(
@@ -358,51 +297,6 @@ class TtsSettingsSection extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  /// v1.15.2-alpha: pretty-print SherpaOnnx service state + ring buffer.
-  /// Layout mirrors [_prettyDebugState] but uses SherpaOnnx-specific keys.
-  static String _prettySherpaDebugState(Map<String, dynamic> state) {
-    final b = StringBuffer();
-    b.writeln('=== SherpaOnnx Engine ===');
-    b.writeln('engine           : ${state['engine']}');
-    b.writeln('initialized      : ${state['initialized']}');
-    b.writeln('bindingsReady    : ${state['bindingsInitialized']}');
-    b.writeln('initStartedAt    : ${state['initStartedAt'] ?? '(never)'}');
-    b.writeln('initFinishedAt   : ${state['initFinishedAt'] ?? '(running/never)'}');
-    b.writeln('initDurationMs   : ${state['initDurationMs'] ?? '-'} '
-        '(asset copy + FFI bind + ONNX load)');
-    b.writeln('initError        : ${state['initError'] ?? '(none)'}');
-    b.writeln('modelLoadMs      : ${state['modelLoadDurationMs']}');
-    b.writeln();
-    b.writeln('=== Playback ===');
-    b.writeln('speakCount       : ${state['speakCount']}');
-    b.writeln('speakFailCount   : ${state['speakFailCount']}');
-    b.writeln('prefetchHit     : ${state['prefetchHitCount']} '
-        '(cache hits — inter-sentence gap eliminated)');
-    b.writeln('prefetchMiss    : ${state['prefetchMissCount']} '
-        '(sync generate — first sentence, hint missed, or post-invalidation)');
-    b.writeln('prefetchFail    : ${state['prefetchFailCount']} '
-        '(background generate errors — fallback to sync)');
-    b.writeln('currentIdx       : ${state['currentSentenceIndex']}');
-    b.writeln('stopped          : ${state['stopped']}');
-    b.writeln('rate             : ${state['rate']}');
-    b.writeln('volume           : ${state['volume']}');
-    b.writeln();
-    b.writeln('=== Service debugLogs (ring buffer, latest 200) ===');
-    final logs = state['serviceDebugLogs'];
-    if (logs is List) {
-      if (logs.isEmpty) {
-        b.writeln('(空 —— 还没触发过 init/speakSentence/stop)');
-      } else {
-        for (final line in logs) {
-          b.writeln(line);
-        }
-      }
-    } else {
-      b.writeln(logs);
-    }
-    return b.toString();
   }
 
   /// Pretty-print the debug state map as a readable multi-line string for
