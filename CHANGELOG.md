@@ -28,7 +28,7 @@
 
 ### Changed
 
-- **包体**：APK 264MB → 预期 ~100MB（-60%+）；Windows installer 202MB → 预期 ~50MB
+- **包体**：APK 264MB → 134MB（-49%）；Windows installer 202MB → 46MB（-77%）
 - **TtsEnginePreference 枚举**：移除 sherpaOnnxMelo，新增 volcengineCloud + qwenCloud
 - **tts_service_factory.dart**：新增 createTtsServiceAsync 异步工厂（先查 secure storage 凭证再构造）
 - **tts_playback_controller.dart**：构造函数加可选 fallbackHandler + engineName 参数；订阅 service.error 流；dispose-time mounted 守卫
