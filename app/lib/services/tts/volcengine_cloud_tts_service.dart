@@ -2,8 +2,8 @@
 // Copyright (C) 2026 ZhiYue Open Source contributors
 
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
@@ -12,13 +12,16 @@ import 'cloud_tts_credentials.dart';
 import 'cloud_tts_exception.dart';
 import 'voice_preset.dart';
 
-/// Volcengine (火山引擎 / 豆包语音) cloud TTS via HTTP API v1.
+/// Volcengine (火山引擎 / 豆包语音合成 2.0) cloud TTS via V3 HTTP SSE.
 ///
-/// API reference: https://www.volcengine.com/docs/6561/1257584
+/// API reference: https://docs.volcengine.com/docs/6561/1598757
 ///
-/// Endpoint: https://openspeech.bytedance.com/api/v1/tts
-/// Auth: Authorization: Bearer;<token>
-/// Response: JSON { code: 3000, data: <base64 mp3> }
+/// Endpoint: https://openspeech.bytedance.com/api/v3/tts/sse
+/// Auth (legacy console): X-Api-App-Id + X-Api-Access-Key + X-Api-Resource-Id=seed-tts-2.0 + X-Api-Request-Id (uuid v4)
+/// Response: SSE event stream, each event = JSON frame
+///   - Audio: {"data": "<base64-mp3-chunk>"}
+///   - End-of-stream: {"code": 20000000, "message": "ok"}
+///   - Error: {"code": <non-20000000>, "message": "..."}
 class VolcengineCloudTtsService extends BaseCloudTtsService {
   VolcengineCloudTtsService({
     required this.credentials,
@@ -95,39 +98,102 @@ class VolcengineCloudTtsService extends BaseCloudTtsService {
     }
 
     if (response.statusCode != 200) {
+      // V3 HTTP non-200 body is JSON {code, message, reqid}
       throw CloudTtsException(
         kind: CloudTtsErrorKind.fromHttpStatus(response.statusCode),
         message: 'HTTP ${response.statusCode}: ${response.body}',
       );
     }
 
-    final Map<String, dynamic> decoded;
-    try {
-      decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    } catch (e) {
+    // V3 SSE response: multiple `data: <JSON>` events + termination frame.
+    // Each event ends with \n\n. JSON payload is one frame per event.
+    // Audio frames: {"data": "<base64>"}
+    // End-of-stream: {"code": 20000000, "message": "ok"}
+    // Error frame: {"code": <non-20000000>, "message": "..."}
+
+    final bodyString = response.body;
+    debugPrint('[VolcengineV3] raw response head 500: '
+        '${bodyString.length > 500 ? bodyString.substring(0, 500) : bodyString}');
+
+    final chunks = <int>[];
+    final events = bodyString.split('\n\n');
+
+    for (final event in events) {
+      if (!event.startsWith('data: ')) continue;
+      final payload = event.substring(6).trim();
+      if (payload.isEmpty) continue;
+
+      // Try JSON decode first (V3 documented format)
+      Map<String, dynamic>? jsonFrame;
+      try {
+        jsonFrame = jsonDecode(payload) as Map<String, dynamic>;
+      } catch (_) {
+        // Fallback: maybe raw base64 (undocumented but defensive)
+        try {
+          chunks.addAll(base64Decode(payload));
+          continue;
+        } catch (_) {
+          throw CloudTtsException(
+            kind: CloudTtsErrorKind.invalidRequest,
+            message: 'Unparseable SSE event: $payload',
+          );
+        }
+      }
+
+      // JSON frame: check for code field
+      final code = jsonFrame['code'];
+      if (code != null) {
+        if (code == 20000000) {
+          // End-of-stream marker — stop reading
+          break;
+        }
+        // Non-20000000 code = error frame
+        final message = jsonFrame['message'] ?? 'unknown';
+        throw CloudTtsException(
+          kind: _classifyErrorCode(code as int),
+          message: '$message (code=$code)',
+        );
+      }
+
+      // JSON frame without code: audio frame, extract data field
+      final dataField = jsonFrame['data'];
+      if (dataField is String && dataField.isNotEmpty) {
+        try {
+          chunks.addAll(base64Decode(dataField));
+        } catch (e) {
+          throw CloudTtsException(
+            kind: CloudTtsErrorKind.invalidRequest,
+            message: 'Invalid base64 in audio frame: $e',
+          );
+        }
+      }
+    }
+
+    if (chunks.isEmpty) {
       throw CloudTtsException(
         kind: CloudTtsErrorKind.invalidRequest,
-        message: 'Invalid JSON response: ${response.body}',
+        message: 'Empty audio data in SSE response: $bodyString',
       );
     }
 
-    final code = decoded['code'];
-    if (code != 3000) {
-      throw CloudTtsException(
-        kind: CloudTtsErrorKind.invalidRequest,
-        message: '${decoded['message'] ?? 'unknown'} (code=$code)',
-      );
-    }
+    return Uint8List.fromList(chunks);
+  }
 
-    final data = decoded['data'] as String?;
-    if (data == null || data.isEmpty) {
-      throw CloudTtsException(
-        kind: CloudTtsErrorKind.invalidRequest,
-        message: 'Empty audio data in response',
-      );
+  /// Maps V3 error code to CloudTtsErrorKind.
+  /// See task 1 notes Section 7 for full table.
+  CloudTtsErrorKind _classifyErrorCode(int code) {
+    switch (code) {
+      case 3001:
+        return CloudTtsErrorKind.auth;
+      case 4293:
+      case 4295:
+      case 4296:
+      case 55000000:
+        return CloudTtsErrorKind.invalidRequest;
+      default:
+        // Unknown codes default to server error (transient)
+        return CloudTtsErrorKind.server;
     }
-
-    return base64Decode(data);
   }
 
   @override

@@ -97,5 +97,55 @@ void main() {
             e is CloudTtsException && e.kind == CloudTtsErrorKind.network)),
       );
     });
+
+    test('fetchAudio parses V3 SSE multi-event response correctly', () async {
+      // Simulate V3 SSE: 2 audio frames + 1 end-of-stream frame
+      final chunk1 = base64Encode([0x49, 0x44, 0x33]); // 'ID3' MP3 header
+      final chunk2 = base64Encode([0xAB, 0xCD, 0xEF, 0x12]);
+      final sseBody = 'data: {"data":"$chunk1"}\n\n'
+          'data: {"data":"$chunk2"}\n\n'
+          'data: {"code":20000000,"message":"ok"}\n\n';
+
+      final mockClient = MockClient((request) async {
+        return http.Response(sseBody, 200,
+            headers: {'Content-Type': 'text/event-stream'});
+      });
+
+      final service = VolcengineCloudTtsService(
+        credentials: VolcengineTtsCredentials(
+            appId: 'test', accessToken: 'test', voice: 'zh_male_shenyeboke_moon_bigtts'),
+        httpClient: mockClient,
+      );
+
+      final bytes = await service.fetchAudio(
+          'hello', 0.0, 'zh_male_shenyeboke_moon_bigtts');
+      expect(bytes.length, 7); // 3 + 4
+      expect(bytes.sublist(0, 3), [0x49, 0x44, 0x33]);
+      expect(bytes.sublist(3), [0xAB, 0xCD, 0xEF, 0x12]);
+    });
+
+    test('fetchAudio throws on V3 SSE error frame with code 55000000', () async {
+      final sseBody =
+          'data: {"code":55000000,"message":"resource ID mismatched with speaker related resource"}\n\n';
+
+      final mockClient = MockClient((request) async {
+        return http.Response(sseBody, 200,
+            headers: {'Content-Type': 'text/event-stream'});
+      });
+
+      final service = VolcengineCloudTtsService(
+        credentials:
+            VolcengineTtsCredentials(appId: 'x', accessToken: 'x', voice: 'zh_male_shenyeboke_moon_bigtts'),
+        httpClient: mockClient,
+      );
+
+      await expectLater(
+        () => service.fetchAudio('hi', 0.0, 'zh_male_shenyeboke_moon_bigtts'),
+        throwsA(predicate((e) =>
+            e is CloudTtsException &&
+            e.kind == CloudTtsErrorKind.invalidRequest &&
+            e.message.contains('55000000'))),
+      );
+    });
   });
 }
