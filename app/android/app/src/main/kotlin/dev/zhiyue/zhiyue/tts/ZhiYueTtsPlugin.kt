@@ -89,6 +89,14 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     internal var onListenCalled: Boolean = false
         private set
 
+    /// v1.16.2-alpha: test-only capture of every event passed to [emitEvent].
+    /// Production ignores this list (memory cost is negligible — service
+    /// emits <100 events per session). Tests assert on this to verify which
+    /// event types reached the plugin without spinning up a real binary
+    /// messenger. Counter-based assertions (invokeAttemptCount etc.) can't
+    /// distinguish event types, which is why we need the full capture.
+    internal val capturedEventsForTest: MutableList<Map<String, Any?>> = mutableListOf()
+
     /// v1.13.4 legacy counters kept (always 0 in v1.13.5+) for one release
     /// so the Dart pretty-printer doesn't blow up if a stale field is read
     /// during version-skew debugging.
@@ -353,6 +361,8 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     internal fun emitEvent(event: Map<String, Any?>) {
         val ch = channel
         val type = event["event"]
+        // v1.16.2-alpha: capture for tests (see capturedEventsForTest docs).
+        capturedEventsForTest.add(event)
         if (ch == null) {
             invokeChannelNullCount++
             ZhiYueTtsService.debugLog(

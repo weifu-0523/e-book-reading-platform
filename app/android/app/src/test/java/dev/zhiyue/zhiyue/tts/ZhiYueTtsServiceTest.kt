@@ -669,4 +669,161 @@ class ZhiYueTtsServiceTest {
             ZhiYueTtsPlugin.setInstanceForTest(null)
         }
     }
+
+    // ---- v1.16.2-alpha OPPO/Xiaomi system TTS init failure: emit init_error
+    // to Dart after exhausting 1 applicationContext retry. OPPO/Xiaomi ship a
+    // ROM-specific TextToSpeech binding restriction that fails init
+    // synchronously (~5ms) when constructed with a Service context; retrying
+    // with applicationContext bypasses some of these restrictions. If retry
+    // also fails, Dart needs to know (so it can surface a user-visible
+    // message instead of stranding 11 SPEAK intents in pendingSpeak forever).
+
+    @Test
+    fun `init failure schedules retry with applicationContext`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            val service = createService()
+            service.onCreate()
+            // First init callback reports failure.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            // Run any main-thread tasks queued before the failure callback
+            // (e.g. TextToSpeech ctor scheduling tasks via main looper).
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            org.junit.Assert.assertTrue(
+                "retry flag should be set after first init failure",
+                ZhiYueTtsService.ttsInitRetryAttempted
+            )
+            org.junit.Assert.assertEquals(
+                "init_error must NOT be emitted on first failure (retry pending)",
+                0,
+                plugin.capturedEventsForTest.count { it["event"] == "init_error" }
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `init retry failure emits init_error event with manufacturer`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            val service = createService()
+            service.onCreate()
+            // First failure → schedules retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            // Flush the 500ms delayed retry (recreates TextToSpeech; the
+            // retry init callback below is what we actually exercise).
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // Retry also fails.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasks()
+
+            val errorEvents = plugin.capturedEventsForTest.filter { it["event"] == "init_error" }
+            org.junit.Assert.assertEquals(
+                "should emit exactly one init_error after retry exhaustion",
+                1,
+                errorEvents.size
+            )
+            val evt = errorEvents.first()
+            org.junit.Assert.assertEquals(
+                "status field should report the error code",
+                android.speech.tts.TextToSpeech.ERROR,
+                evt["status"]
+            )
+            org.junit.Assert.assertNotNull(
+                "manufacturer must be surfaced so Dart can show ROM-specific guidance",
+                evt["manufacturer"]
+            )
+            org.junit.Assert.assertNotNull(
+                "model must be surfaced for diagnostic logging",
+                evt["model"]
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `init retry success does not emit init_error`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            val service = createService()
+            service.onCreate()
+            // First failure schedules retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // Retry succeeds — the happy path. No init_error should be emitted.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.SUCCESS)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasks()
+
+            val errorEvents = plugin.capturedEventsForTest.filter { it["event"] == "init_error" }
+            org.junit.Assert.assertEquals(
+                "init_error should NOT be emitted on retry success",
+                0,
+                errorEvents.size
+            )
+            // Sanity: SUCCESS path should also flush any pending SPEAK intent.
+            // (Re-verification of v1.13.8 init race fix preserved.)
+            org.junit.Assert.assertEquals(
+                "SUCCESS path still fires (v1.13.8 init race fix intact)",
+                android.speech.tts.TextToSpeech.SUCCESS,
+                ZhiYueTtsService.ttsInitStatus
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
+
+    @Test
+    fun `ttsInitRetryAttempted resets across onCreate`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            // First service: init fails → retry flag set.
+            val service1 = createService()
+            service1.onCreate()
+            service1.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+            org.junit.Assert.assertTrue(
+                "first instance sets retry flag after first failure",
+                ZhiYueTtsService.ttsInitRetryAttempted
+            )
+            service1.onDestroy()
+
+            // Companion ttsInitRetryAttempted survives onDestroy (companion
+            // is static — same blind spot as v1.13.9 Bug 2's ttsInitStatus).
+            // v1.16.2 fix: onCreate must reset it.
+            org.junit.Assert.assertTrue(
+                "precondition: companion retains retry flag across instances",
+                ZhiYueTtsService.ttsInitRetryAttempted
+            )
+
+            // Second service: onCreate must reset the flag so the new
+            // instance gets a fresh retry budget (otherwise the very first
+            // init failure on the new instance would emit init_error
+            // immediately without trying applicationContext).
+            val service2 = createService()
+            service2.onCreate()
+            org.junit.Assert.assertFalse(
+                "second service onCreate must reset ttsInitRetryAttempted (v1.13.9 pattern)",
+                ZhiYueTtsService.ttsInitRetryAttempted
+            )
+            service2.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
 }

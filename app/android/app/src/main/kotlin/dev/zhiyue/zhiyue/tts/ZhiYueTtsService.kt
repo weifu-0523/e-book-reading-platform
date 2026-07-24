@@ -12,7 +12,9 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.support.v4.media.MediaMetadataCompat
@@ -183,6 +185,11 @@ class ZhiYueTtsService : Service() {
         //   TTS init callback status=0                          ← real init 47ms later
         ttsInitStatus = -999
         ttsLastSpeakReturn = -999
+        // v1.16.2-alpha: reset retry flag on every onCreate so a recreated
+        // service gets a fresh applicationContext retry budget (mirrors the
+        // ttsInitStatus reset above; without this, a recreated service would
+        // inherit the previous instance's exhausted retry state).
+        ttsInitRetryAttempted = false
         pendingSpeakActive = false
         onCreateCompleted = false
         onCreateException = null
@@ -236,6 +243,35 @@ class ZhiYueTtsService : Service() {
                 } else {
                     debugLog("TTS init FAILED status=$status")
                     Log.e(TAG, "TextToSpeech init failed status=$status")
+                    // v1.16.2-alpha OPPO/Xiaomi: some ROMs restrict
+                    // TextToSpeech binding when the context is a Service;
+                    // applicationContext sometimes bypasses this. We allow
+                    // exactly one retry (so we don't loop forever if the
+                    // ROM really has no working engine), then emit init_error
+                    // to Dart on the second failure so the user gets a
+                    // visible "TTS init failed" message instead of an
+                    // 11-intent pendingSpeak queue that never flushes.
+                    if (!ttsInitRetryAttempted) {
+                        ttsInitRetryAttempted = true
+                        debugLog("scheduling TTS init retry in 500ms with applicationContext")
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            try {
+                                tts?.shutdown()
+                            } catch (e: Exception) {
+                                debugLog("old tts shutdown failed: ${e.message}")
+                            }
+                            tts = TextToSpeech(applicationContext, ttsInitListener!!)
+                            debugLog("retry: TextToSpeech recreated with applicationContext")
+                        }, 500)
+                    } else {
+                        debugLog("TTS init retry exhausted, emitting init_error to Dart")
+                        emit(mapOf(
+                            "event" to "init_error",
+                            "status" to status,
+                            "manufacturer" to Build.MANUFACTURER,
+                            "model" to Build.MODEL
+                        ))
+                    }
                 }
             }
             tts = TextToSpeech(this, ttsInitListener!!)
@@ -805,6 +841,16 @@ class ZhiYueTtsService : Service() {
         var startForegroundCompleted: Boolean = false
         var ttsInitStatus: Int = -999  // -999 = callback never fired
         var ttsLastSpeakReturn: Int = -999
+
+        // v1.16.2-alpha OPPO/Xiaomi init failure: true iff we've already
+        // attempted the applicationContext retry after the first init failure.
+        // Reset on every onCreate (same pattern as ttsInitStatus above) so a
+        // new service instance gets a fresh retry budget. When true and the
+        // retry init callback reports failure, we emit init_error to Dart
+        // instead of silently logging — previously the else-branch of the
+        // init listener only called debugLog + Log.e, leaving 11 SPEAK
+        // intents deferred in pendingSpeak forever (no user-visible signal).
+        @Volatile var ttsInitRetryAttempted: Boolean = false
         var onStartCommandCount: Int = 0
         var lastStartCommandAction: String? = null
         val utteranceCallbacks = mutableListOf<String>()
