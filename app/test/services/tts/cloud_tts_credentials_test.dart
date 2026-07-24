@@ -15,11 +15,11 @@ void main() {
       await store.save(const VolcengineTtsCredentials(
         appId: 'app123',
         accessToken: 'tok456',
-        voice: 'BV001_streaming',
+        voice: 'zh_male_shenyeboke_moon_bigtts',
       ));
       verify(() => storage.write(key: 'zhiyue.tts.volcengine.appId', value: 'app123')).called(1);
       verify(() => storage.write(key: 'zhiyue.tts.volcengine.token', value: 'tok456')).called(1);
-      verify(() => storage.write(key: 'zhiyue.tts.volcengine.voice', value: 'BV001_streaming')).called(1);
+      verify(() => storage.write(key: 'zhiyue.tts.volcengine.voice', value: 'zh_male_shenyeboke_moon_bigtts')).called(1);
     });
 
     test('load returns null when appId missing', () async {
@@ -33,12 +33,23 @@ void main() {
       final storage = _MockSecureStorage();
       when(() => storage.read(key: 'zhiyue.tts.volcengine.appId')).thenAnswer((_) async => 'app123');
       when(() => storage.read(key: 'zhiyue.tts.volcengine.token')).thenAnswer((_) async => 'tok456');
-      when(() => storage.read(key: 'zhiyue.tts.volcengine.voice')).thenAnswer((_) async => 'BV001_streaming');
+      when(() => storage.read(key: 'zhiyue.tts.volcengine.voice')).thenAnswer((_) async => 'zh_male_shenyeboke_moon_bigtts');
       final store = VolcengineTtsCredentialStore(storage);
       final c = await store.load();
       expect(c?.appId, 'app123');
       expect(c?.accessToken, 'tok456');
-      expect(c?.voice, 'BV001_streaming');
+      expect(c?.voice, 'zh_male_shenyeboke_moon_bigtts');
+    });
+
+    test('load falls back to v3 defaultVoice when stored voice empty', () async {
+      final storage = _MockSecureStorage();
+      when(() => storage.read(key: 'zhiyue.tts.volcengine.appId')).thenAnswer((_) async => 'app123');
+      when(() => storage.read(key: 'zhiyue.tts.volcengine.token')).thenAnswer((_) async => 'tok456');
+      when(() => storage.read(key: 'zhiyue.tts.volcengine.voice')).thenAnswer((_) async => null);
+      final store = VolcengineTtsCredentialStore(storage);
+      final c = await store.load();
+      expect(c?.voice, VolcengineTtsCredentials.defaultVoice);
+      expect(c?.voice, 'zh_male_shenyeboke_moon_bigtts');
     });
   });
 

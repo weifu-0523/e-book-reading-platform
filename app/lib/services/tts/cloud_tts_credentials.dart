@@ -5,8 +5,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'voice_preset.dart';
 
-/// Volcengine (豆包语音) credentials. User obtains appId + accessToken
-/// from 火山引擎 console. Default voice is BV001_streaming (通用女声).
+/// Volcengine (豆包语音 2.0) credentials. User obtains appId + accessToken
+/// from 火山引擎 console. Default voice is zh_male_shenyeboke_moon_bigtts
+/// (深夜播客，长篇朗读/说书风格).
 class VolcengineTtsCredentials {
   final String appId;
   final String accessToken;
@@ -18,7 +19,7 @@ class VolcengineTtsCredentials {
     required this.voice,
   });
 
-  static const defaultVoice = 'BV001_streaming';
+  static const defaultVoice = 'zh_male_shenyeboke_moon_bigtts';
 }
 
 /// Qwen/CosyVoice (阿里云百炼) credentials. User obtains apiKey from
@@ -132,15 +133,20 @@ class QwenTtsCredentialStore
 }
 
 /// Static voice preset lists for UI dropdowns. Sources:
-/// - Volcengine: https://www.volcengine.com/docs/6561/1257584
+/// - Volcengine (豆包语音合成 2.0): https://www.volcengine.com/docs/6561/1257544
+///   All v3 voices use `_bigtts` suffix (2.0 专属)；混用 1.0 + seed-tts-2.0
+///   triggers code=55000000 "resource ID is mismatched".
 /// - Qwen: https://help.aliyun.com/zh/model-studio/cosyvoice-voice-list
 class CloudTtsVoicePresets {
   static const volcengine = <VoicePreset>[
-    VoicePreset(id: 'BV001_streaming', displayName: '通用女声', gender: VoiceGender.female, description: '通用场景'),
-    VoicePreset(id: 'BV002_streaming', displayName: '通用男声', gender: VoiceGender.male, description: '通用场景'),
-    VoicePreset(id: 'BV700_streaming', displayName: '灿灿', gender: VoiceGender.female, description: '活泼女声'),
-    VoicePreset(id: 'BV701_streaming', displayName: '擎苍', gender: VoiceGender.male, description: '沉稳男声'),
-    VoicePreset(id: 'BV705_streaming', displayName: '炉鼎', gender: VoiceGender.male, description: '说书男声'),
+    VoicePreset(id: 'zh_male_shenyeboke_moon_bigtts', displayName: '深夜播客', gender: VoiceGender.male, description: '长篇朗读 / 说书风格'),
+    VoicePreset(id: 'zh_female_popo_mars_bigtts', displayName: '婆婆', gender: VoiceGender.female, description: '长者女声'),
+    VoicePreset(id: 'zh_female_gaolengyujie_moon_bigtts', displayName: '高冷御姐', gender: VoiceGender.female, description: '沉稳女声'),
+    VoicePreset(id: 'zh_male_aojiaobazong_moon_bigtts', displayName: '傲娇霸总', gender: VoiceGender.male, description: '沉稳男声'),
+    VoicePreset(id: 'zh_female_meilinvyou_moon_bigtts', displayName: '魅力女友', gender: VoiceGender.female, description: '甜美女声'),
+    VoicePreset(id: 'zh_male_livelybro_mars_bigtts', displayName: '开朗弟弟', gender: VoiceGender.male, description: '活泼男声'),
+    VoicePreset(id: 'zh_male_dongfanghaoran_moon_bigtts', displayName: '东方浩然', gender: VoiceGender.male, description: '浑厚男声'),
+    VoicePreset(id: 'zh_female_naying_mars_bigtts', displayName: '直率英子', gender: VoiceGender.female, description: '直率女声'),
   ];
 
   static const qwen = <VoicePreset>[

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zhiyue/services/tts/cloud_tts_credentials.dart';
 import 'package:zhiyue/services/tts/voice_preset.dart';
 
 void main() {
@@ -30,6 +31,27 @@ void main() {
       final b = VoicePreset(id: 'v1', displayName: 'B', gender: VoiceGender.male);
       expect(a, equals(b));
       expect(a.hashCode, b.hashCode);
+    });
+  });
+
+  group('CloudTtsVoicePresets.volcengine (v3)', () {
+    test('volcengine voice list contains 8 doubao 2.0 voices', () {
+      final voices = CloudTtsVoicePresets.volcengine;
+      expect(voices.length, 8);
+      expect(voices.any((v) => v.id == 'zh_male_shenyeboke_moon_bigtts'), isTrue);
+      expect(voices.any((v) => v.id == 'zh_female_popo_mars_bigtts'), isTrue);
+      expect(voices.any((v) => v.id == 'zh_female_gaolengyujie_moon_bigtts'), isTrue);
+      expect(voices.any((v) => v.id == 'zh_male_aojiaobazong_moon_bigtts'), isTrue);
+      expect(voices.any((v) => v.id == 'zh_female_meilinvyou_moon_bigtts'), isTrue);
+      expect(voices.any((v) => v.id == 'zh_male_livelybro_mars_bigtts'), isTrue);
+      expect(voices.any((v) => v.id == 'zh_male_dongfanghaoran_moon_bigtts'), isTrue);
+      expect(voices.any((v) => v.id == 'zh_female_naying_mars_bigtts'), isTrue);
+    });
+
+    test('all volcengine voices have _bigtts suffix (v3 exclusive)', () {
+      for (final v in CloudTtsVoicePresets.volcengine) {
+        expect(v.id.endsWith('_bigtts'), isTrue, reason: '${v.id} missing _bigtts');
+      }
     });
   });
 }
