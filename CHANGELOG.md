@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.16.2-alpha — 2026-07-24
+
+### Fixed
+- **OPPO/小米 系统默认 TTS 初始化失败反馈**: 用户报告 OPPO/小米手机系统默认 TTS 没声音，设置页测试也无反应。诊断显示 `TextToSpeech.onInit(status=-1)` 在 5ms 内同步失败（ROM 限制 service context 绑定 system TTS service）。荣耀/老华为正常（EMUI/MagicOS 限制宽松）。
+  - 新增 500ms retry 用 `applicationContext` 重试 1 次，绕过部分 ROM 限制
+  - retry 失败后 emit `init_error` 事件到 Dart（含 manufacturer + model）
+  - UI 显示 SnackBar：「系统 TTS 引擎初始化失败 + OPPO/小米引导 + 打开系统 TTS 设置按钮」
+  - 不破坏 v1.13.8 init race 修复（pendingSpeak + ttsInitStatus guard）
+
+
 本项目所有重要变更记录在此文件。
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
