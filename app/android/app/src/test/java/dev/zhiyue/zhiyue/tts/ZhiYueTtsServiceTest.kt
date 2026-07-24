@@ -826,4 +826,64 @@ class ZhiYueTtsServiceTest {
             ZhiYueTtsPlugin.setInstanceForTest(null)
         }
     }
+
+    // ---- v1.16.2-alpha code-review followup: guard init retry against
+    // service destroy + null listener. The 500ms postDelayed retry lambda
+    // captures `this` and the force-unwrapped ttsInitListener!!. If Android
+    // tears down the service mid-window (e.g. user clicks 停止 → stopSelf →
+    // onDestroy), the retry lambda still fires and assigns a brand-new
+    // TextToSpeech instance to `tts` AFTER onDestroy nulled it — an orphan
+    // with no shutdown path. The next onCreate would overwrite without
+    // shutdown, leaking the engine. Also: ttsInitListener is @Volatile-ish
+    // in theory (it's a field, not companion, so it dies with the instance),
+    // but defensively guard against null anyway in case of future refactor.
+
+    @Test
+    fun `retry aborted when service destroyed during retry window`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            val service = createService()
+            service.onCreate()
+            // First failure → schedules retry (500ms delayed task).
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+
+            // Sanity precondition: at this point tts is still the first
+            // instance (retry hasn't fired yet because we haven't flushed).
+            org.junit.Assert.assertNotNull(
+                "precondition: tts instance exists after first init failure",
+                service.ttsInstanceForTest
+            )
+
+            // Service torn down before retry fires. onDestroy nulls `tts`.
+            service.onDestroy()
+            org.junit.Assert.assertNull(
+                "precondition: onDestroy nulls tts",
+                service.ttsInstanceForTest
+            )
+
+            // Now flush the 500ms delayed retry task. Without the destroyed
+            // guard, this would assign `tts = TextToSpeech(applicationContext, ...)`
+            // — re-creating an orphaned engine on a destroyed service.
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // PRIMARY ASSERTION: no leaked TTS instance.
+            org.junit.Assert.assertNull(
+                "retry must not recreate TTS on destroyed service (would leak)",
+                service.ttsInstanceForTest
+            )
+            // SECONDARY ASSERTION: guard fired and logged the abort reason
+            // (lets users / future debug sessions see why retry was skipped).
+            val abortLog = ZhiYueTtsService.debugLogs.any {
+                it.contains("retry aborted") && it.contains("destroyed")
+            }
+            org.junit.Assert.assertTrue(
+                "retry abort must be logged for diagnostics (got: ${ZhiYueTtsService.debugLogs})",
+                abortLog
+            )
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
 }

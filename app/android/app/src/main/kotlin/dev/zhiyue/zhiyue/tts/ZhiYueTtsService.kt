@@ -190,6 +190,11 @@ class ZhiYueTtsService : Service() {
         // ttsInitStatus reset above; without this, a recreated service would
         // inherit the previous instance's exhausted retry state).
         ttsInitRetryAttempted = false
+        // v1.16.2-alpha code-review followup: also reset `destroyed` here so
+        // a recreated service instance can retry normally (the flag may have
+        // been set to true by the prior instance's onDestroy). Same companion-
+        // reset-on-onCreate pattern as ttsInitStatus / ttsInitRetryAttempted.
+        destroyed = false
         pendingSpeakActive = false
         onCreateCompleted = false
         onCreateException = null
@@ -255,12 +260,37 @@ class ZhiYueTtsService : Service() {
                         ttsInitRetryAttempted = true
                         debugLog("scheduling TTS init retry in 500ms with applicationContext")
                         Handler(Looper.getMainLooper()).postDelayed({
+                            // v1.16.2-alpha code-review followup: belt-and-
+                            // suspenders guards against two edge cases that
+                            // would otherwise produce an orphaned TextToSpeech:
+                            //   1. service destroyed during the 500ms window
+                            //      (onDestroy set destroyed=true + nulled tts)
+                            //   2. ttsInitListener null (defensive — it's an
+                            //      instance field so it dies with the service,
+                            //      but a future refactor could move it around)
+                            // Without these guards, the lambda would assign a
+                            // brand-new TextToSpeech to `tts` after onDestroy
+                            // nulled it — an orphan with no shutdown path.
+                            if (destroyed) {
+                                debugLog("retry aborted: service destroyed during retry window")
+                                return@postDelayed
+                            }
+                            val listener = ttsInitListener
+                            if (listener == null) {
+                                debugLog("retry aborted: ttsInitListener is null")
+                                return@postDelayed
+                            }
                             try {
                                 tts?.shutdown()
                             } catch (e: Exception) {
                                 debugLog("old tts shutdown failed: ${e.message}")
                             }
-                            tts = TextToSpeech(applicationContext, ttsInitListener!!)
+                            // Retry uses applicationContext because some ROMs
+                            // (OPPO/小米) restrict system service binding from a
+                            // foreground service context; the first ctor above
+                            // uses `this` (Service) deliberately — that's the
+                            // normal happy path the ROMs allow.
+                            tts = TextToSpeech(applicationContext, listener)
                             debugLog("retry: TextToSpeech recreated with applicationContext")
                         }, 500)
                     } else {
@@ -585,6 +615,12 @@ class ZhiYueTtsService : Service() {
     }
 
     override fun onDestroy() {
+        // v1.16.2-alpha code-review followup: set destroyed=true FIRST so any
+        // pending retry lambda (scheduled from a failed init in onCreate)
+        // aborts cleanly instead of recreating an orphaned TextToSpeech after
+        // we null `tts` below. Mirrors the v1.13.9 companion-reset-on-onCreate
+        // pattern: companion field, reset in onCreate, set in onDestroy.
+        destroyed = true
         // v1.14.0-alpha T4: clear live reference so the plugin doesn't route
         // getVoices / setVoice to a destroyed service (whose tts is null).
         instance = null
@@ -851,6 +887,15 @@ class ZhiYueTtsService : Service() {
         // init listener only called debugLog + Log.e, leaving 11 SPEAK
         // intents deferred in pendingSpeak forever (no user-visible signal).
         @Volatile var ttsInitRetryAttempted: Boolean = false
+
+        // v1.16.2-alpha code-review followup: set to true in onDestroy and
+        // reset to false in onCreate so the 500ms retry lambda (scheduled from
+        // a failed first init) can detect that the service was torn down while
+        // it was pending and abort instead of recreating an orphaned
+        // TextToSpeech. Volatile so the retry lambda (running on the main
+        // looper) reliably sees the write from onDestroy (also main looper in
+        // the normal case, but @Volatile defends against future thread use).
+        @Volatile var destroyed: Boolean = false
         var onStartCommandCount: Int = 0
         var lastStartCommandAction: String? = null
         val utteranceCallbacks = mutableListOf<String>()
