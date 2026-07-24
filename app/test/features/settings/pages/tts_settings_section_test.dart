@@ -338,5 +338,86 @@ void main() {
       expect(find.text('火山引擎凭证'), findsNothing);
       expect(find.text('阿里云 Qwen 凭证'), findsNothing);
     });
+
+    // v1.16.2-alpha Task 3: OPPO/Xiaomi init_error surfaces as a SnackBar
+    // with guidance + 「打开系统 TTS 设置」action.
+    testWidgets(
+        'OPPO/Xiaomi init_error shows SnackBar with system TTS settings button',
+        (tester) async {
+      final stub = StubTtsService();
+      addTearDown(stub.dispose);
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(stub),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      // Simulate Kotlin init_error event being surfaced through the
+      // TtsService.error stream.
+      stub.emitError('系统 TTS 初始化失败（status=-1, device=Xiaomi）');
+      await tester.pumpAndSettle();
+
+      // SnackBar visible with error message + OPPO/小米 guidance.
+      expect(find.textContaining('系统 TTS 初始化失败'), findsOneWidget);
+      expect(find.textContaining('允许自启动'), findsOneWidget);
+      expect(find.textContaining('切换引擎'), findsOneWidget);
+      expect(find.text('打开系统 TTS 设置'), findsOneWidget);
+    });
+
+    testWidgets('init_error SnackBar button calls openSystemTtsSettings',
+        (tester) async {
+      final stub = StubTtsService();
+      addTearDown(stub.dispose);
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(stub),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      stub.emitError('系统 TTS 初始化失败（status=-1, device=Xiaomi）');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('打开系统 TTS 设置'));
+      await tester.pumpAndSettle();
+
+      expect(stub.openSystemTtsSettingsCalled, isTrue,
+          reason: 'v1.16.2: SnackBar action must call service.openSystemTtsSettings');
+    });
+
+    testWidgets('init_error SnackBar uses 10s duration for guidance reading',
+        (tester) async {
+      final stub = StubTtsService();
+      addTearDown(stub.dispose);
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(stub),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      stub.emitError('系统 TTS 初始化失败（status=-1, device=OPPO）');
+      await tester.pumpAndSettle();
+
+      // Find the SnackBar widget and verify it has the longer 10s duration
+      // (default is 4s; we extend to give users time to read the guidance).
+      final snackbar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(snackbar.duration, const Duration(seconds: 10),
+          reason: 'v1.16.2: SnackBar must persist 10s so users can read '
+              'the OPPO/小米 guidance steps before it auto-dismisses.');
+    });
   });
 }

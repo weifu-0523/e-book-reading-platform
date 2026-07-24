@@ -35,6 +35,16 @@ import '../../tts/providers/tts_fallback_notifier.dart';
 import '../../tts/providers/tts_playback_controller.dart';
 import '../../tts/providers/tts_settings_provider.dart';
 
+/// v1.16.2-alpha: surfaces [TtsService.error] events to the settings widget
+/// via Riverpod so they can be consumed with `ref.listen`. Wrapping the
+/// raw stream lets us tap into the existing listener pattern instead of
+/// manually managing a `StreamSubscription` (which would require converting
+/// [TtsSettingsSection] from [ConsumerWidget] to [ConsumerStatefulWidget]).
+final _ttsErrorStreamProvider = StreamProvider<String>((ref) {
+  final service = ref.watch(ttsServiceProvider);
+  return service.error;
+});
+
 /// TTS section in [SettingsPage] (T8, 2026-07-16).
 ///
 /// Renders three sliders (语速/音调/音量) bound to [ttsSettingsProvider],
@@ -81,6 +91,53 @@ class TtsSettingsSection extends ConsumerWidget {
         ),
       );
       ref.read(ttsFallbackProvider.notifier).clear();
+    });
+
+    // v1.16.2-alpha: listen for OPPO/小米 init_error events (originating
+    // from Kotlin init_error after retry exhaustion on Chinese ROMs where
+    // TextToSpeech.OnInitListener returns ERROR). When detected, surface
+    // a longer-duration SnackBar with autostart / engine-switch guidance
+    // and a 「打开系统 TTS 设置」action. Non-init errors fall through to a
+    // simpler SnackBar so we don't lose them.
+    ref.listen<AsyncValue<String>>(_ttsErrorStreamProvider, (prev, next) {
+      final msg = next.value;
+      if (msg == null) return;
+      if (!context.mounted) return;
+      if (msg.contains('系统 TTS 初始化失败')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(msg),
+                const SizedBox(height: 8),
+                const Text('OPPO/小米请检查：'),
+                const Text('① 系统设置 → 应用 → 智阅 → 允许自启动'),
+                const Text('② 系统设置 → 语言和输入法 → 文字转语音输出 → 切换引擎'),
+              ],
+            ),
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: '打开系统 TTS 设置',
+              onPressed: () async {
+                final ok = await ref
+                    .read(ttsServiceProvider)
+                    .openSystemTtsSettings();
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('无法打开系统 TTS 设置')),
+                  );
+                }
+              },
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
     });
 
     return Column(

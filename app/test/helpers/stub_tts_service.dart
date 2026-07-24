@@ -63,6 +63,14 @@ class StubTtsService implements TtsService {
   /// [speakSentence], so most tests don't need to call this directly.
   void emitState(TtsState s) => _state.add(s);
 
+  /// v1.16.2-alpha: emit an error event from test code (e.g. to simulate
+  /// OPPO/Xiaomi init_error surfaced through TtsService.error).
+  void emitError(String msg) => _error.add(msg);
+
+  /// v1.16.2-alpha: tracks calls to [openSystemTtsSettings] so widget tests
+  /// can assert the SnackBar action button wired through.
+  bool openSystemTtsSettingsCalled = false;
+
   @override
   Future<void> init() async {}
 
@@ -116,7 +124,10 @@ class StubTtsService implements TtsService {
   Future<void> previewVoice(String voiceId, {String? sampleText}) async {}
 
   @override
-  Future<bool> openSystemTtsSettings() async => false;
+  Future<bool> openSystemTtsSettings() async {
+    openSystemTtsSettingsCalled = true;
+    return false;
+  }
 
   @override
   Future<void> dispose() async {
