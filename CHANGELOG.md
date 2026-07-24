@@ -5,6 +5,37 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.16.1-alpha] - 2026-07-24
+
+### Major (TTS 协议升级 V1 → V3 HTTP SSE)
+
+- 火山引擎云端 TTS 从 V1 协议升级到 V3 HTTP SSE（用户已购买的豆包语音合成 2.0 资源可用）
+- 替换 5 个 V1 `BV0xx_streaming` 音色为 8 个 V3 `_bigtts` 音色
+  - 深夜播客（默认）/ 婆婆 / 高冷御姐 / 傲娇霸总 / 魅力女友 / 开朗弟弟 / 东方浩然 / 直率英子
+- 默认音色改为「深夜播客」（说书风格，适合长篇朗读）
+
+### Fixed
+
+- v1.16.0-alpha 火山引擎测试连接报 401 + 403 + code 3001 `"load grant: requested grant not found"` 的根本原因（V1 endpoint 与豆包语音合成 2.0 资源不匹配）
+- v1.16.0-alpha 持久化的 V1 音色（如 `BV001_streaming`）不再有效，用户升级后需在设置页重新选音色
+
+### Internal
+
+- VolcengineCloudTtsService V1 → V3 重写
+  - endpoint: `/api/v1/tts` → `/api/v3/tts/sse`（HTTP SSE 单向流式）
+  - 认证: `Authorization: Bearer;<token>` → `X-Api-App-Id` + `X-Api-Access-Key` + `X-Api-Resource-Id=seed-tts-2.0` + `X-Api-Request-Id`（UUID v4）
+  - body schema: 字段名全改（`voice_type` → `speaker`，`encoding` → `format`，`rate` → `sample_rate`，`speed_ratio` float → `speech_rate` int）
+  - response parsing: V1 JSON `{code:3000, data:<base64>}` → V3 SSE event stream（多帧 audio + 终止帧 `code:20000000`）
+- 新增错误码 mapping（`_classifyErrorCode`）：3001→auth, 4293/4295/4296/55000000→invalidRequest
+- BaseCloudTtsService / TtsFallbackNotifier / TtsPlaybackController 不变
+- Qwen V1 代码保留（v1.17 升级）
+- 测试：12 V3 单元测试 + 3 V1→V3 fallback 合约测试
+
+### 已知限制
+
+- 用户从 v1.16.0-alpha 升级后，若设置页音色 DropdownButtonFormField 显示为空，是因为持久化的 V1 音色不在 V3 列表里。**解决方法：在设置 → 朗读里重新选一个音色并保存**。
+- 13 个 pre-existing failures in `tts_reader_controller_test.dart`（v1.16.0-alpha 遗留，与本版本无关）
+
 ## [1.16.0-alpha] - 2026-07-23
 
 ### Major: TTS 混合云策略 (Hybrid Cloud Strategy)
