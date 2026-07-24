@@ -145,6 +145,17 @@ class SelfBuiltTtsServiceImpl implements TtsService {
           // current sentence via TtsPlaybackController.driveResume.
           _resumeRequestController.add(null);
           break;
+        case 'init_error':
+          // v1.16.2-alpha: Kotlin ZhiYueTtsService emits init_error when
+          // TextToSpeech.OnInitListener.onInit() returns ERROR after the
+          // 500ms retry with applicationContext also fails. Common on
+          // OPPO/小米 due to ROM-specific restrictions on system service
+          // binding from foreground service context.
+          final status = map['status'] as int?;
+          final manufacturer = map['manufacturer'] as String? ?? 'unknown';
+          _errorController.add(
+              '系统 TTS 初始化失败（status=$status, device=$manufacturer）');
+          break;
       }
     } catch (e) {
       _errorController.add('event parse failed: $e');

@@ -247,4 +247,57 @@ void main() {
             'v1.13.10-alpha Bug 1: state=stopped MUST map to TtsState.stopped, '
             'not fall through to TtsState.idle.');
   });
+
+  // v1.16.2-alpha Task 2: Kotlin ZhiYueTtsService emits init_error when
+  // TextToSpeech.OnInitListener.onInit() returns ERROR after 500ms retry
+  // with applicationContext also fails. Common on OPPO/小米 due to ROM-
+  // specific restrictions on system service binding from foreground service
+  // context. This event must push to error stream with status + manufacturer.
+  test('init_error event pushes to error stream with status and manufacturer',
+      () async {
+    await svc.init();
+
+    final errors = <String>[];
+    svc.error.listen(errors.add);
+
+    // Simulate Kotlin reverse callback for init_error
+    await emit({
+      'event': 'init_error',
+      'status': -1,
+      'manufacturer': 'Xiaomi',
+      'model': 'Mi 10',
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    expect(errors.length, 1);
+    expect(errors.first, contains('系统 TTS'));
+    expect(errors.first, contains('-1'));
+    expect(errors.first, contains('Xiaomi'));
+  });
+
+  // v1.16.2-alpha Task 2: init_error pushes to error stream but does NOT
+  // transition TtsState. The UI decides how to react (e.g., show SnackBar
+  // but stay in idle state, since user hasn't started playback yet).
+  test('init_error event does not change TtsState', () async {
+    await svc.init();
+
+    final states = <TtsState>[];
+    svc.state.listen(states.add);
+
+    // Capture initial state (idle from init())
+    final initialCount = states.length;
+
+    // Simulate init_error event
+    await emit({
+      'event': 'init_error',
+      'status': -1,
+      'manufacturer': 'OPPO',
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    // init_error pushes to error stream only — does NOT transition state.
+    // UI widgets decide how to react (show SnackBar without changing state).
+    expect(states.length, initialCount,
+        reason: 'init_error must not emit to state stream');
+  });
 }
