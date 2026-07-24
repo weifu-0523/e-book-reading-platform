@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
 
 import 'base_cloud_tts_service.dart';
 import 'cloud_tts_credentials.dart';
@@ -28,7 +29,7 @@ class VolcengineCloudTtsService extends BaseCloudTtsService {
   final http.Client _httpClient;
 
   static const _endpoint =
-      'https://openspeech.bytedance.com/api/v1/tts';
+      'https://openspeech.bytedance.com/api/v3/tts/sse';
 
   @override
   String get engineName => 'volcengine';
@@ -47,32 +48,27 @@ class VolcengineCloudTtsService extends BaseCloudTtsService {
     return credentials;
   }
 
-  /// Maps our normalized rate (-1.0..1.0) to Volcengine speed_ratio (0.5..2.0).
-  /// -1.0 → 0.5 (slowest), 0.0 → 1.0 (normal), 1.0 → 2.0 (fastest)
-  double _mapRate(double normalized) {
-    return (normalized + 1.0) * 0.75 + 0.5;
+  /// Maps normalized rate [-1.0, 1.0] → V3 speech_rate int [-50, 50].
+  /// -1.0 → -50 (0.5x), 0.0 → 0 (1.0x), 1.0 → 50 (1.5x).
+  /// V3 allows [-50, 100] (up to 2.0x) but UI slider upper limit caps at 1.5x.
+  /// v1.17 can widen UI slider if user needs faster playback.
+  int _mapRate(double normalized) {
+    return (normalized * 50).round().clamp(-50, 100);
   }
 
   @override
   Future<Uint8List> fetchAudio(
       String text, double rate, String voice) async {
     final body = jsonEncode({
-      'app': {
-        'appid': credentials.appId,
-        'token': credentials.accessToken,
-        'cluster': 'volcano_tts',
-      },
       'user': {'uid': 'zhiyue'},
-      'audio': {
-        'voice_type': voice,
-        'speed_ratio': _mapRate(rate),
-        'encoding': 'mp3',
-        'rate': 24000,
-      },
-      'request': {
-        'reqid': DateTime.now().microsecondsSinceEpoch.toString(),
+      'req_params': {
         'text': text,
-        'operation': 'query',
+        'speaker': voice,
+        'audio_params': {
+          'format': 'mp3',
+          'sample_rate': 24000,
+          'speech_rate': _mapRate(rate),
+        },
       },
     });
 
@@ -81,8 +77,12 @@ class VolcengineCloudTtsService extends BaseCloudTtsService {
       response = await _httpClient.post(
         Uri.parse(_endpoint),
         headers: {
-          'Authorization': 'Bearer;${credentials.accessToken}',
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'X-Api-App-Id': credentials.appId,
+          'X-Api-Access-Key': credentials.accessToken,
+          'X-Api-Resource-Id': 'seed-tts-2.0',
+          'X-Api-Request-Id': const Uuid().v4(),
         },
         body: body,
       ).timeout(const Duration(seconds: 10));
