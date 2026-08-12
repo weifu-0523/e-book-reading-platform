@@ -169,9 +169,14 @@ class SelfBuiltTtsServiceImpl implements TtsService {
           final enginesText = engines.isEmpty
               ? '未检测到可用 TTS 引擎'
               : '已尝试引擎：${engines.join(', ')}';
+          // v1.16.3-alpha note: sherpaOnnxMelo engine was removed in
+          // v1.16.0-alpha (POC failed: MeloTTS RTF 0.85 + mediocre
+          // quality). Cloud engines (Volcengine / Qwen) are the only
+          // non-system fallback — both need API credentials, so the UI
+          // SnackBar offers a one-tap switch to qwenCloud.
           _errorController.add(
               '系统 TTS 初始化失败（status=$status, device=$manufacturer）。'
-              '$enginesText。建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
+              '$enginesText。建议改用云端 TTS 引擎或检查系统 TTS 设置。');
           break;
       }
     } catch (e) {

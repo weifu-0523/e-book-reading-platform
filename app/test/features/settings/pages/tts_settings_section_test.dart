@@ -364,7 +364,7 @@ void main() {
       // TtsService.error stream — engines list present (ROM rejected binding).
       stub.emitError(
           '系统 TTS 初始化失败（status=-1, device=Xiaomi）。已尝试引擎：com.google.android.tts。'
-          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
+          '建议改用云端 TTS 引擎或检查系统 TTS 设置。');
       await tester.pumpAndSettle();
 
       // SnackBar visible with error message + ROM-rejection guidance.
@@ -393,7 +393,7 @@ void main() {
 
       stub.emitError(
           '系统 TTS 初始化失败（status=-1, device=Xiaomi）。未检测到可用 TTS 引擎。'
-          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
+          '建议改用云端 TTS 引擎或检查系统 TTS 设置。');
       await tester.pumpAndSettle();
 
       expect(find.textContaining('未安装标准 TTS 引擎'), findsOneWidget);
@@ -425,7 +425,7 @@ void main() {
 
       stub.emitError(
           '系统 TTS 初始化失败（status=-1, device=Xiaomi）。已尝试引擎：com.google.android.tts。'
-          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
+          '建议改用云端 TTS 引擎或检查系统 TTS 设置。');
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('改用云端引擎'));
@@ -456,7 +456,7 @@ void main() {
 
       stub.emitError(
           '系统 TTS 初始化失败（status=-1, device=OPPO）。已尝试引擎：com.heytap.speechservice。'
-          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
+          '建议改用云端 TTS 引擎或检查系统 TTS 设置。');
       await tester.pumpAndSettle();
 
       // Find the SnackBar widget and verify it has the longer 15s duration

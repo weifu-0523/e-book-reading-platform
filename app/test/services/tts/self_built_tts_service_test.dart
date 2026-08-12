@@ -330,8 +330,9 @@ void main() {
     // Both engine packages listed in the message
     expect(errors.first, contains('com.google.android.tts'));
     expect(errors.first, contains('com.iflytek.speechcloud'));
-    // SherpaOnnx suggestion surfaced (v1.16.3-alpha graceful degradation hint)
-    expect(errors.first, contains('SherpaOnnx'));
+    // v1.16.3-alpha: cloud engine suggestion (sherpaOnnxMelo was removed in
+    // v1.16.0-alpha POC cleanup; cloud engines are the only non-system fallback).
+    expect(errors.first, contains('云端 TTS 引擎'));
   });
 
   // v1.16.3-alpha Task 4: When Kotlin emits an empty engines list (no
