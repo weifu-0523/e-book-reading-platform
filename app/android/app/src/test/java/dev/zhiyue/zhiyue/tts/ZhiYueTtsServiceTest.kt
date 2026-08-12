@@ -958,4 +958,215 @@ class ZhiYueTtsServiceTest {
             ZhiYueTtsPlugin.setInstanceForTest(null)
         }
     }
+
+    // ---- v1.16.3-alpha Task 3: edge cases for the 3-stage state machine.
+    // Covers (1) stage C emit when no engines are enumerable, (2) stage C
+    // emit after every enumerated engine fails (verifies engines list content
+    // in the emitted payload), and (3) destroyed guard during the stage B
+    // retry window (no orphaned TextToSpeech). ----
+
+    @Test
+    fun `init failure with no enumerable engines emits init_error with empty engines list`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            ZhiYueTtsPlugin.resetLastEmittedEventForTest()
+
+            val service = createService()
+            service.onCreate()
+            // Stage A first init failure → schedules 500ms applicationContext retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // Stage A retry fails. No engines are mocked in the shadow package
+            // manager, so stage B enumeration returns an empty list and the
+            // state machine jumps straight to stage C (emit init_error).
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasks()
+
+            val emitted = ZhiYueTtsPlugin.lastEmittedEventForTest
+            org.junit.Assert.assertNotNull(
+                "stage C should have emitted an init_error event " +
+                    "(got logs: ${ZhiYueTtsService.debugLogs})",
+                emitted,
+            )
+            org.junit.Assert.assertEquals(
+                "emitted event type must be init_error",
+                "init_error",
+                emitted?.get("event"),
+            )
+            val engines = emitted?.get("engines") as? List<*>
+            org.junit.Assert.assertNotNull(
+                "engines field must be present (even if empty) so Dart can " +
+                    "distinguish 'no engines installed' from 'engines rejected binding'",
+                engines,
+            )
+            org.junit.Assert.assertTrue(
+                "engines list must be empty when no shadow resolveInfos were registered " +
+                    "(got: $engines)",
+                engines?.isEmpty() == true,
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+            ZhiYueTtsPlugin.resetLastEmittedEventForTest()
+        }
+    }
+
+    @Test
+    fun `init failure where all enumerated engines also fail emits init_error with all engines listed`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            ZhiYueTtsPlugin.resetLastEmittedEventForTest()
+
+            // Two engines available — both will reject binding (simulated by
+            // each stage B retry's init callback returning ERROR).
+            val shadowPackageManager = org.robolectric.Shadows.shadowOf(ctx.packageManager)
+            listOf("com.google.android.tts", "com.iflytek.speechcloud").forEach { pkg ->
+                val resolveInfo = android.content.pm.ResolveInfo().apply {
+                    serviceInfo = android.content.pm.ServiceInfo().apply { packageName = pkg }
+                }
+                shadowPackageManager.addResolveInfoForIntent(
+                    android.content.Intent(android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE),
+                    resolveInfo,
+                )
+            }
+
+            val service = createService()
+            service.onCreate()
+
+            // 1. Stage A first init failure → schedules 500ms applicationContext retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // 2. Stage A retry fails → stage B entry, schedules retry with engine[0].
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // 3. Stage B engine 0 (google) fails → schedules retry with engine[1].
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // Pre-condition sanity: at this point the state machine has tried
+            // every enumerated engine, so the next failure lands in stage C.
+            org.junit.Assert.assertEquals(
+                "precondition: cursor should be past the last engine before stage C fires " +
+                    "(got logs: ${ZhiYueTtsService.debugLogs})",
+                2,
+                ZhiYueTtsService.ttsEngineEnumerationIndex,
+            )
+
+            // 4. Stage B engine 1 (iflytek) fails → cursor (2) >= size (2), stage C emits.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasks()
+
+            val emitted = ZhiYueTtsPlugin.lastEmittedEventForTest
+            org.junit.Assert.assertNotNull(
+                "stage C should have emitted an init_error after every engine failed " +
+                    "(got logs: ${ZhiYueTtsService.debugLogs})",
+                emitted,
+            )
+            org.junit.Assert.assertEquals(
+                "emitted event type must be init_error",
+                "init_error",
+                emitted?.get("event"),
+            )
+            val engines = emitted?.get("engines") as? List<*>
+            org.junit.Assert.assertNotNull(
+                "engines field must be present in stage C emit",
+                engines,
+            )
+            org.junit.Assert.assertEquals(
+                "engines list should contain both enumerated engines " +
+                    "(stage C reports every engine we tried)",
+                listOf("com.google.android.tts", "com.iflytek.speechcloud"),
+                engines,
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+            ZhiYueTtsPlugin.resetLastEmittedEventForTest()
+        }
+    }
+
+    @Test
+    fun `stage B retry aborted when service destroyed during retry window`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            // One engine available so stage B actually schedules a 3-arg
+            // constructor retry (without this, stage B would short-circuit
+            // to stage C and never post the delayed task we're testing).
+            val shadowPackageManager = org.robolectric.Shadows.shadowOf(ctx.packageManager)
+            val resolveInfo = android.content.pm.ResolveInfo().apply {
+                serviceInfo = android.content.pm.ServiceInfo().apply {
+                    packageName = "com.google.android.tts"
+                }
+            }
+            shadowPackageManager.addResolveInfoForIntent(
+                android.content.Intent(android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE),
+                resolveInfo,
+            )
+
+            val service = createService()
+            service.onCreate()
+            // Stage A first failure → schedules applicationContext retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // Stage A retry fails → stage B entry, scheduleEngineEnumerationRetry(0)
+            // bumps cursor to 1 and posts a 500ms 3-arg constructor retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasks()
+
+            // Pre-condition: stage B retry is now pending in the main looper
+            // queue. The cursor should already have advanced to 1 (past engine 0).
+            org.junit.Assert.assertEquals(
+                "precondition: stage B should have advanced cursor to 1 before destroy " +
+                    "(got logs: ${ZhiYueTtsService.debugLogs})",
+                1,
+                ZhiYueTtsService.ttsEngineEnumerationIndex,
+            )
+
+            // Service torn down before the 500ms stage B retry fires.
+            // onDestroy nulls `tts` and sets the companion `destroyed` flag.
+            service.onDestroy()
+            org.junit.Assert.assertTrue(
+                "precondition: onDestroy must set companion destroyed flag (v1.13.9 pattern)",
+                ZhiYueTtsService.destroyed,
+            )
+            org.junit.Assert.assertNull(
+                "precondition: onDestroy nulls tts instance",
+                service.ttsInstanceForTest,
+            )
+
+            // Flush the 500ms delayed stage B retry. Without the destroyed
+            // guard inside scheduleEngineEnumerationRetry's postDelayed lambda,
+            // this would assign `tts = TextToSpeech(applicationContext, l, enginePackage)`
+            // — re-creating an orphaned engine on a destroyed service.
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // PRIMARY ASSERTION: no leaked TTS instance.
+            org.junit.Assert.assertNull(
+                "stage B retry must not recreate TTS on destroyed service (would leak)",
+                service.ttsInstanceForTest,
+            )
+            // SECONDARY ASSERTION: guard fired and logged the abort reason
+            // (lets users / future debug sessions see why retry was skipped).
+            val abortLog = ZhiYueTtsService.debugLogs.any {
+                it.contains("stage B retry aborted") && it.contains("destroyed")
+            }
+            org.junit.Assert.assertTrue(
+                "stage B retry abort must be logged for diagnostics " +
+                    "(got: ${ZhiYueTtsService.debugLogs})",
+                abortLog,
+            )
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
 }
