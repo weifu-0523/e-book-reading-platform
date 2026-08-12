@@ -886,4 +886,76 @@ class ZhiYueTtsServiceTest {
             ZhiYueTtsPlugin.setInstanceForTest(null)
         }
     }
+
+    // ---- v1.16.3-alpha: 3-stage init retry with engine enumeration.
+    // After stage A (applicationContext retry) fails, the state machine must
+    // enter stage B: enumerate TTS engines via PackageManager.queryIntentServices
+    // and retry each with the 3-arg TextToSpeech(ctx, listener, enginePackage)
+    // constructor. This bypasses the default-engine lookup that MIUI/ColorOS
+    // ROM-bundled engines (com.xiaomi.mibrain.speech / com.heytap.speechservice)
+    // reject with status=-1 in ~5ms. Stage B entry advances ttsEngineEnumerationIndex
+    // from -1 → 0 → 1 (scheduleEngineEnumerationRetry bumps idx BEFORE the
+    // Handler.postDelayed fires so the next failure handler invocation sees
+    // the cursor already pointing at the next engine).
+
+    @Test
+    fun `init failure with available engines retries with 3-arg constructor for each engine`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val plugin = ZhiYueTtsPlugin().apply { attachContextForTest(ctx) }
+        ZhiYueTtsPlugin.setInstanceForTest(plugin)
+        try {
+            // Given: shadow package manager reports two available TTS engines
+            // that respond to Engine.INTENT_ACTION_TTS_SERVICE.
+            val shadowPackageManager = org.robolectric.Shadows.shadowOf(ctx.packageManager)
+            listOf("com.google.android.tts", "com.iflytek.speechcloud").forEach { pkg ->
+                val resolveInfo = android.content.pm.ResolveInfo().apply {
+                    serviceInfo = android.content.pm.ServiceInfo().apply { packageName = pkg }
+                }
+                shadowPackageManager.addResolveInfoForIntent(
+                    android.content.Intent(android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE),
+                    resolveInfo,
+                )
+            }
+
+            val service = createService()
+            service.onCreate()
+            // Stage A first init failure → schedules 500ms applicationContext retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            // Flush the 500ms delayed retry (recreates TextToSpeech; the retry
+            // init callback below is what we actually exercise).
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
+
+            // Precondition: at this point stage A is exhausted, no stage B
+            // entry has fired yet (next init callback will trigger it).
+            org.junit.Assert.assertEquals(
+                "precondition: stage B entry has not fired yet (index still -1)",
+                -1,
+                ZhiYueTtsService.ttsEngineEnumerationIndex,
+            )
+
+            // Stage A retry fails → state machine enters stage B: enumerates
+            // engines, sets index=0, then scheduleEngineEnumerationRetry(0)
+            // bumps index to 1 and posts the 3-arg constructor retry.
+            service.simulateTtsInitCallbackForTest(android.speech.tts.TextToSpeech.ERROR)
+            org.robolectric.shadows.ShadowLooper.runUiThreadTasks()
+
+            // Verify: enumerateAvailableEngines was consulted, index advanced
+            // past the first engine (tried index 0 = google, now at 1).
+            org.junit.Assert.assertEquals(
+                "stage B entry should advance ttsEngineEnumerationIndex to 1 " +
+                    "(scheduleEngineEnumerationRetry bumps idx 0 → 1 before fire); " +
+                    "got logs: ${ZhiYueTtsService.debugLogs}",
+                1,
+                ZhiYueTtsService.ttsEngineEnumerationIndex,
+            )
+            org.junit.Assert.assertEquals(
+                "stage B should populate ttsAvailableEngines with both shadows",
+                listOf("com.google.android.tts", "com.iflytek.speechcloud"),
+                ZhiYueTtsService.ttsAvailableEngines,
+            )
+            service.onDestroy()
+        } finally {
+            ZhiYueTtsPlugin.setInstanceForTest(null)
+        }
+    }
 }
