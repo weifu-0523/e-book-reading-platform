@@ -151,10 +151,27 @@ class SelfBuiltTtsServiceImpl implements TtsService {
           // 500ms retry with applicationContext also fails. Common on
           // OPPO/小米 due to ROM-specific restrictions on system service
           // binding from foreground service context.
+          //
+          // v1.16.3-alpha: Kotlin now also sends `engines` (List<String>)
+          // — the engines enumerated via PackageManager.queryIntentServices
+          // that we tried in stage B (and which all rejected binding). Empty
+          // list = no standard-compatible engine installed; non-empty = ROM
+          // rejected binding for every one of them. Dart uses this to vary
+          // the SnackBar guidance (Task 5).
           final status = map['status'] as int?;
           final manufacturer = map['manufacturer'] as String? ?? 'unknown';
+          // Defensive cast: Kotlin may omit the field entirely (legacy
+          // build) or send a non-List in edge cases. Treat both as empty.
+          final enginesRaw = map['engines'];
+          final engines = enginesRaw is List
+              ? enginesRaw.whereType<String>().toList()
+              : <String>[];
+          final enginesText = engines.isEmpty
+              ? '未检测到可用 TTS 引擎'
+              : '已尝试引擎：${engines.join(', ')}';
           _errorController.add(
-              '系统 TTS 初始化失败（status=$status, device=$manufacturer）');
+              '系统 TTS 初始化失败（status=$status, device=$manufacturer）。'
+              '$enginesText。建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
           break;
       }
     } catch (e) {

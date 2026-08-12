@@ -300,4 +300,85 @@ void main() {
     expect(states.length, initialCount,
         reason: 'init_error must not emit to state stream');
   });
+
+  // v1.16.3-alpha Task 4: Kotlin ZhiYueTtsService now emits `engines` (the
+  // list of TTS engine packages enumerated via PackageManager.queryIntentServices
+  // that we tried in stage B and which all rejected binding). Empty list = no
+  // standard-compatible engine installed. Dart must surface this list in the
+  // error message so the UI/SnackBar can give actionable guidance (e.g.,
+  // "switch to SherpaOnnx").
+  test('init_error event includes engines list when provided', () async {
+    await svc.init();
+
+    final errors = <String>[];
+    svc.error.listen(errors.add);
+
+    // Simulate Kotlin reverse callback with engines list (non-empty case:
+    // ROM had enumerable engines but rejected binding for all of them).
+    await emit({
+      'event': 'init_error',
+      'status': -1,
+      'manufacturer': 'Xiaomi',
+      'model': '2304FPN6DC',
+      'engines': ['com.google.android.tts', 'com.iflytek.speechcloud'],
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    expect(errors.length, 1);
+    // Manufacturer preserved
+    expect(errors.first, contains('Xiaomi'));
+    // Both engine packages listed in the message
+    expect(errors.first, contains('com.google.android.tts'));
+    expect(errors.first, contains('com.iflytek.speechcloud'));
+    // SherpaOnnx suggestion surfaced (v1.16.3-alpha graceful degradation hint)
+    expect(errors.first, contains('SherpaOnnx'));
+  });
+
+  // v1.16.3-alpha Task 4: When Kotlin emits an empty engines list (no
+  // standard-compatible engine installed at all), the Dart message should
+  // surface 未检测到可用 TTS 引擎 rather than the empty 已尝试引擎 list.
+  test(
+      'init_error event with empty engines list surfaces 未检测到可用 TTS 引擎',
+      () async {
+    await svc.init();
+
+    final errors = <String>[];
+    svc.error.listen(errors.add);
+
+    await emit({
+      'event': 'init_error',
+      'status': -1,
+      'manufacturer': 'Xiaomi',
+      'engines': <String>[],
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    expect(errors.length, 1);
+    expect(errors.first, contains('未检测到可用 TTS 引擎'));
+    // Should NOT contain the 已尝试引擎 label since no engines were tried.
+    expect(errors.first, isNot(contains('已尝试引擎')));
+  });
+
+  // v1.16.3-alpha Task 4: defensive parsing — Kotlin may omit the engines
+  // field entirely in edge cases (e.g., older Kotlin build), so Dart must
+  // treat missing/null/non-List as empty list and surface the
+  // 未检测到可用 TTS 引擎 branch.
+  test('init_error event without engines field falls back to empty-list branch',
+      () async {
+    await svc.init();
+
+    final errors = <String>[];
+    svc.error.listen(errors.add);
+
+    // No 'engines' key at all (legacy Kotlin side or partial event).
+    await emit({
+      'event': 'init_error',
+      'status': -1,
+      'manufacturer': 'OPPO',
+    });
+    await Future<void>.delayed(Duration.zero);
+
+    expect(errors.length, 1);
+    expect(errors.first, contains('未检测到可用 TTS 引擎'));
+  });
 }
