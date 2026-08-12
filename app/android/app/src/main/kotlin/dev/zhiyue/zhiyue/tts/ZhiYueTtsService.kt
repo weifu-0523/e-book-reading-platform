@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.TextToSpeech.Engine
 import android.speech.tts.UtteranceProgressListener
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -190,6 +191,10 @@ class ZhiYueTtsService : Service() {
         // ttsInitStatus reset above; without this, a recreated service would
         // inherit the previous instance's exhausted retry state).
         ttsInitRetryAttempted = false
+        // v1.16.3-alpha: reset engine enumeration state (v1.13.9 companion
+        // reset pattern — companion fields survive service recreation).
+        ttsEngineEnumerationIndex = -1
+        ttsAvailableEngines = listOf()
         // v1.16.2-alpha code-review followup: also reset `destroyed` here so
         // a recreated service instance can retry normally (the flag may have
         // been set to true by the prior instance's onDestroy). Same companion-
@@ -248,59 +253,66 @@ class ZhiYueTtsService : Service() {
                 } else {
                     debugLog("TTS init FAILED status=$status")
                     Log.e(TAG, "TextToSpeech init failed status=$status")
-                    // v1.16.2-alpha OPPO/Xiaomi: some ROMs restrict
-                    // TextToSpeech binding when the context is a Service;
-                    // applicationContext sometimes bypasses this. We allow
-                    // exactly one retry (so we don't loop forever if the
-                    // ROM really has no working engine), then emit init_error
-                    // to Dart on the second failure so the user gets a
-                    // visible "TTS init failed" message instead of an
-                    // 11-intent pendingSpeak queue that never flushes.
-                    if (!ttsInitRetryAttempted) {
+                    // v1.16.3-alpha: 3-stage init retry state machine.
+                    //   A. applicationContext retry with default engine (v1.16.2).
+                    //   B. enumerate engines via PackageManager.queryIntentServices,
+                    //      retry each via 3-arg TextToSpeech(ctx, listener, pkg).
+                    //   C. emit init_error with manufacturer + engines list.
+                    //
+                    // Cursor: ttsEngineEnumerationIndex
+                    //   -1                = stage B not started (stage A still in flight)
+                    //   0..size-1         = currently trying engine[idx] (about to call
+                    //                       scheduleEngineEnumerationRetry(idx), which
+                    //                       bumps idx BEFORE the Handler fires)
+                    //   >= size           = stage C (exhausted)
+                    //
+                    // Destroyed guard lives at every Handler.postDelayed entry point
+                    // (stage A and stage B) so a service torn down mid-retry-window
+                    // doesn't recreate an orphaned TextToSpeech. The outer-body
+                    // destroyed/listener guards use an if/else cascade instead of
+                    // early returns because the init listener is itself a lambda
+                    // (no enclosing function to return from).
+                    val listener = ttsInitListener
+                    if (destroyed) {
+                        debugLog("init failure handler aborted: service destroyed")
+                    } else if (listener == null) {
+                        debugLog("init failure handler aborted: ttsInitListener is null")
+                    } else if (!ttsInitRetryAttempted) {
+                        // ---- Stage A: applicationContext retry with default engine ----
                         ttsInitRetryAttempted = true
-                        debugLog("scheduling TTS init retry in 500ms with applicationContext")
+                        debugLog("stage A: scheduling applicationContext retry in 500ms")
                         Handler(Looper.getMainLooper()).postDelayed({
-                            // v1.16.2-alpha code-review followup: belt-and-
-                            // suspenders guards against two edge cases that
-                            // would otherwise produce an orphaned TextToSpeech:
-                            //   1. service destroyed during the 500ms window
-                            //      (onDestroy set destroyed=true + nulled tts)
-                            //   2. ttsInitListener null (defensive — it's an
-                            //      instance field so it dies with the service,
-                            //      but a future refactor could move it around)
-                            // Without these guards, the lambda would assign a
-                            // brand-new TextToSpeech to `tts` after onDestroy
-                            // nulled it — an orphan with no shutdown path.
                             if (destroyed) {
-                                debugLog("retry aborted: service destroyed during retry window")
+                                debugLog("stage A retry aborted: service destroyed during retry window")
                                 return@postDelayed
                             }
-                            val listener = ttsInitListener
-                            if (listener == null) {
-                                debugLog("retry aborted: ttsInitListener is null")
-                                return@postDelayed
+                            val l = ttsInitListener ?: return@postDelayed
+                            try { tts?.shutdown() } catch (e: Exception) {
+                                debugLog("stage A old tts shutdown failed: ${e.message}")
                             }
-                            try {
-                                tts?.shutdown()
-                            } catch (e: Exception) {
-                                debugLog("old tts shutdown failed: ${e.message}")
-                            }
-                            // Retry uses applicationContext because some ROMs
-                            // (OPPO/小米) restrict system service binding from a
-                            // foreground service context; the first ctor above
-                            // uses `this` (Service) deliberately — that's the
-                            // normal happy path the ROMs allow.
-                            tts = TextToSpeech(applicationContext, listener)
-                            debugLog("retry: TextToSpeech recreated with applicationContext")
+                            tts = TextToSpeech(applicationContext, l)
+                            debugLog("stage A: TextToSpeech recreated with applicationContext")
                         }, 500)
+                    } else if (ttsEngineEnumerationIndex < 0) {
+                        // ---- Stage B entry: enumerate engines, retry first ----
+                        ttsAvailableEngines = enumerateAvailableEngines()
+                        ttsEngineEnumerationIndex = 0
+                        if (ttsAvailableEngines.isEmpty()) {
+                            debugLog("stage B: no engines enumerated, jumping to stage C (emit init_error)")
+                            emitInitError(status)
+                        } else {
+                            debugLog("stage B: trying engine index 0 = ${ttsAvailableEngines[0]}")
+                            scheduleEngineEnumerationRetry(0, listener)
+                        }
+                    } else if (ttsEngineEnumerationIndex < ttsAvailableEngines.size) {
+                        // ---- Stage B continuation: previous engine failed, try next ----
+                        val nextIdx = ttsEngineEnumerationIndex
+                        debugLog("stage B: trying engine index $nextIdx = ${ttsAvailableEngines[nextIdx]}")
+                        scheduleEngineEnumerationRetry(nextIdx, listener)
                     } else {
-                        debugLog("TTS init retry exhausted, emitting init_error to Dart")
-                        emit(mapOf(
-                            "event" to "init_error",
-                            "status" to status,
-                            "manufacturer" to Build.MANUFACTURER,
-                            "model" to Build.MODEL
-                        ))
+                        // ---- Stage C: all engines exhausted, emit init_error ----
+                        debugLog("stage C: engine enumeration exhausted, emitting init_error to Dart")
+                        emitInitError(status)
                     }
                 }
             }
@@ -600,6 +612,74 @@ class ZhiYueTtsService : Service() {
         refreshNotification(content = "朗读中")
     }
 
+    /**
+     * v1.16.3-alpha: Enumerate TTS engines that properly expose
+     * [android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE].
+     * Used by the 3-stage retry to find an alternative engine when the
+     * ROM's default engine rejects third-party app binding (common on
+     * Xiaomi MIUI / OPPO ColorOS).
+     *
+     * Returns a list of engine package names. The default-engine constructor
+     * has already been tried by the time this runs (stage A), so the caller
+     * walks the list and tries each via the 3-arg constructor; engines that
+     * reject binding will fail their own retry and we advance to the next.
+     */
+    private fun enumerateAvailableEngines(): List<String> {
+        val intent = Intent(Engine.INTENT_ACTION_TTS_SERVICE)
+        val resolveInfos = packageManager.queryIntentServices(intent, 0)
+        val packages = resolveInfos.map { it.serviceInfo.packageName }.distinct()
+        debugLog("enumerated TTS engines: $packages")
+        return packages
+    }
+
+    /**
+     * v1.16.3-alpha: Schedules a 3-arg TextToSpeech constructor retry using
+     * the engine at [engineIdx] in [ttsAvailableEngines]. Uses applicationContext
+     * + Handler.postDelayed(500) for the same reasons stage A does (give ROM
+     * startup race window + avoid binder-thread callback issues).
+     *
+     * Advances `ttsEngineEnumerationIndex` to `engineIdx + 1` BEFORE the
+     * Handler.postDelayed fires, so when the lambda's TextToSpeech init
+     * callback fails and triggers the next state machine invocation, the
+     * cursor is already pointing at the next engine (or past the end → stage C).
+     */
+    private fun scheduleEngineEnumerationRetry(
+        engineIdx: Int,
+        listener: TextToSpeech.OnInitListener,
+    ) {
+        val enginePackage = ttsAvailableEngines[engineIdx]
+        // Advance index NOW so the next failure handler invocation either
+        // tries the next engine (idx + 1) or hits stage C (idx == size).
+        ttsEngineEnumerationIndex = engineIdx + 1
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (destroyed) {
+                debugLog("stage B retry aborted: service destroyed during retry window")
+                return@postDelayed
+            }
+            try { tts?.shutdown() } catch (e: Exception) {
+                debugLog("stage B old tts shutdown failed: ${e.message}")
+            }
+            debugLog("stage B: TextToSpeech recreated with engine=$enginePackage")
+            tts = TextToSpeech(applicationContext, listener, enginePackage)
+        }, 500)
+    }
+
+    /**
+     * v1.16.3-alpha: Stage C — emit init_error to Dart with manufacturer info
+     * and the engine list we tried. Dart UI uses this to show actionable
+     * guidance (e.g., "engines available but all rejected binding → switch
+     * to SherpaOnnx").
+     */
+    private fun emitInitError(status: Int) {
+        emit(mapOf(
+            "event" to "init_error",
+            "status" to status,
+            "manufacturer" to Build.MANUFACTURER,
+            "model" to Build.MODEL,
+            "engines" to ttsAvailableEngines,
+        ))
+    }
+
     private fun handleStop() {
         // v1.13.8-alpha Bug 2: drop any deferred SPEAK so a late TTS init
         // callback doesn't resurrect a playback the user just stopped.
@@ -887,6 +967,27 @@ class ZhiYueTtsService : Service() {
         // init listener only called debugLog + Log.e, leaving 11 SPEAK
         // intents deferred in pendingSpeak forever (no user-visible signal).
         @Volatile var ttsInitRetryAttempted: Boolean = false
+
+        // v1.16.3-alpha: 3-stage retry state machine.
+        // Stage A: ttsInitRetryAttempted (existing v1.16.2) — applicationContext retry.
+        // Stage B: ttsEngineEnumerationIndex — index into ttsAvailableEngines.
+        // Stage C: emit init_error with engine list.
+        //
+        // Both new fields are companion (survive service recreation) so they
+        // MUST be reset in onCreate top (v1.13.9 pattern, same as
+        // ttsInitRetryAttempted above).
+        var ttsEngineEnumerationIndex: Int = -1
+            private set
+        var ttsAvailableEngines: List<String> = listOf()
+            private set
+
+        // Visible for testing — production code does NOT mutate this directly,
+        // it goes through the state machine transitions in the init listener.
+        @VisibleForTesting
+        fun resetEngineEnumerationStateForTest() {
+            ttsEngineEnumerationIndex = -1
+            ttsAvailableEngines = listOf()
+        }
 
         // v1.16.2-alpha code-review followup: set to true in onDestroy and
         // reset to false in onCreate so the 500ms retry lambda (scheduled from

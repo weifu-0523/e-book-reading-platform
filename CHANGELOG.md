@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.16.3-alpha — 2026-08-12
+
+### Added
+- **小米/OPPO TTS 引擎枚举重试**: v1.16.2-alpha SnackBar 显示后用户反馈小米真机朗读仍无声。证据（Iron Law Phase 1）：5ms 同步 status=-1 + applicationContext retry 也失败 + 荣耀/老华为正常 → 排除 Android API 问题，定位为 ROM 默认 TTS 引擎（com.xiaomi.mibrain.speech / com.heytap.speechservice）拒绝第三方 app 绑定。3 阶段 init 重试状态机：
+  - Stage A（v1.16.2 保留）：500ms 后用 applicationContext 重试默认引擎。
+  - Stage B（v1.16.3 新增）：调 PackageManager.queryIntentServices(Engine.INTENT_ACTION_TTS_SERVICE) 枚举所有标准兼容 TTS 引擎，依次用 3-参构造函数 TextToSpeech(ctx, listener, enginePackage) 重试（绕过默认引擎查找）。
+  - Stage C：全部失败后 emit init_error 事件附带 manufacturer + 引擎列表到 Dart。
+- Dart _handleEvent 解析 engines 字段，根据列表是否为空给差异化文案。
+- SnackBar 加「改用云端引擎」按钮（v1.16.0-alpha 已移除 sherpaOnnxMelo POC），一键切到 qwenCloud。
+- v1.13.9 模式：companion field 在 onCreate 顶部重置（ttsEngineEnumerationIndex + ttsAvailableEngines）。
+
+### Changed
+- SnackBar 持续时间 10s → 15s（给用户充分阅读诊断 + action 标签的时间）。
+- 移除「打开系统 TTS 设置」action（系统设置路径不能修复 ROM 绑定拒绝；改用云端引擎更直接）。
+
+### Fixed
+- 修复 v1.16.2-alpha init_error 消息中残留的 SherpaOnnx 引用（v1.16.0-alpha 已移除该引擎 POC）。
+
 ## v1.16.2-alpha — 2026-07-24
 
 ### Fixed

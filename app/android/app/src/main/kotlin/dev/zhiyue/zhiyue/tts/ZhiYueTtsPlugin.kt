@@ -361,6 +361,10 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     internal fun emitEvent(event: Map<String, Any?>) {
         val ch = channel
         val type = event["event"]
+        // v1.16.3-alpha: companion-scoped last-event snapshot for tests that
+        // assert on the most recent emit payload (e.g., engines list in
+        // init_error). See lastEmittedEventForTest docs.
+        lastEmittedEventForTest = event
         // v1.16.2-alpha: capture for tests (see capturedEventsForTest docs).
         capturedEventsForTest.add(event)
         if (ch == null) {
@@ -431,6 +435,28 @@ class ZhiYueTtsPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         /// code MUST NOT call this.
         internal fun setInstanceForTest(plugin: ZhiYueTtsPlugin?) {
             instance = plugin
+        }
+
+        /// v1.16.3-alpha: test-only snapshot of the most recent event passed
+        /// to [emitEvent]. Lets tests assert on the emitted payload (e.g.,
+        /// the `engines` list in init_error) without depending on a specific
+        /// plugin instance being attached. Tests should call
+        /// [resetLastEmittedEventForTest] at the start to avoid leakage.
+        ///
+        /// Companion-scoped (not instance-scoped like [capturedEventsForTest])
+        /// because some tests construct a fresh plugin per scenario and we want
+        /// the latest emit visible regardless of which instance handled it.
+        /// Production code reads nothing from this field; assignment is a cheap
+        /// Map reference inside [emitEvent] (no perf concern — service emits
+        /// <100 events per session).
+        @Volatile
+        internal var lastEmittedEventForTest: Map<String, Any?>? = null
+            private set
+
+        /// Test-only: clears [lastEmittedEventForTest] so each test starts
+        /// from a clean baseline. Production code MUST NOT call this.
+        internal fun resetLastEmittedEventForTest() {
+            lastEmittedEventForTest = null
         }
     }
 }
