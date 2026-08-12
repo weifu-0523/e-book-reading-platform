@@ -93,17 +93,33 @@ class TtsSettingsSection extends ConsumerWidget {
       ref.read(ttsFallbackProvider.notifier).clear();
     });
 
-    // v1.16.2-alpha: listen for OPPO/小米 init_error events (originating
-    // from Kotlin init_error after retry exhaustion on Chinese ROMs where
-    // TextToSpeech.OnInitListener returns ERROR). When detected, surface
-    // a longer-duration SnackBar with autostart / engine-switch guidance
-    // and a 「打开系统 TTS 设置」action. Non-init errors fall through to a
-    // simpler SnackBar so we don't lose them.
+    // v1.16.3-alpha: replaces v1.16.2-alpha OPPO/小米 autostart guidance
+    // and 「打开系统 TTS 设置」action. Rationale: opening system TTS
+    // settings doesn't actually fix the ROM binding rejection — even
+    // after the user navigates there, MIUI/ColorOS still blocks the
+    // third-party app bind. The actionable path is to switch engines.
+    //
+    // Listens for init_error events from Kotlin (surfaced via
+    // [TtsService.error] → [_ttsErrorStreamProvider]). When the message
+    // contains the v1.16.3-alpha marker 「系统 TTS 初始化失败」, shows
+    // a longer SnackBar (15s) with engine-list-aware guidance and a
+    // 「改用云端引擎」action that flips [ttsEngineProvider] to qwenCloud.
+    // Non-init errors fall through to a simpler SnackBar.
+    //
+    // DEVNOTE: plan called for switching to `TtsEnginePreference.sherpaOnnxMelo`
+    // but that enum value was removed in v1.16.0-alpha POC cleanup (POC
+    // failed: MeloTTS RTF 0.85 + mediocre audio). Substituted qwenCloud
+    // as the most accessible cloud engine (API key only, vs Volcengine
+    // which needs App ID + Token + Voice).
     ref.listen<AsyncValue<String>>(_ttsErrorStreamProvider, (prev, next) {
       final msg = next.value;
       if (msg == null) return;
       if (!context.mounted) return;
       if (msg.contains('系统 TTS 初始化失败')) {
+        // v1.16.3-alpha: detect whether engines list is empty to vary guidance.
+        // Empty = no standard-compatible engine installed; non-empty = ROM
+        // rejected binding for every enumerated engine.
+        final noEnginesInstalled = msg.contains('未检测到可用 TTS 引擎');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Column(
@@ -112,23 +128,32 @@ class TtsSettingsSection extends ConsumerWidget {
               children: [
                 Text(msg),
                 const SizedBox(height: 8),
-                const Text('OPPO/小米请检查：'),
-                const Text('① 系统设置 → 应用 → 智阅 → 允许自启动'),
-                const Text('② 系统设置 → 语言和输入法 → 文字转语音输出 → 切换引擎'),
+                if (noEnginesInstalled) ...[
+                  const Text('该设备未安装标准 TTS 引擎。'),
+                  const Text('请到应用商店安装 Google TTS 或讯飞语音+ 后重试。'),
+                ] else ...[
+                  const Text('ROM 拒绝第三方 app 绑定系统 TTS（Xiaomi/OPPO 已知问题）。'),
+                  const Text('最快解决方案：改用云端引擎（需 API 凭证）。'),
+                ],
               ],
             ),
-            duration: const Duration(seconds: 10),
+            duration: const Duration(seconds: 15),
             action: SnackBarAction(
-              label: '打开系统 TTS 设置',
-              onPressed: () async {
-                final ok = await ref
-                    .read(ttsServiceProvider)
-                    .openSystemTtsSettings();
-                if (!ok && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('无法打开系统 TTS 设置')),
-                  );
-                }
+              label: '改用云端引擎',
+              onPressed: () {
+                // v1.16.3-alpha: graceful degradation — switch engine
+                // preference. The DropdownButtonFormField above is bound
+                // to [ttsEngineProvider], so setting it triggers the same
+                // code path as a manual user switch.
+                //
+                // Plan deviation: original spec said `sherpaOnnxMelo` but
+                // that enum value was removed in v1.16.0-alpha POC cleanup.
+                // Substituted `qwenCloud` as the more accessible cloud
+                // engine (API key only, vs Volcengine which needs App ID
+                // + Token + Voice).
+                ref
+                    .read(ttsEngineProvider.notifier)
+                    .setEngine(TtsEnginePreference.qwenCloud);
               },
             ),
           ),

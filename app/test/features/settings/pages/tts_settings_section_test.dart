@@ -339,10 +339,13 @@ void main() {
       expect(find.text('阿里云 Qwen 凭证'), findsNothing);
     });
 
-    // v1.16.2-alpha Task 3: OPPO/Xiaomi init_error surfaces as a SnackBar
-    // with guidance + 「打开系统 TTS 设置」action.
+    // v1.16.3-alpha: replaced v1.16.2-alpha OPPO/小米 autostart guidance +
+    // 「打开系统 TTS 设置」action with engine-list-aware guidance and a
+    // 「改用云端引擎」action that switches ttsEngineProvider to qwenCloud.
+    // The system-settings path didn't actually fix the ROM binding rejection;
+    // switching engine is the actionable fix.
     testWidgets(
-        'OPPO/Xiaomi init_error shows SnackBar with system TTS settings button',
+        'OPPO/Xiaomi init_error shows SnackBar with 改用云端引擎 button',
         (tester) async {
       final stub = StubTtsService();
       addTearDown(stub.dispose);
@@ -358,18 +361,22 @@ void main() {
       await tester.pumpAndSettle();
 
       // Simulate Kotlin init_error event being surfaced through the
-      // TtsService.error stream.
-      stub.emitError('系统 TTS 初始化失败（status=-1, device=Xiaomi）');
+      // TtsService.error stream — engines list present (ROM rejected binding).
+      stub.emitError(
+          '系统 TTS 初始化失败（status=-1, device=Xiaomi）。已尝试引擎：com.google.android.tts。'
+          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
       await tester.pumpAndSettle();
 
-      // SnackBar visible with error message + OPPO/小米 guidance.
+      // SnackBar visible with error message + ROM-rejection guidance.
       expect(find.textContaining('系统 TTS 初始化失败'), findsOneWidget);
-      expect(find.textContaining('允许自启动'), findsOneWidget);
-      expect(find.textContaining('切换引擎'), findsOneWidget);
-      expect(find.text('打开系统 TTS 设置'), findsOneWidget);
+      expect(find.textContaining('ROM 拒绝第三方 app 绑定'), findsOneWidget);
+      expect(find.text('改用云端引擎'), findsOneWidget);
+      // Old action removed.
+      expect(find.text('打开系统 TTS 设置'), findsNothing);
     });
 
-    testWidgets('init_error SnackBar button calls openSystemTtsSettings',
+    testWidgets(
+        'init_error SnackBar with empty engines list shows install guidance',
         (tester) async {
       final stub = StubTtsService();
       addTearDown(stub.dispose);
@@ -384,17 +391,55 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      stub.emitError('系统 TTS 初始化失败（status=-1, device=Xiaomi）');
+      stub.emitError(
+          '系统 TTS 初始化失败（status=-1, device=Xiaomi）。未检测到可用 TTS 引擎。'
+          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('打开系统 TTS 设置'));
-      await tester.pumpAndSettle();
-
-      expect(stub.openSystemTtsSettingsCalled, isTrue,
-          reason: 'v1.16.2: SnackBar action must call service.openSystemTtsSettings');
+      expect(find.textContaining('未安装标准 TTS 引擎'), findsOneWidget);
+      expect(find.textContaining('Google TTS'), findsOneWidget);
     });
 
-    testWidgets('init_error SnackBar uses 10s duration for guidance reading',
+    // v1.16.3-alpha: tapping 「改用云端引擎」switches engine to qwenCloud
+    // (deviation from plan: sherpaOnnxMelo removed in v1.16.0-alpha POC
+    // cleanup; qwenCloud picked as the more accessible cloud engine — only
+    // needs API key, vs Volcengine which needs App ID + Token + Voice).
+    testWidgets(
+        'init_error SnackBar 改用云端引擎 button switches engine on tap',
+        (tester) async {
+      final stub = StubTtsService();
+      addTearDown(stub.dispose);
+      final container = ProviderContainer(overrides: [
+        ttsServiceProvider.overrideWithValue(stub),
+        settingsRepositoryProvider.overrideWithValue(_FakeSettingsRepo()),
+      ]);
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: _wrap(const TtsSettingsSection()),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(container.read(ttsEngineProvider), TtsEnginePreference.system);
+
+      stub.emitError(
+          '系统 TTS 初始化失败（status=-1, device=Xiaomi）。已尝试引擎：com.google.android.tts。'
+          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('改用云端引擎'));
+      // setEngine is async: awaits _loaded, sets state, then awaits repo.set.
+      // Pump a frame + settle so microtask queue drains.
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(container.read(ttsEngineProvider), TtsEnginePreference.qwenCloud,
+          reason: 'v1.16.3-alpha: 改用云端引擎 button must switch ttsEngineProvider '
+              'to qwenCloud for graceful degradation when system TTS cannot bind.');
+    });
+
+    testWidgets('init_error SnackBar uses 15s duration for guidance reading',
         (tester) async {
       final stub = StubTtsService();
       addTearDown(stub.dispose);
@@ -409,15 +454,18 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      stub.emitError('系统 TTS 初始化失败（status=-1, device=OPPO）');
+      stub.emitError(
+          '系统 TTS 初始化失败（status=-1, device=OPPO）。已尝试引擎：com.heytap.speechservice。'
+          '建议改用 SherpaOnnx 离线引擎或检查系统 TTS 设置。');
       await tester.pumpAndSettle();
 
-      // Find the SnackBar widget and verify it has the longer 10s duration
-      // (default is 4s; we extend to give users time to read the guidance).
+      // Find the SnackBar widget and verify it has the longer 15s duration
+      // (v1.16.3-alpha: extended from 10s → 15s to give users time to read
+      // both the diagnosis text and the action button label).
       final snackbar = tester.widget<SnackBar>(find.byType(SnackBar));
-      expect(snackbar.duration, const Duration(seconds: 10),
-          reason: 'v1.16.2: SnackBar must persist 10s so users can read '
-              'the OPPO/小米 guidance steps before it auto-dismisses.');
+      expect(snackbar.duration, const Duration(seconds: 15),
+          reason: 'v1.16.3-alpha: SnackBar must persist 15s so users can '
+              'read the ROM-rejection diagnosis + action label.');
     });
   });
 }
