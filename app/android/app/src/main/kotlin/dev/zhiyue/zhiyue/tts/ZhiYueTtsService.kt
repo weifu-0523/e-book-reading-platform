@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.TextToSpeech.Engine
 import android.speech.tts.UtteranceProgressListener
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
@@ -190,6 +191,10 @@ class ZhiYueTtsService : Service() {
         // ttsInitStatus reset above; without this, a recreated service would
         // inherit the previous instance's exhausted retry state).
         ttsInitRetryAttempted = false
+        // v1.16.3-alpha: reset engine enumeration state (v1.13.9 companion
+        // reset pattern — companion fields survive service recreation).
+        ttsEngineEnumerationIndex = -1
+        ttsAvailableEngines = listOf()
         // v1.16.2-alpha code-review followup: also reset `destroyed` here so
         // a recreated service instance can retry normally (the flag may have
         // been set to true by the prior instance's onDestroy). Same companion-
@@ -600,6 +605,26 @@ class ZhiYueTtsService : Service() {
         refreshNotification(content = "朗读中")
     }
 
+    /**
+     * v1.16.3-alpha: Enumerate TTS engines that properly expose
+     * [android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE].
+     * Used by the 3-stage retry to find an alternative engine when the
+     * ROM's default engine rejects third-party app binding (common on
+     * Xiaomi MIUI / OPPO ColorOS).
+     *
+     * Returns a list of engine package names. The default-engine constructor
+     * has already been tried by the time this runs (stage A), so the caller
+     * walks the list and tries each via the 3-arg constructor; engines that
+     * reject binding will fail their own retry and we advance to the next.
+     */
+    private fun enumerateAvailableEngines(): List<String> {
+        val intent = Intent(Engine.INTENT_ACTION_TTS_SERVICE)
+        val resolveInfos = packageManager.queryIntentServices(intent, 0)
+        val packages = resolveInfos.map { it.serviceInfo.packageName }.distinct()
+        debugLog("enumerated TTS engines: $packages")
+        return packages
+    }
+
     private fun handleStop() {
         // v1.13.8-alpha Bug 2: drop any deferred SPEAK so a late TTS init
         // callback doesn't resurrect a playback the user just stopped.
@@ -887,6 +912,27 @@ class ZhiYueTtsService : Service() {
         // init listener only called debugLog + Log.e, leaving 11 SPEAK
         // intents deferred in pendingSpeak forever (no user-visible signal).
         @Volatile var ttsInitRetryAttempted: Boolean = false
+
+        // v1.16.3-alpha: 3-stage retry state machine.
+        // Stage A: ttsInitRetryAttempted (existing v1.16.2) — applicationContext retry.
+        // Stage B: ttsEngineEnumerationIndex — index into ttsAvailableEngines.
+        // Stage C: emit init_error with engine list.
+        //
+        // Both new fields are companion (survive service recreation) so they
+        // MUST be reset in onCreate top (v1.13.9 pattern, same as
+        // ttsInitRetryAttempted above).
+        var ttsEngineEnumerationIndex: Int = -1
+            private set
+        var ttsAvailableEngines: List<String> = listOf()
+            private set
+
+        // Visible for testing — production code does NOT mutate this directly,
+        // it goes through the state machine transitions in the init listener.
+        @VisibleForTesting
+        fun resetEngineEnumerationStateForTest() {
+            ttsEngineEnumerationIndex = -1
+            ttsAvailableEngines = listOf()
+        }
 
         // v1.16.2-alpha code-review followup: set to true in onDestroy and
         // reset to false in onCreate so the 500ms retry lambda (scheduled from
