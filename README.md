@@ -3,8 +3,10 @@
 > 面向深度阅读/学习者的开源 Flutter 电子书阅读平台。
 > 先做极致本地阅读体验，逐步叠加 AI 陪伴式学习与跨端同步。
 
+**简体中文** | **[English](README.en.md)**
+
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.12.3--alpha-blue.svg)](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.13.0-alpha)
+[![Version](https://img.shields.io/badge/version-1.16.3--alpha-blue.svg)](https://github.com/weifu-0523/e-book-reading-platform/releases/tag/v1.16.3-alpha)
 
 ## 项目状态
 
@@ -41,8 +43,11 @@
 
 ## 下载安装
 
+> 最新构建统一发布在 **GitHub Releases**：[v1.16.3-alpha](https://github.com/weifu-0523/e-book-reading-platform/releases/tag/v1.16.3-alpha)；更早的历史版本见 Gitee Releases（链接见下）。
+
 ### Windows
 
+- **v1.16.3-alpha**（[GitHub Releases](https://github.com/weifu-0523/e-book-reading-platform/releases/tag/v1.16.3-alpha)）— 最新版安装包/便携包。
 - **v1.1.0-alpha 安装包**（[zhiyue-setup-1.1.0.exe](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.1.0-alpha)）— 自动注册 .epub/.pdf 文件关联、加开始菜单快捷方式、含卸载项。
 - **v1.1.0-alpha 便携版**（[zhiyue-portable-1.1.0.zip](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.1.0-alpha)）— 解压即用，免安装。
 - 稳定版用户请使用 [v1.0.0](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.0.0)。
@@ -51,7 +56,8 @@
 
 ### Android
 
-- **v1.9.0-alpha APK**（[zhiyue-1.9.0-alpha.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.9.0-alpha)）— sideload 安装，含 WebDAV + AI 输入修复 + 自由笔记全部能力。
+- **v1.16.3-alpha APK**（[zhiyue-1.16.3-alpha.apk](https://github.com/weifu-0523/e-book-reading-platform/releases/tag/v1.16.3-alpha)）— 最新版：WebDAV + AI 输入 + TTS 朗读 + 自由笔记全部能力。
+- **v1.9.0-alpha APK**（[zhiyue-1.9.0-alpha.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.9.0-alpha)）— 旧版（含 WebDAV + AI 输入修复 + 自由笔记全部能力）。
 - **v1.8.0-alpha APK**（[zhiyue-1.8.0-alpha.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.8.0-alpha)）— 旧版（移动端 MVP Spiral 1）。
 - **v1.1.0-alpha APK**（[zhiyue-1.1.0.apk](https://gitee.com/weifu0523/e-book-reading-platform/releases/tag/v1.1.0-alpha)）— 旧版（v1.0 GA 同款 APK）。
 - Android 8+ 需在「设置 → 应用 → 特殊访问权限 → 安装未知应用」中允许浏览器安装 APK。
@@ -150,6 +156,7 @@
 
 ## 反馈与贡献
 
+- GitHub Issues：[https://github.com/weifu-0523/e-book-reading-platform/issues](https://github.com/weifu-0523/e-book-reading-platform/issues)
 - Gitee Issues：[https://gitee.com/weifu0523/e-book-reading-platform/issues](https://gitee.com/weifu0523/e-book-reading-platform/issues)
 - 项目尚在开发初期，暂不接受外部 PR；欢迎在 Issues 中提出建议。
 
